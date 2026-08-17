@@ -1,0 +1,54 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+#Build generated files
+*.opensdf
+*.sdf
+*.suo
+*.db
+*.opendb
+.vs/
+x64/
+GeneratedFiles/
+VisionApp/vidi_messages.log
+VisionApp/PCI-8134A
+VisionApp/SmartRay
+VisionApp/Gocator
+#Resource
+*.pat
+*.zip
+
+#Dont ignore this
+!VisionApp/Icon/
+vidiAddStream.txt
+packages

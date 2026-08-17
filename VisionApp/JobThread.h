@@ -1,0 +1,556 @@
+#pragma once
+#include <QCoreApplication>
+#include <QThread>
+#include <QVector>
+#include <QMutex>
+#include <QWaitCondition>
+#include <QSet>
+#include <QHash>
+#include <QListWidget>
+#include <QCoreApplication>
+#include <opencv2/opencv.hpp>
+#include <queue>
+#include <QObject>
+#include "QView.h"
+#include "QViewPlane.h"
+#include "QLineScan.h"
+#include "OpticsInfo.h"
+#include <QDebug>
+#include "WinEvents.h"
+#include "Fiducial.h"
+#include "FiducialInfo.h"
+#include "BarcodeInfo.h"
+#include "Utilities.h"
+#include "PortabilityInfo.h"
+#include "QServer.h"
+#include "FrameInfo.h"
+#include "MessageQue.h"
+#include "Logger.h"
+#include "SystemData.h"
+#include "MotionController.h"
+#include <QTcpSocket>
+#include <QByteArray>
+#include <QElapsedTimer>
+
+#include "LSCManager.h"
+
+#define PROFILER_TIMEOUT 60000
+
+class ScopedConveyorSpeed {
+private:
+	int m_oldSpeed;
+	int m_newSpeed;
+	int m_oldAccel;
+	int m_newAccel;
+public:
+	ScopedConveyorSpeed(int oldSpeed, int newSpeed, int oldAccel, int newAccel) {
+		m_oldSpeed = oldSpeed;
+		m_newSpeed = newSpeed;
+		m_oldAccel = oldAccel;
+		m_newAccel = newAccel;
+		MotionController::instance().set_move_acceleration("motion1", (int)Axis::CY1, m_newSpeed);
+		MotionController::instance().set_move_max_velocity("motion1", (int)Axis::CY1, newAccel);
+	}
+
+	~ScopedConveyorSpeed() {
+		MotionController::instance().set_move_acceleration("motion1", (int)Axis::CY1, m_oldAccel);
+		MotionController::instance().set_move_max_velocity("motion1", (int)Axis::CY1, m_oldSpeed);
+	}
+};
+
+Q_DECLARE_METATYPE(InspStatus::FiducialDetail)
+Q_DECLARE_METATYPE(MIL_ID)
+Q_DECLARE_METATYPE(LaserAlignmentImage)
+Q_DECLARE_METATYPE(SensorIndex)
+class JobThread : public QThread {
+	Q_OBJECT
+
+public:
+
+	JobThread(QObject* parent = nullptr) : QThread(parent) {
+	}
+	~JobThread() {
+		// The SR-X sockets live in this thread, so they must NOT be deleted from
+		// here (the destructor runs on the caller's thread). Stop the event loop
+		// and let run() tear them down, then wait for it to finish.
+		quit();
+		if (!wait(3000)) {
+			ct::logger::error("[JobThread] Thread did not exit within 3s; SR-X sockets left in place");
+		}
+
+		// Existing V1 cleanup
+		if (m_server) {
+			// cleanup server if needed
+		}
+	}
+
+	void run() override;
+	void release();
+	
+	//revisit
+	void attach(QListWidget* viewSequence);
+	void attach(Fiducial* fiducialAlgo);
+	void attach2ndFiducial(Fiducial* fiducialAlgo);
+	void attach(std::vector<FiducialInfo>* fiducialInfos);
+	void attach(std::array<BarcodeInfo, 2>* barcodeInfos);
+	void attach(InspStatus* inspStatus);
+	void attach(CSAInfo* csa);
+	void attach(QHash <QString, QView>* views, QHash<QString, OpticsInfo>* optics2D);
+	void attach(QHash <QString, QLineScan>* linescans, QHash<QString, OpticsInfo3D>* optics3D); 
+	void attach(dat::WorldCoordinate* laserOffset);
+	void attach(QViewPlane* viewPlane);
+	void attach(PortabilityInfo* portabilityInfo);
+	void setRootPath(QString rootPath); 
+	void setWarpageMethod(QString method);
+	void setXSpeed(int speed, int speed3d);
+	void setXDecel(int decel);
+	void getXSpeed(int& speed, int& speed3d);
+	void setConveyorSpeed(int speed);
+	void setConveyorDecel(int decel);
+
+	void enableFiducial(bool enable);
+	void enableBarcode(bool enable);
+	void enableWarpageCompensation(bool enable);
+	void enableRun1stFOVOnly(bool enable);
+
+	void resetFiducial();
+
+	//job
+	void stopRun();
+
+	void setServerHostAddress(QString hostAddress, int port, QString hostAddress2 = QString(), int port2 = 0);
+
+	// SR-X barcode readers: one TCP client socket per reader, socket index = barcode slot
+	static const int SRX_READER_COUNT = 2;
+	QTcpSocket* m_srxSocket[SRX_READER_COUNT] = { nullptr, nullptr };
+	QString m_srxHost[SRX_READER_COUNT];
+	int m_srxPort[SRX_READER_COUNT] = { 0, 0 };
+	bool m_srxConnected[SRX_READER_COUNT] = { false, false };
+	QByteArray m_srxBuffer[SRX_READER_COUNT]; // per-reader receive buffer, messages framed on CR
+
+	// Troubleshooting aids: which thread owns the sockets (anything else touching
+	// them is a bug), and how long the readers take to answer a trigger.
+	QString m_srxOwnerThread;
+	QElapsedTimer m_srxTriggerElapsed;
+
+	bool m_failLoadToSensor = false;
+
+	void startConnectToServer();
+	void connectToServer(int readerIndex);
+	void sendToServer(QString msg);
+	void incomingSRXData(int readerIndex, QByteArray data);
+	void triggerSRX();
+	void stopSRX();
+	void releaseSRXSockets();   //must run in the job thread
+	void logSRXStatus(const char* context);
+	bool checkSRXThread(const char* context);
+	bool writeSRX(int readerIndex, const QString& cmd, const char* label);
+private:
+	TimeLogger m_timeLogger;
+
+	bool m_imageReadyFlag = false;
+	bool m_imagePreprocessedFlag = false;
+	bool m_run1stFOVOnly = false;
+
+	bool m_encoderCheck = false;
+
+	const int m_conveyorSlowSpeed = 6;
+	int m_conveyorSpeed = 12;
+	int m_conveyorDecel = 10;
+	int m_xDecel = 1500;
+	int m_xSpeed = 300;
+	int m_xSpeed3d = 20;
+	int m_motionReadDelay_ms = 150;
+	int m_index = 0;
+
+	struct PostResult {
+		FrameInfo frame;
+		QString bufferPath;
+	};
+	QVector<PostResult> m_postResults;
+
+	MIL_ID m_buffers;
+
+	WinEvents m_appEvents;
+	QServer* m_server = nullptr;
+
+	TimeLogger m_timer;
+
+	QString m_camID = "cam1";
+	QString m_motionID = "motion1";
+	QString m_profilerID = "profiler1";
+	int m_camTriggerIO = 2;
+	int m_camResetIO = 1;
+	bool m_lscFastMode = false;
+
+	QListWidget* m_viewSequence = nullptr;
+	Fiducial* m_fiducialAlgo = nullptr;
+	Fiducial* m_fiducialAlgo2 = nullptr;   // second island (fid3/fid4) when double fiducial checking is enabled
+	std::vector<FiducialInfo>* m_fiducialInfos = nullptr;
+	std::array<BarcodeInfo, 2>* m_barcodeInfos = nullptr;
+	InspStatus* m_inspStatus = nullptr;
+	dat::WorldCoordinate* m_laserOffset = nullptr;
+	CSAInfo* m_csa = nullptr;
+	QViewPlane* m_viewPlane = nullptr;
+	PortabilityInfo* m_portabilityInfo = nullptr;
+	QString m_rootPath = "";
+
+
+	QHash <QString, QView>* m_views = nullptr;
+	QHash <QString, QLineScan>* m_linescans = nullptr;
+
+	QHash <QString, OpticsInfo>* m_optics = nullptr;
+	QHash <QString, OpticsInfo3D>* m_optics3D = nullptr;
+
+	QHash<QString, RGBOffset> m_rgbOverrides;
+
+	std::thread m_thread;
+	int m_snapDelay_ms = 0;
+	std::atomic<bool> m_stopZstack = false;
+
+	//scale
+	double m_scaleStep;
+	
+	//jog
+	int m_minDiameter, m_maxDiameter;
+	dat::WorldCoordinate m_coordinate;
+	QString m_type;
+	OpticsInfo m_optic;
+	mtrx::ForegoundType m_foregroundType = mtrx::ForegoundType::FOREGROUND_ANY;
+
+	QImage m_qimg;
+	int m_camThreshold, m_laserThreshold;
+	QRectF m_roi;
+	int m_method = 0;
+
+	//booleans
+	bool m_stopRun = false;
+	bool m_enableWarpageCompensation = false;
+
+	//fid
+	bool m_enableFiducial = false;
+	QSet<QString> m_locatedFidID;
+	int m_currentFidIndex = 0;
+	bool m_testFidOnline = true;
+
+	//barcode
+	bool m_enableBarcode = false;
+	int m_currentBarcodeIndex = 0;
+	bool m_testBarcodeOnline = true;
+
+	void jogBasedOnFiducial(double x, double y, double z, QString type, bool forceEnable = false);
+	void jogView(const QView& view, double z_offset = 0.0);
+	void jogLaser(double x, double y, double z, QString type);
+	void jogLaserBasedOnFiducial(double x, double y, double z, QString type, bool forceEnable = false);
+
+
+	void switchToContinuousModeLSC();
+	void switchToFastModeLSC();
+	const OpticsInfo& getMainOptics();
+	const OpticsInfo3D& getMainOptics3D();
+	void snapBand(const OpticsInfo& optic, QString viewID, QString stitchID, BandType bandType); //wait for raw image
+	//void snapOptic(QString camID, const OpticsInfo& optic);
+	void snapView(QString viewID, bool resetFrame = true);
+	void triggerCamera(QString camID);
+
+	FrameInfo scan(QString preID, dat::WorldCoordinate start, dat::WorldCoordinate end, const OpticsInfo3D& optic, bool waitImage = true);
+
+	//camera process
+	double m_cameraAlignment = 0.0;
+
+	//fiducial
+	bool fiducialExists(int index);
+	em::V2d getFiducialPointInMM(int index, int x_px, int y_px);
+	bool locateFiducial(int index, int fidIndex, InspStatus::FiducialDetail& fDetail, bool saveImg,const dat::WorldCoordinate & curCoordinate, int crossFinderScore = 85, Fiducial* algo = nullptr);
+	void searchFiducial();
+	void searchDoubleFiducial();
+	Fiducial* fiducialForPoint(double x, double y);   // routes a target point to the nearest island's transform
+	void saveFiducialResult();
+
+	//barcode
+	const QString msg_failed_barcode = "Fail_to_read_barcode";
+	bool barcodeExists(int index);
+	void searchBarcode();
+
+	/*
+	Warpage compensation concept
+	1. Teach focus is to obtain the ideal offset of camera to laser. Ideal being that the laser scan should give an average profile of 0
+	2. Therefore the offset to compensate the warpage is -average. Since for gantry, z up is negative while z down is positive.
+	*/
+	QString m_warpageMethod = "None";
+	QHash<QString, double> m_compensateZMap;
+	void warpageCompensation();
+	void subWarpageCompensation();
+	void fullWarpageCompensation();
+	void generateWarpageMap();
+	void centerLaserZ();
+
+
+	//Color compensation
+	void colorCompensation();
+
+	//Portability
+	/*QPointF m_positionPortabilityPatternSize = QPointF();
+	int m_num_of_Z_Offset_Performed = 0;
+	dat::WorldCoordinate m_positionPortabilityPoint;
+	bool m_donePortability = false;
+	PositionPortabilityInfo mSystemData::instance()._portability.ref_info;
+	PositionPortabilityInfo mSystemData::instance()._portability.current_info;*/
+	em::V2d getPositionPortabilityPointInMM(int x_px, int y_px);
+	bool testPortabilityPatternFeature(QRectF& outputFeature);
+	bool testPortabilityCircleFeature(QRectF& outputFeature);
+	bool getCorrectedPortabilityPoint(dat::WorldCoordinate& portabilityPoint, QPointF& PatternSize);
+	bool getPortabilitySizeDifference(double difference, double& offsetZ);
+	bool savePositionPortabilityInfo(PositionPortabilityType type);
+	void getCurrentMachinePortabilityPointOffset(dat::WorldCoordinate& offset);
+	void toJson(const dat::WorldCoordinate& obj, QJsonObject& j, bool isRelative = false);
+	void fromJson(const QJsonObject& j, dat::WorldCoordinate& obj, bool isAbsolute = false);
+	void toJson(const ct::Box2D& obj, QJsonObject& j);
+	void fromJson(const QJsonObject& j, ct::Box2D& obj);
+	dat::WorldCoordinate getRelativeRobotPoint(dat::WorldCoordinate point);
+	dat::WorldCoordinate getAbsoluteRobotPoint(dat::WorldCoordinate point);
+
+	//Acquisition
+	void preAcquisition();
+	void postAcquisition();
+	void continuousSnap();
+	void savePostResult();
+	void acquire2DImages();
+	void acquire3DImages();
+	void collectPlane();
+
+	void save3DExtraOffset();
+
+	//Lighting
+	int m_expectedRedGV, m_expectedGreenGV, m_expectedBlueGV; 
+	QString m_opticType = "";
+	int getIntensityFromIdealGV(QString camID, QString channel, double idealGV);
+	int getIntensityFromIdealGV(QString camID, const QVector<QString>& channels, double idealGV);
+	void calibrateOptimumBrightness(QString camID);
+	void getGVTable(QString camID, GVTable& gvt, QRectF roi);
+
+	//Communication
+	TMessageQue<QByteArray> m_byteArrayQue;
+
+	QString m_currentTriggerSequence = "";
+	QString m_expectedViewID;
+	QString m_expectedIndexID;
+	QVector<FrameInfo> m_frameInfos;
+	void saveFrame(QString rootPath, QVector<FrameInfo> frames);
+
+	bool updateTriggerSequence(QString viewID1, QString viewID2);
+	bool updateTriggerSequence(QString viewID);
+	bool appendSequence(const OpticsInfo& optic, QVector<LSCManager::SequenceData>& datas);
+
+	bool m_isTest = false;
+	bool m_isSetup = false;
+
+
+	void getEncoder(const QString& data);
+
+	MIL_ID preprocessImage(MIL_ID mColor);
+
+	void clearEmptyView();
+	void clearEmptyLineScan();
+
+	bool safeGuardView();
+	bool safeGuardLineScan();
+
+	QRectF m_locatedPortabilityPos;
+
+	bool isSensorFunctional();
+
+	LoadingDirection m_loadingDirection;
+
+	QStringList m_extraMoveLog;
+	QString m_laserOffsetInfo;
+
+#if 0
+	// OLD_BRANCH_REVERT_DISABLED_BEGIN
+	// Conveyor sweep timeout disabled with old rail homing/width behavior.
+	const int conveyorTimeOut = 10000;
+	// OLD_BRANCH_REVERT_DISABLED_END
+#endif
+
+public slots:
+	void incomingJob(QByteArray);
+	bool sendToClient(QString msg);
+
+	void snapOptic(const OpticsInfo& optic, QString viewID, QString stitchID, bool resetFrame = true);
+	void snapOpticFastMode(const OpticsInfo& optic, QString viewID, QString stitchID, bool resetFrame = true);
+
+	//wait func
+	QPointF waitForLocator(QString viewID);
+	QPointF waitForLocator(QString viewID, QString indexID);
+	QPointF waitForLocator(QString viewID, int row, int col);
+
+	ct::UnitResultInfo waitForUnitResult(QString viewID, QString indexID);
+	QVector<FrameInfo> waitForImageReady();
+	FrameInfo waitForImagePreprocessed();
+	FrameInfo waitForImagePreprocessed(int timeoutMs);
+
+	void waitAxis(int axis);
+	void waitEncoderCheck(double x_mm, double y_mm, double z_mm);
+	void jog(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
+	void jogSnap(double x, double y, double z, const OpticsInfo& optic);
+	void jogLeft(double mm, const OpticsInfo& optic);
+	void jogRight(double mm, const OpticsInfo& optic);
+	void jogBack(double mm, const OpticsInfo& optic);
+	void jogFront(double mm, const OpticsInfo& optic);
+	void jogUp(double mm, const OpticsInfo& optic);
+	void jogDown(double mm, const OpticsInfo& optic);
+
+	void homeX();
+	void homeY();
+	void homeZ();
+	void homeXYZ();
+	void homeAll();
+	void homeRail();
+	//setup
+	void autoSetFiducialPoint(int currentFid);
+	void testFiducial(int index, bool online);
+
+	QString readBarcode(int index, bool online = true);
+
+	//calibration
+	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
+	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
+
+	void performLaserAlignment(dat::WorldCoordinate currentPoint, QRectF roi, int camThreshold, int laserThreshold);
+	void captureAlignmentImages(dat::WorldCoordinate currentPoint, int camThreshold, int laserThreshold);
+	void performGuidedLaserAlignment(dat::WorldCoordinate currentPoint);
+	void verifyLaserAlignment(dat::WorldCoordinate currentPoint);
+
+	void getAllIntensityFromExpectedGV(QString camID, QString opticType, int idealR, int idealG, int idealB, QRectF roi);
+	void calibrateGoldenLightingProfile(QString camID, QRectF roi);
+	void calibrateCurrentLightingProfile(QString camID, QRectF roi);
+	void calibrateMaxCurrent(QString camID, QRectF roi, double plateauDiffThreshold, double maxCurrentAmp);
+
+
+	void setPositionPortabilityPoint(PositionPortabilityType type);
+	bool findPortabilityPattern();
+	bool findPortabilityCircle();
+
+	//acquisition
+	void runPlaneCollection();
+	void run2D();
+	void run3D();
+	void run2D3D();
+
+	//simulation
+	void simulateOnlineStitching();
+
+	void test();
+
+	void processImageReady(QVector<FrameInfo> infos);
+	void processImagePreprocessed(FrameInfo info);
+
+	void collectZImages(double x, double y, double step_mm, double firstStep, double finalStep, OpticsInfo optic);
+
+	//UI
+	void displayFOV_fnc(MIL_ID mBuf);
+
+	//rail
+	void setRailWidth(double width);
+
+	//load sequence
+	void setLoadingDirection(int index);
+
+	void loadToPositionSensor(int index);
+	/*bool loadToSensor(SensorIndex sensor, bool timeout, int timeout_ms);
+	void startLoadToSensor(SensorIndex sensor);*/
+
+
+	bool loadToSensor(SensorIndex sensor, bool useTimeout, int timeout_ms);
+	bool startLoadToSensor(SensorIndex sensor, int timeout_ms);
+
+	void unloadBoard();
+
+	//conveyor
+	bool toggleClamper(bool up);
+	void continuousMoveConveyor(bool positive_direction);
+	void stressTestConveyor();
+#if 0
+	// OLD_BRANCH_REVERT_DISABLED_BEGIN
+	// Conveyor sweep helper disabled with old rail homing/width behavior.
+	bool runConveyorUntilAnySensor(bool leftToRight, int timeout_ms);
+	// OLD_BRANCH_REVERT_DISABLED_END
+#endif
+
+
+signals:
+
+	void acquisitionDone();
+	void encoderReceived(dat::WorldCoordinate coordinate);
+	void imageReady(QVector<FrameInfo> infos);
+	void imagePreprocessed(FrameInfo info);
+	void locatorReceived(QPointF locatorOffsets, double locatorAngle, QString viewID, QString indexID, bool locatorFail, bool locatorAngleFail);
+	void resultReceived(QVector<FrameInfo> infos, QHash<QString, ct::UnitResultInfo> results);
+
+	//UI
+	void promptMsg(QString msg);
+	void displayFOV(MIL_ID mBuf);
+	void drawRectFOV(QString name, QRectF rect, QColor color);
+	void startProgressBar(QString title, int count, bool enableCancel);
+	void incrementProgress();
+	void stopProgressBar();
+
+	void cameraAlignmentDone(double angle);
+	void cameraAlignmentFailed(QString msg);
+	void cameraScalingDone(double horizontal_scale, double vertical_scale);
+
+	void locatedFiducial(QRectF roi);
+	void updateFiducialStatus(InspStatus::FiducialDetail detail);
+	void updateFiducialRegion();
+	void teachFiducialPoint();
+	void fiducialDone();
+	void fiducialFailed();
+
+	void barcodeDecoded(QString code);
+	void locatedBarcode(QRectF roi, int index, bool pass, QString code);
+	void barcodeFailed();
+
+	void updateLaserOffset();
+
+	void planeCollectionDone();
+
+	void appendLaserAlignmentImage(LaserAlignmentImage);
+	void verifyLaserAlignmentDone();
+	void captureAlignmentDone();
+	void laserAlignmentDone();
+	void guidedLaserAlignmentDone();
+
+	void obtainedIdealIntensity(int R, int G, int B);
+	void savePortabilityInfo();
+	void loadPortabilityInfo();
+
+	void startLot();
+	void setLotSize(int size);
+	void endLot();
+	void unloadStrip();
+	void uploadRecipe(QString);
+	void downloadRecipe(QString);
+	void frameReady();
+
+	void stackImages(QString id);
+	void openRecipe(QString recipeName);
+	void createRecipe(QString recipeName);
+	void onLive(QString camID);
+	void offLive();
+
+	//rail
+	void signalSetRailWidthDone();
+
+	//load sequence
+	void signalLoadSequenceFail(QString msg);
+
+	void barcodeReceived(int readerIndex, QString code);
+	void signalBoardInPosition(int index);
+	void signalBoardUnloaded();
+
+	//sensorNotFound
+	void clearSubRecipe();
+
+	//gvTable
+	void calibrationFinished(QString summaryMsg, QHash<QString, double> proposedLimits);
+};

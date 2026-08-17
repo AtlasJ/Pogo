@@ -1,0 +1,553 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{B12702AD-ABFB-343A-A199-8E24837244A3}</ProjectGuid>
+    <Keyword>Qt4VSv1.0</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(QtMsBuild)'=='' or !Exists('$(QtMsBuild)\qt.targets')">
+    <QtMsBuild>$(MSBuildProjectDirectory)\QtMsBuild</QtMsBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IncludePath>$(COMMON_PATH);$(ALGO_PATH)\Algo;C:\Program Files\Matrox Imaging\MIL\Include;C:\Program Files\HuarayTech\MV Viewer\Development\Include;C:\Program Files\Cognex\VisionPro Deep Learning\1.0\Develop\include;C:\Advantech\DAQNavi\Inc;$(COMMON_PATH)\IO Card\Advantech;$(ProjectDir)Helper;$(EM_LIB)\include\;$(ProjectDir)PCI-8134A\Library\Include;$(ProjectDir)Gocator\Include;$(OPENCV_PATH)\include;$(DIR_PATH)\CommonDir;$(OPT_PATH)\include;$(CST_PATH)\;$(ONNX_INFERENCE_PATH)\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ALGO_PATH)\$(Platform)\$(Configuration);C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;C:\Program Files\Cognex\VisionPro Deep Learning\1.0\bin;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration)</LibraryPath>
+    <LibraryPath>$(ALGO_PATH)\$(Platform)\$(Configuration);C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;C:\Program Files\Cognex\VisionPro Deep Learning\1.1\bin;C:\Program Files\Matrox Imaging\MIL\LIB;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration);$(ProjectDir)PCI-8134A\Library_x64;$(ProjectDir)Gocator\Lib;$(OPENCV_PATH)\x64\vc16\lib;$(DIR_PATH)\x64\Debug;$(OPT_PATH)\x64;$(CST_PATH)\MVL\x64;$(ONNX_INFERENCE_PATH)\bin\$(Configuration)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IncludePath>C:\Advantech\DAQNavi\Inc;C:\Program Files\Matrox Imaging\MIL\Include;C:\Program Files\HuarayTech\MV Viewer\Development\Include;$(COMMON_PATH)\IO Card\Advantech;$(COMMON_PATH);$(ProjectDir)Helper;$(ProjectDir)Gocator\Include;$(ProjectDir)PCI-8134A\Library\Include;$(ALGO_PATH)\Algo;$(EM_LIB)\include\;$(OPENCV_PATH)\include;$(DIR_PATH)\CommonDir;$(ONNX_INFERENCE_PATH)\include;$(CST_PATH)\;$(OPT_PATH)\OPT_Controller\include;$(OPT_PATH)\OPT_Viewer\Include;$(ONNX_RUNTIME_PATH)\include;$(ProjectDir)SmartRay\include\sr_api;$(LIBVIPS_PATH)\include;$(LIBVIPS_PATH)\include\vips;$(LIBVIPS_PATH)\lib\glib-2.0\include;$(LIBVIPS_PATH)\include\glib-2.0;$(VIE_PATH)\LSC;$(HIK_PATH)\include;$(ADLINK_PATH);$(ProjectDir)\SSZN\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files\Matrox Imaging\MIL\LIB;C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;$(LibraryPath);$(ALGO_PATH)\$(Platform)\$(Configuration);$(EM_LIB)\bin\x64\$(Configuration);$(ProjectDir)PCI-8134A\Library_x64;$(ProjectDir)Gocator\Lib;$(OPENCV_PATH)\x64\vc17\lib;$(DIR_PATH)\x64\Release;$(ONNX_INFERENCE_PATH)\bin\$(Configuration);$(CST_PATH)\MVL\x64;$(OPT_PATH)\OPT_Controller\x64;$(OPT_PATH)\OPT_Viewer\Lib\x64;$(ONNX_RUNTIME_PATH)\libraries;$(ProjectDir)SmartRay\lib;$(LIBVIPS_PATH)\lib;$(VIE_PATH)\LSC;$(HIK_PATH)\lib;$(ADLINK_PATH)\APS Library;$(ProjectDir)\SSZN\lib</LibraryPath>
+  </PropertyGroup>
+  <Target Name="QtMsBuildNotFound" BeforeTargets="CustomBuild;ClCompile" Condition="!Exists('$(QtMsBuild)\qt.targets') or !Exists('$(QtMsBuild)\qt.props')">
+    <Message Importance="High" Text="QtMsBuild: could not locate qt.targets, qt.props; project may not build correctly." />
+  </Target>
+  <ImportGroup Condition="Exists('$(QtMsBuild)\qt.props')">
+    <Import Project="$(QtMsBuild)\qt.props" />
+  </ImportGroup>
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.4.props" />
+  </ImportGroup>
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PreprocessorDefinitions>UNICODE;_UNICODE;WIN32;WIN64;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_CHARTS_LIB;QT_NETWORK_LIB;QT_SQL_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
+      <AdditionalLibraryDirectories>$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>qtmaind.lib;algo.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5Widgetsd.lib;Qt5Chartsd.lib;Qt5Networkd.lib;MVSDKmd.lib;vidi_51.lib;Wldap32.Lib;mil.lib;milim.lib;milcal.lib;milmod.lib;milpat.lib;milmeas.lib;milblob.lib;MilCode.lib;lib_em.lib;8134Ax64.lib;Qt5Sql.lib;GoSdk.lib;kApi.lib;opencv_world480d.lib;CommonDir.lib;psapi.lib;%(AdditionalDependencies);OPTController.lib;MVL_commonTool.lib;MVL_controller.lib;MVL_scontroller.lib;OnnxInferenceLib.lib;OnnxInferenceLib.lib</AdditionalDependencies>
+    </Link>
+    <QtMoc>
+      <OutputFile>.\GeneratedFiles\$(ConfigurationName)\moc_%(Filename).cpp</OutputFile>
+      <ExecutionDescription>Moc'ing %(Identity)...</ExecutionDescription>
+      <IncludePath>.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql;%(AdditionalIncludeDirectories)</IncludePath>
+      <Define>UNICODE;_UNICODE;WIN32;WIN64;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_CHARTS_LIB;QT_NETWORK_LIB;QT_SQL_LIB;%(PreprocessorDefinitions)</Define>
+    </QtMoc>
+    <QtUic>
+      <ExecutionDescription>Uic'ing %(Identity)...</ExecutionDescription>
+      <OutputFile>.\GeneratedFiles\ui_%(Filename).h</OutputFile>
+    </QtUic>
+    <QtRcc>
+      <ExecutionDescription>Rcc'ing %(Identity)...</ExecutionDescription>
+      <OutputFile>.\GeneratedFiles\qrc_%(Filename).cpp</OutputFile>
+    </QtRcc>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PreprocessorDefinitions>UNICODE;_UNICODE;WIN64;QT_NO_DEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_CHARTS_LIB;QT_NETWORK_LIB;QT_SQL_LIB;_CRT_SECURE_NO_WARNINGS;WIN32;_WINDOWS;NDEBUG;_MYWIN32;_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat />
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <OpenMPSupport>true</OpenMPSupport>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
+      <AdditionalLibraryDirectories>$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>qtmain.lib;algo.lib;Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Charts.lib;Qt5Network.lib;Qt5DataVisualization.lib;Wldap32.Lib;mil.lib;milim.lib;milcal.lib;milmod.lib;milpat.lib;milmeas.lib;milblob.lib;MilCode.lib;lib_em.lib;Qt5Sql.lib;GoSdk.lib;kApi.lib;opencv_world4100.lib;CommonDir.lib;psapi.lib;%(AdditionalDependencies);OPTController.lib;CommonToolDll.lib;ControllerDll.lib;sControllerDll.lib;OnnxInferenceLib.lib;MVSDKmd.lib;SciCamSDK.lib;onnxruntime.lib;onnxruntime_providers_cuda.lib;onnxruntime_providers_shared.lib;onnxruntime_providers_tensorrt.lib;SR_API-x64.lib;libgio-2.0.lib;libglib-2.0.lib;libgmodule-2.0.lib;libgobject-2.0.lib;libjpeg.lib;libpng16.lib;libspng.lib;libtiff.lib;libvips.lib;nvjpeg.lib;VTLightDLL64.lib;MvCameraControl.lib;MVFGControl.lib;APS168x64.lib;SR7Link.lib</AdditionalDependencies>
+    </Link>
+    <QtMoc>
+      <OutputFile>.\GeneratedFiles\$(ConfigurationName)\moc_%(Filename).cpp</OutputFile>
+      <ExecutionDescription>Moc'ing %(Identity)...</ExecutionDescription>
+      <IncludePath>.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql;%(AdditionalIncludeDirectories)</IncludePath>
+      <Define>UNICODE;_UNICODE;WIN32;WIN64;QT_NO_DEBUG;NDEBUG;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_CHARTS_LIB;QT_NETWORK_LIB;QT_SQL_LIB;%(PreprocessorDefinitions)</Define>
+    </QtMoc>
+    <QtUic>
+      <ExecutionDescription>Uic'ing %(Identity)...</ExecutionDescription>
+      <OutputFile>.\GeneratedFiles\ui_%(Filename).h</OutputFile>
+    </QtUic>
+    <QtRcc>
+      <ExecutionDescription>Rcc'ing %(Identity)...</ExecutionDescription>
+      <OutputFile>.\GeneratedFiles\qrc_%(Filename).cpp</OutputFile>
+    </QtRcc>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\Common\AlgoDefectResult.cpp" />
+    <ClCompile Include="..\..\Common\Box2D.cpp" />
+    <ClCompile Include="..\..\Common\BufferQue.cpp" />
+    <ClCompile Include="..\..\Common\CallbackTimer.cpp" />
+    <ClCompile Include="..\..\Common\CT_Client.cpp" />
+    <ClCompile Include="..\..\Common\cvUtil.cpp" />
+    <ClCompile Include="..\..\Common\ImagePathManager.cpp" />
+    <ClCompile Include="..\..\Common\IO Card\Advantech\AdvantechDigitalIO.cpp" />
+    <ClCompile Include="..\..\Common\Logger.cpp" />
+    <ClCompile Include="..\..\Common\mtrx.cpp" />
+    <ClCompile Include="..\..\Common\nvsutil\nvs_common.cpp" />
+    <ClCompile Include="..\..\Common\nvsutil\nvs_math.cpp" />
+    <ClCompile Include="..\..\Common\nvsutil\nvs_qt.cpp" />
+    <ClCompile Include="..\..\Common\nvsutil\nvs_variables.cpp" />
+    <ClCompile Include="..\..\Common\nvsutil\nv_qt_class.cpp" />
+    <ClCompile Include="..\..\Common\QClient.cpp" />
+    <ClCompile Include="..\..\Common\QCommonStruct.cpp" />
+    <ClCompile Include="..\..\Common\QCrossItem.cpp" />
+    <ClCompile Include="..\..\Common\QDragBox.cpp" />
+    <ClCompile Include="..\..\Common\QDragObject.cpp" />
+    <ClCompile Include="..\..\Common\QEllipseItem.cpp" />
+    <ClCompile Include="..\..\Common\QGeometry.cpp" />
+    <ClCompile Include="..\..\Common\QGrabber.cpp" />
+    <ClCompile Include="..\..\Common\QJsonFile.cpp" />
+    <ClCompile Include="..\..\Common\QJsonHelper.cpp" />
+    <ClCompile Include="..\..\Common\QLineItem.cpp" />
+    <ClCompile Include="..\..\Common\QMainDelegate.cpp" />
+    <ClCompile Include="..\..\Common\QMainGraphicsScene.cpp" />
+    <ClCompile Include="..\..\Common\QMainGraphicsView.cpp" />
+    <ClCompile Include="..\..\Common\QMainTreeView.cpp" />
+    <ClCompile Include="..\..\Common\QOSTool.cpp" />
+    <ClCompile Include="..\..\Common\QRectItem.cpp" />
+    <ClCompile Include="..\..\Common\QRoundedPixmapItem.cpp" />
+    <ClCompile Include="..\..\Common\QServer.cpp" />
+    <ClCompile Include="..\..\Common\QVisionObject.cpp" />
+    <ClCompile Include="..\..\Common\Timer.cpp" />
+    <ClCompile Include="..\..\Common\uidGenerator.cpp" />
+    <ClCompile Include="..\..\Common\VidiToolResult.cpp" />
+    <ClCompile Include="..\..\Common\WinEvents.cpp" />
+    <ClCompile Include="..\..\Common\WinSharedMem.cpp" />
+    <ClCompile Include="..\..\Common\WorldCoordinate.cpp" />
+    <ClCompile Include="3DOpticsTab.cpp" />
+    <ClCompile Include="CameraControl.cpp" />
+    <ClCompile Include="CAMManager.cpp" />
+    <ClCompile Include="CAM_HIK.cpp" />
+    <ClCompile Include="CAM_HIK_FG.cpp" />
+    <ClCompile Include="CAM_IRayple.cpp" />
+    <ClCompile Include="CAM_IRayple_FG.cpp" />
+    <ClCompile Include="CAM_OPT.cpp" />
+    <ClCompile Include="DataBaseThread.cpp" />
+    <ClCompile Include="DatasetPage.cpp" />
+    <ClCompile Include="DatasetQDragBox.cpp" />
+    <ClCompile Include="Depth_from_focus.cpp" />
+    <ClCompile Include="dbscan.cpp" />
+    <ClCompile Include="ErrorInfo.cpp" />
+    <ClCompile Include="Fiducial.cpp" />
+    <ClCompile Include="FileRemovingThread.cpp" />
+    <ClCompile Include="focus_stacking.cpp" />
+    <ClCompile Include="FrameInfo.cpp" />
+    <ClCompile Include="FunctionQueue.cpp" />
+    <ClCompile Include="GoldenRecipeDialog.cpp" />
+    <ClCompile Include="Guided_2D3D_AlignmentTab.cpp" />
+    <ClCompile Include="heightmap\heightmap_process.cpp" />
+    <ClCompile Include="heightmap\height_map_wrapper.cpp" />
+    <ClCompile Include="heightmap\input_process.cpp" />
+    <ClCompile Include="heightmap\output_process.cpp" />
+    <ClCompile Include="heightmap\param.cpp" />
+    <ClCompile Include="heightmap\post_process.cpp" />
+    <ClCompile Include="heightmap\test_area.cpp" />
+    <ClCompile Include="heightmap\utils.cpp" />
+    <ClCompile Include="Helper\BoxCluster.cpp" />
+    <ClCompile Include="Helper\ScopedTimeLogger.cpp" />
+    <ClCompile Include="Helper\TimeLogger.cpp" />
+    <ClCompile Include="Helper\Utilities.cpp" />
+    <ClCompile Include="ExtendedMenu.cpp" />
+    <ClCompile Include="IGocator.cpp" />
+    <ClCompile Include="ILSC.cpp" />
+    <ClCompile Include="ImageSavingThread.cpp" />
+    <ClCompile Include="ImageViewerTab.cpp" />
+    <ClCompile Include="JobThread.cpp" />
+    <ClCompile Include="libvips\VConnection.cpp" />
+    <ClCompile Include="libvips\VError.cpp" />
+    <ClCompile Include="libvips\VImage.cpp" />
+    <ClCompile Include="libvips\VInterpolate.cpp" />
+    <ClCompile Include="libvips\VRegion.cpp" />
+    <ClCompile Include="LSC_VIE.cpp" />
+    <ClCompile Include="MachineController.cpp" />
+    <ClCompile Include="MachineSMEMAManager.cpp" />
+    <ClCompile Include="MbufPool.cpp" />
+    <ClCompile Include="MbufPoolManager.cpp" />
+    <ClCompile Include="MotionController.cpp" />
+    <ClCompile Include="Motion_8134A.cpp" />
+    <ClCompile Include="Motion_APS.cpp" />
+    <ClCompile Include="PostAcquisitionTask.cpp" />
+    <ClCompile Include="ProfilerManager.cpp" />
+    <ClCompile Include="Profiler_Gocator.cpp" />
+    <ClCompile Include="Profiler_SmartRay.cpp" />
+    <ClCompile Include="Profiler_SSZN.cpp" />
+    <ClCompile Include="ScaleManager.cpp" />
+    <ClCompile Include="SmartRay\cpp_wrapper\locking.cpp" />
+    <ClCompile Include="SmartRay\cpp_wrapper\Sensor.cpp" />
+    <ClCompile Include="SmartRay\cpp_wrapper\SensorImageData.cpp" />
+    <ClCompile Include="SmartRay\cpp_wrapper\SensorManager.cpp" />
+    <ClCompile Include="SystemData.cpp" />
+    <ClCompile Include="ProductionPage.cpp" />
+    <ClCompile Include="UnitConfigTab.cpp" />
+    <ClCompile Include="VisionApp_CADReader.cpp" />
+    <ClCompile Include="VisionApp_MachineController.cpp" />
+    <ClCompile Include="VisionApp_Motion.cpp" />
+    <ClCompile Include="VisionApp_Production.cpp" />
+    <ClCompile Include="VisionApp_Recipe.cpp" />
+    <ClCompile Include="VisionApp_ServerComms.cpp" />
+    <ClCompile Include="VisionApp_ViewEditor.cpp" />
+    <QtMoc Include="JobThread.h" />
+    <ClCompile Include="ImageManager.cpp" />
+    <ClCompile Include="ImageRegistration.cpp" />
+    <ClCompile Include="InspectionInfo.cpp" />
+    <ClCompile Include="InspectionThread.cpp" />
+    <ClCompile Include="IOInfo.cpp" />
+    <ClCompile Include="Laser.cpp" />
+    <ClCompile Include="LSCManager.cpp" />
+    <ClCompile Include="LSC_CST_MVL.cpp" />
+    <ClCompile Include="LSC_OPT.cpp" />
+    <ClCompile Include="LSC_VLP.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Motion.cpp" />
+    <ClCompile Include="NetworkPathChecker.cpp" />
+    <ClCompile Include="OpenWorkspaceInfo.cpp" />
+    <ClCompile Include="OpticsControl.cpp" />
+    <ClCompile Include="PostInspectionInfo.cpp" />
+    <ClCompile Include="PostInspectionThread.cpp" />
+    <ClCompile Include="QDragBoxCommand.cpp" />
+    <ClCompile Include="QFrameless.cpp" />
+    <ClCompile Include="QImageGrabber.cpp" />
+    <ClCompile Include="ResultCache.cpp" />
+    <ClCompile Include="QView.cpp" />
+    <ClCompile Include="SQLiteDatabase.cpp" />
+    <ClCompile Include="TemplateLibraryTab.cpp" />
+    <ClCompile Include="QViewPlane.cpp" />
+    <ClCompile Include="VisionApp.cpp" />
+    <ClCompile Include="VIsionAppQDragBox.cpp" />
+    <ClCompile Include="VisionApp_JobThread.cpp" />
+    <ClCompile Include="VisionApp_AIModel.cpp" />
+    <ClCompile Include="VisionApp_Analysis.cpp" />
+    <ClCompile Include="VisionApp_Barcode.cpp" />
+    <ClCompile Include="VisionApp_CRUD.cpp" />
+    <ClCompile Include="VisionApp_EZ.cpp" />
+    <ClCompile Include="VisionApp_Fiducial.cpp" />
+    <ClCompile Include="VisionApp_FuncQueue.cpp" />
+    <ClCompile Include="VisionApp_ImageFiltering.cpp" />
+    <ClCompile Include="VisionApp_JSON.cpp" />
+    <ClCompile Include="VisionApp_Laser.cpp" />
+    <ClCompile Include="VisionApp_LSC.cpp" />
+    <ClCompile Include="VisionApp_NamingConvention.cpp" />
+    <ClCompile Include="VisionApp_Portability.cpp" />
+    <ClCompile Include="VisionApp_render.cpp" />
+    <ClCompile Include="VisionApp_Shortcuts.cpp" />
+    <ClCompile Include="VisionApp_TeachingPoint.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="VisionApp.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtUic Include="3DOpticsTab.ui" />
+    <QtUic Include="DatasetPage.ui" />
+    <QtUic Include="ExtendedMenu.ui" />
+    <QtUic Include="GoldenRecipeDialog.ui" />
+    <QtUic Include="Guided_2D3D_AlignmentTab.ui" />
+    <QtUic Include="ImageViewerTab.ui" />
+    <QtUic Include="Motion.ui" />
+    <QtUic Include="ProductionPage.ui" />
+    <QtUic Include="TemplateLibraryTab.ui" />
+    <QtUic Include="UnitConfigTab.ui" />
+    <QtUic Include="VisionApp.ui" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtRcc Include="VisionApp.qrc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\Common\AlgoDefectResult.h" />
+    <ClInclude Include="..\..\Common\Box2D.h" />
+    <ClInclude Include="..\..\Common\BufferQue.h" />
+    <QtMoc Include="..\..\Common\CT_Client.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="..\..\Common\CallbackTimer.h" />
+    <ClInclude Include="..\..\Common\cvUtil.h" />
+    <ClInclude Include="..\..\Common\Def.h" />
+    <ClInclude Include="..\..\Common\ImagePathManager.h" />
+    <ClInclude Include="..\..\Common\IO Card\Advantech\AdvantechDigitalIO.h" />
+    <ClInclude Include="..\..\Common\Logger.h" />
+    <ClInclude Include="..\..\Common\MessageQue.h" />
+    <QtMoc Include="..\..\Common\VidiToolResult.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="..\..\Common\mtrx.h" />
+    <ClInclude Include="..\..\Common\nvsutil\nvs_common.h" />
+    <ClInclude Include="..\..\Common\nvsutil\nvs_core.h" />
+    <ClInclude Include="..\..\Common\nvsutil\nvs_math.h" />
+    <ClInclude Include="..\..\Common\nvsutil\nvs_qt.h" />
+    <ClInclude Include="..\..\Common\nvsutil\nvs_variables.h" />
+    <ClInclude Include="..\..\Common\nvsutil\nv_qt_class.h" />
+    <ClInclude Include="..\..\Common\OpticsInfo.h" />
+    <QtMoc Include="..\..\Common\QDragObject.h" />
+    <QtMoc Include="..\..\Common\QImageSaveWorker.h" />
+    <ClInclude Include="..\..\Common\QOrderedHash.h" />
+    <ClInclude Include="..\..\Common\QOrderedSet.h" />
+    <ClInclude Include="..\..\Common\Timer.h" />
+    <ClInclude Include="..\..\Common\uidGenerator.h" />
+    <ClInclude Include="..\..\Common\WorldCoordinate.h" />
+    <QtMoc Include="3DOpticsTab.h" />
+    <ClInclude Include="BarcodeInfo.h" />
+    <ClInclude Include="CameraControl.h" />
+    <ClInclude Include="CAMManager.h" />
+    <ClInclude Include="CAM_HIK.h" />
+    <ClInclude Include="CAM_HIK_FG.h" />
+    <ClInclude Include="CAM_IRayple.h" />
+    <ClInclude Include="CAM_IRayple_FG.h" />
+    <ClInclude Include="CAM_OPT.h" />
+    <ClInclude Include="ChannelInfo.h" />
+    <QtMoc Include="DataBaseThread.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </QtMoc>
+    <ClInclude Include="CodeConfig.h" />
+    <QtMoc Include="DatasetPage.h" />
+    <QtMoc Include="DatasetQDragBox.h" />
+    <ClInclude Include="Depth_from_focus.h" />
+    <ClInclude Include="dbscan.h" />
+    <ClInclude Include="Dispatcher.h" />
+    <ClInclude Include="Fiducial.h" />
+    <ClInclude Include="FiducialInfo.h" />
+    <QtMoc Include="FunctionQueue.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </QtMoc>
+    <QtMoc Include="FileRemovingThread.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </QtMoc>
+    <QtMoc Include="GoldenRecipeDialog.h" />
+    <QtMoc Include="ImageManager.h" />
+    <ClInclude Include="focus_stacking.h" />
+    <ClInclude Include="FrameInfo.h" />
+    <QtMoc Include="Guided_2D3D_AlignmentTab.h" />
+    <ClInclude Include="heightmap\heightmap_process.h" />
+    <ClInclude Include="heightmap\height_map_wrapper.h" />
+    <ClInclude Include="heightmap\input_process.h" />
+    <ClInclude Include="heightmap\kernel_hm.h" />
+    <ClInclude Include="heightmap\output_process.h" />
+    <ClInclude Include="heightmap\param.h" />
+    <ClInclude Include="heightmap\post_process.h" />
+    <ClInclude Include="heightmap\utils.h" />
+    <ClInclude Include="ICamera.h" />
+    <ClInclude Include="ImageRegistration.h" />
+    <QtMoc Include="ImageViewerTab.h" />
+    <ClInclude Include="ImageSavingThread.h" />
+    <ClInclude Include="IMotion.h" />
+    <ClInclude Include="IProfiler.h" />
+    <ClInclude Include="kernel.h" />
+    <ClInclude Include="libvips\VConnection8.h" />
+    <ClInclude Include="libvips\VError8.h" />
+    <ClInclude Include="libvips\VImage8.h" />
+    <ClInclude Include="libvips\VInterpolate8.h" />
+    <ClInclude Include="libvips\VRegion8.h" />
+    <ClInclude Include="LSCManager.h" />
+    <ClInclude Include="LSC_CST_MVL.h" />
+    <ClInclude Include="LSC_OPT.h" />
+    <QtMoc Include="Motion.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </QtMoc>
+    <ClInclude Include="LSC_VIE.h" />
+    <QtMoc Include="MachineController.h" />
+    <QtMoc Include="MachineSMEMAManager.h" />
+    <ClInclude Include="MbufPool.h" />
+    <ClInclude Include="MbufPoolManager.h" />
+    <ClInclude Include="MbufWrapper.h" />
+    <ClInclude Include="MotionController.h" />
+    <ClInclude Include="Motion_8134A.h" />
+    <ClInclude Include="Motion_APS.h" />
+    <ClInclude Include="OpticsControl.h" />
+    <QtMoc Include="ProductionPage.h" />
+    <ClInclude Include="PostAcquisitionTask.h" />
+    <ClInclude Include="ProfilerManager.h" />
+    <ClInclude Include="Profiler_Gocator.h" />
+    <ClInclude Include="Profiler_SmartRay.h" />
+    <QtMoc Include="QSocketWorker.h" />
+    <ClInclude Include="ProjectBased_Definition.h" />
+    <ClInclude Include="Profiler_SSZN.h" />
+    <ClInclude Include="RecipeData.h" />
+    <ClInclude Include="ScaleManager.h" />
+    <ClInclude Include="ScopedFlag.h" />
+    <ClInclude Include="SystemData.h" />
+    <QtMoc Include="UnitConfigTab.h" />
+    <ClInclude Include="UserAccount.h" />
+    <ClInclude Include="Helper\BoxCluster.h" />
+    <ClInclude Include="Helper\ScopedTimeLogger.h" />
+    <ClInclude Include="Helper\TimeLogger.h" />
+    <ClInclude Include="Helper\Utilities.h" />
+    <ClInclude Include="IGocator.h" />
+    <ClInclude Include="ILSC.h" />
+    <ClInclude Include="IOInfo.h" />
+    <ClInclude Include="Laser.h" />
+    <ClInclude Include="LSC_VLP.h" />
+    <QtMoc Include="NetworkPathChecker.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </QtMoc>
+    <ClInclude Include="PathInfo.h" />
+    <ClInclude Include="PortabilityInfo.h" />
+    <ClInclude Include="QDragBoxCommand.h" />
+    <ClInclude Include="LaserConfig.h" />
+    <ClInclude Include="QLineScan.h" />
+    <ClInclude Include="QView.h" />
+    <QtMoc Include="TemplateLibraryTab.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="SQLiteDatabase.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </ClInclude>
+    <ClInclude Include="VIsionAppQDragBox.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </ClInclude>
+    <ClInclude Include="VisionAppStruct.h" />
+    <QtMoc Include="ExtendedMenu.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <QtMoc Include="QFrameless.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="QViewPlane.h" />
+    <QtMoc Include="..\..\Common\QClient.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="..\..\Common\QCommonStruct.h" />
+    <ClInclude Include="..\..\Common\QCrossItem.h" />
+    <ClInclude Include="..\..\Common\QJsonFile.h" />
+    <ClInclude Include="..\..\Common\QOSTool.h" />
+    <ClInclude Include="..\..\Common\WinEvents.h" />
+    <ClInclude Include="..\..\Common\WinSharedMem.h" />
+    <QtMoc Include="PostInspectionThread.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <QtMoc Include="QImageGrabber.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="ErrorMsg.h" />
+    <ClInclude Include="ResultInfo.h" />
+    <QtMoc Include="InspectionThread.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+    <ClInclude Include="ErrorInfo.h" />
+    <ClInclude Include="InspectionInfo.h" />
+    <ClInclude Include="OpenWorkspaceInfo.h" />
+    <ClInclude Include="PostInspectionInfo.h" />
+    <ClInclude Include="ResultCache.h" />
+    <QtMoc Include="..\..\Common\QServer.h" />
+    <QtMoc Include="..\..\Common\QMainTreeView.h" />
+    <QtMoc Include="..\..\Common\QMainDelegate.h" />
+    <ClInclude Include="..\..\Common\QJsonHelper.h" />
+    <ClInclude Include="..\..\Common\QVisionObject.h" />
+    <QtMoc Include="..\..\Common\QDragBox.h" />
+    <QtMoc Include="..\..\Common\QEllipseItem.h" />
+    <ClInclude Include="..\..\Common\QGeometry.h" />
+    <QtMoc Include="..\..\Common\QGrabber.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork;$(QTDIR)\include\QtSql</IncludePath>
+    </QtMoc>
+    <ClInclude Include="..\..\Common\QLineItem.h" />
+    <QtMoc Include="..\..\Common\QMainGraphicsScene.h" />
+    <QtMoc Include="..\..\Common\QMainGraphicsView.h" />
+    <QtMoc Include="..\..\Common\QRectItem.h">
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+      <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles;.;$(QTDIR)\include;.\GeneratedFiles\$(ConfigurationName);$(QTDIR)\include\QtCore;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtANGLE;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtCharts;$(QTDIR)\include\QtNetwork</IncludePath>
+    </QtMoc>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="VisionApp.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="heightmap\kernel_hm.cu" />
+    <CudaCompile Include="kernel.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Icon\Ai_Mascot.ico" />
+    <Image Include="Icon\Ai_Mascot.png" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">
+    <Import Project="$(QtMsBuild)\qt.targets" />
+  </ImportGroup>
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\spdlog_native.2021.07.30\build\native\spdlog_native.targets" Condition="Exists('..\packages\spdlog_native.2021.07.30\build\native\spdlog_native.targets')" />
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 12.4.targets" />
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties MocDir=".\GeneratedFiles\$(ConfigurationName)" UicDir=".\GeneratedFiles" RccDir=".\GeneratedFiles" lupdateOptions="" lupdateOnBuild="0" lreleaseOptions="" Qt5Version_x0020_x64="5.9.2_msvc2015_64" MocOptions="" />
+    </VisualStudio>
+  </ProjectExtensions>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\spdlog_native.2021.07.30\build\native\spdlog_native.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\spdlog_native.2021.07.30\build\native\spdlog_native.targets'))" />
+  </Target>
+</Project>

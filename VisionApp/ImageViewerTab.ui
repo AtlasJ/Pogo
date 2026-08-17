@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ImageViewerTabClass</class>
+ <widget class="QWidget" name="ImageViewerTabClass">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>400</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>ImageViewerTab</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QToolButton {
+  background-color:  rgb(39, 44, 54);
+  color: #F0F0F0;
+  border-radius: 8px;
+  margin: 0px;
+  padding: 2px;
+}
+
+QToolButton:checked {
+  margin: 1px;
+  background-color:  rgb(39, 44, 54);
+  border: 1px solid #FFE723;
+}
+
+QToolButton:checked:disabled {
+  border: 1px solid #CFBB1C;
+}
+
+QToolButton:pressed {
+   margin: 1px;
+   border: 1px solid #FFE723;
+}
+
+QToolButton:disabled {
+	color: #6e6e6e;
+	background-color: #444444;
+	border: 2px solid #444444;
+}
+
+QToolButton:disabled:hover {
+  border: 1px solid #32414B;
+}
+
+QToolButton:hover {
+ background-color: #21252B;
+}
+
+QFrame {
+ background-color: rgb(39, 44, 54);
+ border-radius: 8px;
+}
+
+QFrame#TemplateLibraryFrame{
+	background-color:  rgb(27, 29, 35);
+	border-radius: 12px;
+}
+
+QFrame#templatePropertiesFrame{
+	background-color:  rgb(27, 29, 35);
+	border-radius: 12px;
+}
+
+QFrame#tableWidget_TemplateLibrary{
+	background-color: rgb(39, 44, 54);
+	border-radius: 12px;
+}
+
+QFrame#tableWidget_TemplateProperties{
+	background-color: rgb(39, 44, 54);
+	border-radius: 12px;
+}</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0">
+    <widget class="QLabel" name="label">
+     <property name="font">
+      <font>
+       <pointsize>16</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color:white;
+background-color:  rgb(27, 29, 35);border-radius: 6px;</string>
+     </property>
+     <property name="text">
+      <string>Image Viewe</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QTableWidget" name="tableWidget_imageViewer"/>
+   </item>
+  </layout>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>
