@@ -88,6 +88,11 @@ void ImageManager::run()
 void ImageManager::release()
 {
 	m_release = true;
+	// Wake the zstack/stitch workers parked on their condition variables —
+	// their wait predicates slept through shutdown, so run()'s join() stalled
+	// and the destructor burned the full thread-wait timeout on every exit.
+	m_zstackCV.notify_all();
+	m_stitchCV.notify_all();
 }
 
 void ImageManager::reset()
@@ -238,13 +243,14 @@ void ImageManager::process_stack_queues_thread()
 
 		{
 			std::unique_lock<std::mutex> lock(m_zstackDequeMutex);
-			m_zstackCV.wait(lock, [this]() { return !m_zstackDeque.empty(); });
+			m_zstackCV.wait(lock, [this]() { return m_release || !m_zstackDeque.empty(); });
+			if (m_release) return;
 
 			id = m_zstackDeque.front();
 
 			ct::logger::info("Waiting for zstack data: %s", id.toStdString().c_str());
 
-			while (true) {
+			while (!m_release) {
 				{
 					std::unique_lock<std::mutex> lock(m_zstackMapMutex);
 					if (m_zstackMap.contains(id)) {
@@ -254,6 +260,7 @@ void ImageManager::process_stack_queues_thread()
 				os_tool::goSleep(500);
 				//wait for zstack data until receive
 			}
+			if (m_release) return;
 			ct::logger::info("Received zstack data: %s", id.toStdString().c_str());
 
 			m_zstackDeque.pop_front();
@@ -2099,7 +2106,8 @@ void ImageManager::process_stitch_thread()
 
 		{
 			std::unique_lock<std::mutex> lock(m_stitchDequeMutex);
-			m_stitchCV.wait(lock, [this]() { return !m_stitchDeque.empty(); });
+			m_stitchCV.wait(lock, [this]() { return m_release || !m_stitchDeque.empty(); });
+			if (m_release) return;
 
 			id = m_stitchDeque.front();
 			m_stitchDeque.pop_front();
