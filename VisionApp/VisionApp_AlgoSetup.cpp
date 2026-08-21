@@ -44,7 +44,6 @@ void VisionApp::initAlgoSetupPage()
 	_algoOcrRoi1Box = makeBox(QRectF(100, 100, 400, 150), kAlgoRoiColor, "OCR ROI 1");
 	_algoOcrRoi2Box = makeBox(QRectF(100, 300, 400, 150), kAlgoRoiColor, "OCR ROI 2");
 	_algoOcrLearnBox = makeBox(QRectF(100, 100, 60, 60), kAlgoLearnColor, "Learn Char");
-	_algoHeightRoiBox = makeBox(QRectF(200, 200, 200, 200), kAlgoHeightColor, "Height ROI");
 	_algoLocLearnBox = makeBox(QRectF(50, 50, 150, 150), kAlgoLearnColor, "Locator Learn");
 	_algoLocSearchBox = makeBox(QRectF(0, 0, 800, 600), kAlgoSearchColor, "Locator Search");
 
@@ -139,19 +138,54 @@ void VisionApp::initAlgoSetupPage()
 		auto box = makeBox(QRectF(80 + n * 60, 80 + n * 60, 120, 120), kAlgoPlaneColor,
 			QStringLiteral("Plane %1").arg(n + 1));
 		_algoPlaneBoxes.append(box);
-		ui.label_algoHPlaneCount->setText(QStringLiteral("Plane ROIs: %1").arg(_algoPlaneBoxes.size()));
+		updateAlgoHRoiCounts();
 		updateAlgoRoiVisibility();
 	});
 
-	connect(ui.toolButton_algoHRemovePlane, &QToolButton::clicked, this, [=]() {
-		if (_algoPlaneBoxes.isEmpty()) return;
-		auto box = _algoPlaneBoxes.takeLast();
-		_pGraphicsSceneFOV->removeItem(box);
-		delete box;
-		ui.label_algoHPlaneCount->setText(QStringLiteral("Plane ROIs: %1").arg(_algoPlaneBoxes.size()));
+	connect(ui.toolButton_algoHHeightRoi, &QToolButton::clicked, this, [=]() {
+		const int n = _algoHeightBoxes.size();
+		auto box = makeBox(QRectF(220 + n * 60, 220 + n * 60, 200, 200), kAlgoHeightColor,
+			QStringLiteral("Height %1").arg(n + 1));
+		_algoHeightBoxes.append(box);
+		updateAlgoHRoiCounts();
+		updateAlgoRoiVisibility();
 	});
 
-	connect(ui.toolButton_algoHHeightRoi, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
+	//delete whichever plane/height ROI the user has highlighted (selected) on the scene
+	connect(ui.toolButton_algoHRemovePlane, &QToolButton::clicked, this, [=]() {
+		bool removed = false;
+
+		for (int i = _algoPlaneBoxes.size() - 1; i >= 0; i--) {
+			if (!_algoPlaneBoxes[i]->getSelected()) continue;
+			_pGraphicsSceneFOV->removeItem(_algoPlaneBoxes[i]);
+			delete _algoPlaneBoxes[i];
+			_algoPlaneBoxes.removeAt(i);
+			removed = true;
+		}
+		for (int i = _algoHeightBoxes.size() - 1; i >= 0; i--) {
+			if (!_algoHeightBoxes[i]->getSelected()) continue;
+			_pGraphicsSceneFOV->removeItem(_algoHeightBoxes[i]);
+			delete _algoHeightBoxes[i];
+			_algoHeightBoxes.removeAt(i);
+			removed = true;
+		}
+
+		if (!removed) {
+			showMsg("Click a plane or height ROI on the image first, then Remove Selected.");
+			return;
+		}
+
+		//renumber so names stay Plane 1..N / Height 1..N
+		for (int i = 0; i < _algoPlaneBoxes.size(); i++) {
+			_algoPlaneBoxes[i]->setup(_algoPlaneBoxes[i]->getGeometry(), kAlgoPlaneColor,
+				QStringLiteral("Plane %1").arg(i + 1));
+		}
+		for (int i = 0; i < _algoHeightBoxes.size(); i++) {
+			_algoHeightBoxes[i]->setup(_algoHeightBoxes[i]->getGeometry(), kAlgoHeightColor,
+				QStringLiteral("Height %1").arg(i + 1));
+		}
+		updateAlgoHRoiCounts();
+	});
 
 	//── locator controls (bound to the current algo's locator config)
 	connect(ui.toolButton_algoLocLearnRoi, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
@@ -190,9 +224,21 @@ void VisionApp::initAlgoSetupPage()
 
 	connect(&AlgoManager::instance(), &AlgoManager::heightFinished, this, [=](const AlgoHeightOutput& out) {
 		if (out.ok) {
-			ui.label_algoHAvg->setText(QStringLiteral("Average height: %1 um").arg(out.avgHeightUm, 0, 'f', 2));
-			ui.label_algoHMinMax->setText(QStringLiteral("Min / Max: %1 / %2 um")
-				.arg(out.minHeightUm, 0, 'f', 2).arg(out.maxHeightUm, 0, 'f', 2));
+			QStringList avgLines, rangeLines;
+			for (int i = 0; i < out.roiResults.size(); i++) {
+				const auto& r = out.roiResults[i];
+				if (r.valid) {
+					avgLines << QStringLiteral("H%1: %2 um %3").arg(i + 1)
+						.arg(r.avgHeightUm, 0, 'f', 2).arg(r.pass ? "" : "(FAIL)");
+					rangeLines << QStringLiteral("H%1: %2 .. %3 um").arg(i + 1)
+						.arg(r.minHeightUm, 0, 'f', 2).arg(r.maxHeightUm, 0, 'f', 2);
+				}
+				else {
+					avgLines << QStringLiteral("H%1: no valid pixels").arg(i + 1);
+				}
+			}
+			ui.label_algoHAvg->setText(QStringLiteral("Average height:\n%1").arg(avgLines.join("\n")));
+			ui.label_algoHMinMax->setText(QStringLiteral("Min / Max:\n%1").arg(rangeLines.join("\n")));
 			ui.label_algoHTilt->setText(QStringLiteral("Plane tilt: X %1 deg, Y %2 deg")
 				.arg(out.tiltXDeg, 0, 'f', 3).arg(out.tiltYDeg, 0, 'f', 3));
 			ui.label_algoHPass->setText(out.pass ? "PASS" : "FAIL");
@@ -228,6 +274,12 @@ AlgoPageAlgo VisionApp::currentAlgoPageAlgo() const
 
 // ── ROI visibility: only on the algo page, only for the selected algo ────────
 
+void VisionApp::updateAlgoHRoiCounts()
+{
+	ui.label_algoHPlaneCount->setText(QStringLiteral("Plane ROIs: %1").arg(_algoPlaneBoxes.size()));
+	ui.label_algoHHeightCount->setText(QStringLiteral("Height ROIs: %1").arg(_algoHeightBoxes.size()));
+}
+
 void VisionApp::updateAlgoRoiVisibility()
 {
 	const bool onPage = (ui.stackedWidget->currentIndex() == (int)UIPage::ALGO_SETUP)
@@ -242,7 +294,7 @@ void VisionApp::updateAlgoRoiVisibility()
 	if (_algoOcrLearnBox) _algoOcrLearnBox->setVisible(ocr && ui.toolButton_algoOcrLearnRoi->isChecked());
 
 	for (auto box : _algoPlaneBoxes) box->setVisible(height);
-	if (_algoHeightRoiBox) _algoHeightRoiBox->setVisible(height && ui.toolButton_algoHHeightRoi->isChecked());
+	for (auto box : _algoHeightBoxes) box->setVisible(height);
 
 	if (_algoLocLearnBox) _algoLocLearnBox->setVisible(onPage && ui.toolButton_algoLocLearnRoi->isChecked());
 	if (_algoLocSearchBox) _algoLocSearchBox->setVisible(onPage && ui.toolButton_algoLocSearchRoi->isChecked());
@@ -255,10 +307,10 @@ void VisionApp::hideAlgoSetupRois()
 	if (_algoOcrRoi1Box) _algoOcrRoi1Box->hide();
 	if (_algoOcrRoi2Box) _algoOcrRoi2Box->hide();
 	if (_algoOcrLearnBox) _algoOcrLearnBox->hide();
-	if (_algoHeightRoiBox) _algoHeightRoiBox->hide();
 	if (_algoLocLearnBox) _algoLocLearnBox->hide();
 	if (_algoLocSearchBox) _algoLocSearchBox->hide();
 	for (auto box : _algoPlaneBoxes) box->hide();
+	for (auto box : _algoHeightBoxes) box->hide();
 	clearAlgoOverlay();
 }
 
@@ -291,7 +343,8 @@ void VisionApp::captureAlgoParamsFromUI()
 	h.removeOutliers = ui.checkBox_algoHOutliers->isChecked();
 	h.planeRois.clear();
 	for (auto box : _algoPlaneBoxes) h.planeRois.append(box->getGeometry());
-	if (_algoHeightRoiBox) h.heightRoi = _algoHeightRoiBox->getGeometry();
+	h.heightRois.clear();
+	for (auto box : _algoHeightBoxes) h.heightRois.append(box->getGeometry());
 	mgr.setHeightParams(h);
 
 	//locator widgets edit the CURRENT algo's config
@@ -384,26 +437,31 @@ void VisionApp::refreshAlgoSetupPage()
 		ui.checkBox_algoHOutliers->setChecked(h.removeOutliers);
 	}
 
-	//rebuild plane ROI boxes from the stored geometries
-	for (auto box : _algoPlaneBoxes) {
-		_pGraphicsSceneFOV->removeItem(box);
-		delete box;
-	}
-	_algoPlaneBoxes.clear();
+	//rebuild plane + height ROI boxes from the stored geometries
+	auto rebuildBoxes = [=](QVector<QDragBox*>& boxes, const QVector<QRectF>& rois,
+		const QColor& color, const QString& prefix) {
+		for (auto box : boxes) {
+			_pGraphicsSceneFOV->removeItem(box);
+			delete box;
+		}
+		boxes.clear();
 
-	int planeIdx = 0;
-	for (const auto& r : h.planeRois) {
-		auto box = new QDragBox();
-		_pGraphicsSceneFOV->addItem(box);
-		box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
-		box->setup(r, kAlgoPlaneColor, QStringLiteral("Plane %1").arg(++planeIdx));
-		box->setDragable(true);
-		box->setZValue((int)UIHierarchy::DRAGGABLES);
-		box->hide();
-		_algoPlaneBoxes.append(box);
-	}
-	ui.label_algoHPlaneCount->setText(QStringLiteral("Plane ROIs: %1").arg(_algoPlaneBoxes.size()));
-	if (!h.heightRoi.isEmpty() && _algoHeightRoiBox) _algoHeightRoiBox->setGeometry(h.heightRoi);
+		int idx = 0;
+		for (const auto& r : rois) {
+			auto box = new QDragBox();
+			_pGraphicsSceneFOV->addItem(box);
+			box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
+			box->setup(r, color, QStringLiteral("%1 %2").arg(prefix).arg(++idx));
+			box->setDragable(true);
+			box->setZValue((int)UIHierarchy::DRAGGABLES);
+			box->hide();
+			boxes.append(box);
+		}
+	};
+
+	rebuildBoxes(_algoPlaneBoxes, h.planeRois, kAlgoPlaneColor, QStringLiteral("Plane"));
+	rebuildBoxes(_algoHeightBoxes, h.heightRois, kAlgoHeightColor, QStringLiteral("Height"));
+	updateAlgoHRoiCounts();
 
 	refreshAlgoLocatorUI();
 	refreshAlgoPatternList();
@@ -528,9 +586,16 @@ void VisionApp::refreshAlgoPatternList()
 	}
 	tbl->blockSignals(false);
 
-	ui.label_algoOcrUnlearned->setText(unlearned.isEmpty()
-		? QString()
-		: QStringLiteral("Unlearned (%1): %2").arg(unlearned.size()).arg(unlearned.join(", ")));
+	//break the enumeration into short lines so the label never stretches the page
+	QString unlearnedText;
+	if (!unlearned.isEmpty()) {
+		QStringList lines;
+		for (int i = 0; i < unlearned.size(); i += 12) {
+			lines << QStringList(unlearned.mid(i, 12)).join(", ");
+		}
+		unlearnedText = QStringLiteral("Unlearned (%1):\n%2").arg(unlearned.size()).arg(lines.join("\n"));
+	}
+	ui.label_algoOcrUnlearned->setText(unlearnedText);
 
 	//── per-label sample thumbnails (click to delete)
 	auto* vLayout = ui.verticalLayout_algoOcrPatternList;

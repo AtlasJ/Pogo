@@ -342,7 +342,14 @@ bool AlgoManager::loadRecipeConfig()
 			m_heightParams.minHeightUm = jsonHelper::getDouble(h, "min_height_um", 0.0);
 			m_heightParams.maxHeightUm = jsonHelper::getDouble(h, "max_height_um", 0.0);
 			m_heightParams.removeOutliers = jsonHelper::getBool(h, "remove_outliers", true);
-			m_heightParams.heightRoi = jsonToRect(h.value("height_roi").toObject());
+			for (const auto& rv : h.value("height_rois").toArray()) {
+				m_heightParams.heightRois.append(jsonToRect(rv.toObject()));
+			}
+			//legacy single-ROI recipes
+			if (m_heightParams.heightRois.isEmpty() && h.contains("height_roi")) {
+				const QRectF legacy = jsonToRect(h.value("height_roi").toObject());
+				if (!legacy.isEmpty()) m_heightParams.heightRois.append(legacy);
+			}
 			for (const auto& rv : h.value("plane_rois").toArray()) {
 				m_heightParams.planeRois.append(jsonToRect(rv.toObject()));
 			}
@@ -406,7 +413,9 @@ bool AlgoManager::saveRecipeConfig()
 		h.insert("min_height_um", m_heightParams.minHeightUm);
 		h.insert("max_height_um", m_heightParams.maxHeightUm);
 		h.insert("remove_outliers", m_heightParams.removeOutliers);
-		h.insert("height_roi", rectToJson(m_heightParams.heightRoi));
+		QJsonArray heightRois;
+		for (const auto& r : m_heightParams.heightRois) heightRois.append(rectToJson(r));
+		h.insert("height_rois", heightRois);
 		QJsonArray planes;
 		for (const auto& r : m_heightParams.planeRois) planes.append(rectToJson(r));
 		h.insert("plane_rois", planes);
@@ -1325,7 +1334,7 @@ void AlgoManager::doRunHeight()
 	do {
 		if (!map || map->id() == M_NULL) { out.message = "No heightmap loaded"; break; }
 		if (param.planeRois.size() < 3) { out.message = "Add at least 3 plane ROIs for the datum fit"; break; }
-		if (param.heightRoi.isEmpty()) { out.message = "Height measurement ROI is not set"; break; }
+		if (param.heightRois.isEmpty()) { out.message = "Add at least 1 height measurement ROI"; break; }
 		if (param.intensityPerMicron <= 0.0) { out.message = "Intensity per micron must be > 0"; break; }
 
 		MIL_UINT16* hostPtr = nullptr;
@@ -1337,15 +1346,32 @@ void AlgoManager::doRunHeight()
 
 		if (!hostPtr) { out.message = "Heightmap buffer has no host address"; break; }
 
+		//── locator first (on the 8-bit heightmap view); ROIs run as-is when not assigned/found
+		QVector<QRectF> planeRois = param.planeRois;
+		QVector<QRectF> heightRois = param.heightRois;
+
+		const AlgoLocatorConfig locCfg = locatorConfig(AlgoPageAlgo::HEIGHT_3D);
+		if (locCfg.enabled) {
+			const QImage gray = heightMapImage(false);
+			if (!gray.isNull()) {
+				cv::Mat grayBgr = qimageToBgr(gray);
+				AlgoLocatorResult loc = runLocator(grayBgr, locCfg, out.overlay);
+				if (loc.ran && !loc.found) out.message = "Locator: no match - ran unshifted. ";
+
+				for (auto& r : planeRois) r = applyLocatorToRoi(r, loc);
+				for (auto& r : heightRois) r = applyLocatorToRoi(r, loc);
+			}
+		}
+
 		//── datum: collect every valid (z > 0) pixel from every plane ROI, absolute coords
 		std::vector<P3> points;
 		{
 			size_t reserveSize = 0;
-			for (const auto& r : param.planeRois) reserveSize += (size_t)(r.width() * r.height());
+			for (const auto& r : planeRois) reserveSize += (size_t)(r.width() * r.height());
 			points.reserve(reserveSize);
 		}
 
-		for (const auto& roiF : param.planeRois) {
+		for (const auto& roiF : planeRois) {
 			QRect r = roiF.toRect() & QRect(0, 0, (int)mapW, (int)mapH);
 			for (int y = r.top(); y <= r.bottom(); y++) {
 				const MIL_UINT16* row = hostPtr + (y * pitch);
@@ -1369,54 +1395,70 @@ void AlgoManager::doRunHeight()
 		out.planeA = plane.a; out.planeB = plane.b; out.planeC = plane.c; out.planeD = plane.d;
 		planeTiltXY(plane, out.tiltXDeg, out.tiltYDeg);
 
-		//── measure: per-pixel vertical distance to the datum plane, averaged (+min/max)
-		QRect hr = param.heightRoi.toRect() & QRect(0, 0, (int)mapW, (int)mapH);
-		if (hr.width() < 1 || hr.height() < 1) { out.message = "Height ROI outside the heightmap"; break; }
-
-		double sum = 0.0;
-		double minDist = 1e18, maxDist = -1e18;
-		qint64 count = 0;
-
-		for (int y = hr.top(); y <= hr.bottom(); y++) {
-			const MIL_UINT16* row = hostPtr + (y * pitch);
-			for (int x = hr.left(); x <= hr.right(); x++) {
-				const int z = row[x];
-				if (z <= 0) continue;
-
-				const double dist = (double)z - getZFromPlane(plane, x, y); //vertical, raw gray
-				sum += dist;
-				if (dist < minDist) minDist = dist;
-				if (dist > maxDist) maxDist = dist;
-				count++;
-			}
-		}
-
-		if (count == 0) { out.message = "No valid pixels in the height ROI"; break; }
-
-		//divide by scale at the very end (gray levels / (gray per um) = um)
-		out.avgHeightUm = (sum / count) / param.intensityPerMicron;
-		out.minHeightUm = minDist / param.intensityPerMicron;
-		out.maxHeightUm = maxDist / param.intensityPerMicron;
-
+		//── measure every ROI: per-pixel vertical distance to the datum plane, averaged (+min/max)
 		const bool limitActive = (param.minHeightUm != 0.0 || param.maxHeightUm != 0.0);
-		out.pass = !limitActive ||
-			(out.avgHeightUm >= param.minHeightUm && out.avgHeightUm <= param.maxHeightUm);
+		out.pass = true;
 
-		out.overlay.append(AlgoOverlayItem::makeRect(param.heightRoi,
-			out.pass ? QColor(0, 255, 127) : Qt::red,
-			out.pass ? QColor(0, 255, 127, 30) : QColor(255, 0, 0, 30)));
-		out.overlay.append(AlgoOverlayItem::makeText(
-			QStringLiteral("H %1 um [%2 .. %3]")
-				.arg(out.avgHeightUm, 0, 'f', 1).arg(out.minHeightUm, 0, 'f', 1).arg(out.maxHeightUm, 0, 'f', 1),
-			param.heightRoi.topLeft() - QPointF(0, 24),
-			out.pass ? QColor(0, 255, 127) : Qt::red, 14));
+		for (int ri = 0; ri < heightRois.size(); ri++) {
+			const QRectF roiF = heightRois[ri];
+			AlgoHeightRoiResult res;
+			res.roi = roiF;
+
+			QRect hr = roiF.toRect() & QRect(0, 0, (int)mapW, (int)mapH);
+
+			double sum = 0.0;
+			double minDist = 1e18, maxDist = -1e18;
+			qint64 count = 0;
+
+			for (int y = hr.top(); y <= hr.bottom(); y++) {
+				const MIL_UINT16* row = hostPtr + (y * pitch);
+				for (int x = hr.left(); x <= hr.right(); x++) {
+					const int z = row[x];
+					if (z <= 0) continue;
+
+					const double dist = (double)z - getZFromPlane(plane, x, y); //vertical, raw gray
+					sum += dist;
+					if (dist < minDist) minDist = dist;
+					if (dist > maxDist) maxDist = dist;
+					count++;
+				}
+			}
+
+			if (count > 0) {
+				//divide by scale at the very end (gray levels / (gray per um) = um)
+				res.valid = true;
+				res.avgHeightUm = (sum / count) / param.intensityPerMicron;
+				res.minHeightUm = minDist / param.intensityPerMicron;
+				res.maxHeightUm = maxDist / param.intensityPerMicron;
+				res.pass = !limitActive ||
+					(res.avgHeightUm >= param.minHeightUm && res.avgHeightUm <= param.maxHeightUm);
+			}
+			else {
+				res.pass = false;
+			}
+
+			out.pass = out.pass && res.pass;
+
+			out.overlay.append(AlgoOverlayItem::makeRect(roiF,
+				res.pass ? QColor(0, 255, 127) : Qt::red,
+				res.pass ? QColor(0, 255, 127, 30) : QColor(255, 0, 0, 30)));
+			out.overlay.append(AlgoOverlayItem::makeText(
+				res.valid
+					? QStringLiteral("H%1: %2 um [%3 .. %4]").arg(ri + 1)
+						.arg(res.avgHeightUm, 0, 'f', 1).arg(res.minHeightUm, 0, 'f', 1).arg(res.maxHeightUm, 0, 'f', 1)
+					: QStringLiteral("H%1: no valid pixels").arg(ri + 1),
+				roiF.topLeft() - QPointF(0, 24),
+				res.pass ? QColor(0, 255, 127) : Qt::red, 14));
+
+			out.roiResults.append(res);
+		}
 
 		out.ok = true;
 	} while (false);
 
 	out.elapsedMs = timer.elapsed();
-	ct::logger::info("[Algo Height] Done in %lldms: avg=%.1fum min=%.1f max=%.1f tilt=(%.3f, %.3f) pass=%d %s",
-		out.elapsedMs, out.avgHeightUm, out.minHeightUm, out.maxHeightUm,
+	ct::logger::info("[Algo Height] Done in %lldms: %d ROI(s) tilt=(%.3f, %.3f) pass=%d %s",
+		out.elapsedMs, out.roiResults.size(),
 		out.tiltXDeg, out.tiltYDeg, out.pass ? 1 : 0, out.message.toStdString().c_str());
 
 	m_busy = false;

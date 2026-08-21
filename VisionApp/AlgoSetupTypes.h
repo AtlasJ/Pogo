@@ -149,7 +149,17 @@ struct AlgoHeightParams {
 	double maxHeightUm = 0.0;
 	bool removeOutliers = true;       //plane-residual outlier rejection before the datum fit
 	QVector<QRectF> planeRois;        //datum plane-fit ROIs (up to kAlgoPlaneRoiCount)
-	QRectF heightRoi;                 //measurement ROI
+	QVector<QRectF> heightRois;       //measurement ROIs (each measured against the datum plane)
+};
+
+//one measurement ROI's result, relative to the shared datum plane
+struct AlgoHeightRoiResult {
+	QRectF roi;
+	double avgHeightUm = 0.0;
+	double minHeightUm = 0.0;
+	double maxHeightUm = 0.0;
+	bool pass = false;
+	bool valid = false; //false = no valid pixels in the ROI
 };
 
 struct AlgoHeightOutput {
@@ -160,10 +170,8 @@ struct AlgoHeightOutput {
 	double planeA = 0, planeB = 0, planeC = 0, planeD = 0;
 	double tiltXDeg = 0.0;
 	double tiltYDeg = 0.0;
-	double avgHeightUm = 0.0;    //mean height of measurement ROI relative to plane
-	double minHeightUm = 0.0;
-	double maxHeightUm = 0.0;
-	bool pass = false;
+	QVector<AlgoHeightRoiResult> roiResults; //one per measurement ROI
+	bool pass = false;                       //all ROIs pass
 	qint64 elapsedMs = 0;
 	QVector<AlgoOverlayItem> overlay;
 };

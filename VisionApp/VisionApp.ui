@@ -18295,6 +18295,362 @@ Stop SR Management Tool services to free port 21.</string>
                     <widget class="QWidget" name="scrollAreaContents_algoPage">
                      <layout class="QVBoxLayout" name="vl_algoPageInner">
                       <item>
+                       <widget class="QFrame" name="frame_algoLocator">
+                        <property name="styleSheet">
+                         <string notr="true">QLabel{
+                	 font-size: 9pt;
+                }
+
+                QFrame{
+                	background-color: #272c36;
+                	border-radius:16px;
+                }
+
+                QGroupBox{
+                 border: 1px solid #3c4454;
+                 border-radius: 8px;
+                 margin-top: 14px;
+                 color: #F0F0F0;
+                 font-weight: bold;
+                }
+
+                QGroupBox::title{
+                 subcontrol-origin: margin;
+                 left: 10px;
+                }
+
+                QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox{
+                background-color: rgb(27, 29, 35);
+                border: 1px solid rgb(27, 29, 35);
+                border-radius: 5px;
+                padding-left: 6px;
+                color: #F0F0F0;
+                }
+
+                QLineEdit[readOnly=true] {
+                    background: rgb(57, 59, 65);
+                    color: #F0F0F0;
+                	border: 1px solid rgb(57, 59, 65);
+                }
+
+                QCheckBox{
+                border-radius: 5px;
+                padding: 2px;
+                color: #F0F0F0;
+                }
+
+                QLabel{
+                border-radius: 5px;
+                padding: 2px;
+                color: #F0F0F0;
+                }
+
+                QTableWidget{
+                background-color: rgb(27, 29, 35);
+                color: #F0F0F0;
+                border: none;
+                }
+
+                QHeaderView::section{
+                background-color: #3c4454;
+                color: #F0F0F0;
+                border: none;
+                padding: 3px;
+                }
+
+                QToolButton {
+                  background-color:  #545963;
+                  color: #F0F0F0;
+                  border-radius: 8px;
+                  margin: 0px;
+                  padding: 4px;
+                }
+
+                QToolButton:checked {
+                  background-color: #2e6b46;
+                  border: 1px solid #00C853;
+                }
+
+                QToolButton:pressed {
+                   margin: 1px;
+                   border: 1px solid #FFE723;
+                }
+
+                QToolButton:disabled {
+                	color: #6e6e6e;
+                	background-color: #444444;
+                	border: 2px solid #444444;
+                }
+
+                QToolButton:hover {
+                 background-color: #929aaa;
+                }</string>
+                        </property>
+                        <property name="frameShape">
+                         <enum>QFrame::StyledPanel</enum>
+                        </property>
+                        <layout class="QVBoxLayout" name="vl_algoLocatorFrame">
+                         <item>
+                          <widget class="QGroupBox" name="group_algoLocator">
+                           <property name="title">
+                            <string>Locator (runs before the algo; optional)</string>
+                           </property>
+                           <layout class="QVBoxLayout" name="vl_group_algoLocator">
+                            <item>
+                             <layout class="QHBoxLayout" name="hl_algoLoc1">
+                              <item>
+                               <widget class="QCheckBox" name="checkBox_algoLocEnable">
+                                <property name="text">
+                                 <string>Enable</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocScore">
+                                <property name="text">
+                                 <string>Score:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocScore">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>100.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>70.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocAngle">
+                                <property name="text">
+                                 <string>Search Angle ±:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocSearchAngle">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>180.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>10.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocOffset">
+                                <property name="text">
+                                 <string>Angle Offset:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocAngleOffset">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>2</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>-180.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>180.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>0.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <spacer name="hs_algoLoc1">
+                                <property name="orientation">
+                                 <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                 <size>
+                                  <width>40</width>
+                                  <height>20</height>
+                                 </size>
+                                </property>
+                               </spacer>
+                              </item>
+                             </layout>
+                            </item>
+                            <item>
+                             <layout class="QHBoxLayout" name="hl_algoLoc2">
+                              <item>
+                               <widget class="QLabel" name="label_algoLocMask">
+                                <property name="text">
+                                 <string>Mask Margin W/H %:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocMaskW">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>49.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>0.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocMaskH">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>49.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>0.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocStatus">
+                                <property name="text">
+                                 <string></string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <spacer name="hs_algoLoc2">
+                                <property name="orientation">
+                                 <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                 <size>
+                                  <width>40</width>
+                                  <height>20</height>
+                                 </size>
+                                </property>
+                               </spacer>
+                              </item>
+                             </layout>
+                            </item>
+                            <item>
+                             <layout class="QHBoxLayout" name="hl_algoLoc3">
+                              <item>
+                               <widget class="QToolButton" name="toolButton_algoLocLearnRoi">
+                                <property name="minimumSize">
+                                 <size>
+                                  <width>130</width>
+                                  <height>26</height>
+                                 </size>
+                                </property>
+                                <property name="text">
+                                 <string>Show Learn Region</string>
+                                </property>
+                                <property name="checkable">
+                                 <bool>true</bool>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QToolButton" name="toolButton_algoLocSearchRoi">
+                                <property name="minimumSize">
+                                 <size>
+                                  <width>140</width>
+                                  <height>26</height>
+                                 </size>
+                                </property>
+                                <property name="text">
+                                 <string>Show Search Region</string>
+                                </property>
+                                <property name="checkable">
+                                 <bool>true</bool>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QToolButton" name="toolButton_algoLocLearn">
+                                <property name="minimumSize">
+                                 <size>
+                                  <width>100</width>
+                                  <height>26</height>
+                                 </size>
+                                </property>
+                                <property name="text">
+                                 <string>Learn Model</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <spacer name="hs_algoLoc3">
+                                <property name="orientation">
+                                 <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                 <size>
+                                  <width>40</width>
+                                  <height>20</height>
+                                 </size>
+                                </property>
+                               </spacer>
+                              </item>
+                             </layout>
+                            </item>
+                           </layout>
+                          </widget>
+                         </item>
+                        </layout>
+                       </widget>
+                      </item>
+                      <item>
                        <widget class="QFrame" name="frame_algoPage">
                         <property name="styleSheet">
                          <string notr="true">QLabel{
@@ -18967,6 +19323,9 @@ Stop SR Management Tool services to free port 21.</string>
                                   <property name="text">
                                    <string></string>
                                   </property>
+                                  <property name="wordWrap">
+                                   <bool>true</bool>
+                                  </property>
                                  </widget>
                                 </item>
                                 <item>
@@ -19155,22 +19514,28 @@ Stop SR Management Tool services to free port 21.</string>
                                    </widget>
                                   </item>
                                   <item>
-                                   <widget class="QToolButton" name="toolButton_algoHRemovePlane">
+                                   <widget class="QToolButton" name="toolButton_algoHHeightRoi">
                                     <property name="minimumSize">
                                      <size>
-                                      <width>130</width>
+                                      <width>110</width>
                                       <height>26</height>
                                      </size>
                                     </property>
                                     <property name="text">
-                                     <string>Remove Last Plane</string>
+                                     <string>Add Height ROI</string>
                                     </property>
                                    </widget>
                                   </item>
                                   <item>
-                                   <widget class="QLabel" name="label_algoHPlaneCount">
+                                   <widget class="QToolButton" name="toolButton_algoHRemovePlane">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>140</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
                                     <property name="text">
-                                     <string>Plane ROIs: 0</string>
+                                     <string>Remove Selected ROI</string>
                                     </property>
                                    </widget>
                                   </item>
@@ -19192,25 +19557,27 @@ Stop SR Management Tool services to free port 21.</string>
                                 <item>
                                  <layout class="QHBoxLayout" name="hl_algoHRoi2">
                                   <item>
-                                   <widget class="QToolButton" name="toolButton_algoHHeightRoi">
-                                    <property name="minimumSize">
-                                     <size>
-                                      <width>120</width>
-                                      <height>26</height>
-                                     </size>
-                                    </property>
+                                   <widget class="QLabel" name="label_algoHPlaneCount">
                                     <property name="text">
-                                     <string>Show Height ROI</string>
+                                     <string>Plane ROIs: 0</string>
                                     </property>
-                                    <property name="checkable">
-                                     <bool>true</bool>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHHeightCount">
+                                    <property name="text">
+                                     <string>Height ROIs: 0</string>
                                     </property>
                                    </widget>
                                   </item>
                                   <item>
                                    <widget class="QLabel" name="label_algoHRoiHint">
                                     <property name="text">
-                                     <string>Plane ROIs fit the datum plane; the Height ROI is measured against it.</string>
+                                     <string>Click an ROI to select it, then Remove Selected. Plane ROIs fit the datum;
+each Height ROI is measured against it.</string>
+                                    </property>
+                                    <property name="wordWrap">
+                                     <bool>true</bool>
                                     </property>
                                    </widget>
                                   </item>
@@ -19429,246 +19796,6 @@ Stop SR Management Tool services to free port 21.</string>
                              </item>
                             </layout>
                            </widget>
-                          </widget>
-                         </item>
-                         <item>
-                          <widget class="QGroupBox" name="group_algoLocator">
-                           <property name="title">
-                            <string>Locator (runs before the algo; optional)</string>
-                           </property>
-                           <layout class="QVBoxLayout" name="vl_group_algoLocator">
-                            <item>
-                             <layout class="QHBoxLayout" name="hl_algoLoc1">
-                              <item>
-                               <widget class="QCheckBox" name="checkBox_algoLocEnable">
-                                <property name="text">
-                                 <string>Enable</string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QLabel" name="label_algoLocScore">
-                                <property name="text">
-                                 <string>Score:</string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QDoubleSpinBox" name="dspin_algoLocScore">
-                                <property name="maximumSize">
-                                 <size>
-                                  <width>90</width>
-                                  <height>16777215</height>
-                                 </size>
-                                </property>
-                                <property name="decimals">
-                                 <number>1</number>
-                                </property>
-                                <property name="minimum">
-                                 <double>0.0</double>
-                                </property>
-                                <property name="maximum">
-                                 <double>100.0</double>
-                                </property>
-                                <property name="value">
-                                 <double>70.0</double>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QLabel" name="label_algoLocAngle">
-                                <property name="text">
-                                 <string>Search Angle ±:</string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QDoubleSpinBox" name="dspin_algoLocSearchAngle">
-                                <property name="maximumSize">
-                                 <size>
-                                  <width>90</width>
-                                  <height>16777215</height>
-                                 </size>
-                                </property>
-                                <property name="decimals">
-                                 <number>1</number>
-                                </property>
-                                <property name="minimum">
-                                 <double>0.0</double>
-                                </property>
-                                <property name="maximum">
-                                 <double>180.0</double>
-                                </property>
-                                <property name="value">
-                                 <double>10.0</double>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QLabel" name="label_algoLocOffset">
-                                <property name="text">
-                                 <string>Angle Offset:</string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QDoubleSpinBox" name="dspin_algoLocAngleOffset">
-                                <property name="maximumSize">
-                                 <size>
-                                  <width>90</width>
-                                  <height>16777215</height>
-                                 </size>
-                                </property>
-                                <property name="decimals">
-                                 <number>2</number>
-                                </property>
-                                <property name="minimum">
-                                 <double>-180.0</double>
-                                </property>
-                                <property name="maximum">
-                                 <double>180.0</double>
-                                </property>
-                                <property name="value">
-                                 <double>0.0</double>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <spacer name="hs_algoLoc1">
-                                <property name="orientation">
-                                 <enum>Qt::Horizontal</enum>
-                                </property>
-                                <property name="sizeHint" stdset="0">
-                                 <size>
-                                  <width>40</width>
-                                  <height>20</height>
-                                 </size>
-                                </property>
-                               </spacer>
-                              </item>
-                             </layout>
-                            </item>
-                            <item>
-                             <layout class="QHBoxLayout" name="hl_algoLoc2">
-                              <item>
-                               <widget class="QLabel" name="label_algoLocMask">
-                                <property name="text">
-                                 <string>Mask Margin W/H %:</string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QDoubleSpinBox" name="dspin_algoLocMaskW">
-                                <property name="maximumSize">
-                                 <size>
-                                  <width>90</width>
-                                  <height>16777215</height>
-                                 </size>
-                                </property>
-                                <property name="decimals">
-                                 <number>1</number>
-                                </property>
-                                <property name="minimum">
-                                 <double>0.0</double>
-                                </property>
-                                <property name="maximum">
-                                 <double>49.0</double>
-                                </property>
-                                <property name="value">
-                                 <double>0.0</double>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QDoubleSpinBox" name="dspin_algoLocMaskH">
-                                <property name="maximumSize">
-                                 <size>
-                                  <width>90</width>
-                                  <height>16777215</height>
-                                 </size>
-                                </property>
-                                <property name="decimals">
-                                 <number>1</number>
-                                </property>
-                                <property name="minimum">
-                                 <double>0.0</double>
-                                </property>
-                                <property name="maximum">
-                                 <double>49.0</double>
-                                </property>
-                                <property name="value">
-                                 <double>0.0</double>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QToolButton" name="toolButton_algoLocLearnRoi">
-                                <property name="minimumSize">
-                                 <size>
-                                  <width>130</width>
-                                  <height>26</height>
-                                 </size>
-                                </property>
-                                <property name="text">
-                                 <string>Show Learn Region</string>
-                                </property>
-                                <property name="checkable">
-                                 <bool>true</bool>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QToolButton" name="toolButton_algoLocSearchRoi">
-                                <property name="minimumSize">
-                                 <size>
-                                  <width>140</width>
-                                  <height>26</height>
-                                 </size>
-                                </property>
-                                <property name="text">
-                                 <string>Show Search Region</string>
-                                </property>
-                                <property name="checkable">
-                                 <bool>true</bool>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QToolButton" name="toolButton_algoLocLearn">
-                                <property name="minimumSize">
-                                 <size>
-                                  <width>100</width>
-                                  <height>26</height>
-                                 </size>
-                                </property>
-                                <property name="text">
-                                 <string>Learn Model</string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QLabel" name="label_algoLocStatus">
-                                <property name="text">
-                                 <string></string>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <spacer name="hs_algoLoc2">
-                                <property name="orientation">
-                                 <enum>Qt::Horizontal</enum>
-                                </property>
-                                <property name="sizeHint" stdset="0">
-                                 <size>
-                                  <width>40</width>
-                                  <height>20</height>
-                                 </size>
-                                </property>
-                               </spacer>
-                              </item>
-                             </layout>
-                            </item>
-                           </layout>
                           </widget>
                          </item>
                          <item>
