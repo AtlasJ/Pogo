@@ -1,4 +1,5 @@
 #include "VisionApp.h"
+#include "AlgoManager.h"
 #include "ProductionPage.h"
 #include "UnitConfigTab.h"
 #include "DatasetPage.h"
@@ -101,6 +102,8 @@ void VisionApp::createRecipe(const QString& recipeName)
 	loadRecipeOptics();
 	loadPlane();
 	loadBarcode();
+	AlgoManager::instance().loadRecipeConfig();
+	refreshAlgoSetupPage();
 
 	//loadUnitConfigInfos
 	_unitConfigTab->loadUnitConfig(_views);
@@ -302,6 +305,8 @@ bool VisionApp::openRecipe(const QString& recentOpenRecipe, bool autoLoad)
 	}
 
 	loadBarcode();
+	AlgoManager::instance().loadRecipeConfig();
+	refreshAlgoSetupPage();
 
 	initRecipeSetupZStack();
 	loadRecipeSetupZStack();
@@ -668,6 +673,8 @@ void VisionApp::switchSubRecipe(const QString& subrecipe)
 	}
 
 	loadBarcode();
+	AlgoManager::instance().loadRecipeConfig();
+	refreshAlgoSetupPage();
 
 	initRecipeSetupZStack();
 	loadRecipeSetupZStack();

@@ -27,6 +27,7 @@
 #include "PostInspectionInfo.h"
 #include "FiducialInfo.h"
 #include "BarcodeInfo.h"
+#include "AlgoSetupTypes.h"
 #include "InspectionThread.h"
 #include "PostInspectionThread.h"
 #include "QDragBox.h"
@@ -133,9 +134,9 @@ enum class Direction {
 };
 
 enum class UIPage {
-	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION, 
+	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
-	OPTICS3D, MOTION
+	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP
 };
 
 enum class UIHierarchy {
@@ -788,9 +789,38 @@ private:
 	int _currentBarcodeIndex = 0;
 	std::array<BarcodeInfo, 2> _barcodeInfos;
 	QDragBox _barcodeSearchRegion;
+
+	//algo setup page ROIs (shown only on the algo page for the selected algo)
+	QDragBox* _algoOcrRoi1Box = nullptr;
+	QDragBox* _algoOcrRoi2Box = nullptr;
+	QDragBox* _algoOcrLearnBox = nullptr;
+	QDragBox* _algoHeightRoiBox = nullptr;
+	QDragBox* _algoLocLearnBox = nullptr;
+	QDragBox* _algoLocSearchBox = nullptr;
+	QVector<QDragBox*> _algoPlaneBoxes;
+	QVector<QGraphicsItem*> _algoOverlayItems;
+	bool _algoHeightView3D = false;
 	QDragBox _barcodeLocatedRegion;
 	bool barcodeExistTest(int index);
 	void initBarcode();
+
+	//external barcode reader setup page (SRXManager)
+	void initBarcodeReaderPage();
+	void refreshBarcodeReaderPage();
+	void updateSRXImagePreview(const QString& readerID);
+
+	//algo setup page (AlgoManager) - VisionApp_AlgoSetup.cpp
+	void initAlgoSetupPage();
+	void refreshAlgoSetupPage();
+	void refreshAlgoLocatorUI();
+	void refreshAlgoPatternList();
+	void updateAlgoRoiVisibility();
+	void hideAlgoSetupRois();
+	void captureAlgoParamsFromUI();
+	void showAlgoHeightMap(bool view3D);
+	void clearAlgoOverlay();
+	void renderAlgoOverlay(const QVector<AlgoOverlayItem>& overlay);
+	AlgoPageAlgo currentAlgoPageAlgo() const;
 	void showBarcode(int index);
 	void showBarcodeDebugImage(int index);
 	bool saveBarcode();
@@ -945,12 +975,7 @@ private:
 	void update2DOnlyOverlay();
 	void clear2DOnlyOverlay();
 
-	QString m_barcodeIp;
-	int m_barcodePort = 0;
-	QString m_barcodeIp2;	// reader 2 = reader 1 IP with last octet +1, same port
-	int m_barcodePort2 = 0;
 
-	bool loadBarcodeReaderConfig(const QString& path);
 
 public slots:
 

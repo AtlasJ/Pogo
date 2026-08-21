@@ -226,6 +226,11 @@
     <ClCompile Include="Profiler_SmartRay.cpp" />
     <ClCompile Include="Profiler_SSZN.cpp" />
     <ClCompile Include="ScaleManager.cpp" />
+    <ClCompile Include="AlgoManager.cpp" />
+    <ClCompile Include="VisionApp_AlgoSetup.cpp" />
+    <ClCompile Include="PaddleOcrClient.cpp" />
+    <ClCompile Include="SRXFtpServer.cpp" />
+    <ClCompile Include="SRXManager.cpp" />
     <ClCompile Include="SmartRay\cpp_wrapper\locking.cpp" />
     <ClCompile Include="SmartRay\cpp_wrapper\Sensor.cpp" />
     <ClCompile Include="SmartRay\cpp_wrapper\SensorImageData.cpp" />
@@ -241,6 +246,11 @@
     <ClCompile Include="VisionApp_ServerComms.cpp" />
     <ClCompile Include="VisionApp_ViewEditor.cpp" />
     <QtMoc Include="JobThread.h" />
+    <QtMoc Include="AlgoManager.h" />
+    <QtMoc Include="PaddleOcrClient.h" />
+    <ClInclude Include="AlgoSetupTypes.h" />
+    <QtMoc Include="SRXFtpServer.h" />
+    <QtMoc Include="SRXManager.h" />
     <ClCompile Include="ImageManager.cpp" />
     <ClCompile Include="ImageRegistration.cpp" />
     <ClCompile Include="InspectionInfo.cpp" />

@@ -1,6 +1,9 @@
 #include "VisionApp.h"
 #include <QLabel>
+#include <QPainter>
 #include "CAMManager.h"
+#include "SRXManager.h"
+#include "AuditLog.h"
 
 bool VisionApp::barcodeExistTest(int index)
 {
@@ -429,4 +432,169 @@ void VisionApp::showBarcodeRegistrationMethodUI(int methodIdx)
 		if (w) w->setVisible(isCamera);
 	}
 
+}
+
+
+//---------------------------------------------------------------------------
+// External barcode reader setup page (Keyence SR-X100 via SRXManager)
+//---------------------------------------------------------------------------
+
+void VisionApp::initBarcodeReaderPage()
+{
+	auto& srx = SRXManager::instance();
+
+	struct Row {
+		QString id;
+		QCheckBox* enable;
+		QLineEdit* ip;
+		QLineEdit* port;
+		QToolButton* connectBtn;
+		QToolButton* status;
+		QToolButton* trigger;
+		QToolButton* stop;
+		QLineEdit* code;
+		QLabel* readTime;
+	};
+
+	const QVector<Row> rows = {
+		{ SRXManager::SRX1, ui.checkBox_srx1Enable, ui.lineEdit_srx1Ip, ui.lineEdit_srx1Port,
+		  ui.toolButton_srx1Connect, ui.toolButton_srx1Status, ui.toolButton_srx1Trigger,
+		  ui.toolButton_srx1Stop, ui.lineEdit_srx1Code, ui.label_srx1ReadTime },
+		{ SRXManager::SRX2, ui.checkBox_srx2Enable, ui.lineEdit_srx2Ip, ui.lineEdit_srx2Port,
+		  ui.toolButton_srx2Connect, ui.toolButton_srx2Status, ui.toolButton_srx2Trigger,
+		  ui.toolButton_srx2Stop, ui.lineEdit_srx2Code, ui.label_srx2ReadTime },
+	};
+
+	for (const auto& row : rows) {
+		const QString id = row.id;
+
+		nvs::set_background_color(row.status, srx.isConnected(id) ? Qt::green : Qt::red);
+
+		connect(row.connectBtn, &QToolButton::clicked, this, [=]() {
+			//apply what is currently typed, then reconnect
+			SRXManager::ReaderConfig cfg = SRXManager::instance().readerConfig(id);
+			cfg.enabled = row.enable->isChecked();
+			cfg.ip = row.ip->text().trimmed();
+			cfg.port = row.port->text().toInt();
+			SRXManager::instance().setReaderConfig(cfg);
+			AuditLog::instance().log(QStringLiteral("SRX_CONNECT"), id);
+		});
+
+		connect(row.trigger, &QToolButton::clicked, this, [=]() {
+			row.code->clear();
+			row.readTime->setText("-");
+			SRXManager::instance().trigger(id);
+			AuditLog::instance().log(QStringLiteral("SRX_TEST_READ"), id);
+		});
+
+		connect(row.stop, &QToolButton::clicked, this, [=]() {
+			SRXManager::instance().stopReader(id);
+		});
+	}
+
+	connect(ui.toolButton_srxFtpRestart, &QToolButton::clicked, this, [=]() {
+		SRXManager::FtpConfig cfg = SRXManager::instance().ftpConfig();
+		cfg.port = ui.lineEdit_srxFtpPort->text().toInt();
+		cfg.dropPath = ui.lineEdit_srxFtpDrop->text().trimmed();
+		SRXManager::instance().setFtpConfig(cfg);
+	});
+
+	connect(ui.toolButton_srxSave, &QToolButton::clicked, this, [=]() {
+		for (const auto& row : rows) {
+			SRXManager::ReaderConfig cfg = SRXManager::instance().readerConfig(row.id);
+			cfg.enabled = row.enable->isChecked();
+			cfg.ip = row.ip->text().trimmed();
+			cfg.port = row.port->text().toInt();
+			SRXManager::instance().setReaderConfig(cfg);
+		}
+
+		SRXManager::FtpConfig ftp = SRXManager::instance().ftpConfig();
+		ftp.port = ui.lineEdit_srxFtpPort->text().toInt();
+		ftp.dropPath = ui.lineEdit_srxFtpDrop->text().trimmed();
+		SRXManager::instance().setFtpConfig(ftp);
+
+		if (SRXManager::instance().saveConfig()) showStatus(QStringLiteral("Barcode reader settings saved!"));
+		else showMsg(QStringLiteral("Failed to save barcode reader settings!"));
+
+		AuditLog::instance().log(QStringLiteral("SRX_CONFIG_SAVE"));
+	});
+
+	//live updates from the manager (signals come from its worker thread)
+	connect(&srx, &SRXManager::connectionChanged, this, [=](const QString& id, bool connected) {
+		for (const auto& row : rows) {
+			if (row.id == id) nvs::set_background_color(row.status, connected ? Qt::green : Qt::red);
+		}
+	});
+
+	connect(&srx, &SRXManager::barcodeReceived, this, [=](const QString& id, const QString& code) {
+		for (const auto& row : rows) {
+			if (row.id == id) row.code->setText(code);
+		}
+	});
+
+	connect(&srx, &SRXManager::readResultReceived, this, [=](const QString& id) {
+		auto result = SRXManager::instance().lastResult(id);
+		for (const auto& row : rows) {
+			if (row.id != id) continue;
+			if (result.readTimeMs >= 0) row.readTime->setText(QString("%1 ms").arg(result.readTimeMs));
+			if (!result.code.isEmpty()) row.code->setText(result.code);
+		}
+		updateSRXImagePreview(id);
+	});
+
+	connect(&srx, &SRXManager::imageReceived, this, [=](const QString& id, const QString&) {
+		updateSRXImagePreview(id);
+	});
+
+	connect(&srx, &SRXManager::ftpStateChanged, this, [=](bool running) {
+		nvs::set_background_color(ui.toolButton_srxFtpStatus, running ? Qt::green : Qt::red);
+	});
+
+	refreshBarcodeReaderPage();
+}
+
+void VisionApp::refreshBarcodeReaderPage()
+{
+	auto& srx = SRXManager::instance();
+
+	auto cfg1 = srx.readerConfig(SRXManager::SRX1);
+	ui.checkBox_srx1Enable->setChecked(cfg1.enabled);
+	ui.lineEdit_srx1Ip->setText(cfg1.ip);
+	ui.lineEdit_srx1Port->setText(QString::number(cfg1.port));
+
+	auto cfg2 = srx.readerConfig(SRXManager::SRX2);
+	ui.checkBox_srx2Enable->setChecked(cfg2.enabled);
+	ui.lineEdit_srx2Ip->setText(cfg2.ip);
+	ui.lineEdit_srx2Port->setText(QString::number(cfg2.port));
+
+	auto ftp = srx.ftpConfig();
+	ui.lineEdit_srxFtpPort->setText(QString::number(ftp.port));
+	ui.lineEdit_srxFtpDrop->setText(ftp.dropPath);
+
+	nvs::set_background_color(ui.toolButton_srx1Status, srx.isConnected(SRXManager::SRX1) ? Qt::green : Qt::red);
+	nvs::set_background_color(ui.toolButton_srx2Status, srx.isConnected(SRXManager::SRX2) ? Qt::green : Qt::red);
+	nvs::set_background_color(ui.toolButton_srxFtpStatus, srx.isFtpRunning() ? Qt::green : Qt::red);
+}
+
+void VisionApp::updateSRXImagePreview(const QString& readerID)
+{
+	QLabel* target = nullptr;
+	if (readerID == SRXManager::SRX1) target = ui.label_srx1Image;
+	else if (readerID == SRXManager::SRX2) target = ui.label_srx2Image;
+	if (!target) return;
+
+	auto result = SRXManager::instance().lastResult(readerID);
+	QImage image = SRXManager::instance().lastImage(readerID);
+	if (image.isNull()) return;
+
+	//overlay the decoded code corners from the historical data
+	if (!result.corners.isEmpty()) {
+		QPainter painter(&image);
+		painter.setRenderHint(QPainter::Antialiasing);
+		painter.setPen(QPen(result.ok ? Qt::green : Qt::red, qMax(2, image.width() / 400)));
+		for (const auto& quad : result.corners) painter.drawPolygon(quad);
+	}
+
+	target->setPixmap(QPixmap::fromImage(image).scaled(
+		target->width(), target->height(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }

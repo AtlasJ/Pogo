@@ -922,6 +922,58 @@ Tab</string>
             </property>
            </widget>
           </item>
+          <item row="4" column="1">
+           <widget class="QToolButton" name="toolButtonAlgoSetup">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Algo Setup</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icons8-analysis-50.png</normaloff>:/8Icon/Icon/icon8/icons8-analysis-50.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QToolButton" name="toolButtonBarcodeReader">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Barcode Reader</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icons8-barcode-reader-50.png</normaloff>:/8Icon/Icon/icon8/icons8-barcode-reader-50.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
           <item row="4" column="2">
            <widget class="QToolButton" name="toolButtonScaling">
             <property name="minimumSize">

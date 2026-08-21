@@ -1,4 +1,5 @@
 #include "JobThread.h"
+#include "SRXManager.h"
 #include "TimeLogger.h"
 #include "ScopedTimeLogger.h"
 #include "Utilities.h"
@@ -30,88 +31,17 @@ extern TMessageQue<FrameInfo> g_imageQueue;
 
 const QString WAIT_IPP = "WAIT_IPP";
 
-// SR-X troubleshooting helpers. The sockets have thread affinity to the job
-// thread; touching them from anywhere else triggers QSocketNotifier warnings
-// and silently drops writes, so every socket op logs the thread it ran on.
-static QString srxThreadTag()
-{
-	return QString::number((quintptr)QThread::currentThreadId());
-}
-
-// The readers append a trailing field whose ":xx" suffix is not part of the
-// barcode, e.g.
-//   "KEGE0248BA06JJA 2615-B3R1 25:01"  ->  "KEGE0248BA06JJA 2615-B3R1 25"
-// Keep the leading fields only, and cut the appended field at ':'. The full raw
-// payload is logged before this runs, so nothing is lost for troubleshooting.
-static const int SRX_BARCODE_FIELDS = 3;
-
-static QString segmentSRXBarcode(const QString& raw)
-{
-	QStringList parts = raw.split(' ', QString::SkipEmptyParts);
-
-	if (parts.size() > SRX_BARCODE_FIELDS) parts = parts.mid(0, SRX_BARCODE_FIELDS);
-
-	// Only the appended field is trimmed; the leading data fields are kept verbatim.
-	if (parts.size() == SRX_BARCODE_FIELDS) {
-		QString& tail = parts.last();
-		const int colon = tail.indexOf(':');
-		if (colon >= 0) tail = tail.left(colon);
-		if (tail.isEmpty()) parts.removeLast();
-	}
-
-	return parts.join(' ');
-}
-
-static const char* srxStateName(QAbstractSocket::SocketState state)
-{
-	switch (state) {
-	case QAbstractSocket::UnconnectedState: return "Unconnected";
-	case QAbstractSocket::HostLookupState:  return "HostLookup";
-	case QAbstractSocket::ConnectingState:  return "Connecting";
-	case QAbstractSocket::ConnectedState:   return "Connected";
-	case QAbstractSocket::BoundState:       return "Bound";
-	case QAbstractSocket::ClosingState:     return "Closing";
-	case QAbstractSocket::ListeningState:   return "Listening";
-	default:                                return "Unknown";
-	}
-}
-
 void JobThread::run()
 {
 	ct::logger::info("[QThread] Job thread started");
 	m_server = new QServer();
 	m_server->run(QHostAddress("127.0.0.1"), 700);
 	connect(m_server, SIGNAL(dataReceived(QByteArray)), this, SLOT(incomingJob(QByteArray)));
-	m_srxOwnerThread = srxThreadTag();
-	ct::logger::info("[SRX] Creating %d reader socket(s) on thread %s (owner thread)",
-		SRX_READER_COUNT, m_srxOwnerThread.toStdString().c_str());
-
-	for (int i = 0; i < SRX_READER_COUNT; i++) {
-		m_srxSocket[i] = new QTcpSocket();
-
-		connect(m_srxSocket[i], &QTcpSocket::readyRead, this, [=]() {
-			incomingSRXData(i, m_srxSocket[i]->readAll());
-			});
-		connect(m_srxSocket[i], &QTcpSocket::disconnected, this, [=]() {
-			ct::logger::error("[SRX] Reader %d disconnected (was %s:%d)",
-				i + 1, m_srxHost[i].toStdString().c_str(), m_srxPort[i]);
-			m_srxConnected[i] = false;
-			});
-		connect(m_srxSocket[i], &QTcpSocket::stateChanged, this,
-			[=](QAbstractSocket::SocketState state) {
-				ct::logger::debug("[SRX] Reader %d state -> %s", i + 1, srxStateName(state));
-			});
-	}
-	startConnectToServer();
-	logSRXStatus("after initial connect");
 	connect(this, &JobThread::imageReady, this, &JobThread::processImageReady);
 	connect(this, &JobThread::imagePreprocessed, this, &JobThread::processImagePreprocessed);
 
 	exec();
 
-	// Sockets belong to this thread, so tear them down here - not in the
-	// destructor, which runs on the caller's (GUI) thread.
-	releaseSRXSockets();
 	ct::logger::info("[QThread] Job thread stopped");
 }
 
@@ -5474,252 +5404,16 @@ void JobThread::loadToPositionSensor(int index) {
 
 	emit signalBoardInPosition(index);
 }
-void JobThread::setServerHostAddress(QString hostAddress, int port, QString hostAddress2, int port2)
-{
-	m_srxHost[0] = hostAddress;
-	m_srxPort[0] = port;
-	m_srxHost[1] = hostAddress2;
-	m_srxPort[1] = port2;
-}
-
-void JobThread::startConnectToServer() {
-	for (int i = 0; i < SRX_READER_COUNT; i++) {
-		connectToServer(i);
-	}
-}
-
-void JobThread::connectToServer(int readerIndex)
-{
-	if (readerIndex < 0 || readerIndex >= SRX_READER_COUNT) return;
-
-	if (!m_srxSocket[readerIndex]) {
-		ct::logger::warn("[SRX] Reader %d connect skipped: socket not created yet", readerIndex + 1);
-		return;
-	}
-
-	if (!checkSRXThread("connectToServer")) return;
-
-	if (m_srxHost[readerIndex].isEmpty() || m_srxPort[readerIndex] <= 0) {
-		ct::logger::warn("[SRX] Reader %d endpoint not configured (%s:%d), skipping connect",
-			readerIndex + 1,
-			m_srxHost[readerIndex].isEmpty() ? "<unset>" : m_srxHost[readerIndex].toStdString().c_str(),
-			m_srxPort[readerIndex]);
-		return;
-	}
-
-	m_srxConnected[readerIndex] = false;
-
-	if (m_srxSocket[readerIndex]->state() == QAbstractSocket::ConnectedState) {
-		m_srxSocket[readerIndex]->disconnectFromHost();
-	}
-
-	ct::logger::info("[SRX] Reader %d connecting to %s:%d",
-		readerIndex + 1, m_srxHost[readerIndex].toStdString().c_str(), m_srxPort[readerIndex]);
-
-	m_srxSocket[readerIndex]->connectToHost(QHostAddress(m_srxHost[readerIndex]), m_srxPort[readerIndex]);
-
-	if (!m_srxSocket[readerIndex]->waitForConnected(3000)) {
-		ct::logger::error("[SRX] Reader %d connect FAILED (%s:%d) state=%s err=%s",
-			readerIndex + 1, m_srxHost[readerIndex].toStdString().c_str(), m_srxPort[readerIndex],
-			srxStateName(m_srxSocket[readerIndex]->state()),
-			m_srxSocket[readerIndex]->errorString().toStdString().c_str());
-	}
-	else {
-		ct::logger::info("[SRX] Reader %d connected (%s:%d)", readerIndex + 1,
-			m_srxHost[readerIndex].toStdString().c_str(), m_srxPort[readerIndex]);
-		m_srxConnected[readerIndex] = true;
-	}
-}
-
-void JobThread::sendToServer(QString msg)
-{
-	if (!m_srxSocket[0]) return;
-
-	if (m_srxSocket[0]->state() != QTcpSocket::ConnectedState) {
-		connectToServer(0);
-	}
-
-	if (m_srxConnected[0]) {
-		ct::logger::info("[SRX] Send: %s", msg.toStdString().c_str());
-		m_srxSocket[0]->write(msg.toUtf8());
-		m_srxSocket[0]->flush();
-	}
-}
-
-void JobThread::incomingSRXData(int readerIndex, QByteArray byteArray)
-{
-	if (readerIndex < 0 || readerIndex >= SRX_READER_COUNT) return;
-
-	const qint64 sinceTrigger = m_srxTriggerElapsed.isValid() ? m_srxTriggerElapsed.elapsed() : -1;
-
-	ct::logger::info("[SRX] Reader %d rx %d byte(s) at %dms after trigger: %s",
-		readerIndex + 1, (int)byteArray.size(), (int)sinceTrigger,
-		QString::fromUtf8(byteArray).trimmed().toStdString().c_str());
-
-	if (sinceTrigger < 0) {
-		ct::logger::warn("[SRX] Reader %d sent data with no trigger outstanding (unsolicited/late)",
-			readerIndex + 1);
-	}
-
-	auto& buffer = m_srxBuffer[readerIndex];
-	buffer.append(byteArray);
-
-	// Process only complete CR-terminated messages; keep the unterminated tail buffered
-	int pos;
-	while ((pos = buffer.indexOf('\r')) >= 0) {
-		QString msg = QString::fromUtf8(buffer.left(pos)).remove('\n').trimmed();
-		buffer.remove(0, pos + 1);
-
-		if (msg.isEmpty()) continue;
-		if (msg == "LON" || msg == "LOFF") continue; // command echoes
-
-		if (msg.contains("ERROR")) {
-			ct::logger::error("[SRX] Reader %d reported ERROR", readerIndex + 1);
-			emit barcodeReceived(readerIndex, "ERROR");
-			continue;
-		}
-
-		const QString barcode = segmentSRXBarcode(msg);
-
-		if (barcode != msg) {
-			ct::logger::info("[SRX] Reader %d code: %s (%dms after trigger) [segmented from raw '%s']",
-				readerIndex + 1, barcode.toStdString().c_str(), (int)sinceTrigger,
-				msg.toStdString().c_str());
-		}
-		else {
-			ct::logger::info("[SRX] Reader %d code: %s (%dms after trigger)",
-				readerIndex + 1, barcode.toStdString().c_str(), (int)sinceTrigger);
-		}
-
-		emit barcodeReceived(readerIndex, barcode);
-	}
-
-	if (!buffer.isEmpty()) {
-		ct::logger::debug("[SRX] Reader %d partial message buffered (%d bytes)",
-			readerIndex + 1, (int)buffer.size());
-	}
-}
-
-
-// Warns if socket I/O is about to run off-thread. Returns false so callers can
-// bail out instead of provoking a QSocketNotifier warning and a lost write.
-bool JobThread::checkSRXThread(const char* context)
-{
-	const QString tid = srxThreadTag();
-
-	if (m_srxOwnerThread.isEmpty()) {
-		ct::logger::warn("[SRX] %s called on thread %s before sockets were created",
-			context, tid.toStdString().c_str());
-		return false;
-	}
-
-	if (tid != m_srxOwnerThread) {
-		ct::logger::error("[SRX] %s called on WRONG THREAD %s (sockets owned by %s) - "
-			"write would be dropped, skipping",
-			context, tid.toStdString().c_str(), m_srxOwnerThread.toStdString().c_str());
-		return false;
-	}
-
-	ct::logger::debug("[SRX] %s on owner thread %s", context, tid.toStdString().c_str());
-	return true;
-}
-
-void JobThread::logSRXStatus(const char* context)
-{
-	for (int i = 0; i < SRX_READER_COUNT; i++) {
-		const char* state = m_srxSocket[i] ? srxStateName(m_srxSocket[i]->state()) : "NoSocket";
-
-		ct::logger::info("[SRX] Status (%s) Reader %d: %s:%d state=%s connectedFlag=%d buffered=%d",
-			context, i + 1,
-			m_srxHost[i].isEmpty() ? "<unset>" : m_srxHost[i].toStdString().c_str(),
-			m_srxPort[i], state, m_srxConnected[i] ? 1 : 0, (int)m_srxBuffer[i].size());
-	}
-}
-
-// Writes cmd to one reader and reports exactly what happened on the wire.
-bool JobThread::writeSRX(int readerIndex, const QString& cmd, const char* label)
-{
-	if (!m_srxSocket[readerIndex]) {
-		ct::logger::warn("[SRX] %s -> Reader %d skipped: no socket", label, readerIndex + 1);
-		return false;
-	}
-
-	const auto state = m_srxSocket[readerIndex]->state();
-	if (state != QTcpSocket::ConnectedState) {
-		ct::logger::error("[SRX] %s -> Reader %d skipped: not connected (state=%s, %s:%d)",
-			label, readerIndex + 1, srxStateName(state),
-			m_srxHost[readerIndex].toStdString().c_str(), m_srxPort[readerIndex]);
-		return false;
-	}
-
-	const QByteArray payload = cmd.toUtf8();
-	const qint64 written = m_srxSocket[readerIndex]->write(payload);
-	const bool flushed = m_srxSocket[readerIndex]->flush();
-
-	if (written != payload.size() || !flushed) {
-		ct::logger::error("[SRX] %s -> Reader %d FAILED: wrote %d/%d bytes, flush=%d, err=%s",
-			label, readerIndex + 1, (int)written, (int)payload.size(), flushed ? 1 : 0,
-			m_srxSocket[readerIndex]->errorString().toStdString().c_str());
-		return false;
-	}
-
-	ct::logger::info("[SRX] %s -> Reader %d OK (%d bytes)", label, readerIndex + 1, (int)written);
-	return true;
-}
-
+// The SR-X reader sockets are owned by SRXManager. These wrappers keep the
+// existing queued signalTriggerSRX/signalStopSRX connections working.
 void JobThread::triggerSRX()
 {
-	if (!checkSRXThread("triggerSRX")) return;
-
-	logSRXStatus("before trigger");
-
-	int sent = 0;
-	for (int i = 0; i < SRX_READER_COUNT; i++) {
-		if (!m_srxBuffer[i].isEmpty()) {
-			ct::logger::warn("[SRX] Reader %d discarding %d stale buffered byte(s) before trigger: %s",
-				i + 1, (int)m_srxBuffer[i].size(),
-				QString::fromUtf8(m_srxBuffer[i]).trimmed().toStdString().c_str());
-		}
-		m_srxBuffer[i].clear();
-
-		if (writeSRX(i, "LON\r", "Trigger LON")) sent++;
-	}
-
-	// Reply latency is measured from here; see the "replied after" line on receive.
-	m_srxTriggerElapsed.start();
-	ct::logger::info("[SRX] Trigger complete: %d/%d reader(s) armed", sent, SRX_READER_COUNT);
+	SRXManager::instance().triggerAll();
 }
 
 void JobThread::stopSRX()
 {
-	if (!checkSRXThread("stopSRX")) return;
-
-	for (int i = 0; i < SRX_READER_COUNT; i++) {
-		writeSRX(i, "LOFF\r", "Stop LOFF");
-
-		if (!m_srxBuffer[i].isEmpty()) {
-			ct::logger::warn("[SRX] Reader %d had %d unparsed byte(s) at stop: %s",
-				i + 1, (int)m_srxBuffer[i].size(),
-				QString::fromUtf8(m_srxBuffer[i]).trimmed().toStdString().c_str());
-		}
-	}
-
-	m_srxTriggerElapsed.invalidate();
-}
-
-void JobThread::releaseSRXSockets()
-{
-	ct::logger::info("[SRX] Releasing reader sockets on thread %s",
-		srxThreadTag().toStdString().c_str());
-
-	for (int i = 0; i < SRX_READER_COUNT; i++) {
-		if (!m_srxSocket[i]) continue;
-
-		m_srxSocket[i]->disconnectFromHost();
-		delete m_srxSocket[i];
-		m_srxSocket[i] = nullptr;
-		m_srxConnected[i] = false;
-	}
+	SRXManager::instance().stopAll();
 }
 
 void JobThread::unloadBoard()

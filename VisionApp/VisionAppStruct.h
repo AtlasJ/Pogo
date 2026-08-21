@@ -24,7 +24,9 @@ enum SystemSettingsMenuButton
 	PORTABILITY = 6,
 	AIMODEL = 7,
 	ZSTACK = 8,
-	OPTICS3D = 9
+	OPTICS3D = 9,
+	BARCODEREADER = 10,
+	ALGOSETUP = 11
 };
 
 #endif // VISIONAPPSTRUCT_H

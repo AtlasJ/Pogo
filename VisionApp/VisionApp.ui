@@ -17750,6 +17750,1979 @@ QToolButton:hover {
                   </item>
                  </layout>
                 </widget>
+                <widget class="QWidget" name="BarcodeReaderPage">
+                 <layout class="QVBoxLayout" name="verticalLayout_srxPage">
+                  <item>
+                   <widget class="QScrollArea" name="scrollArea_srxPage">
+                    <property name="widgetResizable">
+                     <bool>true</bool>
+                    </property>
+                    <property name="frameShape">
+                     <enum>QFrame::NoFrame</enum>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">QScrollArea{ background: transparent; }
+#scrollAreaContents_srxPage{ background: transparent; }</string>
+                    </property>
+                    <widget class="QWidget" name="scrollAreaContents_srxPage">
+                     <layout class="QVBoxLayout" name="verticalLayout_srxPageInner">
+                      <item>
+                       <widget class="QFrame" name="frame_srxPage">
+                        <property name="styleSheet">
+                         <string notr="true">QLabel{
+                	 font-size: 9pt;
+                }
+
+                QFrame{
+                	background-color: #272c36;
+                	border-radius:16px;
+                }
+
+                QGroupBox{
+                 border: 1px solid #3c4454;
+                 border-radius: 8px;
+                 margin-top: 14px;
+                 color: #F0F0F0;
+                 font-weight: bold;
+                }
+
+                QGroupBox::title{
+                 subcontrol-origin: margin;
+                 left: 10px;
+                }
+
+                QLineEdit{
+                background-color: rgb(27, 29, 35);
+                border: 1px solid rgb(27, 29, 35);
+                border-radius: 5px;
+                padding-left: 10px;
+                color: #F0F0F0;
+                }
+
+                QLineEdit[readOnly=true] {
+                    background: rgb(57, 59, 65);
+                    color: #F0F0F0;
+                	border: 1px solid rgb(57, 59, 65);
+                }
+
+                QCheckBox{
+                border-radius: 5px;
+                padding: 2px;
+                color: #F0F0F0;
+                }
+
+                QLabel{
+                border-radius: 5px;
+                padding: 2px;
+                color: #F0F0F0;
+                }
+
+                QToolButton {
+                  background-color:  #545963;
+                  color: #F0F0F0;
+                  border-radius: 8px;
+                  margin: 0px;
+                  padding: 4px;
+                }
+
+                QToolButton:pressed {
+                   margin: 1px;
+                   border: 1px solid #FFE723;
+                }
+
+                QToolButton:disabled {
+                	color: #6e6e6e;
+                	background-color: #444444;
+                	border: 2px solid #444444;
+                }
+
+                QToolButton:hover {
+                 background-color: #929aaa;
+                }</string>
+                        </property>
+                        <property name="frameShape">
+                         <enum>QFrame::StyledPanel</enum>
+                        </property>
+                        <layout class="QVBoxLayout" name="verticalLayout_srxFrame">
+                  <item>
+                    <widget class="QLabel" name="label_srxPageTitle">
+                     <property name="font">
+                      <font>
+                       <pointsize>9</pointsize>
+                       <weight>75</weight>
+                       <bold>true</bold>
+                      </font>
+                     </property>
+                     <property name="text">
+                      <string>External Barcode Reader</string>
+                     </property>
+                    </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupBox_srx1Reader">
+                    <property name="title">
+                      <string>Reader 1  (SRX1)</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="verticalLayout_srx1Reader">
+                     <item>
+                    <layout class="QGridLayout" name="gridLayout_srx1Reader">
+                     <item row="0" column="0">
+                       <widget class="QCheckBox" name="checkBox_srx1Enable">
+                        <property name="text">
+                         <string>Enabled</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="1">
+                       <widget class="QLabel" name="label_srx1Ip">
+                        <property name="text">
+                         <string>IP:</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="2">
+                       <widget class="QLineEdit" name="lineEdit_srx1Ip">
+                        <property name="maximumSize">
+                         <size>
+                          <width>140</width>
+                          <height>16777215</height>
+                         </size>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="3">
+                       <widget class="QLabel" name="label_srx1Port">
+                        <property name="text">
+                         <string>Port:</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="4">
+                       <widget class="QLineEdit" name="lineEdit_srx1Port">
+                        <property name="maximumSize">
+                         <size>
+                          <width>70</width>
+                          <height>16777215</height>
+                         </size>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="5">
+                       <widget class="QToolButton" name="toolButton_srx1Connect">
+                        <property name="minimumSize">
+                         <size>
+                          <width>70</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Connect</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="6">
+                       <widget class="QToolButton" name="toolButton_srx1Status">
+                        <property name="minimumSize">
+                         <size>
+                          <width>24</width>
+                          <height>24</height>
+                         </size>
+                        </property>
+                        <property name="maximumSize">
+                         <size>
+                          <width>24</width>
+                          <height>24</height>
+                         </size>
+                        </property>
+                        <property name="enabled">
+                         <bool>false</bool>
+                        </property>
+                        <property name="text">
+                         <string/>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="0">
+                       <widget class="QToolButton" name="toolButton_srx1Trigger">
+                        <property name="minimumSize">
+                         <size>
+                          <width>70</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Test Read</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="1">
+                       <widget class="QToolButton" name="toolButton_srx1Stop">
+                        <property name="minimumSize">
+                         <size>
+                          <width>50</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Stop</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="2" colspan="4">
+                       <widget class="QLineEdit" name="lineEdit_srx1Code">
+                        <property name="readOnly">
+                         <bool>true</bool>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="6">
+                       <widget class="QLabel" name="label_srx1ReadTime">
+                        <property name="text">
+                         <string>-</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="2" column="0" colspan="7">
+                       <widget class="QLabel" name="label_srx1Image">
+                        <property name="minimumSize">
+                         <size>
+                          <width>0</width>
+                          <height>220</height>
+                         </size>
+                        </property>
+                        <property name="styleSheet">
+                         <string notr="true">background-color: rgb(27, 29, 35); border-radius: 8px;</string>
+                        </property>
+                        <property name="text">
+                         <string>No image received yet</string>
+                        </property>
+                        <property name="alignment">
+                         <set>Qt::AlignCenter</set>
+                        </property>
+                       </widget>
+                     </item>
+                    </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupBox_srx2Reader">
+                    <property name="title">
+                      <string>Reader 2  (SRX2)</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="verticalLayout_srx2Reader">
+                     <item>
+                    <layout class="QGridLayout" name="gridLayout_srx2Reader">
+                     <item row="0" column="0">
+                       <widget class="QCheckBox" name="checkBox_srx2Enable">
+                        <property name="text">
+                         <string>Enabled</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="1">
+                       <widget class="QLabel" name="label_srx2Ip">
+                        <property name="text">
+                         <string>IP:</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="2">
+                       <widget class="QLineEdit" name="lineEdit_srx2Ip">
+                        <property name="maximumSize">
+                         <size>
+                          <width>140</width>
+                          <height>16777215</height>
+                         </size>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="3">
+                       <widget class="QLabel" name="label_srx2Port">
+                        <property name="text">
+                         <string>Port:</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="4">
+                       <widget class="QLineEdit" name="lineEdit_srx2Port">
+                        <property name="maximumSize">
+                         <size>
+                          <width>70</width>
+                          <height>16777215</height>
+                         </size>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="5">
+                       <widget class="QToolButton" name="toolButton_srx2Connect">
+                        <property name="minimumSize">
+                         <size>
+                          <width>70</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Connect</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="6">
+                       <widget class="QToolButton" name="toolButton_srx2Status">
+                        <property name="minimumSize">
+                         <size>
+                          <width>24</width>
+                          <height>24</height>
+                         </size>
+                        </property>
+                        <property name="maximumSize">
+                         <size>
+                          <width>24</width>
+                          <height>24</height>
+                         </size>
+                        </property>
+                        <property name="enabled">
+                         <bool>false</bool>
+                        </property>
+                        <property name="text">
+                         <string/>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="0">
+                       <widget class="QToolButton" name="toolButton_srx2Trigger">
+                        <property name="minimumSize">
+                         <size>
+                          <width>70</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Test Read</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="1">
+                       <widget class="QToolButton" name="toolButton_srx2Stop">
+                        <property name="minimumSize">
+                         <size>
+                          <width>50</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Stop</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="2" colspan="4">
+                       <widget class="QLineEdit" name="lineEdit_srx2Code">
+                        <property name="readOnly">
+                         <bool>true</bool>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="6">
+                       <widget class="QLabel" name="label_srx2ReadTime">
+                        <property name="text">
+                         <string>-</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="2" column="0" colspan="7">
+                       <widget class="QLabel" name="label_srx2Image">
+                        <property name="minimumSize">
+                         <size>
+                          <width>0</width>
+                          <height>220</height>
+                         </size>
+                        </property>
+                        <property name="styleSheet">
+                         <string notr="true">background-color: rgb(27, 29, 35); border-radius: 8px;</string>
+                        </property>
+                        <property name="text">
+                         <string>No image received yet</string>
+                        </property>
+                        <property name="alignment">
+                         <set>Qt::AlignCenter</set>
+                        </property>
+                       </widget>
+                     </item>
+                    </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupBox_srxFtp">
+                    <property name="title">
+                      <string>Image Push (FTP Server)</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="verticalLayout_srxFtp">
+                     <item>
+                    <layout class="QGridLayout" name="gridLayout_srxFtp">
+                     <item row="0" column="0">
+                       <widget class="QLabel" name="label_srxFtpPortLbl">
+                        <property name="text">
+                         <string>Listen Port:</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="1">
+                       <widget class="QLineEdit" name="lineEdit_srxFtpPort">
+                        <property name="maximumSize">
+                         <size>
+                          <width>70</width>
+                          <height>16777215</height>
+                         </size>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="2">
+                       <widget class="QLabel" name="label_srxFtpDropLbl">
+                        <property name="text">
+                         <string>Drop Folder:</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="3">
+                       <widget class="QLineEdit" name="lineEdit_srxFtpDrop">
+                       </widget>
+                     </item>
+                     <item row="0" column="4">
+                       <widget class="QToolButton" name="toolButton_srxFtpRestart">
+                        <property name="minimumSize">
+                         <size>
+                          <width>110</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Restart Server</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="5">
+                       <widget class="QToolButton" name="toolButton_srxFtpStatus">
+                        <property name="minimumSize">
+                         <size>
+                          <width>24</width>
+                          <height>24</height>
+                         </size>
+                        </property>
+                        <property name="maximumSize">
+                         <size>
+                          <width>24</width>
+                          <height>24</height>
+                         </size>
+                        </property>
+                        <property name="enabled">
+                         <bool>false</bool>
+                        </property>
+                        <property name="text">
+                         <string/>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="0" colspan="6">
+                       <widget class="QLabel" name="label_srxFtpNote">
+                        <property name="text">
+                         <string>Reader setup (AutoID Navigator &gt; Saving Images):
+OK/NG Image = Send by FTP, FTP server IP = this PC,
+Send historical data = Enable.
+Stop SR Management Tool services to free port 21.</string>
+                        </property>
+                        <property name="wordWrap">
+                         <bool>true</bool>
+                        </property>
+                       </widget>
+                     </item>
+                    </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                    <widget class="QToolButton" name="toolButton_srxSave">
+                     <property name="minimumSize">
+                      <size>
+                       <width>120</width>
+                       <height>26</height>
+                      </size>
+                     </property>
+                     <property name="text">
+                      <string>Save Settings</string>
+                     </property>
+                    </widget>
+                  </item>
+                  <item>
+                   <spacer name="verticalSpacer_srxPage">
+                    <property name="orientation">
+                     <enum>Qt::Vertical</enum>
+                    </property>
+                    <property name="sizeHint" stdset="0">
+                     <size>
+                      <width>20</width>
+                      <height>40</height>
+                     </size>
+                    </property>
+                   </spacer>
+                  </item>
+                        </layout>
+                       </widget>
+                      </item>
+                     </layout>
+                    </widget>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+                <widget class="QWidget" name="AlgoSetupPage">
+                 <layout class="QVBoxLayout" name="vl_algoSetupPage">
+                  <item>
+                   <widget class="QScrollArea" name="scrollArea_algoPage">
+                    <property name="widgetResizable">
+                     <bool>true</bool>
+                    </property>
+                    <property name="frameShape">
+                     <enum>QFrame::NoFrame</enum>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">QScrollArea{ background: transparent; }
+                #scrollAreaContents_algoPage{ background: transparent; }</string>
+                    </property>
+                    <widget class="QWidget" name="scrollAreaContents_algoPage">
+                     <layout class="QVBoxLayout" name="vl_algoPageInner">
+                      <item>
+                       <widget class="QFrame" name="frame_algoPage">
+                        <property name="styleSheet">
+                         <string notr="true">QLabel{
+                	 font-size: 9pt;
+                }
+
+                QFrame{
+                	background-color: #272c36;
+                	border-radius:16px;
+                }
+
+                QGroupBox{
+                 border: 1px solid #3c4454;
+                 border-radius: 8px;
+                 margin-top: 14px;
+                 color: #F0F0F0;
+                 font-weight: bold;
+                }
+
+                QGroupBox::title{
+                 subcontrol-origin: margin;
+                 left: 10px;
+                }
+
+                QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox{
+                background-color: rgb(27, 29, 35);
+                border: 1px solid rgb(27, 29, 35);
+                border-radius: 5px;
+                padding-left: 6px;
+                color: #F0F0F0;
+                }
+
+                QLineEdit[readOnly=true] {
+                    background: rgb(57, 59, 65);
+                    color: #F0F0F0;
+                	border: 1px solid rgb(57, 59, 65);
+                }
+
+                QCheckBox{
+                border-radius: 5px;
+                padding: 2px;
+                color: #F0F0F0;
+                }
+
+                QLabel{
+                border-radius: 5px;
+                padding: 2px;
+                color: #F0F0F0;
+                }
+
+                QTableWidget{
+                background-color: rgb(27, 29, 35);
+                color: #F0F0F0;
+                border: none;
+                }
+
+                QHeaderView::section{
+                background-color: #3c4454;
+                color: #F0F0F0;
+                border: none;
+                padding: 3px;
+                }
+
+                QToolButton {
+                  background-color:  #545963;
+                  color: #F0F0F0;
+                  border-radius: 8px;
+                  margin: 0px;
+                  padding: 4px;
+                }
+
+                QToolButton:checked {
+                  background-color: #2e6b46;
+                  border: 1px solid #00C853;
+                }
+
+                QToolButton:pressed {
+                   margin: 1px;
+                   border: 1px solid #FFE723;
+                }
+
+                QToolButton:disabled {
+                	color: #6e6e6e;
+                	background-color: #444444;
+                	border: 2px solid #444444;
+                }
+
+                QToolButton:hover {
+                 background-color: #929aaa;
+                }</string>
+                        </property>
+                        <property name="frameShape">
+                         <enum>QFrame::StyledPanel</enum>
+                        </property>
+                        <layout class="QVBoxLayout" name="vl_algoFrame">
+                         <item>
+                          <widget class="QLabel" name="label_algoTitle">
+                           <property name="text">
+                            <string>Algo Setup</string>
+                           </property>
+                           <property name="font">
+                            <font>
+                             <pointsize>9</pointsize>
+                             <weight>75</weight>
+                             <bold>true</bold>
+                            </font>
+                           </property>
+                          </widget>
+                         </item>
+                         <item>
+                          <layout class="QHBoxLayout" name="hl_algoHeader">
+                           <item>
+                            <widget class="QLabel" name="label_algoType">
+                             <property name="text">
+                              <string>Algorithm:</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QComboBox" name="comboBox_algoType">
+                             <property name="maximumSize">
+                              <size>
+                               <width>200</width>
+                               <height>16777215</height>
+                              </size>
+                             </property>
+                             <item>
+                              <property name="text">
+                               <string>OCR Inspection</string>
+                              </property>
+                             </item>
+                             <item>
+                              <property name="text">
+                               <string>3D Height Measurement</string>
+                              </property>
+                             </item>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QToolButton" name="toolButton_algoRun">
+                             <property name="minimumSize">
+                              <size>
+                               <width>90</width>
+                               <height>26</height>
+                              </size>
+                             </property>
+                             <property name="text">
+                              <string>Run</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QLabel" name="label_algoStatus">
+                             <property name="text">
+                              <string></string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <spacer name="hs_algoHeader">
+                             <property name="orientation">
+                              <enum>Qt::Horizontal</enum>
+                             </property>
+                             <property name="sizeHint" stdset="0">
+                              <size>
+                               <width>40</width>
+                               <height>20</height>
+                              </size>
+                             </property>
+                            </spacer>
+                           </item>
+                          </layout>
+                         </item>
+                         <item>
+                          <widget class="QStackedWidget" name="stackedWidget_algoParams">
+                           <widget class="QWidget" name="widget_algoOcrPage">
+                            <layout class="QVBoxLayout" name="vl_algoOcrPage">
+                             <item>
+                              <widget class="QGroupBox" name="group_algoOcrRois">
+                               <property name="title">
+                                <string>ROIs</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoOcrRois">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrRoi1">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoOcrRoi1">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Show ROI 1</string>
+                                    </property>
+                                    <property name="checkable">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrRoi1Rows">
+                                    <property name="text">
+                                     <string>Rows:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoOcrRoi1Rows">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>20</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>1</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrRoi1Cols">
+                                    <property name="text">
+                                     <string>Cols:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoOcrRoi1Cols">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>0</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>64</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>0</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrRoi1Hint">
+                                    <property name="text">
+                                     <string>(Cols 0 = auto)</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoOcrRoi1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrRoi2">
+                                  <item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrRoi2Enable">
+                                    <property name="text">
+                                     <string>Enable ROI 2</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoOcrRoi2">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Show ROI 2</string>
+                                    </property>
+                                    <property name="checkable">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrRoi2Rows">
+                                    <property name="text">
+                                     <string>Rows:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoOcrRoi2Rows">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>20</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>1</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrRoi2Cols">
+                                    <property name="text">
+                                     <string>Cols:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoOcrRoi2Cols">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>0</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>64</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>0</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoOcrRoi2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoOcrOptions">
+                               <property name="title">
+                                <string>Options</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoOcrOptions">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrOpt1">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrOrient">
+                                    <property name="text">
+                                     <string>Orientation:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QComboBox" name="comboBox_algoOcrOrientation">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <item>
+                                     <property name="text">
+                                      <string>0</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>90</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>180</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>270</string>
+                                     </property>
+                                    </item>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrEnlarge">
+                                    <property name="text">
+                                     <string>Enlarge:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoOcrEnlarge">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>1.0</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>16.0</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>4.0</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrPaddle">
+                                    <property name="text">
+                                     <string>Use PaddleOCR</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrRemoveSpecial">
+                                    <property name="text">
+                                     <string>Remove Special Chars</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoOcrOpt1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrOpt2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrPadX">
+                                    <property name="text">
+                                     <string>Char Search Pad X:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoOcrPadX">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>-50</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>200</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>0</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrPadY">
+                                    <property name="text">
+                                     <string>Y:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoOcrPadY">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>-50</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>200</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>0</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoOcrOpt2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoOcrPattern">
+                               <property name="title">
+                                <string>Pattern Matching Library</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoOcrPattern">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrPat1">
+                                  <item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrPatternEnable">
+                                    <property name="text">
+                                     <string>Enable Pattern Correction</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrPatScore">
+                                    <property name="text">
+                                     <string>Score:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoOcrPatternScore">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>0.0</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100.0</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>70.0</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoOcrPat1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrPat2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcrLearnLabel">
+                                    <property name="text">
+                                     <string>Char:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLineEdit" name="lineEdit_algoOcrLearnLabel">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>50</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoOcrLearnRoi">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Show Learn ROI</string>
+                                    </property>
+                                    <property name="checkable">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoOcrLearnSample">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Learn Sample</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoOcrPat2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoOcrUnlearned">
+                                  <property name="text">
+                                   <string></string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QTableWidget" name="tableWidget_algoOcrPatternLabels">
+                                  <property name="minimumSize">
+                                   <size>
+                                    <width>0</width>
+                                    <height>160</height>
+                                   </size>
+                                  </property>
+                                  <property name="maximumSize">
+                                   <size>
+                                    <width>16777215</width>
+                                    <height>220</height>
+                                   </size>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QWidget" name="widget_algoOcrPatternList">
+                                  <layout class="QVBoxLayout" name="verticalLayout_algoOcrPatternList"/>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoOcrResults">
+                               <property name="title">
+                                <string>Result</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoOcrResults">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrRes1">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcr1">
+                                    <property name="text">
+                                     <string>ROI 1:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLineEdit" name="lineEdit_algoOcr1Result">
+                                    <property name="readOnly">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrRes2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoOcr2">
+                                    <property name="text">
+                                     <string>ROI 2:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLineEdit" name="lineEdit_algoOcr2Result">
+                                    <property name="readOnly">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoOcrTime">
+                                  <property name="text">
+                                   <string>-</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                            </layout>
+                           </widget>
+                           <widget class="QWidget" name="widget_algoHeightPage">
+                            <layout class="QVBoxLayout" name="vl_algoHeightPage">
+                             <item>
+                              <widget class="QGroupBox" name="group_algoHDisplay">
+                               <property name="title">
+                                <string>Heightmap Display</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoHDisplay">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHDisp">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2D">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>2D (Setup)</string>
+                                    </property>
+                                    <property name="checkable">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH3D">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>3D (View)</string>
+                                    </property>
+                                    <property name="checkable">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHLoadMap">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>120</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Load Heightmap...</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHUseLast">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Use Last Scan</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHDisp">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoHRois">
+                               <property name="title">
+                                <string>ROIs</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoHRois">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHRoi1">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHAddPlane">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Add Plane ROI</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHRemovePlane">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>130</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Remove Last Plane</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHPlaneCount">
+                                    <property name="text">
+                                     <string>Plane ROIs: 0</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHRoi1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHRoi2">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHHeightRoi">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>120</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Show Height ROI</string>
+                                    </property>
+                                    <property name="checkable">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHRoiHint">
+                                    <property name="text">
+                                     <string>Plane ROIs fit the datum plane; the Height ROI is measured against it.</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHRoi2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoHParams">
+                               <property name="title">
+                                <string>Parameters</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoHParams">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHPar1">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHIpm">
+                                    <property name="text">
+                                     <string>Intensity / micron:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoHIpm">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>3</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>0.01</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>1000.0</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>11.0</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QCheckBox" name="checkBox_algoHOutliers">
+                                    <property name="text">
+                                     <string>Remove Outliers</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHPar1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHPar2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHLimits">
+                                    <property name="text">
+                                     <string>Allowable Height (um):</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoHMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>-100000.0</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.0</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>0.0</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoHMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>-100000.0</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.0</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>0.0</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHLimitHint">
+                                    <property name="text">
+                                     <string>(both 0 = no limit)</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHPar2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoHResults">
+                               <property name="title">
+                                <string>Result</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoHResults">
+                                <item>
+                                 <widget class="QLabel" name="label_algoHAvg">
+                                  <property name="text">
+                                   <string>Average height: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoHMinMax">
+                                  <property name="text">
+                                   <string>Min / Max: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoHTilt">
+                                  <property name="text">
+                                   <string>Plane tilt: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoHPass">
+                                  <property name="text">
+                                   <string>-</string>
+                                  </property>
+                                  <property name="font">
+                                   <font>
+                                    <pointsize>9</pointsize>
+                                    <weight>75</weight>
+                                    <bold>true</bold>
+                                   </font>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoHTime">
+                                  <property name="text">
+                                   <string>-</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                            </layout>
+                           </widget>
+                          </widget>
+                         </item>
+                         <item>
+                          <widget class="QGroupBox" name="group_algoLocator">
+                           <property name="title">
+                            <string>Locator (runs before the algo; optional)</string>
+                           </property>
+                           <layout class="QVBoxLayout" name="vl_group_algoLocator">
+                            <item>
+                             <layout class="QHBoxLayout" name="hl_algoLoc1">
+                              <item>
+                               <widget class="QCheckBox" name="checkBox_algoLocEnable">
+                                <property name="text">
+                                 <string>Enable</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocScore">
+                                <property name="text">
+                                 <string>Score:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocScore">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>100.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>70.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocAngle">
+                                <property name="text">
+                                 <string>Search Angle ±:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocSearchAngle">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>180.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>10.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocOffset">
+                                <property name="text">
+                                 <string>Angle Offset:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocAngleOffset">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>2</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>-180.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>180.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>0.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <spacer name="hs_algoLoc1">
+                                <property name="orientation">
+                                 <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                 <size>
+                                  <width>40</width>
+                                  <height>20</height>
+                                 </size>
+                                </property>
+                               </spacer>
+                              </item>
+                             </layout>
+                            </item>
+                            <item>
+                             <layout class="QHBoxLayout" name="hl_algoLoc2">
+                              <item>
+                               <widget class="QLabel" name="label_algoLocMask">
+                                <property name="text">
+                                 <string>Mask Margin W/H %:</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocMaskW">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>49.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>0.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QDoubleSpinBox" name="dspin_algoLocMaskH">
+                                <property name="maximumSize">
+                                 <size>
+                                  <width>90</width>
+                                  <height>16777215</height>
+                                 </size>
+                                </property>
+                                <property name="decimals">
+                                 <number>1</number>
+                                </property>
+                                <property name="minimum">
+                                 <double>0.0</double>
+                                </property>
+                                <property name="maximum">
+                                 <double>49.0</double>
+                                </property>
+                                <property name="value">
+                                 <double>0.0</double>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QToolButton" name="toolButton_algoLocLearnRoi">
+                                <property name="minimumSize">
+                                 <size>
+                                  <width>130</width>
+                                  <height>26</height>
+                                 </size>
+                                </property>
+                                <property name="text">
+                                 <string>Show Learn Region</string>
+                                </property>
+                                <property name="checkable">
+                                 <bool>true</bool>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QToolButton" name="toolButton_algoLocSearchRoi">
+                                <property name="minimumSize">
+                                 <size>
+                                  <width>140</width>
+                                  <height>26</height>
+                                 </size>
+                                </property>
+                                <property name="text">
+                                 <string>Show Search Region</string>
+                                </property>
+                                <property name="checkable">
+                                 <bool>true</bool>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QToolButton" name="toolButton_algoLocLearn">
+                                <property name="minimumSize">
+                                 <size>
+                                  <width>100</width>
+                                  <height>26</height>
+                                 </size>
+                                </property>
+                                <property name="text">
+                                 <string>Learn Model</string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <widget class="QLabel" name="label_algoLocStatus">
+                                <property name="text">
+                                 <string></string>
+                                </property>
+                               </widget>
+                              </item>
+                              <item>
+                               <spacer name="hs_algoLoc2">
+                                <property name="orientation">
+                                 <enum>Qt::Horizontal</enum>
+                                </property>
+                                <property name="sizeHint" stdset="0">
+                                 <size>
+                                  <width>40</width>
+                                  <height>20</height>
+                                 </size>
+                                </property>
+                               </spacer>
+                              </item>
+                             </layout>
+                            </item>
+                           </layout>
+                          </widget>
+                         </item>
+                         <item>
+                          <layout class="QHBoxLayout" name="hl_algoSave">
+                           <item>
+                            <widget class="QToolButton" name="toolButton_algoSave">
+                             <property name="minimumSize">
+                              <size>
+                               <width>120</width>
+                               <height>26</height>
+                              </size>
+                             </property>
+                             <property name="text">
+                              <string>Save Settings</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <spacer name="hs_algoSave">
+                             <property name="orientation">
+                              <enum>Qt::Horizontal</enum>
+                             </property>
+                             <property name="sizeHint" stdset="0">
+                              <size>
+                               <width>40</width>
+                               <height>20</height>
+                              </size>
+                             </property>
+                            </spacer>
+                           </item>
+                          </layout>
+                         </item>
+                         <item>
+                          <spacer name="verticalSpacer_algoPage">
+                           <property name="orientation">
+                            <enum>Qt::Vertical</enum>
+                           </property>
+                           <property name="sizeHint" stdset="0">
+                            <size>
+                             <width>20</width>
+                             <height>40</height>
+                            </size>
+                           </property>
+                          </spacer>
+                         </item>
+                        </layout>
+                       </widget>
+                      </item>
+                     </layout>
+                    </widget>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
                </widget>
               </item>
              </layout>

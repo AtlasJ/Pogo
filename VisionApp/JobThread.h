@@ -93,31 +93,10 @@ public:
 	//job
 	void stopRun();
 
-	void setServerHostAddress(QString hostAddress, int port, QString hostAddress2 = QString(), int port2 = 0);
-
-	// SR-X barcode readers: one TCP client socket per reader, socket index = barcode slot
-	static const int SRX_READER_COUNT = 2;
-	QTcpSocket* m_srxSocket[SRX_READER_COUNT] = { nullptr, nullptr };
-	QString m_srxHost[SRX_READER_COUNT];
-	int m_srxPort[SRX_READER_COUNT] = { 0, 0 };
-	bool m_srxConnected[SRX_READER_COUNT] = { false, false };
-	QByteArray m_srxBuffer[SRX_READER_COUNT]; // per-reader receive buffer, messages framed on CR
-
-	// Troubleshooting aids: which thread owns the sockets (anything else touching
-	// them is a bug), and how long the readers take to answer a trigger.
-	QString m_srxOwnerThread;
-	QElapsedTimer m_srxTriggerElapsed;
-
-	void startConnectToServer();
-	void connectToServer(int readerIndex);
-	void sendToServer(QString msg);
-	void incomingSRXData(int readerIndex, QByteArray data);
+	// SR-X barcode readers are owned by SRXManager; these thin wrappers keep the
+	// existing queued signal connections working
 	void triggerSRX();
 	void stopSRX();
-	void releaseSRXSockets();   //must run in the job thread
-	void logSRXStatus(const char* context);
-	bool checkSRXThread(const char* context);
-	bool writeSRX(int readerIndex, const QString& cmd, const char* label);
 private:
 	TimeLogger m_timeLogger;
 
@@ -480,7 +459,6 @@ signals:
 	//load sequence
 	void signalLoadSequenceFail(QString msg);
 
-	void barcodeReceived(int readerIndex, QString code);
 	void signalBoardInPosition(int index);
 	void signalBoardUnloaded();
 

@@ -1,4 +1,6 @@
 #include "VisionApp.h"
+#include "SRXManager.h"
+#include "AlgoManager.h"
 #include "QCommonStruct.h"
 #include <QFileDialog>
 #include <QGraphicsPixmapItem>
@@ -205,7 +207,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	//recipeSettingsMenu
 	_recipeSettingsMenu = new ExtendedMenu(0, 300, 300);
 	_recipeSettingsMenu->setParent(this);
-	_systemSettingsMenu = new ExtendedMenu(2, 300, 300);
+	_systemSettingsMenu = new ExtendedMenu(2, 300, 420); //4 rows of 90px buttons + spacing
 	_systemSettingsMenu->setParent(this);
 	_rightMenu = new ExtendedMenu(1, 100, 500);
 	_rightMenu->setParent(this);
@@ -257,16 +259,8 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 
 	ct::logger::info("Initializing External Barcode Reader...");
 	if (!jsonHelper::getBool(_systemObj, QStringLiteral("Disable_BarcodeReader"), false)) {
-
-		// Load IP/Port from json into VisionApp members: _barcodeIp / _barcodePort
-		bool ok = loadBarcodeReaderConfig(QStringLiteral("C:/Advanced/Data/config/barcodeReader.json"));
-		if (!ok) {
-			ct::logger::error("[Barcode] Failed to read barcodeReader.json (IP/Port not loaded)");
-		}
-		else {
-			ct::logger::info("[Barcode] barcodeReader.json OK: %s:%d",
-				m_barcodeIp.toStdString().c_str(), m_barcodePort);
-		}
+		// Loads barcodeReader.json, connects both readers and starts the image FTP server
+		SRXManager::instance().init();
 	}
 
 	ct::logger::info("Initializing read buffer...");
@@ -316,6 +310,11 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initTeachPoint(); ct::logger::info("Initialized teach point");
 	initFiducial(); ct::logger::info("Initialized fiducial");
 	initBarcode(); ct::logger::info("Initialized barcode");
+	initBarcodeReaderPage(); ct::logger::info("Initialized barcode reader page");
+	AlgoManager::instance().init();
+	AlgoManager::instance().loadRecipeConfig();
+	initAlgoSetupPage();
+	refreshAlgoSetupPage(); ct::logger::info("Initialized algo setup page");
 	initRecipeSetupZStack();
 	initStitchingMethod();
 	initPortability(); ct::logger::info("Initialized portability");
@@ -2730,6 +2729,11 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 	for (const auto& info : infos) {
 		QString cid = util::combineID(info.viewID, info.opticID);
 		ct::logger::info("[ImageReady] Receive ready image: %s", cid.toStdString().c_str());
+
+		//keep the latest heightmap available for the Algo Setup page ("Use Last Scan")
+		if (info.type == ct::s_height_map && info.pHeightMap) {
+			AlgoManager::instance().setHeightMap(info.pHeightMap);
+		}
 
 		if (SystemData::instance()._psp) {
 			_processType = ProcessType::IMAGE_COLLECTION;
@@ -7419,6 +7423,9 @@ void VisionApp::checkRecipeFacing(QString recipeName, bool &isTop)
 bool VisionApp::toPage(UIPage page) {
 	//showAllGraphicItems(false); //view, vo, path
 	toggleFiducialUI(false);
+
+	//algo setup ROIs are page-scoped: leaving the page hides them
+	if (page != UIPage::ALGO_SETUP && _algoOcrRoi1Box) hideAlgoSetupRois();
 	bool shown;
 	bool isTop = true;
 	QString facing;
@@ -7529,6 +7536,15 @@ bool VisionApp::toPage(UIPage page) {
 	case UIPage::ZSTACK:
 		unlockAllROIs();
 		showRightTab((int)page, QStringLiteral("Open Z Stack"));
+		return true;
+	case UIPage::BARCODE_READER:
+		unlockAllROIs();
+		showRightTab((int)page, QStringLiteral("Open Barcode Reader"));
+		return true;
+	case UIPage::ALGO_SETUP:
+		unlockAllROIs();
+		showRightTab((int)page, QStringLiteral("Open Algo Setup"));
+		updateAlgoRoiVisibility();
 		return true;
 	case UIPage::UNIT_CONFIG:
 		lockAllROIs();
@@ -7813,6 +7829,12 @@ void VisionApp::systemSettingsMenuBtnPressed(int btn)
 		break;
 	case OPTICS3D:
 		toPage(UIPage::OPTICS3D);
+		break;
+	case BARCODEREADER:
+		toPage(UIPage::BARCODE_READER);
+		break;
+	case ALGOSETUP:
+		toPage(UIPage::ALGO_SETUP);
 		break;
 	}
 }
@@ -18197,83 +18219,6 @@ void VisionApp::enableSaveInspectionImage(bool enable)
 //
 //	_pGraphicsSceneMain->update();
 //}
-
-bool VisionApp::loadBarcodeReaderConfig(const QString& path)
-{
-	// 1) Auto-generate if missing
-	if (!QFileInfo::exists(path))
-	{
-		QFileInfo fi(path);
-		QDir dir = fi.dir();
-		if (!dir.exists() && !dir.mkpath(".")) {
-			ct::logger::error("[Barcode] Failed to create directory: %s",
-				dir.absolutePath().toStdString().c_str());
-			return false;
-		}
-
-		QJsonObject rootDefault;
-		rootDefault["IP"] = "127.0.0.1";   // placeholder default
-		rootDefault["Port"] = 1818;        // default port
-
-		QSaveFile file(path);
-		if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-			ct::logger::error("[Barcode] Failed to create json: %s", path.toStdString().c_str());
-			return false;
-		}
-
-		file.write(QJsonDocument(rootDefault).toJson(QJsonDocument::Indented));
-
-		if (!file.commit()) {
-			ct::logger::error("[Barcode] Failed to commit json: %s", path.toStdString().c_str());
-			return false;
-		}
-
-		ct::logger::warn("[Barcode] barcodeReader.json not found. Created template at: %s",
-			path.toStdString().c_str());
-	}
-
-	// 2) Load JSON
-	QJsonObject root;
-	if (!jsonHelper::loadJson(path, root)) {
-		ct::logger::error("[Barcode] Failed to load: %s", path.toStdString().c_str());
-		return false;
-	}
-
-	// 3) Parse
-	m_barcodeIp = jsonHelper::getString(root, "IP");
-	m_barcodePort = jsonHelper::getInteger(root, "Port");
-
-	if (m_barcodeIp.isEmpty() || m_barcodePort <= 0) {
-		ct::logger::error("[Barcode] Invalid IP/Port in json. ip='%s' port=%d",
-			m_barcodeIp.toStdString().c_str(), m_barcodePort);
-		m_barcodeIp.clear();
-		m_barcodePort = 0;
-		return false;
-	}
-
-	// 4) Derive reader 2: same IP with last octet +1, same port
-	m_barcodeIp2.clear();
-	m_barcodePort2 = 0;
-
-	QStringList octets = m_barcodeIp.split('.');
-	bool octetOk = false;
-	int lastOctet = (octets.size() == 4) ? octets[3].toInt(&octetOk) : -1;
-
-	if (octets.size() == 4 && octetOk && lastOctet >= 0 && lastOctet + 1 <= 254) {
-		octets[3] = QString::number(lastOctet + 1);
-		m_barcodeIp2 = octets.join('.');
-		m_barcodePort2 = m_barcodePort;
-	}
-	else {
-		ct::logger::error("[Barcode] Cannot derive Reader2 IP from '%s' (Reader2 disabled)",
-			m_barcodeIp.toStdString().c_str());
-	}
-
-	ct::logger::info("[Barcode] Reader1 %s:%d, Reader2 %s:%d",
-		m_barcodeIp.toStdString().c_str(), m_barcodePort,
-		m_barcodeIp2.toStdString().c_str(), m_barcodePort2);
-	return true;
-}
 
 void VisionApp::vs_updateUptimer()
 {

@@ -349,6 +349,21 @@
     <ClCompile Include="SmartRay\cpp_wrapper\SensorManager.cpp">
       <Filter>Source Files\Profiler\SmartRay</Filter>
     </ClCompile>
+    <ClCompile Include="VisionApp_AlgoSetup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AlgoManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PaddleOcrClient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SRXFtpServer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SRXManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="ScaleManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -902,6 +917,21 @@
       <Filter>Header Files</Filter>
     </QtMoc>
     <QtMoc Include="GoldenRecipeDialog.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="AlgoManager.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="PaddleOcrClient.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <ClInclude Include="AlgoSetupTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <QtMoc Include="SRXFtpServer.h">
+      <Filter>Header Files</Filter>
+    </QtMoc>
+    <QtMoc Include="SRXManager.h">
       <Filter>Header Files</Filter>
     </QtMoc>
     <QtMoc Include="ImageManager.h">

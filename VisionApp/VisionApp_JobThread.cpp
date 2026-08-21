@@ -5,6 +5,7 @@
 #include "MachineController.h"
 #include "MotionController.h"
 #include "AuditLog.h"
+#include "SRXManager.h"
 
 void VisionApp::connectJobThread() {
 	qRegisterMetaType<MIL_ID>("MIL_ID");
@@ -14,8 +15,6 @@ void VisionApp::connectJobThread() {
 	qRegisterMetaType<dat::WorldCoordinate>("dat::WorldCoordinate");
 	qRegisterMetaType<mtrx::ForegoundType>("mtrx::ForegoundType");
 	qRegisterMetaType<PositionPortabilityType>("PositionPortabilityType");
-
-	_jobThread.setServerHostAddress(m_barcodeIp, m_barcodePort, m_barcodeIp2, m_barcodePort2);
 
 	QObject::connect(&_jobThread, &JobThread::promptMsg, this, [=](QString msg) {
 		showMsg(msg);
@@ -515,9 +514,10 @@ void VisionApp::connectJobThread() {
 	QObject::connect(&_jobThread, &JobThread::calibrationFinished, this, &VisionApp::handleCalibrationFinished);
 
 
-	QObject::connect(&_jobThread, &JobThread::barcodeReceived, this, [=](int readerIndex, const QString& code) {
+	QObject::connect(&SRXManager::instance(), &SRXManager::barcodeReceived, this, [=](const QString& readerID, const QString& code) {
 
-		// One TCP socket per reader: socket index = barcode slot, no payload splitting
+		// One reader per barcode slot: SRX1 -> barcode 1, SRX2 -> barcode 2
+		const int readerIndex = SRXManager::indexOf(readerID);
 		if (readerIndex < 0 || readerIndex > 1) return;
 
 		const bool allowed = (_enableBarcode &&
