@@ -1893,7 +1893,7 @@ QLineEdit:focus {
                        </font>
                       </property>
                       <property name="text">
-                       <string>Servo On (DI 1)</string>
+                       <string>SVON</string>
                       </property>
                      </widget>
                    </item>
@@ -1907,7 +1907,7 @@ QLineEdit:focus {
                        </font>
                       </property>
                       <property name="text">
-                       <string>Servo Ready (DO1)</string>
+                       <string>RDY</string>
                       </property>
                      </widget>
                    </item>
@@ -1921,7 +1921,7 @@ QLineEdit:focus {
                        </font>
                       </property>
                       <property name="text">
-                       <string>Position Complete (DO4)</string>
+                       <string>INP</string>
                       </property>
                      </widget>
                    </item>
@@ -1935,7 +1935,7 @@ QLineEdit:focus {
                        </font>
                       </property>
                       <property name="text">
-                       <string>Alarm (DO5)</string>
+                       <string>ALM</string>
                       </property>
                      </widget>
                    </item>
