@@ -52,7 +52,6 @@
 
 #include "ProfilerManager.h"
 #include "ScaleManager.h"
-#include <QAlgo.h>
 
 #include "MbufPoolManager.h"
 #include "MotionController.h"
@@ -231,6 +230,8 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	actionMenu.addAction(tr("Draw ROI"), this, SLOT(visionObjectMode()));
 	actionMenu.addAction(tr("Select"), this, SLOT(selectMode()));
 
+
+	//allocate the MIL application + host system (previously done inside Algo.dll)
 	_algo.init();
 
 	readUserInfo(_userObj);
@@ -274,11 +275,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 
 	//intialize Algorithm
 	ct::logger::info("Initializing Algorithms...");
-	_algo.algoName(_basicAlgoList);
-	_algo.locatorName(_locatorAlgoList);
 	_algo.createBuffer(_bufferInfoObj);
-	_algo.algoName(_algoList);
-	_algo.setDebugMode(false);
 
 	_emapReEnableTimer.setInterval(1000);
 	_emapReEnableTimerSeconds = 60;
@@ -328,10 +325,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initGifIcon(); ct::logger::info("Initialized Gif");
 	addObjectDetectionModels();
 	
-	_algo.setUmToPixel(ScaleManager::instance().um_per_px());
 
-	_inspectionThread.initMultiThread();
-	_inspectionThread.startRun();
 
 	fadeIn();
 
@@ -558,7 +552,6 @@ void VisionApp::updateConnection(bool connection)
 	_databaseThread.setDefectCollectorPath(defectCollectorPath);
 	_databaseThread.setRecipeCollectorPath(recipeCollectorPath);
 
-	_inspectionThread.setDefectCollectorPath(defectCollectorPath);
 
 	if (!_sqliteDatabase.open(_dataBasePath))
 	{
@@ -637,29 +630,6 @@ QColor VisionApp::getColor(Representation r)
 	return QColor();
 }
 
-void VisionApp::readTemplateCadRoiInfos()
-{
-	_templateCadRoiInfos.clear();
-	for (int i = 0; i < _dragROI.size(); i++)
-	{
-		
-		if (_dragROI[i]->algoGraph() == nullptr) continue;
-		auto algoGraph = _dragROI[i]->algoGraph();
-		
-		if (!_templateCadRoiInfos.contains(algoGraph->templateId()))
-		{
-			
-			auto cadRoisFilePath = Common::Directory::getRecipeCadRoisPath() + algoGraph->cadRoisFilePath();
-			
-			QVector<CadRoiInfo> cadRois;
-			loadComponentCadRois(cadRoisFilePath, cadRois);
-			
-			_templateCadRoiInfos.insert(algoGraph->templateId(), cadRois);
-			
-		}
-	}
-}
-
 bool VisionApp::loadComponentCadRois(const QString & filePath, QVector<CadRoiInfo>& cadRois)
 {
 	QJsonObject root;
@@ -724,43 +694,14 @@ void VisionApp::clearEmptyViewKey()
 
 QStringList VisionApp::get2DLightingUsed()
 {
-	QStringList lightingUsed;
-	for (int i = 0; i < _dragROI.size(); i++)
-	{
-		if (!_dragROI[i]->algoGraph()) continue;
-		auto lighting2d = _dragROI[i]->algoGraph()->get2DLightingIDs();
-
-		for (int j = 0; j < lighting2d.size(); j++)
-		{
-			if (!lightingUsed.contains(lighting2d[j]))
-			{
-				lightingUsed.append(lighting2d[j]);
-			}
-		}
-	}
-	return lightingUsed;
+	//templates no longer carry lighting IDs (Algo library removed)
+	return QStringList();
 }
 
 QStringList VisionApp::get3DLightingUsed()
 {
-	QStringList lightingUsed;
-	for (int i = 0; i < _dragROI.size(); i++)
-	{
-		if (_enable3D)
-		{
-			if (!_dragROI[i]->algoGraph()) continue;
-			auto lighting3d = _dragROI[i]->algoGraph()->get3DLightingIDs();
-
-			for (int j = 0; j < lighting3d.size(); j++)
-			{
-				if (!lightingUsed.contains(lighting3d[j]))
-				{
-					lightingUsed.append(lighting3d[j]);
-				}
-			}
-		}
-	}
-	return lightingUsed;
+	//templates no longer carry lighting IDs (Algo library removed)
+	return QStringList();
 }
 
 void VisionApp::loadEmapSetting()
@@ -1243,20 +1184,7 @@ static void receiveCommand(const char* command, QTcpSocket* sender, void* data)
 		{
 			if (fnc != "task" || fnc != "training" || fnc == "subsampling") p->sendReplyReceived(command);
 
-			if (fnc == "UpdateTemplate")
-			{
-				p->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-				p->show();
-				Qt::WindowFlags flags = p->windowFlags();
-				if (flags.testFlag(Qt::WindowStaysOnTopHint)) {
-					QApplication::processEvents();
-					p->setWindowFlag(Qt::WindowStaysOnTopHint, false);
-					p->showExe();
-				}
-
-				auto algoGraphFilePath = messageList[3];
-				p->updateTemplate(algoGraphFilePath);
-			}
+			if (false) {}
 			else if (fnc == "Open")
 			{
 				p->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
@@ -1267,106 +1195,6 @@ static void receiveCommand(const char* command, QTcpSocket* sender, void* data)
 					p->setWindowFlag(Qt::WindowStaysOnTopHint, false);
 					p->showExe();
 				}
-			}
-			else if (fnc == "runSingleVidiInspeciton")
-			{
-				qDebug() << "runSingleVidiInspection";
-				auto imgPaths = messageList[3].split(",");
-				auto visionObjectID = messageList[4];
-				QStringList offset_str = messageList[5].split(",");
-				QPointF offset = { 0,0 };
-				offset.setX(offset_str[0].toDouble());
-				offset.setY(offset_str[1].toDouble());
-
-				auto lightingIDs = messageList[6].split(",");
-				QString refImage = messageList[7];
-				QString odModelOpticSettingsPath = messageList[8];
-				QString isOutsideImage = messageList[9];
-				
-
-				if (lightingIDs.size() == imgPaths.size())
-				{
-					for (int i = 0; i < imgPaths.size(); i++)
-					{
-						if (refImage == "false" && isOutsideImage == "false")
-						{
-							if (offset != QPointF(0, 0))
-							{
-								//crop offset image and save it
-								p->saveOffsettedVIDIImage(visionObjectID, lightingIDs[i], imgPaths[i], offset);
-							}
-						}
-
-					}
-
-					//if (p->referenceImageExistTest())
-					if(true)
-					{
-						p->runImageVidi(imgPaths, lightingIDs, odModelOpticSettingsPath, 1);
-						//qDebug() << "odModelOpticSettingsPath: " << odModelOpticSettingsPath;
-						p->sendVidiImageResult();
-					}
-					else
-					{
-						p->sendVidiRunFailed();
-					}
-				}
-
-			}
-			else if (fnc == "runAIWireBondInspection")
-			{
-				qDebug() << "runAIWireBondInspection";
-				auto imgPaths = messageList[3].split(",");
-				auto visionObjectID = messageList[4];
-				QString locHashJson = messageList[5];
-
-				//load loc hash
-				QHash<QString, QPointF> locatorOffsets;
-				QHash<QString, LocAngle> locatorAngles;
-				p->loadLocatorData(locHashJson, locatorOffsets, locatorAngles);
-
-				auto lightingIDs = messageList[6].split(",");
-				QString refImage = messageList[7];
-				QString odModelOpticSettingsPath = messageList[8];
-				QString isOutsideImage = messageList[9];
-
-
-				if (lightingIDs.size() == imgPaths.size())
-				{
-					QString segmentationMaskFolderPath = Common::Directory::CachePath + "AIWireBondSegmentationMask/";
-					CreateDirectoryA(segmentationMaskFolderPath.toStdString().c_str(), NULL);
-					p->deleteAllFilesInFolder(segmentationMaskFolderPath);
-
-					p->runAIWireBondInspection(imgPaths, lightingIDs, locatorOffsets, locatorAngles, visionObjectID);
-					p->sendAIWireBondInspectionResult();
-					
-				}
-			}
-			else if (fnc == "runODLocator")
-			{
-				qDebug() << "runODLocator";
-				auto imgPaths = messageList[3].split(",");
-				auto visionObjectID = messageList[4];
-				auto lightingIDs = messageList[5].split(",");
-				QString refImage = messageList[6];
-				QString odModelOpticSettingsPath = messageList[7];
-				QString isOutsideImage = messageList[8];
-
-
-				if (lightingIDs.size() == imgPaths.size())
-				{
-					if (true)
-					{
-						p->runImageVidi(imgPaths, lightingIDs, odModelOpticSettingsPath, 2);
-						p->sendODLocImageResult();
-					}
-					else
-					{
-						p->sendODLocFailed();
-					}
-
-				}
-
 			}
 			else if (fnc == "RunGoldenRecipeUnitCompleted")
 			{
@@ -1539,15 +1367,15 @@ void VisionApp::connectSignalAndSlot()
 
 	//TemplateLibraryTab
 	connect(ui.actionAdd_Vision_Object_as_Default_Template, SIGNAL(triggered()), this, SLOT(setVisionObjectAsDefaultTemplate()));
-	connect(_templateLibraryTab, SIGNAL(updateVisionObjectTemplate(AlgoGraph*)), this, SLOT(updateVisionObjectTemplate(AlgoGraph*)));
-	connect(_templateLibraryTab, SIGNAL(updateVisionObjectSize(AlgoGraph*)), this, SLOT(updateVisionObjectSize(AlgoGraph*)));
-	connect(_templateLibraryTab, SIGNAL(updateVisionObjectColor(AlgoGraph*)), this, SLOT(updateVisionObjectColor(AlgoGraph*)));
+	connect(_templateLibraryTab, SIGNAL(updateVisionObjectTemplate(AlgoTemplate*)), this, SLOT(updateVisionObjectTemplate(AlgoTemplate*)));
+	connect(_templateLibraryTab, SIGNAL(updateVisionObjectSize(AlgoTemplate*)), this, SLOT(updateVisionObjectSize(AlgoTemplate*)));
+	connect(_templateLibraryTab, SIGNAL(updateVisionObjectColor(AlgoTemplate*)), this, SLOT(updateVisionObjectColor(AlgoTemplate*)));
 	connect(_templateLibraryTab, SIGNAL(deleteVisionObjectTemplate(const QString &)), this, SLOT(deleteVisionObjectTemplate(const QString &)));
 	connect(_templateLibraryTab, SIGNAL(showMsg(const QString&, QMessageBox::StandardButtons)), this, SLOT(showMsg(const QString&, QMessageBox::StandardButtons)));
-	connect(_templateLibraryTab, SIGNAL(generateVIDIImages(AlgoGraph*, bool)), this, SLOT(generateVIDIImages(AlgoGraph*, bool)));
-	connect(_templateLibraryTab, SIGNAL(addVisionObjectPadding(AlgoGraph*, int)), this, SLOT(addVisionObjectPadding(AlgoGraph*, int)));
+	connect(_templateLibraryTab, SIGNAL(generateVIDIImages(AlgoTemplate*, bool)), this, SLOT(generateVIDIImages(AlgoTemplate*, bool)));
+	connect(_templateLibraryTab, SIGNAL(addVisionObjectPadding(AlgoTemplate*, int)), this, SLOT(addVisionObjectPadding(AlgoTemplate*, int)));
 	connect(_templateLibraryTab, SIGNAL(editTemplateSignal()), this, SLOT(editTemplate()));
-	connect(_templateLibraryTab, SIGNAL(saveTemplateReferenceImage(AlgoGraph*)), this, SLOT(saveTemplateReferenceImage(AlgoGraph*)));
+	connect(_templateLibraryTab, SIGNAL(saveTemplateReferenceImage(AlgoTemplate*)), this, SLOT(saveTemplateReferenceImage(AlgoTemplate*)));
 	connect(_templateLibraryTab, SIGNAL(signalOpenGoldenRecipeDialog()), this, SLOT(openGoldenRecipeDialog()));
 
 	//ImageViewerTab
@@ -1606,14 +1434,12 @@ void VisionApp::connectSignalAndSlot()
 
 	connect(ui.checkBox_saveDefectVoImg, &QCheckBox::stateChanged, this, [=](int state) {
 		_saveDefectVoImg = (bool)state;
-		_inspectionThread.setsaveDefectVoImg(_saveDefectVoImg);
 		jsonHelper::setJsonValue(_systemObj, "Save_Defect_Vo_Image", _saveDefectVoImg);
 		updateSystemInfo(_systemObj);
 	});
 
 	connect(ui.checkBox_saveDefectRectVoImg, &QCheckBox::stateChanged, this, [=](int state) {
 		_saveDefectRectVoImg = (bool)state;
-		_inspectionThread.setsaveDefectRectVoImg(_saveDefectRectVoImg);
 		jsonHelper::setJsonValue(_systemObj, "Save_Defect_Rect_Vo_Image", _saveDefectRectVoImg);
 		updateSystemInfo(_systemObj);
 	});
@@ -2020,7 +1846,6 @@ void VisionApp::connectSignalAndSlot()
 		this->copyAndPatchRecipe(src, dst);
 		openRecipe("", true);
 
-		startInspectionThread();
 		inspect2D3D();
 		setupProductionDir();
 		//run();
@@ -2048,17 +1873,6 @@ void VisionApp::connectSignalAndSlot()
 	qRegisterMetaType<QHash<QString, ct::UnitResultInfo>>("QHash<QString, ct::UnitResultInfo>");
 
 	//qRegisterMetaType<QVector<ct::DefectResult>>("QVector<ct::DefectResult>");
-	connect(&_inspectionThread, SIGNAL(inspectionDone(QVector<ct::DefectResult>&, QVector<BarcodeDecoderInfo>& )), this, SLOT(inspectionDone(QVector<ct::DefectResult>&, QVector<BarcodeDecoderInfo>& )), Qt::BlockingQueuedConnection);
-	//connect(&_inspectionThread, SIGNAL(runLooping()), this, SLOT(runLooping()), Qt::QueuedConnection);
-	//connect(&_inspectionThread, &InspectionThread::inspectionDone, [=](QVector<ct::DefectResult>& d) { clearBufferQueue(); });
-	connect(&_inspectionThread, SIGNAL(updateInspectionProgressBar()), this, SLOT(updateInspectionProgressBar()), Qt::QueuedConnection);
-	connect(&_inspectionThread, SIGNAL(locatorInfo(QPointF, double, QString, QString, bool, bool)), this, SLOT(locatorInfo(QPointF, double, QString, QString, bool, bool)), Qt::QueuedConnection);
-	connect(&_inspectionThread, SIGNAL(displayLiveImage(QVector<FrameInfo>, QHash<QString, ct::UnitResultInfo>)), this, SLOT(displayLiveImage(QVector<FrameInfo>, QHash<QString, ct::UnitResultInfo>)), Qt::BlockingQueuedConnection);
-	//connect(&_inspectionThread, SIGNAL(displayLiveImage()), this, SLOT(displayLiveImage()), Qt::QueuedConnection);
-	
-	connect(&_inspectionThread, &InspectionThread::locatorInfo, &_jobThread, &JobThread::locatorReceived, Qt::QueuedConnection);
-	connect(&_inspectionThread, &InspectionThread::displayLiveImage, &_jobThread, &JobThread::resultReceived, Qt::QueuedConnection);
-		
 	connect(&_networkPathChecker, SIGNAL(updateConnection(bool)), this, SLOT(updateConnection(bool)));
 
 
@@ -2755,7 +2569,6 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 
 	if (_processType == ProcessType::PRODUCTION) {
 		ct::logger::info("[ImageReady] In image production mode");
-		g_inspectionQueue.push_back(infos);
 	}
 	else if (_processType == ProcessType::IMAGE_COLLECTION) {
 		ct::logger::info("[ImageReady] In image collection mode");
@@ -3890,405 +3703,16 @@ void VisionApp::clearDir(const QString& path)
 
 void VisionApp::editTemplate()
 {
-	if (!QFile::exists("AlgoEditor.exe"))
-	{
-		QMessageBox::warning(this, tr("Missing AlgoEditor"),
-			tr("Unable to edit Template because AlgoEditor.exe is missing. Please install AlgoEditor.exe!!!"));
-		return;
+	//templates now link to the in-app algos; edit them on the Algo Setup page
+	auto tmpl = _templateLibraryTab->currentAlgoTemplate();
+	if (tmpl) {
+		QSignalBlocker sb(ui.comboBox_algoType);
+		ui.comboBox_algoType->setCurrentIndex((int)tmpl->algo());
+		ui.stackedWidget_algoParams->setCurrentIndex((int)tmpl->algo());
+		refreshAlgoLocatorUI();
 	}
-
-	bool roiSelected = false;;
-	for (int i = 0; i < _dragROI.count(); i++)
-	{
-		if (_dragROI.at(i)->isSelected() == true)
-		{
-			auto algoGraph = _dragROI.at(i)->algoGraph();
-			if (algoGraph == nullptr) return;
-			roiSelected = true;
-			break;
-		}
-	}
-	if (!roiSelected)
-	{
-		qDebug() << "no Roi is Selected";
-		return;
-	}
-
-	bool exeEXist = true;
-	LPCWSTR a = L"Algo Editor";
-	if (!EXE_ExistTest(a))
-	{
-
-		exeEXist = false;
-		ShellExecute(NULL, L"open", L"AlgoEditor.exe", NULL, NULL, SW_SHOWDEFAULT);
-	}
-
-	if (!exeEXist)
-	{
-		while (!EXE_ExistTest(a))
-		{
-			Sleep(3000);
-		}
-	}
-
-	QString imgPath = Common::Directory::CachePath + QStringLiteral("EditAgloGraphTemplate");
-	QStringList imgPaths;
-	QStringList viewImgPaths;
-	QStringList lightingNames;
-	QStringList lightingIDs;
-	QString visionObject_id;
-	QStringList voRects;
-	QStringList setupFallbackOptics;   // optics whose current 2D was missing and fell back to the setup image
-	QString AlgoGraphJsonPath = Common::Directory::CachePath + "AlgoGraph.json";
-	QString message = "VisionApp|AlgoEditor|EditAlgoGraphTemplate|";
-	QString hideAlgoEditor = "VisionApp|AlgoEditor|HideAlgoEditor|EXE";
-	QString clearDragBox = "VisionApp|AlgoEditor|ClearDragBox|EXE";
-
-	bool noImage = true;
-	for (int i = 0; i < _dragROI.count(); i++)
-	{
-		if (_dragROI.at(i)->isSelected() == true)
-		{
-			if (!_dragROI[i]->algoGraph()) continue;
-			_dragROI[i]->algoGraph()->saveGraph(AlgoGraphJsonPath);
-			auto vo = _visionObject.find(_dragROI[i]->getId());
-
-			auto x = vo.value().rect.x();
-			auto y = vo.value().rect.y();
-			auto w = vo.value().rect.width();
-			auto h = vo.value().rect.height();
-
-
-			auto viewID = vo.value().viewID;
-
-			if (!_views.contains(viewID)) {
-				ct::logger::error("[JobThread] Failed to edit template. Invalid view ID: %s", viewID.toStdString().c_str());
-				continue;
-			}
-
-			auto iView = _views.find(viewID);
-			if (iView == _views.end())
-			{
-
-				_ctClient->sendCommand(hideAlgoEditor);
-				QMessageBox::warning(this, tr("Missing View"),
-					tr("Vision Object does not belong to any views!!! Please assign a view to the Vision Object."));
-				return;
-			}
-			auto view = iView.value();
-
-			qDebug() << "mainOptics:" << _mainOptics[_camID].name;
-
-			for (const auto& optics : _recipeOptics) {
-				// optics is of type OpticsInfo
-				// Use optics.whatever...
-				qDebug() << "recipe optics:" << optics.name;
-			}
-
-			auto ipf = path::getViewPath(Common::Directory::CurrentImageSetPath.toStdString(), view, _mainOptics[_camID], _recipeOptics);
-
-			QHash<QString, QString> viewPaths = ipf.getAllOpticPaths(ui.lineEdit_currentImageIndex->text());
-			QHash<QString, QString>::const_iterator viewPath = viewPaths.constBegin();
-			while (viewPath != viewPaths.constEnd())
-			{
-				bool loadSuccess = false;
-
-
-				QString vPath = util::convert_to_BMP_ext(viewPath.value());
-				ct::logger::info("editTemplate viewID: %s", vPath.toStdString().c_str());
-
-				// Fallback: if the current 2D image for this optic is missing, use this optic's
-				// persistent setup image instead. Resolve it via the same path helper that saved it
-				// (probing a few index variants) so it works regardless of the setup filename convention.
-				bool usedSetupImage = false;
-				if (!QFileInfo::exists(vPath))
-				{
-					auto setupIpf = path::getViewPath(Common::Directory::getRecipeSetupImagePath().toStdString(),
-						view, _mainOptics[_camID], _recipeOptics);
-					QStringList setupIndices;
-					setupIndices << ui.lineEdit_currentImageIndex->text() << "" << "R0C0";
-					for (const QString& setupIdx : setupIndices)
-					{
-						QHash<QString, QString> setupPaths = setupIpf.getAllOpticPaths(setupIdx);
-						if (!setupPaths.contains(viewPath.key())) continue;
-						QString setupPath = setupPaths.value(viewPath.key());
-						QString setupBmp = util::convert_to_BMP_ext(setupPath);
-						if (QFileInfo::exists(setupBmp)) { vPath = setupBmp; usedSetupImage = true; break; }
-						if (QFileInfo::exists(setupPath)) { vPath = setupPath; usedSetupImage = true; break; }
-					}
-					if (usedSetupImage)
-					{
-						QString optName = _recipeOptics.contains(viewPath.key())
-							? _recipeOptics[viewPath.key()].name : viewPath.key();
-						setupFallbackOptics.append(optName);
-						ct::logger::info("editTemplate: current 2D missing for %s - using setup image %s",
-							optName.toStdString().c_str(), vPath.toStdString().c_str());
-					}
-				}
-
-				//QString voImgPath = imgPath + "_" + viewPath.key() + g_imgExtension;
-				QString voImgPath = imgPath + "_" + viewPath.key() + ".bmp";
-				imgPaths.append(voImgPath);
-
-				//add view imgPaths;
-				viewImgPaths.append(viewPath.value());
-
-				if (QFileInfo::exists(vPath)) loadSuccess = true;
-				if (loadSuccess)
-				{
-					MIL_ID img = M_NULL;
-					MIL_INT sizeX = 0, sizeY = 0, bandSize = 0;
-					MbufDiskInquireA(vPath.toStdString().c_str(), M_SIZE_BAND, &bandSize);
-					MbufDiskInquireA(vPath.toStdString().c_str(), M_SIZE_X, &sizeX);
-					MbufDiskInquireA(vPath.toStdString().c_str(), M_SIZE_Y, &sizeY);
-
-					if (bandSize == 1) MbufAlloc2d(M_DEFAULT_HOST, sizeX, sizeY, 8 + M_UNSIGNED, M_IMAGE + M_PROC, &img);
-					else MbufAllocColor(M_DEFAULT_HOST, 3, sizeX, sizeY, 8 + M_UNSIGNED, M_IMAGE + M_PROC, &img);
-
-					MIL_INT imgType = M_JPEG_LOSSY;
-					if (util::isPNG(vPath)) imgType = M_PNG;
-					if (util::isBMP(vPath)) imgType = M_BMP;
-					MbufImportA(vPath.toStdString().c_str(), imgType, M_LOAD, M_DEFAULT_HOST, &img);
-
-					//add vo imgPaths;
-
-
-					//add lighting IDs
-					lightingIDs.append(viewPath.key());
-
-					//add LightingNames
-					QString lightingName = "";
-					if (_recipeOptics.contains(viewPath.key())) lightingName = _recipeOptics[viewPath.key()].name;
-					if (!lightingName.isEmpty()) lightingNames.append(lightingName);
-
-					//save Images
-					noImage = false;
-					//if image exist
-					QRectF FOVdragRoirect = ScaleManager::instance().world_to_fov(_dragROI.at(i)->getGeometry());
-					qDebug() << "worldGeometry:" << _dragROI.at(i)->getGeometry();
-					qDebug() << "viewID:" << view.name;
-					qDebug() << "FOVdragRoirect.x():" << FOVdragRoirect.x() << " FOVdragRoirect.y():" << FOVdragRoirect.y();
-					qDebug() << "width:" << FOVdragRoirect.width() << "height:" << FOVdragRoirect.height();
-
-					QPointF fovView = { 0,0 };
-					if (g_viewMode == int(ViewMode::PLANE)) fovView = ScaleManager::instance().to_fov_px(view);
-
-					auto ix = vo.value().rect.x() - fovView.x();
-					auto iy = vo.value().rect.y() - fovView.y();
-					auto iw = vo.value().rect.width();
-					auto ih = vo.value().rect.height();
-
-					QRect cropCoordinates = QRect(ix, iy, iw, ih);
-					qDebug() << "EditTemplateRect:" << cropCoordinates;
-
-					QString voRectString = QString::number(cropCoordinates.x()) + "_" + QString::number(cropCoordinates.y()) + "_"
-						+ QString::number(cropCoordinates.width()) + "_" + QString::number(cropCoordinates.height());
-					voRects.append(voRectString);
-					MIL_ID milCropped = MbufChild2d(img, cropCoordinates.x(), cropCoordinates.y(), cropCoordinates.width(), cropCoordinates.height(), M_NULL);
-
-					MbufExportA(voImgPath.toStdString().c_str(), M_BMP, milCropped);
-
-					MbufFree(milCropped);
-					MbufFree(img);
-
-				}
-				else
-				{
-					//if no img is found
-					QRectF FOVrect = ScaleManager::instance().world_to_fov(_dragROI.at(i)->getGeometry());
-					auto cropped = _pixmapMain.copy(x, y, w, h);
-					auto scaledCropped = cropped.scaled(FOVrect.width(), FOVrect.height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-					scaledCropped.save(voImgPath);
-				}
-
-
-				viewPath++;
-			}
-
-			//i3d: Cache heightmaps
-			//HARDCODE:
-			if (!_dragROI[i]->lineScanID().isEmpty())
-			{
-				std::vector<std::string> postfixes;
-				postfixes.push_back("IMap");
-				for (const auto& o : _recipeOptics3D) {
-
-					if (o.exposureMode == ct::s_parallel) {
-						postfixes.push_back("HeightMap_" + o.id.toStdString() + "E1");
-						postfixes.push_back("HeightMap_" + o.id.toStdString() + "E2");
-					}
-					else {
-						postfixes.push_back("HeightMap_" + o.id.toStdString());
-					}
-				}
-
-				for (auto pf : postfixes) {
-					QString postfix = pf.c_str();
-					QString ext = ".tiff";
-					MIL_INT64 fileFormat = M_TIFF;
-
-					if (postfix == "IMap") {
-						ext = ".jpg";
-						fileFormat = M_JPEG_LOSSY;
-					}
-
-					if (_lineScans.contains(_dragROI[i]->lineScanID())) {
-						auto l = _lineScans.find(_dragROI[i]->lineScanID());
-
-						auto path = Common::Directory::CurrentImageSetPath.toStdString() + l->id.toStdString() + "_" + postfix.toStdString() + ext.toStdString();
-						ct::logger::debug("Path: %s", path.c_str());
-
-						if (QFileInfo::exists(path.c_str()))
-						{
-							auto mBuf = MbufRestoreA(path.c_str(), M_DEFAULT_HOST, M_NULL);
-							mtrx::BufferCollector bc(mBuf);
-							double mBuf_w = mtrx::get_width(mBuf);
-							double mBuf_h = mtrx::get_height(mBuf);
-
-							if (mBuf) {
-								QRectF FOVdragRoirect = ScaleManager::instance().world_to_fov(_dragROI.at(i)->getGeometry());
-
-								QPointF fovLine;
-
-								if (l.value().type == ct::s_stitch_linescan) {
-									for (auto& childL : _lineScans) {
-										if (childL.map_to_slinescan == l.value().id) {
-											if (childL.id.contains("-0")) {
-
-												fovLine = ScaleManager::instance().to_fov_px(childL);
-											}
-										}
-									}
-								}
-								else {
-									fovLine = ScaleManager::instance().to_fov_px(l.value());
-								}
-
-								auto ix = vo.value().rect.x() - fovLine.x();
-								auto iy = vo.value().rect.y() - fovLine.y();//TJ_SmartRay fovLine.y()+550 (removed)
-								auto iw = vo.value().rect.width();
-								auto ih = vo.value().rect.height();
-
-								qDebug() << "FOVDrag: " << FOVdragRoirect;
-								qDebug() << "FovLine: " << fovLine;
-								ct::logger::info("[EditTemplate] Line scan child ROI: %f, %f, %f, %f", ix, iy, iw, ih);
-								ct::logger::info("[EditTemplate] Mbuf width height: %f, %f", mBuf_w, mBuf_h);
-
-								//QRect cropCoordinates = QRect(ix, iy, iw, ih);
-
-								//if ((ix + iw) > mBuf_w) ix = (int)(ix - ((ix + iw) - mBuf_w));
-								//if ((iy + ih) > mBuf_h) iy = (int)(iy - ((iy + ih) - mBuf_h));
-								//if (ix < 0) ix = 0;
-								//if (iy < 0) iy = 0;
-
-								//ct::logger::info("[EditTemplate] Line scan child ROI after cap: %f, %f, %f, %f", ix, iy, iw, ih);
-
-								//auto mCrop = MbufChild2d(mBuf, ix, iy, iw, ih, M_NULL);
-
-								MIL_INT i_ix = (MIL_INT)ix;
-								MIL_INT i_iy = (MIL_INT)iy;
-								MIL_INT i_iw = (MIL_INT)iw;
-								MIL_INT i_ih = (MIL_INT)ih;
-								MIL_INT i_bufW = (MIL_INT)mBuf_w;
-								MIL_INT i_bufH = (MIL_INT)mBuf_h;
-
-								MIL_INT validX = std::max<MIL_INT>(0, i_ix);
-								MIL_INT validY = std::max<MIL_INT>(0, i_iy);
-								MIL_INT validRight = std::min<MIL_INT>(i_ix + i_iw, i_bufW);
-								MIL_INT validBottom = std::min<MIL_INT>(i_iy + i_ih, i_bufH);
-
-								MIL_INT copyW = validRight - validX;
-								MIL_INT copyH = validBottom - validY;
-
-								MIL_ID mCrop = M_NULL;
-								auto type = mtrx::get_type(mBuf);
-								MbufAlloc2d(M_DEFAULT_HOST, i_iw, i_ih, type + M_UNSIGNED, M_IMAGE + M_PROC, &mCrop);
-
-								MbufClear(mCrop, 0.0);
-
-
-								if (copyW > 0 && copyH > 0)
-								{
-
-									MIL_ID hSrcChild = M_NULL;
-									MbufChild2d(mBuf, validX, validY, copyW, copyH, &hSrcChild);
-
-
-									MIL_INT dstX = validX - i_ix;
-									MIL_INT dstY = validY - i_iy;
-
-									MIL_ID hDstChild = M_NULL;
-									MbufChild2d(mCrop, dstX, dstY, copyW, copyH, &hDstChild);
-
-
-									MbufCopy(hSrcChild, hDstChild);
-
-									MbufFree(hSrcChild);
-									MbufFree(hDstChild);
-								}
-
-								// Keep cropCoordinates correct for your metadata string later
-								QRect cropCoordinates = QRect(i_ix, i_iy, i_iw, i_ih);
-
-
-								mtrx::BufferCollector bc1(mCrop);
-
-								//if (postfix == "IMap") ext = ".jpg";
-								auto cachePath = imgPath + "_" + postfix + ext;
-								if (postfix != "IMap") {
-									imgPaths.append(cachePath);
-									lightingIDs.append(postfix);
-									lightingNames.append(postfix);
-
-									//add view imgPaths;
-									viewImgPaths.append(path.c_str());
-									QString voRectString = QString::number(cropCoordinates.x()) + "_" + QString::number(cropCoordinates.y()) + "_"
-										+ QString::number(cropCoordinates.width()) + "_" + QString::number(cropCoordinates.height());
-									voRects.append(voRectString);
-								}
-
-								MbufExportA(cachePath.toStdString().c_str(), fileFormat, mCrop);
-							}
-						}
-						else
-						{
-							ct::logger::error("[EditTemplate] Line scan image do not exist: %s", path.c_str());
-						}
-
-					}
-
-				}
-			}
-
-			visionObject_id = vo.value().objectID;
-			break;
-		}
-	}
-
-
-	qDebug() << "END noImage: " << noImage;
-	QString imageStatus;
-	if (noImage) imageStatus = "NoImageExist";
-	else if (!setupFallbackOptics.isEmpty()) imageStatus = "SetupImageExist"; // fell back to setup image for 2D
-	else imageStatus = "ImageExist";
-	message = message + AlgoGraphJsonPath + "|" + imgPaths.join(",") + "|" + Common::Directory::CurrentRecipe + "|" + visionObject_id + "|" + lightingIDs.join(",") + "|" + lightingNames.join(",") + "|" + imageStatus +
-		"|" + viewImgPaths.join(",") + "|" + voRects.join(",");
-
-	_ctClient->sendCommand(message);
-
-	hideExe();
-}
-
-void VisionApp::updateTemplate(QString & algoGraphFilePath)
-{
-	AlgoGraph algoGraph;
-	algoGraph.loadGraph(algoGraphFilePath);
-
-	auto s = algoGraph.templateId();
-	auto a = _templateLibraryTab->getAlgoGraph(s);
-	a->loadGraph(algoGraphFilePath);
-
-	_templateLibraryTab->saveTemplateList();
+	toPage(UIPage::ALGO_SETUP);
+	updateAlgoRoiVisibility();
 }
 
 void VisionApp::findVisionObject()
@@ -4489,7 +3913,6 @@ void VisionApp::stopRun(bool clearInspQueue)
 
 	if(clearInspQueue) _inspQueue = {};
 
-	_inspectionThread.stopRun();
 
 	ct::logger::info("Force stop success");
 }
@@ -4525,9 +3948,7 @@ void VisionApp::runOffline()
 	}
 
 	//g_prevEmaVolumeByGroup.clear();
-	g_runningMeanMap.clear();
 	//Set machine mode
-	_inspectionThread.setCountMode(InspectionThread::CountMode::VIEW);
 	_processType = ProcessType::PRODUCTION;
 
 	_fid_image.clear();
@@ -4557,7 +3978,6 @@ void VisionApp::runOffline()
 	inspStatus.productionMode = false;
 	inspStatus.inspectionStartTime = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
 	_inspStatus = inspStatus;
-	readTemplateCadRoiInfos();
 	readDefectPriorityList();
 	if (!loadProductionInfoJson())
 	{
@@ -4624,25 +4044,8 @@ void VisionApp::runOffline()
 	
 
 	//setup InspectionThread
-	_templateLibraryTab->loadAlgoGraphListMask();
-	_templateLibraryTab->reloadAlgoGraphListMetaData();
-	_inspectionThread.setAlgo(&_algo);
-	_inspectionThread.setViews(_views);
-	_inspectionThread.setHeightMap(_lineScans);
-	_inspectionThread.setVisionObject(_visionObject);
-	_inspectionThread.setVisionAppDragBox(_dragROI);
-	_inspectionThread.clearLocatorResults();
-	_inspectionThread.clearAllOpticsInfos_2D3D();
-	_inspectionThread.setPlaneOffset(wpx);
-	_inspectionThread.setCadRoiInfos(_templateCadRoiInfos);
-	_inspectionThread.setDefectPriorityList(_defectPriorityList,_tagNameHash, _defectMappingHash);
-	_inspectionThread.setOpticInfos(_mainOptics[_camID], _recipeOptics, _recipeOptics3D);
-	_inspectionThread.setEnableImagePreprocess(_enablePreProcessImg);
-	_inspectionThread.setDryRunFlag(_dryRun);
-	_inspectionThread.setCamChannel(CAMManager::instance().getChannel(_camID));
-	_inspectionThread.setSegmentationSettings(ui.checkBox_loadSegmentationModel->isChecked(),ui.lineEdit_segmentationScore->text().toDouble());
-	_inspectionThread.setIsOffline(true);
-	_inspectionThread.setSaveBMPImg(ui.checkBox_EnableSaveBMPFormat->isChecked());
+	_templateLibraryTab->loadAlgoTemplateListMask();
+	_templateLibraryTab->reloadAlgoTemplateListMetaData();
 	_pInspectionInfo->_isCollectImage = jsonHelper::getBool(_systemObj, QStringLiteral("Save_Inspection_Image"));
 
 	qDebug() << "total Num of Views:" << getNumOfViewToProcess(_datasetIndexIds);
@@ -4669,7 +4072,6 @@ void VisionApp::runOffline()
 	g_forceStopInspLoop = false;
 
 	//start InspectionThread
-	_inspectionThread.startScanInspBufferQueue(1);
 	//insert Images
 
 	int progressBarValue = getNumOfViewToProcess(_datasetIndexIds) * 2;
@@ -4790,7 +4192,6 @@ void VisionApp::load_2dOffline_image()
 				imgPath++;
 			}
 
-			g_inspectionQueue.push_back(IInfos);
 
 			_progressValue++;
 			if (_progressDialog)_progressDialog->setValue(_progressValue);
@@ -4890,7 +4291,6 @@ void VisionApp::load_2dOffline_image_parallel()
 		// Push into inspection queue safely
 #pragma omp critical
 		{
-			g_inspectionQueue.push_back(threadInfos);
 			_progressValue++;
 
 			if (_progressDialog) {
@@ -5037,7 +4437,6 @@ void VisionApp::load_3dOffline_image()
 
 		if (IInfos.size() > 0)
 		{
-			g_inspectionQueue.push_back(IInfos);
 			_progressValue++;
 			if (_progressDialog)_progressDialog->setValue(_progressValue);
 		}		
@@ -5164,8 +4563,7 @@ void VisionApp::load_3dOffline_image_parallel(QHash <QString, QLineScan> linesca
 		{
 			if (threadInfos.size() > 0)
 			{
-				g_inspectionQueue.push_back(threadInfos);
-				_progressValue++;
+					_progressValue++;
 
 				if (_progressDialog) {
 					QMetaObject::invokeMethod(_progressDialog, "setValue", Qt::QueuedConnection,
@@ -5255,7 +4653,6 @@ void VisionApp::loadImagesForOfflineInspection(QHash <QString, QLineScan> linesc
 void VisionApp::GenerateVidiWorkspaceInfo()
 {
 	//BYPASS VIDI
-	_inspectionThread.setOpticInfos(_mainOptics[_camID], _recipeOptics, _recipeOptics3D);
 	SetEvent(_appEvents.getEvent(std::string("GenerateVidiWorkspaceInfo")));
 
 	WaitForSingleObject(_appEvents.getEvent(std::string("VidiNodeReturn")), INFINITE);
@@ -5290,91 +4687,7 @@ void VisionApp::openVidiWorkSpace()
 void VisionApp::closeVidiWorkSpace()
 {
 	//BYPASS VIDI
-	_inspectionThread.closeVidiWorkSpace();
 	//BYPASS VIDI
-}
-
-void VisionApp::startInspectionThread()
-{
-	ct::logger::info("Trigger start inspection thread");
-
-	//g_prevEmaVolumeByGroup.clear();
-	g_runningMeanMap.clear();
-
-	int lightingCount = 0;
-	auto optics = _recipeOptics.constBegin();
-	while (optics != _recipeOptics.constEnd())
-	{
-		if (optics.value().type == ct::s_color && CAMManager::instance().getChannel(_camID) == 1) lightingCount = lightingCount + 3;
-		else lightingCount++;
-		optics++;
-	}
-
-	int viewCount = _views.count();
-	if (ui.checkBox_runOneFOVonly->isChecked()) viewCount = 1;
-
-	clearAllDrawings();
-	QPointF wpx = ScaleManager::instance().to_world_px(QPointF(_plane.corner_points[(int)Corner::FRONTLEFT].wx, _plane.corner_points[(int)Corner::FRONTLEFT].wy));
-
-	g_time.reset_timer();
-
-
-
-	//readEmap();
-	for (auto& vo : _visionObject)
-	{
-		vo.skip = false;
-		vo.voBarcode = "";
-		vo.voBarcodeName = "";
-		vo.localBarcode = "";
-
-	}
-	if (_enableVisionObjectSampling) visionObjectSampling();
-	
-
-	readTemplateCadRoiInfos();
-	readDefectPriorityList();
-	//setup
-	_templateLibraryTab->loadAlgoGraphListMask();
-	_templateLibraryTab->reloadAlgoGraphListMetaData();
-
-	_inspectionThread.setAlgo(&_algo);
-	_inspectionThread.setViews(_views);
-	_inspectionThread.setHeightMap(_lineScans);
-	_inspectionThread.setVisionObject(_visionObject);
-	_inspectionThread.setVisionAppDragBox(_dragROI);
-	_inspectionThread.clearLocatorResults();
-	_inspectionThread.clearAllOpticsInfos_2D3D();
-	_inspectionThread.setPlaneOffset(wpx);
-	_inspectionThread.setCadRoiInfos(_templateCadRoiInfos);
-	//_inspectionThread.loadComponentCadTypeLibrary();
-	_inspectionThread.setDefectPriorityList(_defectPriorityList, _tagNameHash, _defectMappingHash);
-	_inspectionThread.setOpticInfos(_mainOptics[_camID], _recipeOptics, _recipeOptics3D);
-	_inspectionThread.setEnableImagePreprocess(_enablePreProcessImg);
-	_inspectionThread.setDryRunFlag(_dryRun);
-	_inspectionThread.setCamChannel(CAMManager::instance().getChannel(_camID));
-	_inspectionThread.setSegmentationSettings(ui.checkBox_loadSegmentationModel->isChecked(), ui.lineEdit_segmentationScore->text().toDouble());
-	_inspectionThread.setIsOffline(false);
-	_inspectionThread.setSaveBMPImg(ui.checkBox_EnableSaveBMPFormat->isChecked());
-	_pInspectionInfo->_isCollectImage = jsonHelper::getBool(_systemObj, QStringLiteral("Save_Inspection_Image"));
-
-	if (ui.checkBox_runOneFOVonly->isChecked()) {
-		if (_enable2D && _enable3D) g_viewIndex = 1 + _recipeOptics3D.size();
-		else if (_enable2D) g_viewIndex = 1;
-		else if (_enable3D) g_viewIndex = _recipeOptics3D.size();
-	}
-	else {
-		if (_enable2D && _enable3D) g_viewIndex = getNumOfViewToProcess() + getNumOfLineScanToProcess();
-		else if (_enable2D) g_viewIndex = getNumOfViewToProcess();
-		else if (_enable3D) g_viewIndex = getNumOfLineScanToProcess();
-		//g_viewIndex--;
-	}
-
-	g_forceStopInspLoop = false;
-
-	//start InspectionThread
-	_inspectionThread.stopRun();
-	_inspectionThread.startScanInspBufferQueue(0);
 }
 
 void VisionApp::resetResult()
@@ -6260,14 +5573,12 @@ VisionApp::~VisionApp()
 			_pGraphicsSceneMain->removeItem(_pPixmapItemMain);
 		}
 	}
-	_templateLibraryTab->releaseAlgoGraphs();
+	_templateLibraryTab->releaseAlgoTemplates();
 	if (_camAlpha) delete[] _camAlpha; _camAlpha = nullptr;
 	
 
 
 	//Release qthreads
-	_inspectionThread.stopRun();
-	_inspectionThread.release();
 	_imageManager.release();
 	_jobThread.release();
 	mtrx::MPM::instance().release_pools();
@@ -6277,7 +5588,7 @@ VisionApp::~VisionApp()
 	//Release algo
 	udpateRecipeVersion(Common::Directory::getRecipeCurrentPath());
 	vips_shutdown();
-	_algo.release();
+	_algo.release(); //buffers + MIL application/host system
 
 	MachineController::instance().release();
 	MotionController::instance().release(_motionID);
@@ -8442,8 +7753,8 @@ void VisionApp::setVisionObjectAsDefaultTemplate()
 			QString id = _templateLibraryTab->currentTemplateId();
 			QString name = _templateLibraryTab->currentTemplateName();
 			QColor color = _templateLibraryTab->currentTemplateColor();
-			AlgoGraph* algoGraph = _templateLibraryTab->currentAlgoGraph();
-			if (algoGraph == nullptr)
+			AlgoTemplate* algoTemplate = _templateLibraryTab->currentAlgoTemplate();
+			if (algoTemplate == nullptr)
 			{
 				QMessageBox::warning(this, tr("Error setting default template."),
 					tr("Please create a template in Template Library Tab."));
@@ -8461,23 +7772,23 @@ void VisionApp::setVisionObjectAsDefaultTemplate()
 			qDebug() << "imageFileRelativePath:" << imageFileRelativePath;
 			_templateLibraryTab->setTemplateImagePath(id, imageFileRelativePath, size);
 
-			_dragROI[i]->algoGraph(algoGraph);
+			_dragROI[i]->algoTemplate(algoTemplate);
 
 			_dragROI[i]->setBorderColor(color);
 
 			auto vo = _visionObject.value(_dragROI[i]->getId());
 
-			if (algoGraph == nullptr)
+			if (algoTemplate == nullptr)
 			{
 				qDebug() << "Algograph is nullptr";
 			}
-			vo.templateID = algoGraph->templateId();
+			vo.templateID = algoTemplate->templateId();
 
-			vo.templateName = algoGraph->templateName();
+			vo.templateName = algoTemplate->templateName();
 
 			_visionObject.insert(_dragROI[i]->getId(), vo);
 
-			updateVisionObjectSize(algoGraph);
+			updateVisionObjectSize(algoTemplate);
 			break;
 
 		}
@@ -8490,25 +7801,25 @@ void VisionApp::deleteVisionObjectTemplate(const QString & templateId)
 {
 	for (int i = 0; i < _dragROI.size(); i++)
 	{
-		if (_dragROI[i]->algoGraph() == nullptr) continue;
+		if (_dragROI[i]->algoTemplate() == nullptr) continue;
 
-		if (_dragROI[i]->algoGraph()->templateId() == templateId)
+		if (_dragROI[i]->algoTemplate()->templateId() == templateId)
 		{
 			_dragROI[i]->setBorderColor(Qt::white);
-			_dragROI[i]->algoGraph(nullptr);
+			_dragROI[i]->algoTemplate(nullptr);
 			_dragROI[i]->update();
 		}
 	}
 }
 
-void VisionApp::updateVisionObjectTemplate(AlgoGraph* algoGraph)
+void VisionApp::updateVisionObjectTemplate(AlgoTemplate* algoTemplate)
 {
-	if (algoGraph == nullptr) return;
+	if (algoTemplate == nullptr) return;
 
-	bool uniform = algoGraph->uniformBox();
+	bool uniform = algoTemplate->uniformBox();
 	uniform = true;
-	QSize size(algoGraph->w(), algoGraph->h());
-	QColor color(algoGraph->color());
+	QSize size(algoTemplate->w(), algoTemplate->h());
+	QColor color(algoTemplate->color());
 
 	//check if VisionObject Size is same as template or not
 	bool visionObjectResizeFlag = false;
@@ -8560,12 +7871,12 @@ void VisionApp::updateVisionObjectTemplate(AlgoGraph* algoGraph)
 				}
 			}
 
-			_dragROI[i]->algoGraph(algoGraph);
+			_dragROI[i]->algoTemplate(algoTemplate);
 			_dragROI[i]->setBorderColor(color);
 
 			auto vo = _visionObject.value(_dragROI[i]->getId());
-			vo.templateID = algoGraph->templateId();
-			vo.templateName = algoGraph->templateName();
+			vo.templateID = algoTemplate->templateId();
+			vo.templateName = algoTemplate->templateName();
 			_visionObject.insert(_dragROI[i]->getId(), vo);
 
 			if (includeVisionObject_into_View(_dragROI[i]), true)
@@ -8587,14 +7898,14 @@ void VisionApp::updateVisionObjectTemplate(AlgoGraph* algoGraph)
 	saveRecipe();
 }
 
-void VisionApp::updateVisionObjectSize(AlgoGraph * algoGraph)
+void VisionApp::updateVisionObjectSize(AlgoTemplate * algoTemplate)
 {
-	if (algoGraph == nullptr) return;
+	if (algoTemplate == nullptr) return;
 
-	bool uniform = algoGraph->uniformBox();
+	bool uniform = algoTemplate->uniformBox();
 	uniform = true;
-	QSize size(algoGraph->w(), algoGraph->h());
-	QColor color(algoGraph->color());
+	QSize size(algoTemplate->w(), algoTemplate->h());
+	QColor color(algoTemplate->color());
 	qDebug() << "updateVisionObjectSIze:" << size;
 	//check if VisionObject Size is same as template or not
 	bool visionObjectResizeFlag = false;
@@ -8602,9 +7913,9 @@ void VisionApp::updateVisionObjectSize(AlgoGraph * algoGraph)
 	{
 		for (int i = 0; i < _dragROI.size(); i++)
 		{
-			if (_dragROI[i]->algoGraph() != nullptr)
+			if (_dragROI[i]->algoTemplate() != nullptr)
 			{
-				if (_dragROI[i]->algoGraph()->templateId() == algoGraph->templateId())
+				if (_dragROI[i]->algoTemplate()->templateId() == algoTemplate->templateId())
 				{
 					QRectF FOVroi = ScaleManager::instance().world_to_fov(_dragROI[i]->getGeometry());
 					double w = FOVroi.width();
@@ -8629,9 +7940,9 @@ void VisionApp::updateVisionObjectSize(AlgoGraph * algoGraph)
 	bool roiIncluded_into_ViewFlag = false;
 	for (int i = 0; i < _dragROI.size(); i++)
 	{
-		if (_dragROI[i]->algoGraph())
+		if (_dragROI[i]->algoTemplate())
 		{
-			if (_dragROI[i]->algoGraph()->templateId() == algoGraph->templateId())
+			if (_dragROI[i]->algoTemplate()->templateId() == algoTemplate->templateId())
 			{
 				if (visionObjectResizeFlag)
 				{
@@ -8650,13 +7961,13 @@ void VisionApp::updateVisionObjectSize(AlgoGraph * algoGraph)
 					}
 				}
 
-				_dragROI[i]->algoGraph(algoGraph);
+				_dragROI[i]->algoTemplate(algoTemplate);
 				_dragROI[i]->setBorderColor(color);
 
 
 				auto vo = _visionObject.value(_dragROI[i]->getId());
-				vo.templateID = algoGraph->templateId();
-				vo.templateName = algoGraph->templateName();
+				vo.templateID = algoTemplate->templateId();
+				vo.templateName = algoTemplate->templateName();
 				_visionObject.insert(_dragROI[i]->getId(), vo);
 
 				if (includeVisionObject_into_View(_dragROI[i]), true)
@@ -8679,41 +7990,41 @@ void VisionApp::updateVisionObjectSize(AlgoGraph * algoGraph)
 	saveRecipe();
 }
 
-void VisionApp::updateVisionObjectColor(AlgoGraph * algoGraph)
+void VisionApp::updateVisionObjectColor(AlgoTemplate * algoTemplate)
 {
-	if (algoGraph == nullptr) return;
+	if (algoTemplate == nullptr) return;
 
 	for (int i = 0; i < _dragROI.size(); i++)
 	{
-		if (_dragROI[i]->algoGraph() == algoGraph)
+		if (_dragROI[i]->algoTemplate() == algoTemplate)
 		{
-			_dragROI[i]->setBorderColor(algoGraph->color());
+			_dragROI[i]->setBorderColor(algoTemplate->color());
 		}
 	}
 }
 
 //need to improve to crop and generate multiple images
-void VisionApp::generateVIDIImages(AlgoGraph * algoGraph, bool enablePreprocess)
+void VisionApp::generateVIDIImages(AlgoTemplate * algoTemplate, bool enablePreprocess)
 {
-	if (algoGraph == nullptr) return;
+	if (algoTemplate == nullptr) return;
 
-	bool algoGraphUsed = false;;
+	bool algoTemplateUsed = false;;
 	QVector<QString> viewIDs;
 	for (int i = 0; i < _dragROI.size(); i++)
 	{
-		if (_dragROI[i]->algoGraph() == algoGraph)
+		if (_dragROI[i]->algoTemplate() == algoTemplate)
 		{
-			algoGraphUsed = true;
+			algoTemplateUsed = true;
 			QString viewID = _visionObject.value(_dragROI[i]->getId()).viewID;
 			if (!viewIDs.contains(viewID)) viewIDs.append(viewID);
 		}
 	}
 
-	if (algoGraphUsed)
+	if (algoTemplateUsed)
 	{
 		uidGenerator idGen;
 		QString folderID = idGen.id().c_str();
-		QString vidiImageTemplatePath = Common::Directory::getRecipeVidiImagePath() + algoGraph->templateId() + "\\";
+		QString vidiImageTemplatePath = Common::Directory::getRecipeVidiImagePath() + algoTemplate->templateId() + "\\";
 		Common::Directory::createDir(vidiImageTemplatePath);
 		QString vidiImagePath = vidiImageTemplatePath + folderID + "\\";
 		Common::Directory::createDir(vidiImagePath);
@@ -8747,8 +8058,8 @@ void VisionApp::generateVIDIImages(AlgoGraph * algoGraph, bool enablePreprocess)
 						Common::Directory::createDir(vidiImageOpticPath);
 					}
 
-					QString refImgPath = Common::Directory::getRecipeVidiImagePath() + algoGraph->templateId() + "\\ref_" + optic.value().name + g_imgExtension;
-					QString maskImgPath = Common::Directory::getRecipeVidiImagePath() + algoGraph->templateId() + "\\mask" + g_imgExtension;
+					QString refImgPath = Common::Directory::getRecipeVidiImagePath() + algoTemplate->templateId() + "\\ref_" + optic.value().name + g_imgExtension;
+					QString maskImgPath = Common::Directory::getRecipeVidiImagePath() + algoTemplate->templateId() + "\\mask" + g_imgExtension;
 
 					if (!QFileInfo::exists(refImgPath))
 					{
@@ -8840,10 +8151,6 @@ void VisionApp::generateVIDIImages(AlgoGraph * algoGraph, bool enablePreprocess)
 			}
 
 
-			//run locator and get offset
-			_algo.releaseBuffer();
-			_algo.loadImages(imageInfos, multiLightingImages, heightImages);
-
 			for (int j = 0; j < _dragROI.size(); j++)
 			{
 				QString viewID = _visionObject.value(_dragROI[j]->getId()).viewID;
@@ -8857,27 +8164,9 @@ void VisionApp::generateVIDIImages(AlgoGraph * algoGraph, bool enablePreprocess)
 					auto w = FOVrect.width();
 					auto h = FOVrect.height();
 
-					//locatorInspection
+					//locator removed with the Algo library - crop at the drawn geometry
 					QPointF offset = { 0,0 };
-					_algo.setCroppedBuffer(QRect(x, y, w, h));
-					auto algoGraph = _dragROI[j]->algoGraph();
-					if (algoGraph)
 					{
-						algoGraph->setAlgoInspector(&_algo);
-						//qDebug() << _visionObject.find(_dragROI[j]->getName()).value().objectName;
-						algoGraph->setVisionObject(&_visionObject.find(_dragROI[j]->getId()).value());
-
-						QString processMsg;
-						QJsonObject processData, vidiRes, odRes;
-
-						QHash<QString, QPointF> offsets;
-						QHash<QString, LocAngle> angles;
-						algoGraph->clearDynamicMaskObjects();
-						algoGraph->clearDefects();
-						algoGraph->processLocator(processMsg, processData, vidiRes, odRes, offsets, angles);
-						if (offsets.size() > 0) offset = offsets.begin().value();
-						
-
 						auto newX = x + offset.x();
 						auto newY = y + offset.y();
 						if (newX < 0) newX = 0;
@@ -8958,9 +8247,9 @@ void VisionApp::generateVIDIImages(AlgoGraph * algoGraph, bool enablePreprocess)
 	return;
 }
 
-void VisionApp::addVisionObjectPadding(AlgoGraph * algoGraph, int paddingSize)
+void VisionApp::addVisionObjectPadding(AlgoTemplate * algoTemplate, int paddingSize)
 {
-	if (algoGraph == nullptr) return;
+	if (algoTemplate == nullptr) return;
 
 	storeVisionObjectInfo(true);
 
@@ -8970,7 +8259,7 @@ void VisionApp::addVisionObjectPadding(AlgoGraph * algoGraph, int paddingSize)
 	//bool roiIncluded_into_ViewFlag = false;
 	for (int i = 0; i < _dragROI.size(); i++)
 	{
-		if (_dragROI[i]->algoGraph() == algoGraph)
+		if (_dragROI[i]->algoTemplate() == algoTemplate)
 		{
 			double cx = _dragROI[i]->getGeometry().center().x();
 			double cy = _dragROI[i]->getGeometry().center().y();
@@ -8995,30 +8284,30 @@ void VisionApp::addVisionObjectPadding(AlgoGraph * algoGraph, int paddingSize)
 		}
 	}
 
-	/*if (algoGraph->uniformBox())
+	/*if (algoTemplate->uniformBox())
 	{*/
 	auto FOVWidth = ScaleManager::instance().world_to_fov(roiWidth);
 	auto FOVHeight = ScaleManager::instance().world_to_fov(roiHeight);
 
-	auto FOVpaddingSize = (FOVWidth - algoGraph->w()) / 2;
+	auto FOVpaddingSize = (FOVWidth - algoTemplate->w()) / 2;
 
-	algoGraph->w(FOVWidth);
-	algoGraph->h(FOVHeight);
+	algoTemplate->w(FOVWidth);
+	algoTemplate->h(FOVHeight);
 
-	QString imageFilePath = algoGraph->templateImagePath();
-	imageFilePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoGraph->templateImagePath();
-	if (algoGraph->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) imageFilePath = algoGraph->templateImagePath();
+	QString imageFilePath = algoTemplate->templateImagePath();
+	imageFilePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoTemplate->templateImagePath();
+	if (algoTemplate->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) imageFilePath = algoTemplate->templateImagePath();
 	QImage templateImg;
 	if (templateImg.load(imageFilePath))
 	{
-		QImage paddedImage(algoGraph->w(), algoGraph->h(), QImage::Format_RGB32);
+		QImage paddedImage(algoTemplate->w(), algoTemplate->h(), QImage::Format_RGB32);
 		paddedImage.fill(Qt::black); // Fill the image with black color
 
 		QPainter painter(&paddedImage);
 		painter.drawImage(QPoint(FOVpaddingSize, FOVpaddingSize), templateImg);
 		painter.end();
 		paddedImage.save(imageFilePath);
-		_templateLibraryTab->setTemplateImagePath(algoGraph->templateId(), imageFilePath, QSize(algoGraph->w(), algoGraph->h()));
+		_templateLibraryTab->setTemplateImagePath(algoTemplate->templateId(), imageFilePath, QSize(algoTemplate->w(), algoTemplate->h()));
 	}
 	//}
 
@@ -9030,7 +8319,7 @@ void VisionApp::addVisionObjectPadding(AlgoGraph * algoGraph, int paddingSize)
 	saveRecipe();
 }
 
-void VisionApp::saveTemplateReferenceImage(AlgoGraph * templateAlgoGraph)
+void VisionApp::saveTemplateReferenceImage(AlgoTemplate * templateAlgoTemplate)
 {
 	auto msgBox = QMessageBox(QMessageBox::Information, tr("Confirmation"),
 		tr("Saving reference image will overwrite existing reference image!!!\nPress Yes to save.\nPress No to cancel."),
@@ -9047,10 +8336,10 @@ void VisionApp::saveTemplateReferenceImage(AlgoGraph * templateAlgoGraph)
 		{
 			if (_dragROI.at(i)->isSelected() == true)
 			{
-				auto algoGraph = _dragROI[i]->algoGraph();
-				if (algoGraph)
+				auto algoTemplate = _dragROI[i]->algoTemplate();
+				if (algoTemplate)
 				{
-					QString vidiImageTemplatePath = Common::Directory::getRecipeVidiImagePath() + algoGraph->templateId() + "\\";
+					QString vidiImageTemplatePath = Common::Directory::getRecipeVidiImagePath() + algoTemplate->templateId() + "\\";
 					Common::Directory::createDir(vidiImageTemplatePath);
 
 					//create backup folder
@@ -9118,12 +8407,6 @@ void VisionApp::saveTemplateReferenceImage(AlgoGraph * templateAlgoGraph)
 						viewPath++;
 					}
 
-					//run locator and get offset
-					_algo.releaseBuffer();
-
-					QHash<QString, MIL_ID> hash3d;
-					_algo.loadImages(imageInfos, multiLightingImages, hash3d);
-
 					QRectF FOVrect = ScaleManager::instance().world_to_fov(_dragROI[i]->getGeometry());
 					QPointF fovView = { 0,0 }; 
 					if (g_viewMode == int(ViewMode::PLANE)) fovView = ScaleManager::instance().to_fov_px(v);
@@ -9132,21 +8415,8 @@ void VisionApp::saveTemplateReferenceImage(AlgoGraph * templateAlgoGraph)
 					auto w = FOVrect.width();
 					auto h = FOVrect.height();
 
-					//locatorInspection
+					//locator removed with the Algo library
 					QPointF offset = { 0,0 };
-					_algo.setCroppedBuffer(QRect(x, y, w, h));
-
-					algoGraph->setAlgoInspector(&_algo);
-					//qDebug() << _visionObject.find(_dragROI[j]->getName()).value().objectName;
-					algoGraph->setVisionObject(&_visionObject.find(_dragROI[i]->getId()).value());
-
-					QString processMsg;
-					QJsonObject processData;
-
-					//skip Locator
-					/*algoGraph->clearDefects();
-					algoGraph->processLocator(processMsg, processData, offset);*/
-
 					auto newX = x + offset.x();
 					auto newY = y + offset.y();
 
@@ -9639,8 +8909,7 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 		else
 		{
 			_saveDefectVoImg = jsonHelper::getBool(_systemObj, "Save_Defect_Vo_Image", true);
-			_inspectionThread.setsaveDefectVoImg(_saveDefectVoImg);
-			ui.checkBox_saveDefectVoImg->setChecked(_saveDefectVoImg);
+				ui.checkBox_saveDefectVoImg->setChecked(_saveDefectVoImg);
 		}
 
 		if (!systemObj.contains("Save_Defect_Rect_Vo_Image")) {
@@ -9649,8 +8918,7 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 		else
 		{
 			_saveDefectRectVoImg = jsonHelper::getBool(_systemObj, "Save_Defect_Rect_Vo_Image", true);
-			_inspectionThread.setsaveDefectRectVoImg(_saveDefectRectVoImg);
-			ui.checkBox_saveDefectRectVoImg->setChecked(_saveDefectRectVoImg);
+				ui.checkBox_saveDefectRectVoImg->setChecked(_saveDefectRectVoImg);
 		}
 
 		if (!systemObj.contains("Save_Inspection_Image")) {
@@ -10611,23 +9879,23 @@ void VisionApp::grabberReleased(QDragBox * pDragBox)
 {
 	qDebug() << "grabberReleased";
 	auto vo = (VisionAppQDragBox*)pDragBox;
-	auto algoGraph = vo->algoGraph();
-	if (algoGraph)
+	auto algoTemplate = vo->algoTemplate();
+	if (algoTemplate)
 	{
 		auto FOVWidth = ScaleManager::instance().world_to_fov(vo->getGeometry().width());
 		auto FOVHeight = ScaleManager::instance().world_to_fov(vo->getGeometry().height());
-		algoGraph->w(FOVWidth);
-		algoGraph->h(FOVHeight);
+		algoTemplate->w(FOVWidth);
+		algoTemplate->h(FOVHeight);
 
-		QString imageFilePath = algoGraph->templateImagePath();
-		imageFilePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoGraph->templateImagePath();
-		if (algoGraph->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) imageFilePath = algoGraph->templateImagePath();
+		QString imageFilePath = algoTemplate->templateImagePath();
+		imageFilePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoTemplate->templateImagePath();
+		if (algoTemplate->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) imageFilePath = algoTemplate->templateImagePath();
 		QImage templateImg;
 		if (templateImg.load(imageFilePath))
 		{
-			if (templateImg.size().width() < algoGraph->w() && templateImg.size().height() < algoGraph->h())
+			if (templateImg.size().width() < algoTemplate->w() && templateImg.size().height() < algoTemplate->h())
 			{
-				QImage paddedImage(algoGraph->w(), algoGraph->h(), QImage::Format_RGB32);
+				QImage paddedImage(algoTemplate->w(), algoTemplate->h(), QImage::Format_RGB32);
 				paddedImage.fill(Qt::black); // Fill the image with black color
 
 				QPainter painter(&paddedImage);
@@ -10638,14 +9906,14 @@ void VisionApp::grabberReleased(QDragBox * pDragBox)
 			}
 			else
 			{
-				templateImg = templateImg.copy(QRect(0, 0, algoGraph->w(), algoGraph->h()));
+				templateImg = templateImg.copy(QRect(0, 0, algoTemplate->w(), algoTemplate->h()));
 				templateImg.save(imageFilePath);
 			}
 
-			_templateLibraryTab->setTemplateImagePath(algoGraph->templateId(), imageFilePath, QSize(algoGraph->w(), algoGraph->h()));
+			_templateLibraryTab->setTemplateImagePath(algoTemplate->templateId(), imageFilePath, QSize(algoTemplate->w(), algoTemplate->h()));
 		}
 
-		updateVisionObjectSize(vo->algoGraph());
+		updateVisionObjectSize(vo->algoTemplate());
 
 
 	}
@@ -13379,165 +12647,6 @@ void VisionApp::saveOffsettedVIDIImage(const QString & visionObjectID, const QSt
 
 }
 
-bool VisionApp::runImageVidi(QStringList imagePaths, QStringList lightingIDs, QString odModelOpticSettingsPath, int type)
-{
-	qDebug() << "[VisionApp] RunImageVidi:" << odModelOpticSettingsPath;
-
-	
-	//BYPASS VIDI
-	_inspectionThread.setOpticInfos(_mainOptics[_camID], _recipeOptics, _recipeOptics3D);
-	_inspectionThread.setImagePaths(imagePaths, lightingIDs);
-	_inspectionThread.setODModelOpticSettingsPath(odModelOpticSettingsPath);
-	_inspectionThread.setRunImageVidiAlgoType(type);
-	_inspectionThread.setSegmentationSettings(ui.checkBox_loadSegmentationModel->isChecked(), ui.lineEdit_segmentationScore->text().toDouble());
-	//strToChars(_pInspectionInfo->_imagePath, 1024, imagePath.toStdString());
-	SetEvent(_appEvents.getEvent(std::string("VidiNodeRunImage")));
-
-	HANDLE hEvent = _appEvents.getEvent(std::string("VidiNodeReturn"));
-	ResetEvent(hEvent);
-
-	auto ret = WaitForSingleObject(_appEvents.getEvent(std::string("VidiNodeReturn")), 30000);
-
-	if (ret == WAIT_TIMEOUT)
-	{
-		showMsg(QStringLiteral("AI Node not responding"));
-		return false;
-	}
-
-	qDebug() << "runImageVidiCompleted";
-	return true;
-	//BYPASS VIDI
-}
-
-void VisionApp::sendVidiImageResult()
-{
-	QString heatmapPath = Common::Directory::CachePath + "heatmap.jpg";
-	QString vidiResultPath = Common::Directory::CachePath + "VidiResult.json";
-	QString odResultPath = Common::Directory::CachePath + "ODResult.json";
-
-	QString message = "VisionApp|AlgoEditor|runSingleVidiInspecitonCompleted|" + heatmapPath + "|" + vidiResultPath + "|PASS|" + odResultPath;
-
-	_ctClient->sendCommand(message);
-}
-
-void VisionApp::sendVidiRunFailed()
-{
-	QString heatmapPath = Common::Directory::CachePath + "heatmap.jpg";
-	QString vidiResultPath = Common::Directory::CachePath + "VidiResult.json";
-	QString odResultPath = Common::Directory::CachePath + "ODResult.json";
-
-	QString message = "VisionApp|AlgoEditor|runSingleVidiInspecitonCompleted|" + heatmapPath + "|" + vidiResultPath + "|NO_REF_IMG|" + odResultPath;
-	_ctClient->sendCommand(message);
-}
-
-void VisionApp::sendODLocImageResult()
-{
-	QString heatmapPath = Common::Directory::CachePath + "heatmap.jpg";
-	QString vidiResultPath = Common::Directory::CachePath + "VidiResult.json";
-	QString odResultPath = Common::Directory::CachePath + "ODResult.json";
-
-	QString message = "VisionApp|AlgoEditor|runODLocCompleted|" + heatmapPath + "|" + vidiResultPath + "|PASS|" + odResultPath;
-	_ctClient->sendCommand(message);
-}
-
-void VisionApp::sendODLocFailed()
-{
-	QString heatmapPath = Common::Directory::CachePath + "heatmap.jpg";
-	QString vidiResultPath = Common::Directory::CachePath + "VidiResult.json";
-	QString odResultPath = Common::Directory::CachePath + "ODResult.json";
-
-	QString message = "VisionApp|AlgoEditor|runODLocCompleted|" + heatmapPath + "|" + vidiResultPath + "|NO_REF_IMG|" + odResultPath;
-	_ctClient->sendCommand(message);
-}
-
-bool VisionApp::runAIWireBondInspection(QStringList imagePaths, QStringList lightingIDs, QHash<QString, QPointF> offsets, QHash<QString, LocAngle> locAngles, QString visionObjectID)
-{
-	qDebug() << "[VisionApp] runAIWireBondInspection";
-
-	AlgoGraph* graph = nullptr;
-	for (auto dragRoi : _dragROI)
-	{
-		if (dragRoi->getId() == visionObjectID)
-		{
-			graph = dragRoi->algoGraph();
-		}
-	}
-
-	if (graph == nullptr)
-	{
-		showMsg(QStringLiteral("AI Segmentation no graph template"));
-		return false;
-	}
-
-	_inspectionThread.setOpticInfos(_mainOptics[_camID], _recipeOptics, _recipeOptics3D);
-	_inspectionThread.setImagePaths(imagePaths, lightingIDs);
-	_inspectionThread.setRunImageOffset(offsets);
-	_inspectionThread.setRunImageAlgoGraph(graph);
-	_inspectionThread.setSegmentationSettings(ui.checkBox_loadSegmentationModel->isChecked(), ui.lineEdit_segmentationScore->text().toDouble());
-	
-	SetEvent(_appEvents.getEvent(std::string("AIWireBondInspectionRunImage")));
-
-	HANDLE hEvent = _appEvents.getEvent(std::string("VidiNodeReturn"));
-	ResetEvent(hEvent);
-
-	auto ret = WaitForSingleObject(_appEvents.getEvent(std::string("VidiNodeReturn")), 120000);
-
-	if (ret == WAIT_TIMEOUT)
-	{
-		showMsg(QStringLiteral("AI Segmentation not responding"));
-		return false;
-	}
-
-	qDebug() << "runAIWireBondInspectionCompleted";
-	return true;
-}
-
-void VisionApp::sendAIWireBondInspectionResult()
-{
-	QString segmentationMaskFolderPath = Common::Directory::CachePath + "AIWireBondSegmentationMask/";
-	CreateDirectoryA(segmentationMaskFolderPath.toStdString().c_str(), NULL);
-	QString message = "VisionApp|AlgoEditor|runAIWireBondInspectionCompleted|" + segmentationMaskFolderPath + "|PASS";
-	_ctClient->sendCommand(message);
-}
-
-bool VisionApp::loadLocatorData(const QString& filePath, QHash<QString, QPointF>& locatorOffsets, QHash<QString, LocAngle>& locatorAngles)
-{
-	locatorOffsets.clear();
-	locatorAngles.clear();
-
-	QFile file(filePath);
-	if (!file.open(QIODevice::ReadOnly))
-		return false;
-
-	QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-	file.close();
-
-	if (!doc.isObject())
-		return false;
-
-	QJsonObject root = doc.object();
-
-	QJsonArray offsetsArray = root["LocOffsets"].toArray();
-	for (const QJsonValue& val : offsetsArray) {
-		QJsonObject obj = val.toObject();
-		QString locId = obj["locId"].toString();
-		double x = obj["x"].toDouble();
-		double y = obj["y"].toDouble();
-		locatorOffsets[locId] = QPointF(x, y);
-	}
-
-	QJsonArray anglesArray = root["LocAngles"].toArray();
-	for (const QJsonValue& val : anglesArray) {
-		QJsonObject obj = val.toObject();
-		QString locId = obj["locId"].toString();
-		QPointF origin(obj["rx"].toDouble(), obj["ry"].toDouble());
-		double angle = obj["angle"].toDouble();
-		locatorAngles[locId] = LocAngle{ origin, angle };
-	}
-
-	return true;
-}
-
 void VisionApp::slotDatabaseStatus(bool status)
 {
 	qDebug() << "Insert DataBase status: " << status;
@@ -14449,7 +13558,6 @@ void VisionApp::inspectionDone(QVector<ct::DefectResult>& defectResults, QVector
 
 
 	//Set machine mode
-	_inspectionThread.setCountMode(InspectionThread::CountMode::VIEW);
 	//here get lot info
 	_productionPage->inspectionDone();
 	progressBarRelease(_stopRun);
@@ -14937,7 +14045,7 @@ void VisionApp::pasteVisionObject()
 			qDebug() << "visionObjectRoi:" << roi;
 			QColor color = _templateLibraryTab->getTemplateColor(visionObject.templateID);
 			auto visionAppDragBox = drawVisionAppDragBox(roi, color, visionObject.objectName, visionObject.viewID);
-			visionAppDragBox->algoGraph(_templateLibraryTab->getAlgoGraph(visionObject.templateID));
+			visionAppDragBox->algoTemplate(_templateLibraryTab->getAlgoTemplate(visionObject.templateID));
 			visionAppDragBox->setID(visionObject.objectID);
 			visionAppDragBox->setSelected(true);
 
@@ -18095,7 +17203,6 @@ void VisionApp::enableSaveInspectionImage(bool enable)
 	nvs::set_background_color(ui.toolButton_enableSaveInspImages, enable ? Qt::green : Qt::red);
 
 	_saveInspImg = enable;
-	_inspectionThread.setSaveInspImg(_saveInspImg);
 	jsonHelper::setJsonValue(_systemObj, "Save_Inspection_Image", _saveInspImg);
 	updateSystemInfo(_systemObj);
 }

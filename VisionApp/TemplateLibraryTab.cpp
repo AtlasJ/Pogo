@@ -23,6 +23,16 @@ TemplateLibraryTab::TemplateLibraryTab(QWidget *parent)
 	connect(ui.toolButtonDeleteTemplate, SIGNAL(clicked()), this, SLOT(deleteTemplate()));
 	connect(ui.toolButtonEditTemplate, SIGNAL(clicked()), this, SLOT(editTemplate()));
 	connect(ui.checkBoxUniformBox, SIGNAL(clicked()), this, SLOT(updateUniformBoxFlag()));
+	connect(ui.comboBox_templateAlgo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
+		auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+		for (auto tmpl : algoTemplateList) {
+			if (tmpl->templateName() == ui.lineEditTemplateName->text()) {
+				tmpl->algo((AlgoPageAlgo)index);
+				saveTemplateList();
+				break;
+			}
+		}
+	});
 	connect(ui.toolButtonGeneratePreprocessedTemplateImages, &QToolButton::clicked, this, [=]() {
 		generateVIDIImages(true);
 	});
@@ -76,11 +86,11 @@ TemplateLibraryTab::~TemplateLibraryTab()
 
 QString TemplateLibraryTab::currentTemplateId()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
 
-	for (int i = 0; i < algoGraphList.size(); i++)
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text()) return algoGraphList[i]->templateId();
+		if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text()) return algoTemplateList[i]->templateId();
 	}
 	return QString();
 }
@@ -92,40 +102,40 @@ QString TemplateLibraryTab::currentTemplateName()
 
 QColor TemplateLibraryTab::currentTemplateColor()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	for (int i = 0; i < algoGraphList.size(); i++)
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text()) return QColor(algoGraphList[i]->color());
+		if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text()) return QColor(algoTemplateList[i]->color());
 	}
 	return Qt::white;
 }
 
 QColor TemplateLibraryTab::getTemplateColor(QString & templateID)
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	for (int i = 0; i < algoGraphList.size(); i++)
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateId() == templateID) return QColor(algoGraphList[i]->color());
+		if (algoTemplateList[i]->templateId() == templateID) return QColor(algoTemplateList[i]->color());
 	}
 	return Qt::white;
 }
 
-AlgoGraph * TemplateLibraryTab::currentAlgoGraph()
+AlgoTemplate * TemplateLibraryTab::currentAlgoTemplate()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	for (int i = 0; i < algoGraphList.size(); i++)
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text()) return algoGraphList[i];
+		if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text()) return algoTemplateList[i];
 	}
 	return nullptr;
 }
 
-AlgoGraph * TemplateLibraryTab::getAlgoGraph(QString & templateID)
+AlgoTemplate * TemplateLibraryTab::getAlgoTemplate(QString & templateID)
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	for (int i = 0; i < algoGraphList.size(); i++)
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateId() == templateID) return algoGraphList[i];
+		if (algoTemplateList[i]->templateId() == templateID) return algoTemplateList[i];
 	}
 	return nullptr;
 }
@@ -133,15 +143,15 @@ AlgoGraph * TemplateLibraryTab::getAlgoGraph(QString & templateID)
 void TemplateLibraryTab::setTemplateImagePath(const QString & id, const QString & templateImagePath, const QSize& size)
 {
 	QString templateName;
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	for (int i = 0; i < algoGraphList.size(); i++)
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateId() == id)
+		if (algoTemplateList[i]->templateId() == id)
 		{
-			algoGraphList[i]->templateImagePath(templateImagePath);
-			algoGraphList[i]->w(size.width());
-			algoGraphList[i]->h(size.height());
-			templateName = algoGraphList[i]->templateName();
+			algoTemplateList[i]->templateImagePath(templateImagePath);
+			algoTemplateList[i]->w(size.width());
+			algoTemplateList[i]->h(size.height());
+			templateName = algoTemplateList[i]->templateName();
 		}
 	}
 	updateTemplateLibraryTableWidget();
@@ -170,7 +180,7 @@ void TemplateLibraryTab::addTemplate()
 	}
 	else
 	{
-		_algoGraphList.addAlgoGraph(templateName, getUnusedColor());
+		_algoTemplateList.addAlgoTemplate(templateName, getUnusedColor());
 		updateTemplateLibraryTableWidget();
 		saveTemplateList();
 
@@ -180,20 +190,20 @@ void TemplateLibraryTab::addTemplate()
 
 bool TemplateLibraryTab::templateNameExist(const QString & templateName)
 {
-	return _algoGraphList.algoGraphExist(templateName);
+	return _algoTemplateList.algoTemplateExist(templateName);
 }
 
 QString TemplateLibraryTab::getUnusedColor()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
 	for (int i = 0; i < colorPallete.size(); i++)
 	{
 		QString color = colorPallete[i];
 		bool colorExist = false;
-		for (int j = 0; j < algoGraphList.size(); j++)
+		for (int j = 0; j < algoTemplateList.size(); j++)
 		{
-			QString algoGraphColor = algoGraphList[j]->color();
-			if (algoGraphColor == color) colorExist = true;
+			QString algoTemplateColor = algoTemplateList[j]->color();
+			if (algoTemplateColor == color) colorExist = true;
 		}
 
 		if (!colorExist) return color;
@@ -204,11 +214,11 @@ QString TemplateLibraryTab::getUnusedColor()
 
 bool TemplateLibraryTab::checkColourUsed(QColor colour)
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
 
-	for (int i = 0; i < algoGraphList.size(); i++)
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		QColor templateColour = algoGraphList[i]->color();
+		QColor templateColour = algoTemplateList[i]->color();
 		if (templateColour == colour) return true;
 	}
 	return false;
@@ -222,49 +232,49 @@ void TemplateLibraryTab::updateTemplateLibraryTableWidget()
 	}
 
 
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
 
 	int size = 100;
-	ui.tableWidget_TemplateLibrary->setRowCount(algoGraphList.size());
-	for (int i = 0; i < algoGraphList.size(); i++)
+	ui.tableWidget_TemplateLibrary->setRowCount(algoTemplateList.size());
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		auto algoGraph = algoGraphList[i];
-		ui.tableWidget_TemplateLibrary->setItem(i, 0, new QTableWidgetItem(algoGraph->templateName()));
+		auto algoTemplate = algoTemplateList[i];
+		ui.tableWidget_TemplateLibrary->setItem(i, 0, new QTableWidgetItem(algoTemplate->templateName()));
 		ui.tableWidget_TemplateLibrary->setItem(i, 1, new QTableWidgetItem(" "));
-		QColor color = algoGraph->color();
+		QColor color = algoTemplate->color();
 		ui.tableWidget_TemplateLibrary->item(i, 1)->setBackground(color);
 		QTableWidgetItem* pImage = new QTableWidgetItem();
 		QPixmap img;
 
-		QString templateImagePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoGraph->templateImagePath();
-		if (algoGraph->templateImagePath().contains("c:\\Advanced\\Data\\recipe"))
+		QString templateImagePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoTemplate->templateImagePath();
+		if (algoTemplate->templateImagePath().contains("c:\\Advanced\\Data\\recipe"))
 		{
-			int lastSlashIndex = algoGraph->templateImagePath().lastIndexOf('\\');
-			int firstSlashIndex = algoGraph->templateImagePath().indexOf('\\', lastSlashIndex + 1);
-			algoGraph->templateImagePath(algoGraph->templateImagePath().section('\\', firstSlashIndex));
-			templateImagePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoGraph->templateImagePath();
+			int lastSlashIndex = algoTemplate->templateImagePath().lastIndexOf('\\');
+			int firstSlashIndex = algoTemplate->templateImagePath().indexOf('\\', lastSlashIndex + 1);
+			algoTemplate->templateImagePath(algoTemplate->templateImagePath().section('\\', firstSlashIndex));
+			templateImagePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoTemplate->templateImagePath();
 			qDebug() << "templateImagePath:" << templateImagePath;
 			
 		}
-		if (algoGraph->templateImagePath().isEmpty() || !img.load(templateImagePath))
+		if (algoTemplate->templateImagePath().isEmpty() || !img.load(templateImagePath))
 		{
 			qDebug() << "templateImageFailedToLoad";
 			img.load(":/8Icon/Icon/icon8/no-pictures.png");
 			QString noImage = tr("<p style = font-size:20px>Default Vision Object<b><font color='red'> not set.</font></b> Right click on a Vision Object and select <b><font color='#09ff00'>add to template</font></b>!</p>");
 			pImage->setToolTip(noImage);
-			algoGraph->w(0);
-			algoGraph->h(0);
+			algoTemplate->w(0);
+			algoTemplate->h(0);
 		}
 
-		algoGraph->w(img.width());
-		algoGraph->h(img.height());
+		algoTemplate->w(img.width());
+		algoTemplate->h(img.height());
 		img = img.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 		pImage->setData(Qt::DecorationRole, img);
 		
 		ui.tableWidget_TemplateLibrary->setItem(i, 2, pImage); //template Image
 		ui.tableWidget_TemplateLibrary->setItem(i, 3, new QTableWidgetItem(0)); // no of Vision Object
 		ui.tableWidget_TemplateLibrary->setItem(i, 4, new QTableWidgetItem()); //status
-		if (i == algoGraphList.size() - 1)
+		if (i == algoTemplateList.size() - 1)
 		{
 			ui.tableWidget_TemplateLibrary->selectRow(i);
 			ui.tableWidget_TemplateLibrary->item(i, 1)->setSelected(false);
@@ -291,18 +301,18 @@ void TemplateLibraryTab::deleteTemplate()
 	else
 	{
 		AuditLog::instance().log(QStringLiteral("TEMPLATE_DELETE"), ui.lineEditTemplateName->text());
-		auto algoGraphList = _algoGraphList.getAlgoGraphList();
-		for (int i = 0; i < algoGraphList.size(); i++)
+		auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+		for (int i = 0; i < algoTemplateList.size(); i++)
 		{
-			if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text())
+			if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text())
 			{
-				emit deleteVisionObjectTemplate(algoGraphList[i]->templateId());
+				emit deleteVisionObjectTemplate(algoTemplateList[i]->templateId());
 				break;
 			}
 		}
 
 
-		_algoGraphList.deleteAlgoGraph(ui.lineEditTemplateName->text());
+		_algoTemplateList.deleteAlgoTemplate(ui.lineEditTemplateName->text());
 
 		updateTemplateLibraryTableWidget();
 
@@ -334,8 +344,8 @@ void TemplateLibraryTab::duplicateTemplate()
 	}
 	else
 	{
-		_algoGraphList.addAlgoGraph(templateName, getUnusedColor());
-		_algoGraphList.copyAlgoGraph(ui.lineEditTemplateName->text(), templateName);
+		_algoTemplateList.addAlgoTemplate(templateName, getUnusedColor());
+		_algoTemplateList.copyAlgoTemplate(ui.lineEditTemplateName->text(), templateName);
 		
 		updateTemplateLibraryTableWidget();
 		saveTemplateList();
@@ -352,17 +362,17 @@ void TemplateLibraryTab::renameTemplate()
 
 void TemplateLibraryTab::generateVIDIImages(bool enablePreprocess)
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	AlgoGraph* algoGraph;
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	AlgoTemplate* algoTemplate;
 
-	for (int i = 0; i < algoGraphList.size(); i++)
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text())
+		if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text())
 		{
-			algoGraph = algoGraphList[i];
+			algoTemplate = algoTemplateList[i];
 		}
 	}
-	emit generateVIDIImages(algoGraph, enablePreprocess);
+	emit generateVIDIImages(algoTemplate, enablePreprocess);
 }
 
 void TemplateLibraryTab::addPadding()
@@ -373,18 +383,18 @@ void TemplateLibraryTab::addPadding()
 	if (ok)
 	{
 		qDebug() << "paddingSize:" << paddingSize;
-		auto algoGraphList = _algoGraphList.getAlgoGraphList();
-		AlgoGraph* algoGraph;
+		auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+		AlgoTemplate* algoTemplate;
 
-		for (int i = 0; i < algoGraphList.size(); i++)
+		for (int i = 0; i < algoTemplateList.size(); i++)
 		{
-			if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text())
+			if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text())
 			{
-				algoGraph = algoGraphList[i];
+				algoTemplate = algoTemplateList[i];
 			}
 		}
 
-		emit addVisionObjectPadding(algoGraph, paddingSize);
+		emit addVisionObjectPadding(algoTemplate, paddingSize);
 	}
 }
 
@@ -397,29 +407,29 @@ void TemplateLibraryTab::resizeTemplate()
 	if (ok)
 	{
 		qDebug() << "width:" << widthSize << " height:" << heightSize;
-		auto algoGraphList = _algoGraphList.getAlgoGraphList();
-		AlgoGraph* algoGraph;
+		auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+		AlgoTemplate* algoTemplate;
 
-		for (int i = 0; i < algoGraphList.size(); i++)
+		for (int i = 0; i < algoTemplateList.size(); i++)
 		{
-			if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text())
+			if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text())
 			{
-				algoGraph = algoGraphList[i];
+				algoTemplate = algoTemplateList[i];
 			}
 		}
 
-		algoGraph->w(widthSize);
-		algoGraph->h(heightSize);
+		algoTemplate->w(widthSize);
+		algoTemplate->h(heightSize);
 
-		QString imageFilePath = algoGraph->templateImagePath();
-		imageFilePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoGraph->templateImagePath();
-		if (algoGraph->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) imageFilePath = algoGraph->templateImagePath();
+		QString imageFilePath = algoTemplate->templateImagePath();
+		imageFilePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoTemplate->templateImagePath();
+		if (algoTemplate->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) imageFilePath = algoTemplate->templateImagePath();
 		QImage templateImg;
 		if (templateImg.load(imageFilePath))
 		{
-			if (templateImg.size().width() < algoGraph->w() && templateImg.size().height() < algoGraph->h())
+			if (templateImg.size().width() < algoTemplate->w() && templateImg.size().height() < algoTemplate->h())
 			{
-				QImage paddedImage(algoGraph->w(), algoGraph->h(), QImage::Format_RGB32);
+				QImage paddedImage(algoTemplate->w(), algoTemplate->h(), QImage::Format_RGB32);
 				paddedImage.fill(Qt::black); // Fill the image with black color
 
 				QPainter painter(&paddedImage);
@@ -429,48 +439,48 @@ void TemplateLibraryTab::resizeTemplate()
 			}
 			else
 			{
-				templateImg = templateImg.copy(QRect(0, 0, algoGraph->w(), algoGraph->h()));
+				templateImg = templateImg.copy(QRect(0, 0, algoTemplate->w(), algoTemplate->h()));
 				templateImg.save(imageFilePath);
 			}
-			setTemplateImagePath(algoGraph->templateId(), imageFilePath, QSize(algoGraph->w(), algoGraph->h()));
+			setTemplateImagePath(algoTemplate->templateId(), imageFilePath, QSize(algoTemplate->w(), algoTemplate->h()));
 		}
 
-		emit updateVisionObjectSize(algoGraph);
+		emit updateVisionObjectSize(algoTemplate);
 	}
 }
 
 void TemplateLibraryTab::saveRefImage()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	AlgoGraph* algoGraph;
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	AlgoTemplate* algoTemplate;
 
-	for (int i = 0; i < algoGraphList.size(); i++)
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text())
+		if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text())
 		{
-			algoGraph = algoGraphList[i];
+			algoTemplate = algoTemplateList[i];
 		}
 	}
-	emit saveTemplateReferenceImage(algoGraph);
+	emit saveTemplateReferenceImage(algoTemplate);
 }
 
 void TemplateLibraryTab::updateUniformBoxFlag()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	AlgoGraph* algoGraph;
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	AlgoTemplate* algoTemplate;
 
-	for (int i = 0; i < algoGraphList.size(); i++)
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == ui.lineEditTemplateName->text())
+		if (algoTemplateList[i]->templateName() == ui.lineEditTemplateName->text())
 		{
-			algoGraph = algoGraphList[i];
-			algoGraphList[i]->uniformBox(ui.checkBoxUniformBox->isChecked());
+			algoTemplate = algoTemplateList[i];
+			algoTemplateList[i]->uniformBox(ui.checkBoxUniformBox->isChecked());
 		}
 	}
 
 	saveTemplateList();
 
-	if (ui.checkBoxUniformBox->isChecked()) emit updateVisionObjectSize(algoGraph);
+	if (ui.checkBoxUniformBox->isChecked()) emit updateVisionObjectSize(algoTemplate);
 }
 
 void TemplateLibraryTab::updateUniformBoxFlag(bool flag)
@@ -550,15 +560,15 @@ static QJsonValue auditReadJson(const QString& path)
 
 void TemplateLibraryTab::saveTemplateList()
 {
-	QString algoGraphListFileName = Common::Directory::LocalPath + QString("recipe/%1/templateList.json").arg(Common::Directory::CurrentRecipe);
+	QString algoTemplateListFileName = Common::Directory::LocalPath + QString("recipe/%1/templateList.json").arg(Common::Directory::CurrentRecipe);
 
 	// capture before/after so we can log which fields inside the template changed
-	QJsonValue before = auditReadJson(algoGraphListFileName);
+	QJsonValue before = auditReadJson(algoTemplateListFileName);
 	bool existedBefore = !before.isNull() && (before.isObject() ? !before.toObject().isEmpty() : true);
 
-	_algoGraphList.saveAlgoGraphList(algoGraphListFileName);
+	_algoTemplateList.saveAlgoTemplateList(algoTemplateListFileName);
 
-	QJsonValue after = auditReadJson(algoGraphListFileName);
+	QJsonValue after = auditReadJson(algoTemplateListFileName);
 
 	const int cap = 15;
 	QStringList changes;
@@ -576,9 +586,9 @@ void TemplateLibraryTab::saveTemplateList()
 
 void TemplateLibraryTab::loadTemplateList()
 {
-	QString algoGraphListFileName = Common::Directory::LocalPath + QString("recipe/%1/templateList.json").arg(Common::Directory::CurrentRecipe);
-	_algoGraphList.loadAlgoGraphList(algoGraphListFileName);
-	_algoGraphList.loadAlgoGraphListMask();
+	QString algoTemplateListFileName = Common::Directory::LocalPath + QString("recipe/%1/templateList.json").arg(Common::Directory::CurrentRecipe);
+	_algoTemplateList.loadAlgoTemplateList(algoTemplateListFileName);
+	//algo node-graph masks removed with the Algo library
 
 	updateTemplateLibraryTableWidget();
 
@@ -597,27 +607,31 @@ void TemplateLibraryTab::tableWidgetTemplateLibCellClicked(int row, int column)
 	QString templateName = ui.tableWidget_TemplateLibrary->item(row, 0)->text();;
 	QString templateImagePath;
 	QSize size;
-	AlgoGraph* algoGraph;
+	AlgoTemplate* algoTemplate;
 	ui.lineEditTemplateName->setText(templateName);
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
-	for (int i = 0; i < algoGraphList.size(); i++)
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		algoGraph = algoGraphList[i];
-		if (algoGraph->templateName() == ui.lineEditTemplateName->text())
+		algoTemplate = algoTemplateList[i];
+		if (algoTemplate->templateName() == ui.lineEditTemplateName->text())
 		{
-			templateId = algoGraph->templateId();
-			templateImagePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoGraph->templateImagePath();
-			if (algoGraph->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) templateImagePath = algoGraph->templateImagePath();
-			size.setWidth(algoGraph->w());
-			size.setHeight(algoGraph->h());
+			templateId = algoTemplate->templateId();
+			templateImagePath = Common::Directory::getRecipeCurrentPath() + "template_Images\\" + algoTemplate->templateImagePath();
+			if (algoTemplate->templateImagePath().contains("c:\\Advanced\\Data\\recipe")) templateImagePath = algoTemplate->templateImagePath();
+			size.setWidth(algoTemplate->w());
+			size.setHeight(algoTemplate->h());
 			QString textColor = "black";
-			color = QColor(algoGraph->color());
+			color = QColor(algoTemplate->color());
 			if (color.red() < 230 && color.green() < 230 && color.blue() < 230)
 			{
 				textColor = "white";
 			}
-			ui.lineEditTemplateName->setStyleSheet(QString("QLineEdit { color: %1; background-color: %2; }").arg(textColor).arg(algoGraph->color()));
-			ui.checkBoxUniformBox->setChecked(algoGraph->uniformBox());
+			ui.lineEditTemplateName->setStyleSheet(QString("QLineEdit { color: %1; background-color: %2; }").arg(textColor).arg(algoTemplate->color()));
+			ui.checkBoxUniformBox->setChecked(algoTemplate->uniformBox());
+			{
+				QSignalBlocker sb(ui.comboBox_templateAlgo);
+				ui.comboBox_templateAlgo->setCurrentIndex((int)algoTemplate->algo());
+			}
 			break;		
 		}	
 	}
@@ -634,7 +648,7 @@ void TemplateLibraryTab::tableWidgetTemplateLibCellClicked(int row, int column)
 			emit showMsg(error);
 			return;
 		}
-		emit updateVisionObjectTemplate(algoGraph);
+		emit updateVisionObjectTemplate(algoTemplate);
 	}
 }
 
@@ -694,14 +708,14 @@ void TemplateLibraryTab::changeTemplateColor()
 
 void TemplateLibraryTab::updateTemplateListSettings(QString color, QString templateName)
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
 
-	for (int i = 0; i < algoGraphList.size(); i++)
+	for (int i = 0; i < algoTemplateList.size(); i++)
 	{
-		if (algoGraphList[i]->templateName() == templateName)
+		if (algoTemplateList[i]->templateName() == templateName)
 		{
-			algoGraphList[i]->color(color);
-			emit updateVisionObjectColor(algoGraphList[i]);
+			algoTemplateList[i]->color(color);
+			emit updateVisionObjectColor(algoTemplateList[i]);
 		}
 	}
 
@@ -726,14 +740,14 @@ void TemplateLibraryTab::selectTemplateTableRow(const QString & templateName)
 	}
 }
 
-void TemplateLibraryTab::loadAlgoGraphListMask()
+void TemplateLibraryTab::loadAlgoTemplateListMask()
 {
-	_algoGraphList.loadAlgoGraphListMask();
+	//algo node-graph masks removed with the Algo library
 }
 
-void TemplateLibraryTab::reloadAlgoGraphListMetaData()
+void TemplateLibraryTab::reloadAlgoTemplateListMetaData()
 {
-	_algoGraphList.reLoadAlgoGraphListMetaData();
+	//algo node-graph metadata removed with the Algo library
 }
 
 void TemplateLibraryTab::setTagNameCount(QHash<QString, int> tagNameCountHash)
@@ -767,19 +781,19 @@ void TemplateLibraryTab::displayTagNameCount()
 
 QStringList TemplateLibraryTab::getAllTemplateID()
 {
-	auto algoGraphList = _algoGraphList.getAlgoGraphList();
+	auto algoTemplateList = _algoTemplateList.getAlgoTemplateList();
 
 	QStringList templateIdList;
-	for (auto t: algoGraphList)
+	for (auto t: algoTemplateList)
 	{
 		templateIdList.append(t->templateId());
 	}
 	return templateIdList;
 }
 
-void TemplateLibraryTab::releaseAlgoGraphs()
+void TemplateLibraryTab::releaseAlgoTemplates()
 {
-	_algoGraphList.releaseAlgoGraphList();
+	_algoTemplateList.releaseAlgoTemplateList();
 }
 
 

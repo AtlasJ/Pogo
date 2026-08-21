@@ -24,12 +24,25 @@
 #include "ResultCache.h"
 #include "AdvantechDigitalIO.h"
 #include "ILSC.h"
-#include "PostInspectionInfo.h"
 #include "FiducialInfo.h"
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
-#include "InspectionThread.h"
-#include "PostInspectionThread.h"
+#include "AlgoDefectResult.h"
+#include "ErrorInfo.h"
+#include "OpenWorkspaceInfo.h"
+#include "QOSTool.h"
+#include "QVisionObject.h"
+#include "VIsionAppQDragBox.h"
+#include "DatasetQDragBox.h"
+#include "VidiToolResult.h"
+#include "CodeConfig.h"
+#include "MessageQue.h"
+#include "FrameInfo.h"
+#include "ResultCache.h"
+#include "WinSharedMem.h"
+#include "WinEvents.h"
+#include "InspectionInfo.h"
+#include "ResultInfo.h"
 #include "QDragBox.h"
 #include "QView.h"
 #include "QLineScan.h"
@@ -53,7 +66,8 @@
 #include "CT_Client.h"
 #include "Logger.h"
 
-#include "Algo.h"
+#include "AlgoBuffers.h"
+#include "AlgoTemplate.h"
 #include "mtrx.h"
 #include "CommonDir.h"
 #include "Fiducial.h"
@@ -91,7 +105,6 @@ extern bool g_forceStopInspLoop;
 extern bool g_enableClassificationDataCollection;
 extern QString g_bufferID;
 extern ResultCache g_resultCache;
-extern TMessageQue<QVector<FrameInfo>> g_inspectionQueue;
 extern TMessageQue<FrameInfo> g_imageQueue;
 extern Timer g_time;
 extern QHash<QString, QPointF> g_locatorOffsets;
@@ -332,7 +345,7 @@ private:
 	QStandardItem* _pSkipItem;
 	QStandardItem* _pUninspectItem;
 	QMainDelegate _objectDelegate;
-	Algo _algo;
+	AlgoBuffers _algo;
 	QPoint _scenePos;
 	QPointF _startDragPos;
 	QPointF _endDragPos;
@@ -441,14 +454,6 @@ private:
 	//dragMode
 	bool _dragMode = false;
 
-	//algorithm
-	QStringList _basicAlgoList;
-	QStringList _locatorAlgoList;
-	QStringList _algoList;
-	//algorithm
-
-	//BYPASS:VIDI
-	InspectionThread _inspectionThread;
 	bool _inspectionThreadBusy = false;
 	bool _autoCalPending = false; // set while an auto-calibration offline run is in flight; triggers the report on completion
 
@@ -466,8 +471,6 @@ private:
 	// App Variable 
 
 	//Component Cad
-	QHash<QString, QVector<CadRoiInfo>> _templateCadRoiInfos;
-	void readTemplateCadRoiInfos();
 	bool loadComponentCadRois(const QString &filePath, QVector<CadRoiInfo> & cadRois);
 
 	void clearEmptyViewKey();
@@ -794,10 +797,10 @@ private:
 	QDragBox* _algoOcrRoi1Box = nullptr;
 	QDragBox* _algoOcrRoi2Box = nullptr;
 	QDragBox* _algoOcrLearnBox = nullptr;
-	QDragBox* _algoHeightRoiBox = nullptr;
 	QDragBox* _algoLocLearnBox = nullptr;
 	QDragBox* _algoLocSearchBox = nullptr;
 	QVector<QDragBox*> _algoPlaneBoxes;
+	QVector<QDragBox*> _algoHeightBoxes;
 	QVector<QGraphicsItem*> _algoOverlayItems;
 	bool _algoHeightView3D = false;
 	QDragBox _barcodeLocatedRegion;
@@ -815,6 +818,7 @@ private:
 	void refreshAlgoLocatorUI();
 	void refreshAlgoPatternList();
 	void updateAlgoRoiVisibility();
+	void updateAlgoHRoiCounts();
 	void hideAlgoSetupRois();
 	void captureAlgoParamsFromUI();
 	void showAlgoHeightMap(bool view3D);
@@ -1066,12 +1070,12 @@ public slots:
 //templateLibraryTab
 	void setVisionObjectAsDefaultTemplate();
 	void deleteVisionObjectTemplate(const QString & templateId);
-	void updateVisionObjectTemplate(AlgoGraph* algoGraph);
-	void updateVisionObjectSize(AlgoGraph* algoGraph);
-	void updateVisionObjectColor(AlgoGraph* algoGraph);
-	void generateVIDIImages(AlgoGraph* algoGraph, bool enablePreprocess);
-	void addVisionObjectPadding(AlgoGraph* algoGraph, int paddingSize);
-	void saveTemplateReferenceImage(AlgoGraph* algoGraph);
+	void updateVisionObjectTemplate(AlgoTemplate* algoTemplate);
+	void updateVisionObjectSize(AlgoTemplate* algoTemplate);
+	void updateVisionObjectColor(AlgoTemplate* algoTemplate);
+	void generateVIDIImages(AlgoTemplate* algoTemplate, bool enablePreprocess);
+	void addVisionObjectPadding(AlgoTemplate* algoTemplate, int paddingSize);
+	void saveTemplateReferenceImage(AlgoTemplate* algoTemplate);
 	bool referenceImageExistTest();
 
 //unitConfigTab
@@ -1286,7 +1290,6 @@ public slots:
 	void recipeChanged();
 	void clearDir(const QString& path);
 	void editTemplate();
-	void updateTemplate(QString & algoGraphFilePath);
 	void findVisionObject();
 	void resetResult();
 	bool createResultFolder(QString& path);
@@ -1384,7 +1387,6 @@ public slots:
 	void GenerateVidiWorkspaceInfo();
 	void openVidiWorkSpace();
 	void closeVidiWorkSpace();
-	void startInspectionThread();
 
 	//JSON
 	bool saveRecipeOptics();
@@ -1493,18 +1495,7 @@ public slots:
 
 	//vidi Image 
 	void saveOffsettedVIDIImage(const QString & visionObjectID, const QString & lightingID, const QString &imagePath,const QPointF & offset);
-	bool runImageVidi(QStringList imagePaths, QStringList lightingIDs, QString odModelOpticSettingsPath, int type);
-	void sendVidiImageResult();
-	void sendVidiRunFailed();
-	void sendODLocImageResult();
-	void sendODLocFailed();
 
-	//AI WireBond Inspection
-	bool runAIWireBondInspection(QStringList imagePaths, QStringList lightingIDs, QHash<QString,QPointF> offsets, QHash<QString, LocAngle> locAngles, QString visionObjectID);
-	void sendAIWireBondInspectionResult();
-	bool loadLocatorData(const QString& filePath,
-		QHash<QString, QPointF>& locatorOffsets,
-		QHash<QString, LocAngle>& locatorAngles);
 
 	//createNewDirectory();
 	QString createTemplateImagesDirectory();

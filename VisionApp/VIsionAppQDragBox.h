@@ -4,7 +4,7 @@
 #include <QtWidgets>
 #include "QCommonStruct.h"
 #include "QDragBox.h"
-#include "AlgoGraphList.h"
+#include "AlgoTemplate.h"
 #include <QIcon>
 #include <QHash>
 #include <QPixmap>
@@ -17,8 +17,8 @@ public:
 	VisionAppQDragBox();
 
 	//VisionObject();
-	void algoGraph(AlgoGraph* algoGraph);
-	AlgoGraph* algoGraph();
+	void algoTemplate(AlgoTemplate* algoTemplate);
+	AlgoTemplate* algoTemplate();
 
 	void viewID(const QString & viewID);
 	QString viewID();
@@ -43,7 +43,7 @@ public:
 private:
 
 	//visionObject
-	AlgoGraph* _algoGraph = nullptr;
+	AlgoTemplate* _algoTemplate = nullptr;
 	QString _viewID = "";
 	QString _lineScanID = "";
 

@@ -163,7 +163,6 @@ void VisionApp::connectJobThread() {
 			}
 
 			/*if (barcodePass) {
-				startInspectionThread();
 			}*/
 		}
 		
@@ -321,7 +320,6 @@ void VisionApp::connectJobThread() {
 
 	QObject::connect(&_jobThread, &JobThread::setLotSize, this, [=](int lotSize) {
 		ct::logger::info("Set Lot Size to: %d", lotSize);
-		_inspectionThread.setExpectedIndex(lotSize);
 	});
 
 	QObject::connect(&_jobThread, &JobThread::endLot, this, [=]() {
@@ -367,7 +365,6 @@ void VisionApp::connectJobThread() {
 
 	QObject::connect(&_jobThread, &JobThread::frameReady, this, [=]() {
 		_processType = ProcessType::PRODUCTION;
-		startInspectionThread();
 
 		if (_inspectionThreadBusy) sendToClient(QStringLiteral("F\r"));
 		else
@@ -767,7 +764,6 @@ void VisionApp::simulateOnlineInspection()
 				imgPath++;
 			}
 
-			g_inspectionQueue.push_back(IInfos);
 
 			_progressValue++;
 			if (_progressDialog)_progressDialog->setValue(_progressValue);

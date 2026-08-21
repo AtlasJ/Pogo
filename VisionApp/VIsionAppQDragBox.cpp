@@ -5,14 +5,14 @@ VisionAppQDragBox::VisionAppQDragBox()
 {
 }
 
-void VisionAppQDragBox::algoGraph(AlgoGraph * algoGraph)
+void VisionAppQDragBox::algoTemplate(AlgoTemplate * algoTemplate)
 {
-	_algoGraph = algoGraph;
+	_algoTemplate = algoTemplate;
 }
 
-AlgoGraph * VisionAppQDragBox::algoGraph()
+AlgoTemplate * VisionAppQDragBox::algoTemplate()
 {
-	return _algoGraph;
+	return _algoTemplate;
 }
 
 void VisionAppQDragBox::viewID(const QString & viewID)
@@ -47,12 +47,12 @@ void VisionAppQDragBox::setFrozen(bool flag)
 
 void VisionAppQDragBox::customHoverEnterEvent(QGraphicsSceneHoverEvent * event)
 {
-	bool algoGraphExist = false;
-	if (_algoGraph) algoGraphExist = true;
+	bool algoTemplateExist = false;
+	if (_algoTemplate) algoTemplateExist = true;
 
 	if (getDragable())
 	{
-		if ((algoGraphExist && !_algoGraph->uniformBox()) || (!algoGraphExist))
+		if ((algoTemplateExist && !_algoTemplate->uniformBox()) || (!algoTemplateExist))
 		{
 			corners()[0] = new QGrabber(this, 0, grabSize());
 			corners()[1] = new QGrabber(this, 1, grabSize());

@@ -2,7 +2,6 @@
 #include "VisionApp.h"
 #include <QtWidgets/QApplication>
 #include "MessageQue.h"
-#include "PostInspectionInfo.h"
 #include "ResultCache.h"
 #include "QFrameless.h"
 #include <QSharedMemory>
@@ -23,8 +22,6 @@ bool g_forceStopInspLoop;
 bool g_enableClassificationDataCollection;
 QString g_bufferID;
 ResultCache g_resultCache;
-TMessageQue<PostInspectionInfo> g_postInspectionQueue;
-TMessageQue<QVector<FrameInfo>> g_inspectionQueue;
 TMessageQue<FrameInfo> g_imageQueue;
 Timer g_time;
 QHash<QString, QPointF> g_locatorOffsets;

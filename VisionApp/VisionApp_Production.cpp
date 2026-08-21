@@ -212,7 +212,6 @@ void VisionApp::boardInPosition(int pos) {
 	}
 	else if (_processType == ProcessType::PRODUCTION) {
 		ct::logger::info("[boardInPosition]Start InspectionThread in Production Mode");
-		startInspectionThread();
 		inspect2D3D();
 	}
 }
@@ -224,7 +223,6 @@ void VisionApp::runProdS()
 	}
 	else if (_processType == ProcessType::PRODUCTION) {
 		ct::logger::info("[boardInPosition]Start InspectionThread in Production Mode");
-		startInspectionThread();
 		inspect2D3D();
 	}
 }

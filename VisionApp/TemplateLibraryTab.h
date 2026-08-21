@@ -3,7 +3,7 @@
 #include <QWidget>
 #include <QMessageBox>
 #include "ui_TemplateLibraryTab.h"
-#include "AlgoGraphList.h"
+#include "AlgoTemplate.h"
 
 class TemplateLibraryTab : public QWidget
 {
@@ -17,17 +17,17 @@ public:
 	QString currentTemplateName();
 	QColor currentTemplateColor();
 	QColor getTemplateColor(QString& templateID);
-	AlgoGraph* currentAlgoGraph();
-	AlgoGraph*getAlgoGraph(QString& templateID);
+	AlgoTemplate* currentAlgoTemplate();
+	AlgoTemplate*getAlgoTemplate(QString& templateID);
 	void setTemplateImagePath(const QString& id, const QString& templateImagePath, const QSize& size);
 
 	QStringList getAllTemplateID();
-	void releaseAlgoGraphs();
+	void releaseAlgoTemplates();
 
 private:
 	Ui::TemplateLibraryTab ui;
 
-	AlgoGraphList _algoGraphList;
+	AlgoTemplateList _algoTemplateList;
 	QHash<QString, int> _tagNameCountHash;
 	QStringList colorPallete = {
 		"#FF0028","#FF4200","#FFAE00","#E3FF00","#76FF00","#0AFF00","#00FF60",
@@ -91,23 +91,23 @@ public Q_SLOTS:
 	void changeTemplateColor();
 	void updateTemplateListSettings(QString color, QString templateName);
 	void selectTemplateTableRow(const QString & templateName);
-	void loadAlgoGraphListMask();
-	void reloadAlgoGraphListMetaData();
+	void loadAlgoTemplateListMask();
+	void reloadAlgoTemplateListMetaData();
 	void setTagNameCount(QHash<QString, int> tagNameCountHash);
 	void displayTagNameCount();
 	void saveGoldenTemplateList();
 	void loadGoldenTemplateList();
 
 signals:
-	void updateVisionObjectTemplate(AlgoGraph* algoGraph);
+	void updateVisionObjectTemplate(AlgoTemplate* algoTemplate);
 	void deleteVisionObjectTemplate(const QString &templateId);
-	void updateVisionObjectSize(AlgoGraph* algoGraph);
-	void updateVisionObjectColor(AlgoGraph* algoGraph);
-	void generateVIDIImages(AlgoGraph* algoGraph, bool enablePreprocess);
-	void addVisionObjectPadding(AlgoGraph* algoGraph, int padding);
+	void updateVisionObjectSize(AlgoTemplate* algoTemplate);
+	void updateVisionObjectColor(AlgoTemplate* algoTemplate);
+	void generateVIDIImages(AlgoTemplate* algoTemplate, bool enablePreprocess);
+	void addVisionObjectPadding(AlgoTemplate* algoTemplate, int padding);
 	void showMsg(const QString& msg, QMessageBox::StandardButtons buttons = QMessageBox::Close);
 	void editTemplateSignal();
-	void saveTemplateReferenceImage(AlgoGraph* algoGraph);
+	void saveTemplateReferenceImage(AlgoTemplate* algoTemplate);
 	void signalOpenGoldenRecipeDialog();
 
 

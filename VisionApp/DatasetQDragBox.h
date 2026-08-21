@@ -4,7 +4,6 @@
 #include <QtWidgets>
 #include "QCommonStruct.h"
 #include "QDragObject.h"
-#include "AlgoGraphList.h"
 #include <QIcon>
 #include <QHash>
 #include <QPixmap>

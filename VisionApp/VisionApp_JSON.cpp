@@ -1529,7 +1529,7 @@ bool VisionApp::loadVisionObject()
 
 				QColor color = _templateLibraryTab->getTemplateColor(visionObject.templateID);
 				auto visionAppDragBox = drawVisionAppDragBox(roi, color, visionObject.objectName, visionObject.viewID);
-				visionAppDragBox->algoGraph(_templateLibraryTab->getAlgoGraph(visionObject.templateID));
+				visionAppDragBox->algoTemplate(_templateLibraryTab->getAlgoTemplate(visionObject.templateID));
 				visionAppDragBox->setID(visionObject.objectID);
 				visionAppDragBox->viewID(visionObject.viewID);
 				visionAppDragBox->lineScanID(visionObject.lineScanID);

@@ -37,9 +37,6 @@
     <ClCompile Include="InspectionInfo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="InspectionThread.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="IOInfo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -53,12 +50,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="OpenWorkspaceInfo.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="PostInspectionInfo.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="PostInspectionThread.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\Common\QClient.cpp">
@@ -352,6 +343,12 @@
     <ClCompile Include="VisionApp_AlgoSetup.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="AlgoBuffers.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AlgoTemplate.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="AlgoManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -484,7 +481,6 @@
     <ClCompile Include="VisionApp_JobThread.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\IO Card\Advantech\AdvantechDigitalIO.h">
@@ -539,9 +535,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="PathInfo.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="PostInspectionInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Common\QCommonStruct.h">
@@ -850,12 +843,6 @@
     <QtMoc Include="ExtendedMenu.h">
       <Filter>Header Files</Filter>
     </QtMoc>
-    <QtMoc Include="InspectionThread.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
-    <QtMoc Include="PostInspectionThread.h">
-      <Filter>Header Files</Filter>
-    </QtMoc>
     <QtMoc Include="..\..\Common\QClient.h">
       <Filter>Header Files</Filter>
     </QtMoc>
@@ -972,7 +959,6 @@
     </QtMoc>
     <QtMoc Include="MachineController.h">
       <Filter>Header Files</Filter>
-    </QtMoc>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>

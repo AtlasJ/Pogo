@@ -1290,7 +1290,6 @@ void VisionApp::connectShortcuts()
 			_processType = ProcessType::PRODUCTION;
 
 			setupProductionDir();
-			startInspectionThread();
 		}
 		//auto groupedKeys = OpticsControl::instance().getGroupedOptics();
 		//progressBarSetup("Generating Lighting Report", groupedKeys.size() * 30, true);
