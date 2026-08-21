@@ -1440,42 +1440,6 @@ void VisionApp::connectShortcuts()
 		openUserManagementDialog();
 	});
 
-	QShortcut* shortcut_altU = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_U), this);
-	connect(shortcut_altU, &QShortcut::activated, [=]() {
-
-		ct::logger::info("[Motion] Pressing EMX(B) DO5");
-		auto o = MotionController::instance().get_DO(_motionID, 1, (int)DOB::UPSTREAM);
-		if (!o.has_value()) { showMsg("Invalid Digital Parameter"); return; }
-		auto new_output = !o.value();
-		MotionController::instance().set_DO(_motionID, 1, (int)DOB::UPSTREAM, new_output);
-		nvs::set_background_color(ui.toolButton_EMXB_DO5, new_output ? Qt::green : Qt::red);
-
-		});
-
-	QShortcut* shortcut_altD = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_D), this);
-	connect(shortcut_altD, &QShortcut::activated, [=]() {
-
-		ct::logger::info("[Motion] Pressing EMX(B) DO4");
-		auto o = MotionController::instance().get_DO(_motionID, 1, (int)DOB::DOWNSTREAM);
-		if (!o.has_value()) { showMsg("Invalid Digital Parameter"); return; }
-		auto new_output = !o.value();
-		MotionController::instance().set_DO(_motionID, 1, (int)DOB::DOWNSTREAM, new_output);
-		nvs::set_background_color(ui.toolButton_EMXB_DO4, new_output ? Qt::green : Qt::red);
-
-		});
-
-	QShortcut* shortcut_altC = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_C), this);
-	connect(shortcut_altC, &QShortcut::activated, [=]() {
-
-		ct::logger::info("[Motion] Pressing EMX(B) DO2");
-		auto o = MotionController::instance().get_DO(_motionID, 1, (int)DOB::CLAMPER);
-		if (!o.has_value()) { showMsg("Invalid Digital Parameter"); return; }
-		auto new_output = !o.value();
-		MotionController::instance().set_DO(_motionID, 1, (int)DOB::CLAMPER, new_output);
-		nvs::set_background_color(ui.toolButton_EMXB_DO2, new_output ? Qt::green : Qt::red);
-
-		});
-
 	QShortcut* shortcut_altM = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_M), this);
 	connect(shortcut_altM, &QShortcut::activated, [=]() {
 

@@ -17,8 +17,13 @@ namespace ct {
 		std::vector<SmallBox> boxes;
 	};
 
-	void cluster_boxes(int group_width, int group_height, int padding, std::vector<SmallBox>& sb, std::vector<ClusterBox>& gb, bool prioritizeY = false);
+	//ordering used when seeding clusters: NONE = plain distance from top-left,
+	//Y = row-major (horizontal bands, X-axis line scan), X = column-major (vertical strips, Y-axis line scan)
+	enum class ClusterPriority { NONE, Y, X };
+
+	void cluster_boxes(int group_width, int group_height, int padding, std::vector<SmallBox>& sb, std::vector<ClusterBox>& gb, ClusterPriority priority = ClusterPriority::NONE);
 	void fit_boxes_width(std::vector<ClusterBox>& gb, int padding);
+	void fit_boxes_height(std::vector<ClusterBox>& gb, int padding);
 }
 
 

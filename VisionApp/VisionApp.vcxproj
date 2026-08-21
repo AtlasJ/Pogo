@@ -215,7 +215,6 @@
     <ClCompile Include="libvips\VRegion.cpp" />
     <ClCompile Include="LSC_VIE.cpp" />
     <ClCompile Include="MachineController.cpp" />
-    <ClCompile Include="MachineSMEMAManager.cpp" />
     <ClCompile Include="MbufPool.cpp" />
     <ClCompile Include="MbufPoolManager.cpp" />
     <ClCompile Include="MotionController.cpp" />
@@ -404,7 +403,6 @@
     </QtMoc>
     <ClInclude Include="LSC_VIE.h" />
     <QtMoc Include="MachineController.h" />
-    <QtMoc Include="MachineSMEMAManager.h" />
     <ClInclude Include="MbufPool.h" />
     <ClInclude Include="MbufPoolManager.h" />
     <ClInclude Include="MbufWrapper.h" />

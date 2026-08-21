@@ -731,6 +731,9 @@ QVector<GroupedOverSizedVO> VisionApp::groupOverSizedVOForLineScan(QVector <Visi
 	QVector<GroupedOverSizedVO> groupedVOs;
 	QSet<QString> assignedVOs;
 
+	//group along the axis the FOV strips stack on: Y for X-axis scans, X for Y-axis scans
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+
 	for (auto vo : bigVOs) {
 
 		auto id = vo->getId();
@@ -744,8 +747,8 @@ QVector<GroupedOverSizedVO> VisionApp::groupOverSizedVOForLineScan(QVector <Visi
 		//ct::logger::trace("parent vo: %s", id.toStdString().c_str());
 
 		auto rect = vo->getGeometry();
-		auto start = rect.y();
-		auto end = rect.y() + rect.height();
+		auto start = scanAlongY ? rect.x() : rect.y();
+		auto end = start + (scanAlongY ? rect.width() : rect.height());
 		auto range = end - start;
 		auto pad = range * 0.35;
 		start += pad;
@@ -763,13 +766,13 @@ QVector<GroupedOverSizedVO> VisionApp::groupOverSizedVOForLineScan(QVector <Visi
 			//ct::logger::trace("child vo: %s", childID.toStdString().c_str());
 
 			auto childRect = childVO->getGeometry();
-			auto childStart = childRect.y();
-			auto childEnd = childRect.y() + childRect.height();
-			auto childCenterY = (childStart + childEnd) / 2;
+			auto childStart = scanAlongY ? childRect.x() : childRect.y();
+			auto childEnd = childStart + (scanAlongY ? childRect.width() : childRect.height());
+			auto childCenter = (childStart + childEnd) / 2;
 
-			//ct::logger::trace("child center: %f", childCenterY);
+			//ct::logger::trace("child center: %f", childCenter);
 
-			if (childCenterY > start && childCenterY < end) {
+			if (childCenter > start && childCenter < end) {
 				assignedVOs.insert(childID);
 				gvo.VOs.append(childVO);
 			}
@@ -842,14 +845,21 @@ void VisionApp::assignLineScansToOversizedVO(VisionAppQDragBox* vo, int padding_
 	double h_target_mm = abs(br.x() - fl.x());
 	double h_center_mm = (br.x() + fl.x()) / 2;
 	double v_target_mm = abs(br.y() - fl.y());
+	double v_center_mm = (br.y() + fl.y()) / 2;
 
-	//Get FOV
-	double h_cam_mm = h_target_mm;
-	double v_cam_mm = 14.5;
+	//scan axis: direction the gantry travels; step axis: direction the FOV strips stack
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+	double scan_target_mm = scanAlongY ? v_target_mm : h_target_mm;
+	double scan_center_mm = scanAlongY ? v_center_mm : h_center_mm;
+	double step_target_mm = scanAlongY ? h_target_mm : v_target_mm;
+	double step_start_mm = scanAlongY ? fl.x() : fl.y();
+
+	//Get FOV (laser FOV perpendicular to the scan direction)
+	double step_cam_mm = 14.5;
 
 	//Set minimum overlap percentage
-	double v_percentage = (double)overlap_percentage / 100.0;
-	double v_overlap_mm = v_cam_mm * v_percentage;
+	double step_percentage = (double)overlap_percentage / 100.0;
+	double step_overlap_mm = step_cam_mm * step_percentage;
 
 	/*
 	* n: Minimum number of FOV
@@ -864,40 +874,39 @@ void VisionApp::assignLineScansToOversizedVO(VisionAppQDragBox* vo, int padding_
 	* o = (n * f - t) / n - 1
 	*/
 	//Calculate minimum number of FOV required
-	int v_num = std::ceil((v_target_mm - v_overlap_mm) / (v_cam_mm - v_overlap_mm));
+	int step_num = std::ceil((step_target_mm - step_overlap_mm) / (step_cam_mm - step_overlap_mm));
 
 	//Recalculate minimum overlap based on minimum number of FOV
-	v_overlap_mm = ((v_num * v_cam_mm) - v_target_mm) / (v_num - 1);
+	step_overlap_mm = ((step_num * step_cam_mm) - step_target_mm) / (step_num - 1);
 
-	double v_centerOffset_mm = 0.0;
-	if (v_num == 1) {
-		v_overlap_mm = 0.0;
-		v_centerOffset_mm = (v_target_mm / 2) - (v_cam_mm / 2);
+	double step_centerOffset_mm = 0.0;
+	if (step_num == 1) {
+		step_overlap_mm = 0.0;
+		step_centerOffset_mm = (step_target_mm / 2) - (step_cam_mm / 2);
 	}
 
 	//Calculate each iteration's offset
-	double v_offset_mm = v_cam_mm - v_overlap_mm;
+	double step_offset_mm = step_cam_mm - step_overlap_mm;
 
-	ct::logger::trace("v_num: %d", v_num);
+	ct::logger::trace("step_num: %d", step_num);
 
-	ct::logger::trace("v_overlap: %f", v_overlap_mm);
+	ct::logger::trace("step_overlap: %f", step_overlap_mm);
 
-	ct::logger::trace("v_offset: %f", v_offset_mm);
+	ct::logger::trace("step_offset: %f", step_offset_mm);
 
-	ct::logger::trace("h_cam_mm: %f", h_cam_mm);
-	ct::logger::trace("v_cam_mm: %f", v_cam_mm);
+	ct::logger::trace("step_cam_mm: %f", step_cam_mm);
 
-	ct::logger::trace("h_target_mm: %f", h_target_mm);
-	ct::logger::trace("v_target_mm: %f", v_target_mm);
+	ct::logger::trace("scan_target_mm: %f", scan_target_mm);
+	ct::logger::trace("step_target_mm: %f", step_target_mm);
 
-	ct::logger::trace("v_centerOffset_mm: %f", v_centerOffset_mm);
+	ct::logger::trace("step_centerOffset_mm: %f", step_centerOffset_mm);
 
 	uidGenerator sgen;
 	auto slinescan_id = QString("slinescan") + sgen.id().c_str();
 
 	auto wz = _plane.corner_points[(int)Corner::FRONTLEFT].wz;
 
-	for (int r = 0; r < v_num; r++) {
+	for (int r = 0; r < step_num; r++) {
 
 		QLineScan v;
 		v.id = slinescan_id + "-" + QString::number(r);
@@ -905,14 +914,15 @@ void VisionApp::assignLineScansToOversizedVO(VisionAppQDragBox* vo, int padding_
 		v.created_by = "";
 		v.type = ct::s_child_linescan;
 		v.map_to_slinescan = slinescan_id;
-		auto wx = h_center_mm;
-		auto wy = fl.y() + (v_cam_mm / 2) + (v_offset_mm * r) + v_centerOffset_mm;
+		auto step_mm = step_start_mm + (step_cam_mm / 2) + (step_offset_mm * r) + step_centerOffset_mm;
+		auto wx = scanAlongY ? step_mm : scan_center_mm;
+		auto wy = scanAlongY ? scan_center_mm : step_mm;
 
 		auto wpx = getAbsoluteFOVCoordinates(QPointF(wx, wy));
 		v.px.cx = ScaleManager::instance().fov_to_world(util::mm_to_px(wx, h_scale));
 		v.px.cy = ScaleManager::instance().fov_to_world(util::mm_to_px(wy, h_scale));
-		v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(h_cam_mm, h_scale));
-		v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(v_cam_mm, h_scale));
+		v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(scanAlongY ? step_cam_mm : scan_target_mm, h_scale));
+		v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(scanAlongY ? scan_target_mm : step_cam_mm, h_scale));
 		v.px.compute_extremum();
 
 		auto dragBox = drawLineScan(QRectF(v.px.cx - (v.px.w / 2), v.px.cy - (v.px.h / 2), v.px.w, v.px.h), QColor(0, 255, 127), v.id);
@@ -924,12 +934,21 @@ void VisionApp::assignLineScansToOversizedVO(VisionAppQDragBox* vo, int padding_
 
 		v.vision_obj_IDs.append(voID);
 
-		v.start_point.wx = wx - h_target_mm / 2;
-		v.start_point.wy = wy;
-		v.start_point.wz = wz;
+		if (scanAlongY) {
+			v.start_point.wx = wx;
+			v.start_point.wy = wy - scan_target_mm / 2;
 
-		v.end_point.wx = wx + h_target_mm / 2;
-		v.end_point.wy = wy;
+			v.end_point.wx = wx;
+			v.end_point.wy = wy + scan_target_mm / 2;
+		}
+		else {
+			v.start_point.wx = wx - scan_target_mm / 2;
+			v.start_point.wy = wy;
+
+			v.end_point.wx = wx + scan_target_mm / 2;
+			v.end_point.wy = wy;
+		}
+		v.start_point.wz = wz;
 		v.end_point.wz = wz;
 
 		/*ct::logger::debug("World: %d, %d, %d, %d", b.xmin, b.ymin, b.w, b.h);
@@ -965,11 +984,19 @@ void VisionApp::assignLineScansToOversizedVO(VisionAppQDragBox* vo, int padding_
 	v.created_by = "";
 	v.type = ct::s_stitch_linescan;
 	v.map_to_slinescan = "";
-	v.start_point.wx = center_mm.x() - h_target_mm / 2;
-	v.start_point.wy = center_mm.y();
+	if (scanAlongY) {
+		v.start_point.wx = center_mm.x();
+		v.start_point.wy = center_mm.y() - scan_target_mm / 2;
+		v.end_point.wx = center_mm.x();
+		v.end_point.wy = center_mm.y() + scan_target_mm / 2;
+	}
+	else {
+		v.start_point.wx = center_mm.x() - scan_target_mm / 2;
+		v.start_point.wy = center_mm.y();
+		v.end_point.wx = center_mm.x() + scan_target_mm / 2;
+		v.end_point.wy = center_mm.y();
+	}
 	v.start_point.wz = wz;
-	v.end_point.wx = center_mm.x() + h_target_mm / 2;
-	v.end_point.wy = center_mm.y();
 	v.end_point.wz = wz;
 
 	auto wpx = getAbsoluteFOVCoordinates(QPointF(center_mm.x(), center_mm.y()));
@@ -977,7 +1004,10 @@ void VisionApp::assignLineScansToOversizedVO(VisionAppQDragBox* vo, int padding_
 	v.px.cy = ScaleManager::instance().fov_to_world(util::mm_to_px(center_mm.y(), h_scale));
 	v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(h_target_mm, h_scale));
 	v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(v_target_mm, h_scale));
-	if (v_num == 1) v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(v_cam_mm, v_scale));
+	if (step_num == 1) {
+		if (scanAlongY) v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(step_cam_mm, h_scale));
+		else v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(step_cam_mm, v_scale));
+	}
 	v.px.compute_extremum();
 
 	auto dragBox = drawLineScan(QRectF(v.px.cx - (v.px.w / 2), v.px.cy - (v.px.h / 2), v.px.w, v.px.h), QColor(0, 255, 127), v.id);
@@ -1027,14 +1057,21 @@ void VisionApp::assignLineScansToGroupedOversizedVO(const GroupedOverSizedVO& gv
 	double h_target_mm = abs(br.x() - fl.x());
 	double h_center_mm = (br.x() + fl.x()) / 2;
 	double v_target_mm = abs(br.y() - fl.y());
+	double v_center_mm = (br.y() + fl.y()) / 2;
 
-	//Get FOV
-	double h_cam_mm = h_target_mm;
-	double v_cam_mm = 14.5;
+	//scan axis: direction the gantry travels; step axis: direction the FOV strips stack
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+	double scan_target_mm = scanAlongY ? v_target_mm : h_target_mm;
+	double scan_center_mm = scanAlongY ? v_center_mm : h_center_mm;
+	double step_target_mm = scanAlongY ? h_target_mm : v_target_mm;
+	double step_start_mm = scanAlongY ? fl.x() : fl.y();
+
+	//Get FOV (laser FOV perpendicular to the scan direction)
+	double step_cam_mm = 14.5;
 
 	//Set minimum overlap percentage
-	double v_percentage = (double)overlap_percentage / 100.0;
-	double v_overlap_mm = v_cam_mm * v_percentage;
+	double step_percentage = (double)overlap_percentage / 100.0;
+	double step_overlap_mm = step_cam_mm * step_percentage;
 
 	/*
 	* n: Minimum number of FOV
@@ -1049,40 +1086,39 @@ void VisionApp::assignLineScansToGroupedOversizedVO(const GroupedOverSizedVO& gv
 	* o = (n * f - t) / n - 1
 	*/
 	//Calculate minimum number of FOV required
-	int v_num = std::ceil((v_target_mm - v_overlap_mm) / (v_cam_mm - v_overlap_mm));
+	int step_num = std::ceil((step_target_mm - step_overlap_mm) / (step_cam_mm - step_overlap_mm));
 
 	//Recalculate minimum overlap based on minimum number of FOV
-	v_overlap_mm = ((v_num * v_cam_mm) - v_target_mm) / (v_num - 1);
+	step_overlap_mm = ((step_num * step_cam_mm) - step_target_mm) / (step_num - 1);
 
-	double v_centerOffset_mm = 0.0;
-	if (v_num == 1) {
-		v_overlap_mm = 0.0;
-		v_centerOffset_mm = (v_target_mm / 2) - (v_cam_mm / 2);
+	double step_centerOffset_mm = 0.0;
+	if (step_num == 1) {
+		step_overlap_mm = 0.0;
+		step_centerOffset_mm = (step_target_mm / 2) - (step_cam_mm / 2);
 	}
 
 	//Calculate each iteration's offset
-	double v_offset_mm = v_cam_mm - v_overlap_mm;
+	double step_offset_mm = step_cam_mm - step_overlap_mm;
 
-	ct::logger::trace("v_num: %d", v_num);
+	ct::logger::trace("step_num: %d", step_num);
 
-	ct::logger::trace("v_overlap: %f", v_overlap_mm);
+	ct::logger::trace("step_overlap: %f", step_overlap_mm);
 
-	ct::logger::trace("v_offset: %f", v_offset_mm);
+	ct::logger::trace("step_offset: %f", step_offset_mm);
 
-	ct::logger::trace("h_cam_mm: %f", h_cam_mm);
-	ct::logger::trace("v_cam_mm: %f", v_cam_mm);
+	ct::logger::trace("step_cam_mm: %f", step_cam_mm);
 
-	ct::logger::trace("h_target_mm: %f", h_target_mm);
-	ct::logger::trace("v_target_mm: %f", v_target_mm);
+	ct::logger::trace("scan_target_mm: %f", scan_target_mm);
+	ct::logger::trace("step_target_mm: %f", step_target_mm);
 
-	ct::logger::trace("v_centerOffset_mm: %f", v_centerOffset_mm);
+	ct::logger::trace("step_centerOffset_mm: %f", step_centerOffset_mm);
 
 	uidGenerator sgen;
 	auto slinescan_id = QString("slinescan") + sgen.id().c_str();
 
 	auto wz = _plane.corner_points[(int)Corner::FRONTLEFT].wz;
 
-	for (int r = 0; r < v_num; r++) {
+	for (int r = 0; r < step_num; r++) {
 
 		QLineScan v;
 		v.id = slinescan_id + "-" + QString::number(r);
@@ -1090,14 +1126,15 @@ void VisionApp::assignLineScansToGroupedOversizedVO(const GroupedOverSizedVO& gv
 		v.created_by = "";
 		v.type = ct::s_child_linescan;
 		v.map_to_slinescan = slinescan_id;
-		auto wx = h_center_mm;
-		auto wy = fl.y() + (v_cam_mm / 2) + (v_offset_mm * r) + v_centerOffset_mm;
+		auto step_mm = step_start_mm + (step_cam_mm / 2) + (step_offset_mm * r) + step_centerOffset_mm;
+		auto wx = scanAlongY ? step_mm : scan_center_mm;
+		auto wy = scanAlongY ? scan_center_mm : step_mm;
 
 		auto wpx = getAbsoluteFOVCoordinates(QPointF(wx, wy));
 		v.px.cx = ScaleManager::instance().fov_to_world(util::mm_to_px(wx, h_scale));
 		v.px.cy = ScaleManager::instance().fov_to_world(util::mm_to_px(wy, h_scale));
-		v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(h_cam_mm, h_scale));
-		v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(v_cam_mm, h_scale));
+		v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(scanAlongY ? step_cam_mm : scan_target_mm, h_scale));
+		v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(scanAlongY ? scan_target_mm : step_cam_mm, h_scale));
 		v.px.compute_extremum();
 
 		auto dragBox = drawLineScan(QRectF(v.px.cx - (v.px.w / 2), v.px.cy - (v.px.h / 2), v.px.w, v.px.h), QColor(0, 255, 127), v.id);
@@ -1107,12 +1144,21 @@ void VisionApp::assignLineScansToGroupedOversizedVO(const GroupedOverSizedVO& gv
 
 		v.pDragBox = dragBox;
 
-		v.start_point.wx = wx - h_target_mm / 2;
-		v.start_point.wy = wy;
-		v.start_point.wz = wz;
+		if (scanAlongY) {
+			v.start_point.wx = wx;
+			v.start_point.wy = wy - scan_target_mm / 2;
 
-		v.end_point.wx = wx + h_target_mm / 2;
-		v.end_point.wy = wy;
+			v.end_point.wx = wx;
+			v.end_point.wy = wy + scan_target_mm / 2;
+		}
+		else {
+			v.start_point.wx = wx - scan_target_mm / 2;
+			v.start_point.wy = wy;
+
+			v.end_point.wx = wx + scan_target_mm / 2;
+			v.end_point.wy = wy;
+		}
+		v.start_point.wz = wz;
 		v.end_point.wz = wz;
 
 		dragBox->setID(v.id);
@@ -1130,11 +1176,19 @@ void VisionApp::assignLineScansToGroupedOversizedVO(const GroupedOverSizedVO& gv
 	v.created_by = "";
 	v.type = ct::s_stitch_linescan;
 	v.map_to_slinescan = "";
-	v.start_point.wx = center_mm.x() - h_target_mm / 2;
-	v.start_point.wy = center_mm.y();
+	if (scanAlongY) {
+		v.start_point.wx = center_mm.x();
+		v.start_point.wy = center_mm.y() - scan_target_mm / 2;
+		v.end_point.wx = center_mm.x();
+		v.end_point.wy = center_mm.y() + scan_target_mm / 2;
+	}
+	else {
+		v.start_point.wx = center_mm.x() - scan_target_mm / 2;
+		v.start_point.wy = center_mm.y();
+		v.end_point.wx = center_mm.x() + scan_target_mm / 2;
+		v.end_point.wy = center_mm.y();
+	}
 	v.start_point.wz = wz;
-	v.end_point.wx = center_mm.x() + h_target_mm / 2;
-	v.end_point.wy = center_mm.y();
 	v.end_point.wz = wz;
 
 	auto wpx = getAbsoluteFOVCoordinates(QPointF(center_mm.x(), center_mm.y()));
@@ -1142,7 +1196,10 @@ void VisionApp::assignLineScansToGroupedOversizedVO(const GroupedOverSizedVO& gv
 	v.px.cy = ScaleManager::instance().fov_to_world(util::mm_to_px(center_mm.y(), h_scale));
 	v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(h_target_mm, h_scale));
 	v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(v_target_mm, h_scale));
-	if (v_num == 1) v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(v_cam_mm, v_scale));
+	if (step_num == 1) {
+		if (scanAlongY) v.px.w = ScaleManager::instance().fov_to_world(util::mm_to_px(step_cam_mm, h_scale));
+		else v.px.h = ScaleManager::instance().fov_to_world(util::mm_to_px(step_cam_mm, v_scale));
+	}
 	v.px.compute_extremum();
 
 	auto dragBox = drawLineScan(QRectF(v.px.cx - (v.px.w / 2), v.px.cy - (v.px.h / 2), v.px.w, v.px.h), QColor(0, 255, 127), v.id);
@@ -1224,6 +1281,9 @@ void VisionApp::assignLineScans()
 
 	int padding_wpx = ScaleManager::instance().fov_to_world(util::mm_to_px(ui.lineEdit_lineScanPaddingMM->text().toDouble(), scale));
 
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+	ct::logger::info("[VisionAppCRUD] Line scan axis: %s", scanAlongY ? "Y" : "X");
+
 
 	bool unassignOnly = false;
 	if (ui.comboBox_lineScanAssignmentMethod->currentText() == "All Selected Region") clearLineScans();
@@ -1235,7 +1295,8 @@ void VisionApp::assignLineScans()
 
 		if (vo->lineScanID() != "" && unassignOnly) continue;
 
-		if (rect.height() > fov_wpx) {
+		//oversized when the VO exceeds the laser FOV perpendicular to the scan direction
+		if ((scanAlongY ? rect.width() : rect.height()) > fov_wpx) {
 			bigROIs.push_back(vo);
 		}
 		else {
@@ -1290,9 +1351,14 @@ void VisionApp::assignLineScans()
 	}*/
 
 	//FOV of laser must be maintain, while scan start and end point can be padded
-	ct::cluster_boxes(w_wpx + padding_wpx * 2, fov_wpx, padding_wpx, rois, scans, true);
-
-	ct::fit_boxes_width(scans, padding_wpx);
+	if (scanAlongY) {
+		ct::cluster_boxes(fov_wpx, h_wpx + padding_wpx * 2, padding_wpx, rois, scans, ct::ClusterPriority::X);
+		ct::fit_boxes_height(scans, padding_wpx);
+	}
+	else {
+		ct::cluster_boxes(w_wpx + padding_wpx * 2, fov_wpx, padding_wpx, rois, scans, ct::ClusterPriority::Y);
+		ct::fit_boxes_width(scans, padding_wpx);
+	}
 
 	//world z 
 	auto wz = _plane.corner_points[(int)Corner::FRONTLEFT].wz;
@@ -1318,13 +1384,24 @@ void VisionApp::assignLineScans()
 		auto w_mm = util::px_to_mm(ScaleManager::instance().world_to_fov(b.w), scale);
 		auto h_mm = util::px_to_mm(ScaleManager::instance().world_to_fov(b.h), scale);
 
-		v.start_point.wx = wmm.x() - w_mm / 2;
-		v.start_point.wy = wmm.y();
-		v.start_point.wz = wz;
+		if (scanAlongY) {
+			v.start_point.wx = wmm.x();
+			v.start_point.wy = wmm.y() - h_mm / 2;
+			v.start_point.wz = wz;
 
-		v.end_point.wx = wmm.x() + w_mm / 2;
-		v.end_point.wy = wmm.y();
-		v.end_point.wz = wz;
+			v.end_point.wx = wmm.x();
+			v.end_point.wy = wmm.y() + h_mm / 2;
+			v.end_point.wz = wz;
+		}
+		else {
+			v.start_point.wx = wmm.x() - w_mm / 2;
+			v.start_point.wy = wmm.y();
+			v.start_point.wz = wz;
+
+			v.end_point.wx = wmm.x() + w_mm / 2;
+			v.end_point.wy = wmm.y();
+			v.end_point.wz = wz;
+		}
 
 		ct::logger::debug("World: %d, %d, %d, %d", b.xmin, b.ymin, b.w, b.h);
 		ct::logger::debug("FOV: %d, %d, %d, %d", v.px.xmin, v.px.ymin, v.px.w, v.px.h);

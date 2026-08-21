@@ -145,13 +145,6 @@ public:
     void run() override;
     void release();
 
-    struct SensorStatus {
-        bool valid = false;
-        std::array<bool, 5> sensors;
-    };
-    SensorStatus getSensorStatus();
-    bool isAllSensorOff(const SensorStatus& status);
-
     bool turnOnBrake();
     bool safelyReleaseBrake();
 
@@ -201,7 +194,7 @@ private:
         std::atomic<bool> servo_on = true;
     };
 
-    AxisState m_x, m_y, m_z, m_rail, m_cy;
+    AxisState m_x, m_y, m_z;
 
     bool m_enable = true;
     std::atomic<bool> m_running = true;

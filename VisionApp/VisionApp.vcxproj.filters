@@ -469,8 +469,6 @@
     <ClCompile Include="VisionApp_JobThread.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="MachineSMEMAManager.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -945,8 +943,6 @@
     <QtMoc Include="MachineController.h">
       <Filter>Header Files</Filter>
     </QtMoc>
-    <QtMoc Include="MachineSMEMAManager.h">
-      <Filter>Header Files</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>

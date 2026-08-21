@@ -22,7 +22,6 @@
 
 #include "MotionController.h"
 #include "MachineController.h"
-#include "MachineSMEMAManager.h"
 
 #include "ProjectBased_Definition.h"
 
@@ -211,16 +210,6 @@ void JobThread::getXSpeed(int& speed, int& speed3d)
 	speed3d = m_xSpeed3d;
 }
 
-
-void JobThread::setConveyorSpeed(int speed)
-{
-	m_conveyorSpeed = speed;
-}
-
-void JobThread::setConveyorDecel(int decel)
-{
-	m_conveyorDecel = decel;
-}
 
 void JobThread::enableFiducial(bool enable)
 {
@@ -546,8 +535,10 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 
 	auto cid = util::combineID(id, optic.id);
 
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+
 	ct::logger::trace("Start set scan info");
-	auto fixedLength = abs(start.wx - end.wx);
+	auto fixedLength = scanAlongY ? abs(start.wy - end.wy) : abs(start.wx - end.wx);
 	ProfilerManager::instance().setScanLength(m_profilerID, fixedLength);
 	ct::logger::trace("Done set scan info");
 
@@ -573,7 +564,8 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 		return info;
 	}
 
-	jogLaser(end.wx + 6 + SystemData::instance().m_extraMoveFor3DLaser, end.wy, start.wz, "3D");
+	if (scanAlongY) jogLaser(end.wx, end.wy + 6 + SystemData::instance().m_extraMoveFor3DLaser, start.wz, "3D");
+	else jogLaser(end.wx + 6 + SystemData::instance().m_extraMoveFor3DLaser, end.wy, start.wz, "3D");
 	//jogLaser(end.wx + 10 + SystemData::instance().m_extraMoveFor3DLaser, end.wy, start.wz, "3D");
 
 	if (!ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT)) {
@@ -3177,13 +3169,16 @@ void JobThread::acquire3DImages()
 
 	auto& ls = *m_linescans;
 
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+
 	clearEmptyLineScan();
 
 	for (const auto& l : ls) {
 		if (l.type == ct::s_stitch_linescan) continue;
-		if (l.id == "") continue; 
+		if (l.id == "") continue;
 
-		scanSequence.insert({ QString("%1_%2").arg(l.px.cy).arg(l.id), l.id});
+		//order lines by their position along the step axis
+		scanSequence.insert({ QString("%1_%2").arg(scanAlongY ? l.px.cx : l.px.cy).arg(l.id), l.id});
 
 		if (m_run1stFOVOnly) break;
 	}
@@ -3219,7 +3214,9 @@ void JobThread::acquire3DImages()
 		auto l = ls[seq.second];
 
 		auto mid = l.start_point;
-		auto halfWidth_mm = abs(l.start_point.wx - l.end_point.wx) / 2;
+		auto halfLength_mm = scanAlongY
+			? abs(l.start_point.wy - l.end_point.wy) / 2
+			: abs(l.start_point.wx - l.end_point.wx) / 2;
 		mid.wx = (mid.wx + l.end_point.wx) / 2;
 		mid.wy = (mid.wy + l.end_point.wy) / 2;
 
@@ -3229,10 +3226,18 @@ void JobThread::acquire3DImages()
 			lineAlgo = fiducialForPoint(mid.wx, mid.wy);
 			auto shifted = lineAlgo->getShiftedPoint(em::V2d(mid.wx, mid.wy));
 
-			l.start_point.wx = shifted.x() - halfWidth_mm;
-			l.end_point.wx = shifted.x() + halfWidth_mm;
-			l.start_point.wy = shifted.y();
-			l.end_point.wy = shifted.y();
+			if (scanAlongY) {
+				l.start_point.wx = shifted.x();
+				l.end_point.wx = shifted.x();
+				l.start_point.wy = shifted.y() - halfLength_mm;
+				l.end_point.wy = shifted.y() + halfLength_mm;
+			}
+			else {
+				l.start_point.wx = shifted.x() - halfLength_mm;
+				l.end_point.wx = shifted.x() + halfLength_mm;
+				l.start_point.wy = shifted.y();
+				l.end_point.wy = shifted.y();
+			}
 
 			mid.wx = shifted.x();
 			mid.wy = shifted.y();
@@ -5169,10 +5174,21 @@ void JobThread::jogLaser(double x, double y, double z, QString type)
 	// if (type == "3D") waitJogDone = false;
 
 	double newX = x;
+	double newY = y;
 	if (type == "2D")
 	{
+		//clamp the scan-axis target to the soft limit; the shortfall is added back at the scan end move
 		double softLimit = 0.0;
-		if (!MotionController::instance().get_soft_limit(m_motionID, (int)Axis::X, x, softLimit))
+		if (SystemData::instance().isLineScanAxisY())
+		{
+			if (!MotionController::instance().get_soft_limit(m_motionID, (int)Axis::Y, y, softLimit))
+			{
+				SystemData::instance().m_extraMoveFor3DLaser = std::abs(y) - std::abs(softLimit);
+				newY = softLimit;
+				ct::logger::warn("[JobThread] Axis %d extra move: %.2f", (int)Axis::Y, SystemData::instance().m_extraMoveFor3DLaser);
+			}
+		}
+		else if (!MotionController::instance().get_soft_limit(m_motionID, (int)Axis::X, x, softLimit))
 		{
 			SystemData::instance().m_extraMoveFor3DLaser = std::abs(x) - std::abs(softLimit);
 			newX = softLimit;
@@ -5180,7 +5196,7 @@ void JobThread::jogLaser(double x, double y, double z, QString type)
 		}
 	}
 
-	return jog(newX, y, z, type, waitJogDone);
+	return jog(newX, newY, z, type, waitJogDone);
 }
 
 void JobThread::jogLaserBasedOnFiducial(double x, double y, double z, QString type, bool forceEnable)
@@ -5404,13 +5420,6 @@ void JobThread::homeXYZ()
 
 void JobThread::homeAll()
 {
-	
-	auto status = MachineController::instance().getSensorStatus();
-	if (!MachineController::instance().isAllSensorOff(status)) {
-		MachineController::instance().notifyError(MachineError::RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT);
-		return;
-	}
-
 	if (!MachineController::instance().isServoOn(Axis::X)) MachineController::instance().notifyError(MachineError::X_SERVO_OFF);
 	if (!MachineController::instance().isServoOn(Axis::Y)) MachineController::instance().notifyError(MachineError::Y_SERVO_OFF);
 	if (!MachineController::instance().isServoOn(Axis::Z)) MachineController::instance().notifyError(MachineError::Z_SERVO_OFF);
@@ -5445,62 +5454,6 @@ void JobThread::homeAll()
 	MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
 }
 
-void JobThread::homeRail()
-{
-	// OLD_BRANCH_REVERT_DISABLED_BEGIN
-	// FR1-specific rail servo check disabled; restore old homeRail check.
-	//if (!MachineController::instance().isServoOn(Axis::FR1)) MachineController::instance().notifyError(MachineError::RAIL_SERVO_OFF);
-	// OLD_BRANCH_REVERT_DISABLED_END
-	if (!MachineController::instance().isServoOn(Axis::X)) MachineController::instance().notifyError(MachineError::RAIL_SERVO_OFF);
-
-	if (MachineController::instance().getMachineState() == MachineState::S_ERROR) return;
-
-#if 0
-	// OLD_BRANCH_REVERT_DISABLED_BEGIN
-	// Conveyor sweep before rail homing disabled; restore old direct rail homing.
-	auto status = MachineController::instance().getSensorStatus();
-	//if (MachineController::instance().isAllSensorOff(status)) {
-	if (!runConveyorUntilAnySensor(true, conveyorTimeOut)) {
-		MachineController::instance().notifyEvent(MachineEvent::HOMING);
-
-		MachineController::instance().safelyReleaseBrake();
-
-		auto rail = (int)im390::Axis::FR1;
-
-
-		auto ret = MotionController::instance().home(m_motionID, rail);
-
-		os_tool::doNothing(m_motionReadDelay_ms);
-		waitAxis(rail);
-
-		MotionController::instance().set_position_mm(m_motionID, 0, rail, 0.0);
-		MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
-	}
-	else {
-		MachineController::instance().notifyError(MachineError::RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT);
-	}
-	// OLD_BRANCH_REVERT_DISABLED_END
-#endif
-
-	MachineController::instance().notifyEvent(MachineEvent::HOMING);
-
-	MachineController::instance().safelyReleaseBrake();
-
-	auto rail = (int)im390::Axis::FR1;
-
-
-	auto ret = MotionController::instance().home(m_motionID, rail);
-
-	os_tool::doNothing(m_motionReadDelay_ms);
-	waitAxis(rail);
-
-	MotionController::instance().set_position_mm(m_motionID, 0, rail, 0.0);
-	MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
-
-
-
-}
-
 void JobThread::waitAxis(int axis)
 {
 	ct::logger::info("[Motion] Waiting for axis %d...", axis);
@@ -5510,543 +5463,17 @@ void JobThread::waitAxis(int axis)
 
 }
 
-void JobThread::setRailWidth(double width)
-{
-	//check if conveyor is moving
-	bool conveyorMoving = !MotionController::instance().move_done(m_motionID, 0, (int)Axis::CY1);
-	if (conveyorMoving) {
-		MachineController::instance().notifyError(MachineError::RAIL_UNSAFE_TO_MOVE_CONVEYOR_MOVING);
-		return;
-	}
-
-	//check if there's board in the conveyor
-	auto status = MachineController::instance().getSensorStatus();
-#if 0
-	// OLD_BRANCH_REVERT_DISABLED_BEGIN
-	// Conveyor sweep before rail width change disabled; restore old sensor-only check.
-	if (!runConveyorUntilAnySensor(true, conveyorTimeOut)) {
-		auto o = MotionController::instance().absolute_move(m_motionID, (int)Axis::FR1, width);
-	}
-	else {
-		MachineController::instance().notifyError(MachineError::RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT);
-	}
-	// OLD_BRANCH_REVERT_DISABLED_END
-#endif
-	if (MachineController::instance().isAllSensorOff(status)) {
-		auto o = MotionController::instance().absolute_move(m_motionID, (int)Axis::FR1, width);
-	}
-	else {
-		MachineController::instance().notifyError(MachineError::RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT);
-	}
-}
-
-void JobThread::setLoadingDirection(int index)
-{
-	m_loadingDirection = (LoadingDirection)index;
-}
-
 void JobThread::loadToPositionSensor(int index) {
-	if (!isSensorFunctional())
-	{
-		emit clearSubRecipe();
-		return;
-	}
+	//NOTE: no board transport on this machine, the part is already in position
 	m_stopRun = false;
 
-	//NOTE: travel direction is resolved inside startLoadToSensor from the loading
-	//direction + current sensor states, not here.
-	int timeout_ms = SystemData::instance()._timeoutLoad2Sensor;
-
-	bool ret = false;
-	if (index == 0) {
-		ret = loadToSensor(SensorIndex::RIGHT, true, timeout_ms);
-	}
-	else if (index == 1) {
-		ret = loadToSensor(SensorIndex::LEFT, true, timeout_ms);
+	while (SystemData::instance()._switchingRecipe) {
+		if (m_stopRun) return;
+		os_tool::doNothing(100);
 	}
 
-	if (ret && !m_stopRun) {
-		while (SystemData::instance()._switchingRecipe) {
-			if (m_stopRun) return;
-			os_tool::doNothing(100);
-		}
-
-		emit signalBoardInPosition(index);
-	}
-	else {
-		m_stopRun = true;
-	}
+	emit signalBoardInPosition(index);
 }
-
-//bool JobThread::loadToSensor(SensorIndex sensor, bool timeout, int timeout_ms)
-//{
-//	ct::logger::info("Loading to sensor: %d", (int)sensor);
-//	ct::logger::info("Sensor timeout: %d", (int)timeout_ms);
-//
-//	if (MachineController::instance().isBypassAxis(Axis::CY1)) return true;
-//
-//	auto railMoving = !MotionController::instance().move_done(m_motionID, 0, (int)Axis::FR1);
-//
-//	if (railMoving) {
-//		MachineController::instance().notifyError(MachineError::CONVEYOR_UNSAFE_TO_MOVE_RAIL_MOVING);
-//		return false;
-//	}
-//
-//	if (!toggleClamper(false)) {
-//		MachineController::instance().notifyError(MachineError::CLAMPER1_JAM);
-//	}
-//
-//	if (!isSensorFunctional()) return false;
-//	m_stopRun = false; //important to reset, otherwise keep rotate
-//	m_failLoadToSensor = false; // prevent progress bar crash VisionApp
-//
-//	if (timeout) {
-//		auto ret =  nvs::timeout_wrapper(
-//			[&]() { startLoadToSensor(sensor); },
-//			timeout_ms
-//		);
-//
-//		if (!ret) {
-//			m_stopRun = true;
-//			m_failLoadToSensor = true;
-//			if (sensor == SensorIndex::START) MachineController::instance().notifyError(MachineError::ENTRY_SENSOR_TIMEOUT);
-//			else if (sensor == SensorIndex::EXIT) MachineController::instance().notifyError(MachineError::EXIT_SENSOR_TIMEOUT);
-//			else if (sensor == SensorIndex::RIGHT) MachineController::instance().notifyError(MachineError::POS1_SENSOR_TIMEOUT);
-//			else if (sensor == SensorIndex::LEFT) MachineController::instance().notifyError(MachineError::POS2_SENSOR_TIMEOUT);
-//		}
-//	}
-//	else {
-//		startLoadToSensor(sensor);
-//	}
-//
-//	if (sensor == SensorIndex::RIGHT || sensor == SensorIndex::LEFT) {
-//		if (!toggleClamper(true)) {
-//			MachineController::instance().notifyError(MachineError::CLAMPER1_JAM);
-//			return false;
-//		}
-//	}
-//
-//	return true;
-//}
-//
-//void JobThread::startLoadToSensor(SensorIndex sensor)
-//{
-//	bool reach = false;
-//	QString sensorErrorMsg = "Unable to load front pallet! Failed to get reading from sensors";
-//	int conveyorAxis = (int)Axis::CY1;
-//
-//	bool firstTouch = true;
-//	bool leftToRight = true;
-//
-//	auto status = MachineController::instance().getSensorStatus();
-//	if (!status.valid) {
-//		MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//		emit promptMsg(sensorErrorMsg);
-//		return;
-//	}
-//
-//	if (sensor == SensorIndex::START) {
-//		firstTouch = true;
-//		leftToRight = false;
-//	}
-//	else if (sensor == SensorIndex::EXIT) {
-//		firstTouch = true;
-//		leftToRight = true;
-//	}
-//	else if (sensor == SensorIndex::RIGHT) {
-//		auto rightOn = status.sensors[(int)SensorIndex::RIGHT];
-//		auto exitOn = status.sensors[(int)SensorIndex::EXIT];
-//
-//		//if on right side
-//		if (rightOn) {
-//			firstTouch = true;
-//			leftToRight = true;
-//		}
-//		else if (exitOn) {
-//			firstTouch = false;
-//			leftToRight = false;
-//		}
-//		else { //if on left side
-//			firstTouch = true;
-//			leftToRight = true;
-//		}
-//	}
-//	else if (sensor == SensorIndex::LEFT) {
-//		auto leftOn = status.sensors[(int)SensorIndex::LEFT];
-//		auto startOn = status.sensors[(int)SensorIndex::START];
-//
-//		//if on left side
-//		if (leftOn) {
-//			firstTouch = true;
-//			leftToRight = false;
-//		}
-//		else if (startOn) {
-//			firstTouch = false;
-//			leftToRight = true;
-//		}
-//		else { //if on right side
-//			firstTouch = true;
-//			leftToRight = false;
-//		}
-//	}
-//
-//	//First touch: Move towards position, reverse until sensor off, move towards targeted pos again
-//	//Latch: Move towards  position, latch & continue until sensor off, move back to pos
-//
-//	if (!status.sensors[(int)sensor]) {
-//		MotionController::instance().continuous_move(m_motionID, conveyorAxis, leftToRight);
-//	}
-//
-//	if (firstTouch) {
-//		while (!reach) {
-//			if (m_stopRun) return;
-//
-//			status = MachineController::instance().getSensorStatus();
-//
-//			//ct::logger::info("FT Waiting for 1: %d", status.sensors[(int)sensor]);
-//			if (status.sensors[(int)sensor]) {
-//				MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//				//ScopedConveyorSpeed s(m_conveyorSpeed, m_conveyorSlowSpeed, 1000, 100);
-//				os_tool::doNothing(100);
-//				MotionController::instance().continuous_move(m_motionID, conveyorAxis, !leftToRight);
-//
-//				while (!reach) {
-//					if (m_stopRun) return;
-//
-//					status = MachineController::instance().getSensorStatus();
-//
-//					//ct::logger::info("FT Waiting for 0: %d", status.sensors[(int)sensor]);
-//					if (!status.sensors[(int)sensor]) {
-//						MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//						os_tool::doNothing(100);
-//						MotionController::instance().continuous_move(m_motionID, conveyorAxis, leftToRight);
-//
-//						while (!reach) {
-//							if (m_stopRun) return;
-//
-//							status = MachineController::instance().getSensorStatus();
-//
-//							//ct::logger::info("FT Waiting for 1(2): %d", status.sensors[(int)sensor]);
-//							if (status.sensors[(int)sensor]) {
-//								MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//								reach = true;
-//							}
-//						}
-//					}
-//				}
-//			}
-//		}
-//	}
-//	else {
-//		while (!reach) {
-//			if (m_stopRun) return;
-//
-//			auto status = MachineController::instance().getSensorStatus();
-//
-//			//ct::logger::info("LT Waiting for 1: %d", status.sensors[(int)sensor]);
-//			if (status.sensors[(int)sensor]) {
-//
-//				while (!reach) {
-//					if (m_stopRun) return;
-//
-//					status = MachineController::instance().getSensorStatus();
-//
-//					//ct::logger::info("LT Waiting for 0: %d", status.sensors[(int)sensor]);
-//					if (!status.sensors[(int)sensor]) {
-//						if (m_stopRun) return;
-//
-//						MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//						//ScopedConveyorSpeed s(m_conveyorSpeed, m_conveyorSlowSpeed, 1000, 100);
-//						os_tool::doNothing(100);
-//						MotionController::instance().continuous_move(m_motionID, conveyorAxis, !leftToRight);
-//
-//						while (!reach) {
-//							status = MachineController::instance().getSensorStatus();
-//
-//							//ct::logger::info("LT Waiting for 1: %d", status.sensors[(int)sensor]);
-//							if (status.sensors[(int)sensor]) {
-//								MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//								reach = true;
-//							}
-//						}
-//					}
-//				}
-//			}
-//		}
-//	}
-//
-//	if (m_stopRun == true) {
-//		ct::logger::error("Timeout loading to sensor: %d", (int)sensor);
-//		MotionController::instance().stop_move(m_motionID, conveyorAxis);
-//	}
-//	else {
-//		ct::logger::info("Done loading to sensor: %d", (int)sensor);
-//	}
-//}
-
-bool JobThread::loadToSensor(SensorIndex sensor, bool useTimeout, int timeout_ms)
-{
-	ct::logger::info("Loading to sensor: %d", (int)sensor);
-	ct::logger::info("Sensor timeout: %d", timeout_ms);
-
-	if (MachineController::instance().isBypassAxis(Axis::CY1)) return true;
-
-	auto railMoving = !MotionController::instance().move_done(m_motionID, 0, (int)Axis::FR1);
-	
-	if (railMoving) {
-		MachineController::instance().notifyError(MachineError::CONVEYOR_UNSAFE_TO_MOVE_RAIL_MOVING);
-		return false;
-	}
-
-	if (!toggleClamper(false)) {
-		MachineController::instance().notifyError(MachineError::CLAMPER1_JAM);
-		return false;
-	}
-
-	if (!isSensorFunctional()) return false;
-	m_stopRun = false; //important to reset, otherwise keep rotate
-	m_failLoadToSensor = false; // prevent progress bar crash VisionApp
-
-	bool result = startLoadToSensor(sensor, useTimeout ? timeout_ms : -1);
-
-	if (!result)
-	{
-		m_failLoadToSensor = true;
-
-		if (SystemData::instance()._enableSMEMA)
-		{
-			switch (sensor)
-			{
-			case SensorIndex::EXIT:
-				//if (m_loadingDirection == LoadingDirection::LeftRight)
-					//SystemData::instance()._Inspection_Done = false;
-					//SystemData::instance()._Machine_Ready = true;
-					//SystemData::instance()._IsBoardEntry = false;
-					//MachineSMEMAManager::instance().changeState(SmemaState::IDLE);
-				break;
-
-			case SensorIndex::START:
-				//if (m_loadingDirection == LoadingDirection::RightLeft)
-					//SystemData::instance()._Inspection_Done = false;
-					//SystemData::instance()._Machine_Ready = true;
-					//SystemData::instance()._IsBoardEntry = false;
-					//MachineSMEMAManager::instance().changeState(SmemaState::IDLE);
-				break;
-
-			case SensorIndex::RIGHT:
-				MachineSMEMAManager::instance().changeState(SmemaState::IDLE);
-				break;
-
-			case SensorIndex::LEFT:
-				MachineSMEMAManager::instance().changeState(SmemaState::BYPASS_INSPECTION);
-				break;
-
-			default:
-				break;
-			}
-		}
-
-		MotionController::instance().set_DO(m_motionID, 1, (int)DOB::UPSTREAM, false);
-		MotionController::instance().set_DO(m_motionID, 1, (int)DOB::DOWNSTREAM, false);
-
-		if (sensor == SensorIndex::START) MachineController::instance().notifyError(MachineError::ENTRY_SENSOR_TIMEOUT);
-		else if (sensor == SensorIndex::EXIT) MachineController::instance().notifyError(MachineError::EXIT_SENSOR_TIMEOUT);
-		else if (sensor == SensorIndex::RIGHT) MachineController::instance().notifyError(MachineError::POS1_SENSOR_TIMEOUT);
-		else if (sensor == SensorIndex::LEFT) MachineController::instance().notifyError(MachineError::POS2_SENSOR_TIMEOUT);
-
-		return false;
-	}
-
-	if (sensor == SensorIndex::RIGHT || sensor == SensorIndex::LEFT) {
-		if (!toggleClamper(true)) {
-			MachineController::instance().notifyError(MachineError::CLAMPER1_JAM);
-			return false;
-		}
-	}
-
-	return true;
-}
-
-bool JobThread::startLoadToSensor(SensorIndex sensor, int timeout_ms)
-{
-	QElapsedTimer timer;
-	timer.start();
-
-	const int internalTimeout = (timeout_ms > 0) ? timeout_ms : 60000;
-
-	int conveyorAxis = (int)Axis::CY1;
-	auto& motion = MotionController::instance();
-	auto& machine = MachineController::instance();
-
-	auto status = machine.getSensorStatus();
-	if (!status.valid) {
-		motion.stop_move(m_motionID, conveyorAxis);
-		return false;
-	}
-
-	// leftToRight: direction travelled to first reach the target sensor.
-	//   continuous_move(..., true) travels towards the right; SensorIndex is ordered
-	//   leftmost -> rightmost (START, LEFT, SLOW, RIGHT, EXIT).
-	// firstTouch: park on the first edge that trips the sensor
-	//   (approach until ON, back off until OFF, creep back until ON).
-	// latch: the board already overhangs the target, so run its far edge past the
-	//   sensor (continue until OFF) then come back until ON.
-	bool firstTouch = true;
-	bool leftToRight = true;
-
-	// Board enters from the left for LeftRight / LeftLeft, from the right otherwise.
-	const bool entryFromLeft = (m_loadingDirection == LoadingDirection::LeftRight ||
-		m_loadingDirection == LoadingDirection::LeftLeft);
-
-	if (sensor == SensorIndex::START) {
-		firstTouch = true;
-		leftToRight = false;
-	}
-	else if (sensor == SensorIndex::EXIT) {
-		firstTouch = true;
-		leftToRight = true;
-	}
-	else if (sensor == SensorIndex::RIGHT) {
-		auto rightOn = status.sensors[(int)SensorIndex::RIGHT];
-		auto exitOn = status.sensors[(int)SensorIndex::EXIT];
-
-		//anything inboard of RIGHT means the board is on the left of the target
-		bool leftSideOn = status.sensors[(int)SensorIndex::START] ||
-			status.sensors[(int)SensorIndex::LEFT] ||
-			status.sensors[(int)SensorIndex::SLOW];
-
-		//if on right side
-		if (rightOn) {
-			firstTouch = true;
-			leftToRight = true;
-		}
-		else if (exitOn || (!leftSideOn && !entryFromLeft)) {
-			// Loading from the right: the board can already have cleared the EXIT
-			// sensor while the clamper was releasing, so fall back on the loading
-			// direction rather than assuming it sits on the left.
-			firstTouch = false;
-			leftToRight = false;
-		}
-		else { //if on left side
-			firstTouch = true;
-			leftToRight = true;
-		}
-	}
-	else if (sensor == SensorIndex::LEFT) {
-		auto leftOn = status.sensors[(int)SensorIndex::LEFT];
-		auto startOn = status.sensors[(int)SensorIndex::START];
-
-		//anything inboard of LEFT means the board is on the right of the target
-		bool rightSideOn = status.sensors[(int)SensorIndex::SLOW] ||
-			status.sensors[(int)SensorIndex::RIGHT] ||
-			status.sensors[(int)SensorIndex::EXIT];
-
-		//if on left side
-		if (leftOn) {
-			firstTouch = true;
-			leftToRight = false;
-		}
-		else if (startOn || (!rightSideOn && entryFromLeft)) {
-			//same clamper-timing race as above, mirrored
-			firstTouch = false;
-			leftToRight = true;
-		}
-		else { //if on right side
-			firstTouch = true;
-			leftToRight = false;
-		}
-	}
-
-	// Direction of the final creep onto the sensor: firstTouch ends up travelling the
-	// way it came in, latch ends up travelling back against it.
-	const bool settleDir = firstTouch ? leftToRight : !leftToRight;
-
-	// Start moving if sensor is OFF
-	if (!status.sensors[(int)sensor]) {
-		motion.continuous_move(m_motionID, conveyorAxis, leftToRight);
-	}
-
-	enum State {
-		WaitFirstOn,
-		WaitOff,
-		WaitSettleOn,
-		Done
-	};
-
-	State state = WaitFirstOn;
-
-	while (state != Done)
-	{
-		if (m_stopRun)
-		{
-			motion.stop_move(m_motionID, conveyorAxis);
-			return false;
-		}
-
-		if (timer.elapsed() > internalTimeout)
-		{
-			ct::logger::error("Timeout loading to sensor: %d", (int)sensor);
-			motion.stop_move(m_motionID, conveyorAxis);
-			return false;
-		}
-
-		status = machine.getSensorStatus();
-		if (!status.valid)
-		{
-			motion.stop_move(m_motionID, conveyorAxis);
-			return false;
-		}
-
-		bool sensorOn = status.sensors[(int)sensor];
-
-		switch (state)
-		{
-		case WaitFirstOn:
-			if (sensorOn)
-			{
-				if (firstTouch)
-				{
-					//back off the way we came so the same edge can be re-approached
-					motion.stop_move(m_motionID, conveyorAxis);
-					os_tool::doNothing(100);
-					motion.continuous_move(m_motionID, conveyorAxis, !settleDir);
-				}
-				//latch: keep travelling so the far edge can clear the sensor.
-				//Stopping here would leave the sensor covered and stall the board.
-
-				state = WaitOff;
-			}
-			break;
-
-		case WaitOff:
-			if (!sensorOn)
-			{
-				motion.stop_move(m_motionID, conveyorAxis);
-				os_tool::doNothing(100);
-				motion.continuous_move(m_motionID, conveyorAxis, settleDir);
-				state = WaitSettleOn;
-			}
-			break;
-
-		case WaitSettleOn:
-			if (sensorOn)
-			{
-				motion.stop_move(m_motionID, conveyorAxis);
-				state = Done;
-			}
-			break;
-
-		default:
-			break;
-		}
-
-		QThread::msleep(5);   // CPU protection
-	}
-
-	ct::logger::info("Done loading to sensor: %d", (int)sensor);
-	return true;
-}
-
 void JobThread::setServerHostAddress(QString hostAddress, int port, QString hostAddress2, int port2)
 {
 	m_srxHost[0] = hostAddress;
@@ -6295,163 +5722,11 @@ void JobThread::releaseSRXSockets()
 	}
 }
 
-bool JobThread::isSensorFunctional() {
-	auto status = MachineController::instance().getSensorStatus();
-	if (!status.valid) {
-		emit signalLoadSequenceFail("Unable to load front board! Failed to get reading from sensors");
-		return false;
-	}
-
-	return true;
-}
-
 void JobThread::unloadBoard()
 {
-	int timeout_ms = SystemData::instance()._timeoutLoad2Sensor;
-
-	bool ret = false;
-	if (m_loadingDirection == LoadingDirection::LeftRight ||
-		m_loadingDirection == LoadingDirection::RightRight) {
-		ret = loadToSensor(SensorIndex::EXIT, true, timeout_ms);
-	}
-	else {
-		ret = loadToSensor(SensorIndex::START, true, timeout_ms);
-	}
-
-	if (ret) emit signalBoardUnloaded();
-	else {
-		m_stopRun = true;
-		SystemData::instance()._Unloading_Board = false;
-		MachineController::instance().notifyError(MachineError::UNLOADING_TIMEOUT);
-	}
-
-	
+	//NOTE: no board transport on this machine, just complete the run
+	emit signalBoardUnloaded();
 }
-
-//bool JobThread::toggleClamper(bool up)
-//{
-//	os_tool::goSleep(200);
-//
-//	ct::logger::info("[JobThread] Toggle Clamper Start...");
-//	MotionController::instance().set_DO(m_motionID, 1, (int)DOB::CLAMPER, up);
-//	ct::logger::info("[JobThread] Toggle Clamper End...");
-//
-//	os_tool::goSleep(500);
-//	return true;
-//
-//	//NOTE: Below function will crash, most likely accessing EMXA_DIs array will cause it. Will debug in 2nd machine
-//	bool checkClamper = true;
-//	bool c1 = up, c2 = up, c3 = up, c4 = up; 
-//	auto ret = nvs::timeout_wrapper(
-//		[&]() {
-//			while (checkClamper) {
-//				auto optional_EMXA_DIs = MotionController::instance().get_all_DI(m_motionID, 0);
-//				if (optional_EMXA_DIs.has_value()) {
-//					auto EMXA_DIs = optional_EMXA_DIs.value();
-//					c1 = EMXA_DIs[(int)DIA::CLAMPER_1];
-//					c2 = EMXA_DIs[(int)DIA::CLAMPER_2];
-//					c3 = EMXA_DIs[(int)DIA::CLAMPER_3];
-//					c4 = EMXA_DIs[(int)DIA::CLAMPER_4];
-//
-//					if (c1 != up && c2 != up && c3 != up && c4 != up) {
-//						ct::logger::info("Clamper toggled successfully");
-//						return true;
-//					}
-//				}
-//
-//				os_tool::goSleep(100);
-//			}
-//		},
-//		1500
-//	);
-//
-//	if (!ret) {
-//		return true;
-//		checkClamper = false;
-//		if (c1 == up) MachineController::instance().notifyError(MachineError::CLAMPER1_JAM);
-//		if (c2 == up) MachineController::instance().notifyError(MachineError::CLAMPER2_JAM);
-//		if (c3 == up) MachineController::instance().notifyError(MachineError::CLAMPER3_JAM);
-//		if (c4 == up) MachineController::instance().notifyError(MachineError::CLAMPER4_JAM);
-//		ct::logger::info("Clamper timeout!");
-//	}
-//
-//	return ret;
-//}
-
-bool JobThread::toggleClamper(bool up)
-{
-	//os_tool::goSleep(200);
-
-	//ct::logger::info("[JobThread] Toggle Clamper Start...");
-	//MotionController::instance().set_DO(m_motionID, 1, (int)DOB::CLAMPER, up);
-	//ct::logger::info("[JobThread] Toggle Clamper End...");
-
-	//os_tool::goSleep(200);
-	//ct::logger::info("[JobThread] Toggle Clamper Start...");
-	//MotionController::instance().set_DO(m_motionID, 1, (int)DOB::CLAMPER, up);
-	//ct::logger::info("[JobThread] Toggle Clamper End...");
-	//
-	//return true;
-	const int maxRetry = 6;
-
-	for (int attempt = 0; attempt < maxRetry; ++attempt)
-	{
-		ct::logger::info("[JobThread] Toggle Clamper Attempt %d", attempt + 1);
-
-		os_tool::goSleep(500);
-
-		// Trigger DO
-		MotionController::instance().set_DO(m_motionID, 1, (int)DOB::CLAMPER, up);
-
-		os_tool::goSleep(500);
-
-		// Read back DO state
-		auto optional_DOs = MotionController::instance().get_all_DO(m_motionID, 1);
-		if (optional_DOs.has_value())
-		{
-			auto DOs = optional_DOs.value();
-
-			int clamperIndex = (int)DOB::CLAMPER;
-
-			if (DOs[clamperIndex] == up)
-			{
-				ct::logger::info("[JobThread] Clamper triggered successfully.");
-				return true;
-			}
-		}
-
-		ct::logger::warn("[JobThread] Clamper not triggered, retrying...");
-	}
-
-	ct::logger::error("[JobThread] Clamper failed after retry!");
-	return false;
-}
-
-void  JobThread::continuousMoveConveyor(bool positive_direction)
-{
-	auto railMoving = !MotionController::instance().move_done(m_motionID, 0, (int)Axis::FR1);
-
-	if (railMoving) {
-		MachineController::instance().notifyError(MachineError::CONVEYOR_UNSAFE_TO_MOVE_RAIL_MOVING);
-		return;
-	}
-
-	if (toggleClamper(false)) {
-		MotionController::instance().continuous_move(m_motionID, (int)Axis::CY1, positive_direction);
-	}
-}
-
-void JobThread::stressTestConveyor() {
-	m_stopRun = false;
-
-	while (!m_stopRun) {
-		loadToSensor(SensorIndex::START, false, 0);
-		os_tool::doNothing(1000);
-		loadToSensor(SensorIndex::EXIT, false, 0);
-		os_tool::doNothing(1000);
-	}
-}
-
 void JobThread::waitEncoderCheck(double x_mm, double y_mm, double z_mm)
 {
 	double allowable_tolerance = 0.1;
@@ -6483,41 +5758,3 @@ void JobThread::waitEncoderCheck(double x_mm, double y_mm, double z_mm)
 		os_tool::doNothing(10);
 	}
 }
-
-#if 0
-// OLD_BRANCH_REVERT_DISABLED_BEGIN
-// Conveyor sweep helper disabled while restoring old rail homing/width behavior.
-bool JobThread::runConveyorUntilAnySensor(bool leftToRight, int timeout_ms)
-{
-	QElapsedTimer timer;
-	timer.start();
-
-	int conveyorAxis = (int)Axis::CY1;
-	auto& motion = MotionController::instance();
-	auto& machine = MachineController::instance();
-
-	motion.continuous_move(m_motionID, conveyorAxis, leftToRight);
-
-	while (timer.elapsed() < timeout_ms)
-	{
-		//if (m_stopRun) {
-		//	motion.stop_move(m_motionID, conveyorAxis);
-		//	return true;
-		//}
-		auto status = machine.getSensorStatus();
-		if (!machine.isAllSensorOff(status)) {
-			// Stop the conveyor immediately
-			motion.stop_move(m_motionID, conveyorAxis);
-			machine.notifyError(MachineError::RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT);
-			return true;
-		}
-
-		QThread::msleep(5);
-	}
-
-	motion.stop_move(m_motionID, conveyorAxis);
-	ct::logger::warn("Conveyor timeout. No board detected.");
-	return false;
-}
-// OLD_BRANCH_REVERT_DISABLED_END
-#endif

@@ -1400,85 +1400,80 @@ QLineEdit:focus {
                 </property>
                 <property name="styleSheet">
                  <string notr="true">QLabel{
-	 font-size: 9pt;
-}
-
-QFrame{
-	background-color: #272c36;
-	border-radius:16px;
-}
-
-QGroupBox{
- border: 0px;
-}
-
-QLineEdit{
-background-color: rgb(27, 29, 35);
-border: 1px solid rgb(27, 29, 35);
-border-radius: 5px;
-padding-left: 10px;
-color: #F0F0F0;
-}
-
-QLineEdit[readOnly=true] { 
-    background: rgb(57, 59, 65);     
-    color: #F0F0F0;   
-	border: 1px solid rgb(57, 59, 65);       
-}
-
-QCheckBox{
-border-radius: 5px;
-padding: 2px;
-color: #F0F0F0;
-}
-
-QLabel{
-border-radius: 5px;
-padding: 2px;
-color: #F0F0F0;
-}
-
-QFrame{
-	background-color: #272c36;
-	border-radius:16px;
-}
-
-QToolButton {
-  background-color:  #545963;
-  color: #F0F0F0;
-  border-radius: 8px;
-  margin: 0px;
-  padding: 2px;
-}
-
-QToolButton:checked {
-  margin: 1px;
-  background-color:  rgb(39, 44, 54);
-  border: 1px solid #FFE723;
-}
-
-QToolButton:checked:disabled {
-  border: 1px solid #CFBB1C;
-}
-
-QToolButton:pressed {
-   margin: 1px;
-   border: 1px solid #FFE723;
-}
-
-QToolButton:disabled {
-	color: #6e6e6e;
-	background-color: #444444;
-	border: 2px solid #444444;
-}
-
-QToolButton:disabled:hover {
-  border: 1px solid #32414B;
-}
-
-QToolButton:hover {
- background-color: #929aaa;
-}</string>
+               	 font-size: 9pt;
+               }
+   
+               QFrame{
+               	background-color: #272c36;
+               	border-radius:16px;
+               }
+   
+               QGroupBox{
+                border: 0px;
+               }
+   
+               QLineEdit{
+               background-color: rgb(27, 29, 35);
+               border: 1px solid rgb(27, 29, 35);
+               border-radius: 5px;
+               padding-left: 10px;
+               color: #F0F0F0;
+               }
+   
+               QLineEdit[readOnly=true] {
+                   background: rgb(57, 59, 65);
+                   color: #F0F0F0;
+               	border: 1px solid rgb(57, 59, 65);
+               }
+   
+               QCheckBox{
+               border-radius: 5px;
+               padding: 2px;
+               color: #F0F0F0;
+               }
+   
+               QLabel{
+               border-radius: 5px;
+               padding: 2px;
+               color: #F0F0F0;
+               }
+   
+               QToolButton {
+                 background-color:  #545963;
+                 color: #F0F0F0;
+                 border-radius: 8px;
+                 margin: 0px;
+                 padding: 2px;
+               }
+   
+               QToolButton:checked {
+                 margin: 1px;
+                 background-color:  rgb(39, 44, 54);
+                 border: 1px solid #FFE723;
+               }
+   
+               QToolButton:checked:disabled {
+                 border: 1px solid #CFBB1C;
+               }
+   
+               QToolButton:pressed {
+                  margin: 1px;
+                  border: 1px solid #FFE723;
+               }
+   
+               QToolButton:disabled {
+               	color: #6e6e6e;
+               	background-color: #444444;
+               	border: 2px solid #444444;
+               }
+   
+               QToolButton:disabled:hover {
+                 border: 1px solid #32414B;
+               }
+   
+               QToolButton:hover {
+                background-color: #929aaa;
+               }</string>
                 </property>
                 <property name="frameShape">
                  <enum>QFrame::StyledPanel</enum>
@@ -1502,1174 +1497,15 @@ QToolButton:hover {
                      <bold>true</bold>
                     </font>
                    </property>
-                   <property name="inputMethodHints">
-                    <set>Qt::ImhNone</set>
-                   </property>
                    <property name="text">
-                    <string>Digital Input</string>
+                    <string>Digital Input  -  EMX-100</string>
                    </property>
                   </widget>
                  </item>
                  <item>
-                  <layout class="QHBoxLayout" name="horizontalLayout_74">
-                   <item>
-                    <widget class="QFrame" name="frame_24">
-                     <property name="frameShape">
-                      <enum>QFrame::StyledPanel</enum>
-                     </property>
-                     <property name="frameShadow">
-                      <enum>QFrame::Raised</enum>
-                     </property>
-                     <layout class="QGridLayout" name="gridLayout_134">
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_183">
-                        <property name="sizePolicy">
-                         <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-                          <horstretch>0</horstretch>
-                          <verstretch>0</verstretch>
-                         </sizepolicy>
-                        </property>
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                          <weight>75</weight>
-                          <bold>true</bold>
-                         </font>
-                        </property>
-                        <property name="inputMethodHints">
-                         <set>Qt::ImhNone</set>
-                        </property>
-                        <property name="text">
-                         <string>Machine System</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="0">
-                       <layout class="QGridLayout" name="gridLayout_132">
-                        <item row="3" column="1">
-                         <widget class="QLabel" name="label_195">
-                          <property name="text">
-                           <string>Main Air Pressure Switch</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="3">
-                         <spacer name="horizontalSpacer_31">
-                          <property name="orientation">
-                           <enum>Qt::Horizontal</enum>
-                          </property>
-                          <property name="sizeHint" stdset="0">
-                           <size>
-                            <width>40</width>
-                            <height>20</height>
-                           </size>
-                          </property>
-                         </spacer>
-                        </item>
-                        <item row="3" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI3">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI2">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI0">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="0">
-                         <widget class="QLabel" name="label_184">
-                          <property name="text">
-                           <string>X100</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="1">
-                         <widget class="QLabel" name="label_194">
-                          <property name="text">
-                           <string>Main Reset Button</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="0">
-                         <widget class="QLabel" name="label_187">
-                          <property name="text">
-                           <string>X102</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="0">
-                         <widget class="QLabel" name="label_186">
-                          <property name="text">
-                           <string>X103</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="0">
-                         <widget class="QLabel" name="label_185">
-                          <property name="text">
-                           <string>X101</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="1">
-                         <widget class="QLabel" name="label_193">
-                          <property name="text">
-                           <string>Main Stop Button</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI1">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="4">
-                         <widget class="QLabel" name="label_294">
-                          <property name="text">
-                           <string>X106</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="1">
-                         <widget class="QLabel" name="label_192">
-                          <property name="text">
-                           <string>Main Start Button</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI5">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="4">
-                         <widget class="QLabel" name="label_214">
-                          <property name="text">
-                           <string>X107</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="5">
-                         <widget class="QLabel" name="label_210">
-                          <property name="text">
-                           <string>Main Power</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI6">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="5">
-                         <widget class="QLabel" name="label_212">
-                          <property name="text">
-                           <string>Driver Power</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI7">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="7" column="4">
-                         <widget class="QLabel" name="label_322">
-                          <property name="text">
-                           <string>X125</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="7" column="5">
-                         <widget class="QLabel" name="label_324">
-                          <property name="text">
-                           <string>Door Lock Signal</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI24">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="5">
-                         <widget class="QLabel" name="label_316">
-                          <property name="text">
-                           <string>OSSD 1 Door Switch</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="7" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI25">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="5">
-                         <widget class="QLabel" name="label_232">
-                          <property name="text">
-                           <string>Emergency Button</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="4">
-                         <widget class="QLabel" name="label_315">
-                          <property name="text">
-                           <string>X124</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="4">
-                         <widget class="QLabel" name="label_231">
-                          <property name="text">
-                           <string>X105</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="8" column="4">
-                         <widget class="QLabel" name="label_190">
-                          <property name="text">
-                           <string>X122</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="8" column="5">
-                         <widget class="QLabel" name="label_280">
-                          <property name="text">
-                           <string>Interlock Signal</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="8" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_DI22">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                       </layout>
-                      </item>
-                      <item row="6" column="0">
-                       <layout class="QGridLayout" name="gridLayout_136">
-                        <item row="2" column="0">
-                         <widget class="QLabel" name="label_flexiRail2">
-                          <property name="text">
-                           <string>Flexible Rail 2</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="4">
-                         <widget class="QLabel" name="label_189">
-                          <property name="text">
-                           <string>INP</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="5">
-                         <widget class="QLabel" name="label_213">
-                          <property name="text">
-                           <string>Servo</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="0">
-                         <widget class="QLabel" name="label_flexiRail3">
-                          <property name="text">
-                           <string>Flexible Rail 3</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="6">
-                         <widget class="QLabel" name="label_217">
-                          <property name="text">
-                           <string>Alarm</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="1">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_ORG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="4">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_INP">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="0">
-                         <widget class="QLabel" name="label_191">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="3">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_NEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_ALM">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="7">
-                         <widget class="QLabel" name="label_221">
-                          <property name="text">
-                           <string>EMG</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="2">
-                         <widget class="QLabel" name="label_197">
-                          <property name="text">
-                           <string>+VE</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_PEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="3">
-                         <widget class="QLabel" name="label_198">
-                          <property name="text">
-                           <string>-VE</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="1">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_ORG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="0">
-                         <widget class="QLabel" name="label_flexiRail1">
-                          <property name="text">
-                           <string>Flexible Rail</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="5">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="5">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="1">
-                         <widget class="QLabel" name="label_196">
-                          <property name="text">
-                           <string>ORG</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_ALM">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="7">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_EMG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="7">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_EMG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="1">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_ORG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="4">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_INP">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_PEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="4">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_INP">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_PEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="3">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_NEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="3">
-                         <widget class="QToolButton" name="toolButton_EMXA_R1_NEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_ALM">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="7">
-                         <widget class="QToolButton" name="toolButton_EMXB_R2_EMG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="5">
-                         <widget class="QToolButton" name="toolButton_EMXB_R3_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="8">
-                         <spacer name="horizontalSpacer_27">
-                          <property name="orientation">
-                           <enum>Qt::Horizontal</enum>
-                          </property>
-                          <property name="sizeHint" stdset="0">
-                           <size>
-                            <width>40</width>
-                            <height>20</height>
-                           </size>
-                          </property>
-                         </spacer>
-                        </item>
-                       </layout>
-                      </item>
-                      <item row="4" column="0">
-                       <layout class="QGridLayout" name="gridLayout_138">
-                        <item row="1" column="3">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_NEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="4">
-                         <widget class="QLabel" name="label_227">
-                          <property name="text">
-                           <string>INP</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="5">
-                         <widget class="QLabel" name="label_218">
-                          <property name="text">
-                           <string>Servo</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="6">
-                         <widget class="QLabel" name="label_224">
-                          <property name="text">
-                           <string>Alarm</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="0">
-                         <widget class="QLabel" name="label_230">
-                          <property name="text">
-                           <string>Z-Axis</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="4">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_INP">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="1">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_ORG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="1">
-                         <widget class="QLabel" name="label_238">
-                          <property name="text">
-                           <string>ORG</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_ALM">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="0">
-                         <widget class="QLabel" name="label_236">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="0">
-                         <widget class="QLabel" name="label_237">
-                          <property name="text">
-                           <string>X-Axis</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="4">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_INP">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="1">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_ORG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="5">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="1">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_ORG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_PEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="3">
-                         <widget class="QLabel" name="label_235">
-                          <property name="text">
-                           <string>-VE</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="0">
-                         <widget class="QLabel" name="label_234">
-                          <property name="text">
-                           <string>Y-Axis</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="7">
-                         <widget class="QLabel" name="label_245">
-                          <property name="text">
-                           <string>EMG</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="7">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_EMG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_PEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="7">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_EMG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="5">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="3" column="3">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_NEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="8">
-                         <spacer name="horizontalSpacer_28">
-                          <property name="orientation">
-                           <enum>Qt::Horizontal</enum>
-                          </property>
-                          <property name="sizeHint" stdset="0">
-                           <size>
-                            <width>40</width>
-                            <height>20</height>
-                           </size>
-                          </property>
-                         </spacer>
-                        </item>
-                        <item row="3" column="2">
-                         <widget class="QToolButton" name="toolButton_EMXA_Z_PEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="5">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="1" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_X_ALM">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="3">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_NEL">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="6">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_ALM">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="4">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_INP">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="2" column="7">
-                         <widget class="QToolButton" name="toolButton_EMXA_Y_EMG">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item row="0" column="2">
-                         <widget class="QLabel" name="label_240">
-                          <property name="text">
-                           <string>+VE</string>
-                          </property>
-                         </widget>
-                        </item>
-                       </layout>
-                      </item>
-                      <item row="8" column="0">
-                       <layout class="QHBoxLayout" name="horizontalLayout_78">
-                        <item>
-                         <widget class="QLabel" name="label_277">
-                          <property name="font">
-                           <font>
-                            <pointsize>9</pointsize>
-                            <weight>75</weight>
-                            <bold>true</bold>
-                           </font>
-                          </property>
-                          <property name="text">
-                           <string>Conveyor Servo</string>
-                          </property>
-                         </widget>
-                        </item>
-                        <item>
-                         <widget class="QToolButton" name="toolButton_EMXA_CY1_SVON">
-                          <property name="text">
-                           <string/>
-                          </property>
-                         </widget>
-                        </item>
-                        <item>
-                         <spacer name="horizontalSpacer_38">
-                          <property name="orientation">
-                           <enum>Qt::Horizontal</enum>
-                          </property>
-                          <property name="sizeHint" stdset="0">
-                           <size>
-                            <width>40</width>
-                            <height>20</height>
-                           </size>
-                          </property>
-                         </spacer>
-                        </item>
-                       </layout>
-                      </item>
-                      <item row="5" column="0">
-                       <widget class="QLabel" name="label_207">
-                        <property name="sizePolicy">
-                         <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-                          <horstretch>0</horstretch>
-                          <verstretch>0</verstretch>
-                         </sizepolicy>
-                        </property>
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                          <weight>75</weight>
-                          <bold>true</bold>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Flexible Rail</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="0">
-                       <widget class="QLabel" name="label_199">
-                        <property name="sizePolicy">
-                         <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-                          <horstretch>0</horstretch>
-                          <verstretch>0</verstretch>
-                         </sizepolicy>
-                        </property>
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                          <weight>75</weight>
-                          <bold>true</bold>
-                         </font>
-                        </property>
-                        <property name="inputMethodHints">
-                         <set>Qt::ImhNone</set>
-                        </property>
-                        <property name="text">
-                         <string>Gantry Table</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="0">
-                       <spacer name="verticalSpacer_32">
-                        <property name="orientation">
-                         <enum>Qt::Vertical</enum>
-                        </property>
-                        <property name="sizeType">
-                         <enum>QSizePolicy::Fixed</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>20</width>
-                          <height>5</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                     </layout>
-                    </widget>
-                   </item>
-                  </layout>
-                 </item>
-                 <item>
-                  <widget class="QFrame" name="frame_26">
-                   <property name="frameShape">
-                    <enum>QFrame::StyledPanel</enum>
-                   </property>
-                   <property name="frameShadow">
-                    <enum>QFrame::Raised</enum>
-                   </property>
-                   <layout class="QGridLayout" name="gridLayout_140">
-                    <item row="4" column="1">
-                     <layout class="QGridLayout" name="gridLayout_139">
-                      <item row="10" column="1">
-                       <widget class="QLabel" name="label_X211_">
-                        <property name="text">
-                         <string>Flexi Lane 3-4 Prevent Contact Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="13" column="0">
-                       <widget class="QLabel" name="label_287">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI8">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="1">
-                       <widget class="QLabel" name="label_X208_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Stopper 1 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="0">
-                       <widget class="QLabel" name="label_X209">
-                        <property name="text">
-                         <string>X209</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI0">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="1">
-                       <widget class="QLabel" name="label_X201_">
-                        <property name="text">
-                         <string>Lane 2 Board Slow Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="9" column="0">
-                       <widget class="QLabel" name="label_X210">
-                        <property name="text">
-                         <string>X210</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="0">
-                       <widget class="QLabel" name="label_X202">
-                        <property name="text">
-                         <string>X202</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="3">
-                       <spacer name="horizontalSpacer_29">
-                        <property name="orientation">
-                         <enum>Qt::Horizontal</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>40</width>
-                          <height>20</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item row="2" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI2">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="0">
-                       <widget class="QLabel" name="label_X200">
-                        <property name="text">
-                         <string>X200</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="9" column="1">
-                       <widget class="QLabel" name="label_X210_">
-                        <property name="text">
-                         <string>Flexi Lane 2-3 Prevent Contact Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="1">
-                       <widget class="QLabel" name="label_X202_">
-                        <property name="text">
-                         <string>Lane 2 Board Exit Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="1">
-                       <widget class="QLabel" name="label_X200_">
-                        <property name="text">
-                         <string>Lane 2 Board Entry Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI9">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="10" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI11">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="0">
-                       <widget class="QLabel" name="label_X208">
-                        <property name="text">
-                         <string>X208</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="1">
-                       <widget class="QLabel" name="label_X209_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Stopper 2 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI1">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_X201">
-                        <property name="text">
-                         <string>X201</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="16" column="1">
-                       <widget class="QLabel" name="label_X213_">
-                        <property name="text">
-                         <string>Upstream Lane 2 In </string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="15" column="1">
-                       <widget class="QLabel" name="label_X212_">
-                        <property name="text">
-                         <string>Downstream Lane 2 In </string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="10" column="0">
-                       <widget class="QLabel" name="label_X211">
-                        <property name="text">
-                         <string>X211</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="15" column="0">
-                       <widget class="QLabel" name="label_X212">
-                        <property name="text">
-                         <string>X212</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="9" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI10">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="16" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI13">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="16" column="0">
-                       <widget class="QLabel" name="label_X213">
-                        <property name="text">
-                         <string>X213</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="15" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI12">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="4">
-                       <widget class="QLabel" name="label_X203">
-                        <property name="text">
-                         <string>X203</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="4">
-                       <widget class="QLabel" name="label_X205">
-                        <property name="text">
-                         <string>X205</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="5">
-                       <widget class="QLabel" name="label_X205_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Clamper 3 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="5">
-                       <widget class="QLabel" name="label_X204_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Clamper 2 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="5">
-                       <widget class="QLabel" name="label_X203_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Clamper 1 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI4">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="4">
-                       <widget class="QLabel" name="label_X204">
-                        <property name="text">
-                         <string>X204</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI3">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="4">
-                       <widget class="QLabel" name="label_X206">
-                        <property name="text">
-                         <string>X206</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI6">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXB_DI5">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="5">
-                       <widget class="QLabel" name="label_X206_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Clamper 4 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="0">
-                       <widget class="QLabel" name="label_168">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                     </layout>
-                    </item>
-                    <item row="2" column="1">
-                     <widget class="QLabel" name="label_conveyor2">
+                  <layout class="QGridLayout" name="gridLayout_ioDI">
+                   <item row="0" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI_hdr_w">
                       <property name="font">
                        <font>
                         <pointsize>9</pointsize>
@@ -2678,328 +1514,934 @@ QToolButton:hover {
                        </font>
                       </property>
                       <property name="text">
-                       <string>Conveyor 2</string>
+                       <string>Wire No.</string>
                       </property>
                      </widget>
-                    </item>
-                    <item row="4" column="0">
-                     <layout class="QGridLayout" name="gridLayout_137">
-                      <item row="1" column="1">
-                       <widget class="QLabel" name="label_208">
-                        <property name="text">
-                         <string>Board Slow Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI8">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="12" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI17">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="10" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI16">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI21">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="12" column="1">
-                       <widget class="QLabel" name="label_X117_">
-                        <property name="text">
-                         <string>Flexi Lane Stopper 2 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI20">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="5" column="0">
-                       <widget class="QLabel" name="label_78">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="1">
-                       <widget class="QLabel" name="label_222">
-                        <property name="text">
-                         <string>Board Entry Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="1">
-                       <widget class="QLabel" name="label_204">
-                        <property name="text">
-                         <string>Board Pos 2 Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI10">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="13" column="0">
-                       <widget class="QLabel" name="label_279">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI9">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="0">
-                       <widget class="QLabel" name="label_180">
-                        <property name="text">
-                         <string>X120</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="1">
-                       <widget class="QLabel" name="label_179">
-                        <property name="text">
-                         <string>Board Pos 1 Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="0">
-                       <widget class="QLabel" name="label_206">
-                        <property name="text">
-                         <string>X121</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="1">
-                       <widget class="QLabel" name="label_209">
-                        <property name="text">
-                         <string>Board Exit Sensor</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="12" column="0">
-                       <widget class="QLabel" name="label_X117">
-                        <property name="text">
-                         <string>X117</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="0">
-                       <widget class="QLabel" name="label_220">
-                        <property name="text">
-                         <string>X110</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="0">
-                       <widget class="QLabel" name="label_211">
-                        <property name="text">
-                         <string>X108</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="10" column="1">
-                       <widget class="QLabel" name="label_X116_">
-                        <property name="text">
-                         <string>Flexi Lane Stopper 1 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_215">
-                        <property name="text">
-                         <string>X109</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="15" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI19">
-                        <property name="enabled">
-                         <bool>true</bool>
-                        </property>
-                        <property name="text">
-                         <string/>
-                        </property>
-                        <property name="checkable">
-                         <bool>false</bool>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="15" column="1">
-                       <widget class="QLabel" name="label_246">
-                        <property name="text">
-                         <string>Upstream Lane 1 In </string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="15" column="0">
-                       <widget class="QLabel" name="label_244">
-                        <property name="text">
-                         <string>X119</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="14" column="0">
-                       <widget class="QLabel" name="label_233">
-                        <property name="text">
-                         <string>X118</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="14" column="1">
-                       <widget class="QLabel" name="label_243">
-                        <property name="text">
-                         <string>Downstream Lane 1 In </string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="14" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI18">
-                        <property name="enabled">
-                         <bool>true</bool>
-                        </property>
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="3">
-                       <spacer name="horizontalSpacer_30">
-                        <property name="orientation">
-                         <enum>Qt::Horizontal</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>40</width>
-                          <height>20</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item row="3" column="4">
-                       <widget class="QLabel" name="label_229">
-                        <property name="text">
-                         <string>X114</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="5">
-                       <widget class="QLabel" name="label_225">
-                        <property name="text">
-                         <string>Clamper 2 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="4">
-                       <widget class="QLabel" name="label_223">
-                        <property name="text">
-                         <string>X112</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="10" column="0">
-                       <widget class="QLabel" name="label_X116">
-                        <property name="text">
-                         <string>X116</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="5">
-                       <widget class="QLabel" name="label_228">
-                        <property name="text">
-                         <string>Clamper 3 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI13">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="4">
-                       <widget class="QLabel" name="label_226">
-                        <property name="text">
-                         <string>X113</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI12">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="5">
-                       <widget class="QLabel" name="label_216">
-                        <property name="text">
-                         <string>Clamper 1 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="5">
-                       <widget class="QLabel" name="label_239">
-                        <property name="text">
-                         <string>Clamper 4 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="4">
-                       <widget class="QLabel" name="label_219">
-                        <property name="text">
-                         <string>X111</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI14">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="6">
-                       <widget class="QToolButton" name="toolButton_EMXA_DI11">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                     </layout>
-                    </item>
-                   </layout>
+                   </item>
+                   <item row="0" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI_hdr_a">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>I/O</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI_hdr_d">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Description</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="3">
+                     <widget class="QLabel" name="label_EMXA_DI_hdr_s">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Status</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="4">
+                     <spacer name="horizontalSpacer_ioDI">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                   </item>
+                   <item row="1" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI0_w">
+                      <property name="text">
+                       <string>X100</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI0_a">
+                      <property name="text">
+                       <string>DI1</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI0_d">
+                      <property name="text">
+                       <string>Start Button</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI0">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI1_w">
+                      <property name="text">
+                       <string>X101</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI1_a">
+                      <property name="text">
+                       <string>DI2</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI1_d">
+                      <property name="text">
+                       <string>Stop Button</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI1">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI2_w">
+                      <property name="text">
+                       <string>X102</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI2_a">
+                      <property name="text">
+                       <string>DI3</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI2_d">
+                      <property name="text">
+                       <string>Reset Button</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI2">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI3_w">
+                      <property name="text">
+                       <string>X103</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI3_a">
+                      <property name="text">
+                       <string>DI4</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI3_d">
+                      <property name="text">
+                       <string>Emergency Stop 1 Trigger</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI3">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI4_w">
+                      <property name="text">
+                       <string>X104</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI4_a">
+                      <property name="text">
+                       <string>DI5</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI4_d">
+                      <property name="text">
+                       <string>Emergency Stop 2 Trigger</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI4">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI5_w">
+                      <property name="text">
+                       <string>X105</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI5_a">
+                      <property name="text">
+                       <string>DI6</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI5_d">
+                      <property name="text">
+                       <string>Trolley Lock Guard Switch On</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI5">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI6_w">
+                      <property name="text">
+                       <string>X106</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI6_a">
+                      <property name="text">
+                       <string>DI7</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI6_d">
+                      <property name="text">
+                       <string>E-Stop Safety Relay OK</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI6">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="0">
+                     <widget class="QLabel" name="label_EMXA_DI7_w">
+                      <property name="text">
+                       <string>X107</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="1">
+                     <widget class="QLabel" name="label_EMXA_DI7_a">
+                      <property name="text">
+                       <string>DI8</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="2">
+                     <widget class="QLabel" name="label_EMXA_DI7_d">
+                      <property name="text">
+                       <string>Curtain Sensor Safety Relay OK</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DI7">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="label_182">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>9</pointsize>
+                     <weight>75</weight>
+                     <bold>true</bold>
+                    </font>
+                   </property>
+                   <property name="text">
+                    <string>Delta Servo Driver (50 Pin IO Connector)</string>
+                   </property>
                   </widget>
                  </item>
                  <item>
-                  <spacer name="verticalSpacer_28">
+                  <layout class="QGridLayout" name="gridLayout_ioDelta">
+                   <item row="0" column="0">
+                     <widget class="QLabel" name="label_DELTA_hdr_axis">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Axis</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="1">
+                     <widget class="QLabel" name="label_DELTA_hdr_SVON">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Servo On (DI 1)</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="2">
+                     <widget class="QLabel" name="label_DELTA_hdr_RDY">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Servo Ready (DO1)</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="3">
+                     <widget class="QLabel" name="label_DELTA_hdr_INP">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Position Complete (DO4)</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="4">
+                     <widget class="QLabel" name="label_DELTA_hdr_ALM">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Alarm (DO5)</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="5">
+                     <widget class="QLabel" name="label_DELTA_hdr_ORG">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>ORG</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="6">
+                     <widget class="QLabel" name="label_DELTA_hdr_PEL">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>+VE</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="7">
+                     <widget class="QLabel" name="label_DELTA_hdr_NEL">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>-VE</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="8">
+                     <widget class="QLabel" name="label_DELTA_hdr_EMG">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>EMG</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="9">
+                     <spacer name="horizontalSpacer_ioDelta">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                   </item>
+                   <item row="1" column="0">
+                     <widget class="QLabel" name="label_DELTA_X_axis">
+                      <property name="text">
+                       <string>X-Axis</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="1">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_SVON">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="2">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_RDY">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_INP">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="4">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_ALM">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="5">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_ORG">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="6">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_PEL">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="7">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_NEL">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="8">
+                     <widget class="QToolButton" name="toolButton_EMXA_X_EMG">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="0">
+                     <widget class="QLabel" name="label_DELTA_Y_axis">
+                      <property name="text">
+                       <string>Y-Axis</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="1">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_SVON">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="2">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_RDY">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_INP">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="4">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_ALM">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="5">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_ORG">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="6">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_PEL">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="7">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_NEL">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="8">
+                     <widget class="QToolButton" name="toolButton_EMXA_Y_EMG">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="0">
+                     <widget class="QLabel" name="label_DELTA_Z_axis">
+                      <property name="text">
+                       <string>Z-Axis</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="1">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_SVON">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="2">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_RDY">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_INP">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="4">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_ALM">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="5">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_ORG">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="6">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_PEL">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="7">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_NEL">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="8">
+                     <widget class="QToolButton" name="toolButton_EMXA_Z_EMG">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="label_183">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>9</pointsize>
+                     <weight>75</weight>
+                     <bold>true</bold>
+                    </font>
+                   </property>
+                   <property name="text">
+                    <string>Servo Control</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <layout class="QGridLayout" name="gridLayout_ioServoControl">
+                   <item row="0" column="0">
+                     <widget class="QLabel" name="label_servo_x">
+                      <property name="text">
+                       <string>X-Axis Servo</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="1">
+                     <widget class="QToolButton" name="toolButton_servo_x">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="2">
+                     <widget class="QLabel" name="label_servo_y">
+                      <property name="text">
+                       <string>Y-Axis Servo</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="3">
+                     <widget class="QToolButton" name="toolButton_servo_y">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="4">
+                     <widget class="QLabel" name="label_servo_z">
+                      <property name="text">
+                       <string>Z-Axis Servo</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="5">
+                     <widget class="QToolButton" name="toolButton_servo_z">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="6">
+                     <spacer name="horizontalSpacer_ioServo">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <spacer name="verticalSpacer_ioIn">
                    <property name="orientation">
                     <enum>Qt::Vertical</enum>
                    </property>
@@ -3016,87 +2458,87 @@ QToolButton:hover {
               </item>
               <item>
                <widget class="QFrame" name="frame_23">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                 </font>
+                </property>
                 <property name="styleSheet">
                  <string notr="true">QLabel{
-	 font-size: 9pt;
-}
-
-QFrame{
-	background-color: #272c36;
-	border-radius:16px;
-}
-
-QGroupBox{
- border: 0px;
-}
-
-QLineEdit{
-background-color: rgb(27, 29, 35);
-border: 1px solid rgb(27, 29, 35);
-border-radius: 5px;
-padding-left: 10px;
-color: #F0F0F0;
-}
-
-QLineEdit[readOnly=true] { 
-    background: rgb(57, 59, 65);     
-    color: #F0F0F0;   
-	border: 1px solid rgb(57, 59, 65);       
-}
-
-QCheckBox{
-border-radius: 5px;
-padding: 2px;
-color: #F0F0F0;
-}
-
-QLabel{
-border-radius: 5px;
-padding: 2px;
-color: #F0F0F0;
-}
-
-QFrame{
-	background-color: #272c36;
-	border-radius:16px;
-}
-
-QToolButton {
-  background-color:  #545963;
-  color: #F0F0F0;
-  border-radius: 8px;
-  margin: 0px;
-  padding: 2px;
-}
-
-QToolButton:checked {
-  margin: 1px;
-  background-color:  rgb(39, 44, 54);
-  border: 1px solid #FFE723;
-}
-
-QToolButton:checked:disabled {
-  border: 1px solid #CFBB1C;
-}
-
-QToolButton:pressed {
-   margin: 1px;
-   border: 1px solid #FFE723;
-}
-
-QToolButton:disabled {
-	color: #6e6e6e;
-	background-color: #444444;
-	border: 2px solid #444444;
-}
-
-QToolButton:disabled:hover {
-  border: 1px solid #32414B;
-}
-
-QToolButton:hover {
- background-color: #929aaa;
-}</string>
+               	 font-size: 9pt;
+               }
+   
+               QFrame{
+               	background-color: #272c36;
+               	border-radius:16px;
+               }
+   
+               QGroupBox{
+                border: 0px;
+               }
+   
+               QLineEdit{
+               background-color: rgb(27, 29, 35);
+               border: 1px solid rgb(27, 29, 35);
+               border-radius: 5px;
+               padding-left: 10px;
+               color: #F0F0F0;
+               }
+   
+               QLineEdit[readOnly=true] {
+                   background: rgb(57, 59, 65);
+                   color: #F0F0F0;
+               	border: 1px solid rgb(57, 59, 65);
+               }
+   
+               QCheckBox{
+               border-radius: 5px;
+               padding: 2px;
+               color: #F0F0F0;
+               }
+   
+               QLabel{
+               border-radius: 5px;
+               padding: 2px;
+               color: #F0F0F0;
+               }
+   
+               QToolButton {
+                 background-color:  #545963;
+                 color: #F0F0F0;
+                 border-radius: 8px;
+                 margin: 0px;
+                 padding: 2px;
+               }
+   
+               QToolButton:checked {
+                 margin: 1px;
+                 background-color:  rgb(39, 44, 54);
+                 border: 1px solid #FFE723;
+               }
+   
+               QToolButton:checked:disabled {
+                 border: 1px solid #CFBB1C;
+               }
+   
+               QToolButton:pressed {
+                  margin: 1px;
+                  border: 1px solid #FFE723;
+               }
+   
+               QToolButton:disabled {
+               	color: #6e6e6e;
+               	background-color: #444444;
+               	border: 2px solid #444444;
+               }
+   
+               QToolButton:disabled:hover {
+                 border: 1px solid #32414B;
+               }
+   
+               QToolButton:hover {
+                background-color: #929aaa;
+               }</string>
                 </property>
                 <property name="frameShape">
                  <enum>QFrame::StyledPanel</enum>
@@ -3104,33 +2546,31 @@ QToolButton:hover {
                 <property name="frameShadow">
                  <enum>QFrame::Raised</enum>
                 </property>
-                <layout class="QGridLayout" name="gridLayout_147">
-                 <item row="0" column="0">
-                  <widget class="QLabel" name="label_182">
+                <layout class="QVBoxLayout" name="verticalLayout_ioOutFrame">
+                 <item>
+                  <widget class="QLabel" name="label_179">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
                    <property name="font">
                     <font>
                      <pointsize>9</pointsize>
+                     <weight>75</weight>
+                     <bold>true</bold>
                     </font>
                    </property>
-                   <property name="inputMethodHints">
-                    <set>Qt::ImhNone</set>
-                   </property>
                    <property name="text">
-                    <string>Digital Output</string>
+                    <string>Digital Output  -  EMX-100</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="1" column="0">
-                  <widget class="QFrame" name="frame_27">
-                   <property name="frameShape">
-                    <enum>QFrame::StyledPanel</enum>
-                   </property>
-                   <property name="frameShadow">
-                    <enum>QFrame::Raised</enum>
-                   </property>
-                   <layout class="QGridLayout" name="gridLayout_144">
-                    <item row="0" column="0">
-                     <widget class="QLabel" name="label_281">
+                 <item>
+                  <layout class="QGridLayout" name="gridLayout_ioDO">
+                   <item row="0" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO_hdr_w">
                       <property name="font">
                        <font>
                         <pointsize>9</pointsize>
@@ -3138,16 +2578,13 @@ QToolButton:hover {
                         <bold>true</bold>
                        </font>
                       </property>
-                      <property name="inputMethodHints">
-                       <set>Qt::ImhNone</set>
-                      </property>
                       <property name="text">
-                       <string>Machine System</string>
+                       <string>Wire No.</string>
                       </property>
                      </widget>
-                    </item>
-                    <item row="0" column="1">
-                     <widget class="QLabel" name="label_304">
+                   </item>
+                   <item row="0" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO_hdr_a">
                       <property name="font">
                        <font>
                         <pointsize>9</pointsize>
@@ -3155,668 +2592,362 @@ QToolButton:hover {
                         <bold>true</bold>
                        </font>
                       </property>
-                      <property name="inputMethodHints">
-                       <set>Qt::ImhNone</set>
-                      </property>
                       <property name="text">
-                       <string>Gantry Table</string>
+                       <string>I/O</string>
                       </property>
                      </widget>
-                    </item>
-                    <item row="1" column="0">
-                     <layout class="QGridLayout" name="gridLayout_142">
-                      <item row="7" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO7">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO3">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="1">
-                       <widget class="QLabel" name="label_296">
-                        <property name="text">
-                         <string>Start Button</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO4">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO6">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO2">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="5" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO5">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="0">
-                       <widget class="QLabel" name="label_283">
-                        <property name="text">
-                         <string>Y100</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="1">
-                       <widget class="QLabel" name="label_303">
-                        <property name="text">
-                         <string>Safety Door Lock</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="0">
-                       <widget class="QLabel" name="label_292">
-                        <property name="text">
-                         <string>Y104</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="5" column="1">
-                       <widget class="QLabel" name="label_301">
-                        <property name="text">
-                         <string>Green Tower Light</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="1">
-                       <widget class="QLabel" name="label_300">
-                        <property name="text">
-                         <string>Amber Tower Light</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="0">
-                       <widget class="QLabel" name="label_290">
-                        <property name="text">
-                         <string>Y102</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO0">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="5" column="0">
-                       <widget class="QLabel" name="label_293">
-                        <property name="text">
-                         <string>Y105</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO1">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="1">
-                       <widget class="QLabel" name="label_299">
-                        <property name="text">
-                         <string>Red Tower Light</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="9" column="1">
-                       <spacer name="verticalSpacer_31">
-                        <property name="orientation">
-                         <enum>Qt::Vertical</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>20</width>
-                          <height>40</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item row="6" column="0">
-                       <widget class="QLabel" name="label_295">
-                        <property name="text">
-                         <string>Y106</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="0">
-                       <widget class="QLabel" name="label_291">
-                        <property name="text">
-                         <string>Y103</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="1">
-                       <widget class="QLabel" name="label_297">
-                        <property name="text">
-                         <string>Stop Button</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="1">
-                       <widget class="QLabel" name="label_302">
-                        <property name="text">
-                         <string>Driver Power</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="1">
-                       <widget class="QLabel" name="label_298">
-                        <property name="text">
-                         <string>Reset Button</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_289">
-                        <property name="text">
-                         <string>Y101</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="0">
-                       <widget class="QLabel" name="label_241">
-                        <property name="text">
-                         <string>Y107</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="0">
-                       <widget class="QLabel" name="label_242">
-                        <property name="text">
-                         <string>Y111</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="1">
-                       <widget class="QLabel" name="label_247">
-                        <property name="text">
-                         <string>Z Brake Release</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXA_DO11">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                     </layout>
-                    </item>
-                    <item row="1" column="1">
-                     <layout class="QGridLayout" name="gridLayout_143">
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_250">
-                        <property name="text">
-                         <string>Y-Axis Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_lane1">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="0">
-                       <widget class="QLabel" name="label_lane2_servo">
-                        <property name="text">
-                         <string>Lane 2 Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_rail3">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_rail2">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="5" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_rail1">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="7" column="0">
-                       <widget class="QLabel" name="label_rail3_servo">
-                        <property name="text">
-                         <string>Rail 3 Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_z">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="0">
-                       <widget class="QLabel" name="label_249">
-                        <property name="text">
-                         <string>X-Axis Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_x">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="6" column="0">
-                       <widget class="QLabel" name="label_rail2_servo">
-                        <property name="text">
-                         <string>Rail 2 Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="0">
-                       <widget class="QLabel" name="label_lane1_servo">
-                        <property name="text">
-                         <string>Conveyor Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="0">
-                       <widget class="QLabel" name="label_254">
-                        <property name="text">
-                         <string>Z-Axis Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_y">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="5" column="0">
-                       <widget class="QLabel" name="label_rail1_servo">
-                        <property name="text">
-                         <string>Rail Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="1">
-                       <widget class="QToolButton" name="toolButton_servo_lane2">
-                        <property name="font">
-                         <font>
-                          <pointsize>9</pointsize>
-                         </font>
-                        </property>
-                        <property name="text">
-                         <string>Toggle Servo</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="8" column="0">
-                       <spacer name="verticalSpacer_27">
-                        <property name="orientation">
-                         <enum>Qt::Vertical</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>20</width>
-                          <height>40</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                     </layout>
-                    </item>
-                   </layout>
-                  </widget>
+                   </item>
+                   <item row="0" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO_hdr_d">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Description</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="3">
+                     <widget class="QLabel" name="label_EMXA_DO_hdr_s">
+                      <property name="font">
+                       <font>
+                        <pointsize>9</pointsize>
+                        <weight>75</weight>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                      <property name="text">
+                       <string>Status</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="0" column="4">
+                     <spacer name="horizontalSpacer_ioDO">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                   </item>
+                   <item row="1" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO0_w">
+                      <property name="text">
+                       <string>Y100</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO0_a">
+                      <property name="text">
+                       <string>DO1</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO0_d">
+                      <property name="text">
+                       <string>Start Button LED</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="1" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO0">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO1_w">
+                      <property name="text">
+                       <string>Y101</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO1_a">
+                      <property name="text">
+                       <string>DO2</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO1_d">
+                      <property name="text">
+                       <string>Stop Button LED</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="2" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO1">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO2_w">
+                      <property name="text">
+                       <string>Y102</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO2_a">
+                      <property name="text">
+                       <string>DO3</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO2_d">
+                      <property name="text">
+                       <string>Reset Button LED</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="3" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO2">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO3_w">
+                      <property name="text">
+                       <string>Y103</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO3_a">
+                      <property name="text">
+                       <string>DO4</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO3_d">
+                      <property name="text">
+                       <string>Tower Light Red</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="4" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO3">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO4_w">
+                      <property name="text">
+                       <string>Y104</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO4_a">
+                      <property name="text">
+                       <string>DO5</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO4_d">
+                      <property name="text">
+                       <string>Tower Light Amber</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="5" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO4">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO5_w">
+                      <property name="text">
+                       <string>Y105</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO5_a">
+                      <property name="text">
+                       <string>DO6</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO5_d">
+                      <property name="text">
+                       <string>Tower Light Green</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="6" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO5">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO6_w">
+                      <property name="text">
+                       <string>Y106</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO6_a">
+                      <property name="text">
+                       <string>DO7</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO6_d">
+                      <property name="text">
+                       <string>Tower Light Buzzer</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="7" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO6">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO7_w">
+                      <property name="text">
+                       <string>Y107</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO7_a">
+                      <property name="text">
+                       <string>DO8</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO7_d">
+                      <property name="text">
+                       <string>Trolley Lock Guard Switch Release</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="8" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO7">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="9" column="0">
+                     <widget class="QLabel" name="label_EMXA_DO8_w">
+                      <property name="text">
+                       <string>Y108</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="9" column="1">
+                     <widget class="QLabel" name="label_EMXA_DO8_a">
+                      <property name="text">
+                       <string>DO9</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="9" column="2">
+                     <widget class="QLabel" name="label_EMXA_DO8_d">
+                      <property name="text">
+                       <string>Z Axis Motor Brake Release</string>
+                      </property>
+                     </widget>
+                   </item>
+                   <item row="9" column="3">
+                     <widget class="QToolButton" name="toolButton_EMXA_DO8">
+                      <property name="minimumSize">
+                       <size>
+                        <width>24</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string/>
+                      </property>
+                     </widget>
+                   </item>
+                  </layout>
                  </item>
-                 <item row="2" column="0">
-                  <widget class="QFrame" name="frame_25">
-                   <property name="frameShape">
-                    <enum>QFrame::StyledPanel</enum>
-                   </property>
-                   <property name="frameShadow">
-                    <enum>QFrame::Raised</enum>
-                   </property>
-                   <layout class="QGridLayout" name="gridLayout_135">
-                    <item row="1" column="0">
-                     <layout class="QGridLayout" name="gridLayout_145">
-                      <item row="3" column="0">
-                       <widget class="QLabel" name="label_323">
-                        <property name="text">
-                         <string>Y204</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO5">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="1">
-                       <widget class="QLabel" name="label_311">
-                        <property name="text">
-                         <string>Upstream Lane 1 Out</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO2">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="1">
-                       <widget class="QLabel" name="label_325">
-                        <property name="text">
-                         <string>Downstream Lane 1 Out</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="1">
-                       <widget class="QLabel" name="label_Y203_">
-                        <property name="text">
-                         <string>Flexi Lane Stopper 1-2 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO3">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_Y203">
-                        <property name="text">
-                         <string>Y203</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="3">
-                       <spacer name="horizontalSpacer_32">
-                        <property name="orientation">
-                         <enum>Qt::Horizontal</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>40</width>
-                          <height>20</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item row="0" column="1">
-                       <widget class="QLabel" name="label_327">
-                        <property name="text">
-                         <string>Clamper 1-4 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="0">
-                       <widget class="QLabel" name="label_328">
-                        <property name="text">
-                         <string>Y205</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO4">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="0">
-                       <widget class="QLabel" name="label_326">
-                        <property name="text">
-                         <string>Y202</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="2">
-                       <spacer name="verticalSpacer_36">
-                        <property name="orientation">
-                         <enum>Qt::Vertical</enum>
-                        </property>
-                        <property name="sizeType">
-                         <enum>QSizePolicy::Fixed</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>27</width>
-                          <height>27</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                     </layout>
-                    </item>
-                    <item row="1" column="1">
-                     <layout class="QGridLayout" name="gridLayout_146">
-                      <item row="1" column="0">
-                       <widget class="QLabel" name="label_Y210">
-                        <property name="text">
-                         <string>Y210</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="1">
-                       <widget class="QLabel" name="label_Y210_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Stopper 1-2 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="4">
-                       <spacer name="horizontalSpacer_33">
-                        <property name="orientation">
-                         <enum>Qt::Horizontal</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>40</width>
-                          <height>20</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item row="0" column="1">
-                       <widget class="QLabel" name="label_Y209_">
-                        <property name="text">
-                         <string>Flexi Lane 2 Clamper 1-4 Ext</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="0">
-                       <widget class="QLabel" name="label_Y209">
-                        <property name="text">
-                         <string>Y209</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="1" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO10">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO9">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="0">
-                       <widget class="QLabel" name="label_Y211">
-                        <property name="text">
-                         <string>Y211</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO11">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="2" column="2">
-                       <spacer name="verticalSpacer_37">
-                        <property name="orientation">
-                         <enum>Qt::Vertical</enum>
-                        </property>
-                        <property name="sizeType">
-                         <enum>QSizePolicy::Fixed</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>27</width>
-                          <height>27</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item row="4" column="0">
-                       <widget class="QLabel" name="label_Y212">
-                        <property name="text">
-                         <string>Y212</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="3" column="1">
-                       <widget class="QLabel" name="label_Y211_">
-                        <property name="text">
-                         <string>Downstream Lane 2 Out</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="1">
-                       <widget class="QLabel" name="label_Y212_">
-                        <property name="text">
-                         <string>Upstream Lane 2 Out</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="4" column="2">
-                       <widget class="QToolButton" name="toolButton_EMXB_DO12">
-                        <property name="text">
-                         <string/>
-                        </property>
-                       </widget>
-                      </item>
-                     </layout>
-                    </item>
-                    <item row="0" column="0">
-                     <widget class="QLabel" name="label_307">
-                      <property name="font">
-                       <font>
-                        <pointsize>9</pointsize>
-                        <weight>75</weight>
-                        <bold>true</bold>
-                       </font>
-                      </property>
-                      <property name="text">
-                       <string>Conveyor 1</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item row="0" column="1">
-                     <widget class="QLabel" name="label_conveyor2_2">
-                      <property name="font">
-                       <font>
-                        <pointsize>9</pointsize>
-                        <weight>75</weight>
-                        <bold>true</bold>
-                       </font>
-                      </property>
-                      <property name="text">
-                       <string>Conveyor 2</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </widget>
-                 </item>
-                 <item row="3" column="0">
-                  <spacer name="verticalSpacer_30">
+                 <item>
+                  <spacer name="verticalSpacer_ioOut">
                    <property name="orientation">
                     <enum>Qt::Vertical</enum>
                    </property>
@@ -4073,44 +3204,6 @@ QToolButton:hover {
                              </property>
                             </widget>
                            </item>
-                           <item row="6" column="0">
-                            <widget class="QToolButton" name="toolButton_unloadBoard">
-                             <property name="sizePolicy">
-                              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-                               <horstretch>0</horstretch>
-                               <verstretch>0</verstretch>
-                              </sizepolicy>
-                             </property>
-                             <property name="font">
-                              <font>
-                               <pointsize>22</pointsize>
-                               <weight>75</weight>
-                               <bold>true</bold>
-                              </font>
-                             </property>
-                             <property name="styleSheet">
-                              <string notr="true">QToolButton {
-  background-color:  #A89045;
-  color: #F0F0F0;
-  border-radius: 8px;
-  margin: 0px;
-  padding: 2px;
-}
-
-QToolButton:pressed {
-   margin: 1px;
-   border: 1px solid #FFE723;
-}
-
-QToolButton:hover {
- background-color: #D4AF6A;
-}</string>
-                             </property>
-                             <property name="text">
-                              <string>Unload</string>
-                             </property>
-                            </widget>
-                           </item>
                            <item row="4" column="0">
                             <widget class="QToolButton" name="toolButton_stopProduction">
                              <property name="sizePolicy">
@@ -4184,53 +3277,6 @@ QToolButton:hover {
                              </property>
                              <property name="text">
                               <string>Reset</string>
-                             </property>
-                            </widget>
-                           </item>
-                           <item row="2" column="0">
-                            <widget class="QToolButton" name="toolButton_autoStartProduction">
-                             <property name="sizePolicy">
-                              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-                               <horstretch>0</horstretch>
-                               <verstretch>0</verstretch>
-                              </sizepolicy>
-                             </property>
-                             <property name="font">
-                              <font>
-                               <pointsize>22</pointsize>
-                               <weight>75</weight>
-                               <bold>true</bold>
-                              </font>
-                             </property>
-                             <property name="styleSheet">
-                              <string notr="true">QToolButton {
-  background-color: #555555;
-  color: #F0F0F0;
-  border-radius: 8px;
-  margin: 0px;
-  padding: 2px;
-}
-
-QToolButton:pressed {
-   margin: 1px;
-   border: 1px solid #FFE723;
-}
-
-QToolButton:hover {
- background-color: #7FAF96;
-}
-
-QToolButton:checked {
-background-color: #00C853;
-border: 0px;
-}
-</string>
-                             </property>
-                             <property name="text">
-                              <string>Auto Start</string>
-                             </property>
-                             <property name="checkable">
-                              <bool>true</bool>
                              </property>
                             </widget>
                            </item>
@@ -5182,47 +4228,6 @@ QToolButton:hover {
                        </item>
                        <item row="3" column="0">
                         <layout class="QGridLayout" name="gridLayout_161">
-                         <item row="0" column="1">
-                          <widget class="QComboBox" name="comboBox_loadingDirection">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                            </font>
-                           </property>
-                           <item>
-                            <property name="text">
-                             <string>Left In, Right Out</string>
-                            </property>
-                           </item>
-                           <item>
-                            <property name="text">
-                             <string>Right In, Left Out</string>
-                            </property>
-                           </item>
-                           <item>
-                            <property name="text">
-                             <string>Left In, Left Out</string>
-                            </property>
-                           </item>
-                           <item>
-                            <property name="text">
-                             <string>Right In, Right Out</string>
-                            </property>
-                           </item>
-                          </widget>
-                         </item>
-                         <item row="0" column="0">
-                          <widget class="QLabel" name="label_273">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Loading Direction</string>
-                           </property>
-                          </widget>
-                         </item>
                         </layout>
                        </item>
                       </layout>
@@ -5803,36 +4808,6 @@ QToolButton:hover {
                            </property>
                           </widget>
                          </item>
-                         <item row="2" column="7">
-                          <widget class="QToolButton" name="toolButton_downstreamReady">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="1" column="7">
-                          <widget class="QToolButton" name="toolButton_upstreamReady">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="3" column="7">
-                          <widget class="QToolButton" name="toolButton_upstreamOutput">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
                          <item row="2" column="0">
                           <widget class="QLabel" name="label_264">
                            <property name="font">
@@ -5849,44 +4824,6 @@ QToolButton:hover {
                          </item>
                          <item row="0" column="1">
                           <widget class="QToolButton" name="toolButton_cameraStatus">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="1" column="6">
-                          <widget class="QLabel" name="label_320">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Upstream Ready</string>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="3" column="6">
-                          <widget class="QLabel" name="label_332">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Upstream Output</string>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="4" column="7">
-                          <widget class="QToolButton" name="toolButton_downstreamOutput">
                            <property name="enabled">
                             <bool>false</bool>
                            </property>
@@ -5923,30 +4860,6 @@ QToolButton:hover {
                            </property>
                           </widget>
                          </item>
-                         <item row="3" column="3">
-                          <widget class="QLabel" name="label_268">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Conveyor</string>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="2" column="4">
-                          <widget class="QToolButton" name="toolButton_railStatus">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
                          <item row="1" column="3">
                           <widget class="QLabel" name="label_266">
                            <property name="font">
@@ -5961,20 +4874,6 @@ QToolButton:hover {
                            </property>
                           </widget>
                          </item>
-                         <item row="2" column="6">
-                          <widget class="QLabel" name="label_331">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Downstream Ready</string>
-                           </property>
-                          </widget>
-                         </item>
                          <item row="1" column="1">
                           <widget class="QToolButton" name="toolButton_3dProfilerStatus">
                            <property name="enabled">
@@ -5982,30 +4881,6 @@ QToolButton:hover {
                            </property>
                            <property name="text">
                             <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="0" column="4">
-                          <widget class="QToolButton" name="toolButton_drivePower">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="2" column="3">
-                          <widget class="QLabel" name="label_267">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Rail</string>
                            </property>
                           </widget>
                          </item>
@@ -6019,70 +4894,8 @@ QToolButton:hover {
                            </property>
                           </widget>
                          </item>
-                         <item row="4" column="6">
-                          <widget class="QLabel" name="label_333">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Downstream Output</string>
-                           </property>
-                          </widget>
-                         </item>
                          <item row="0" column="7">
                           <widget class="QToolButton" name="toolButton_machineReady">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="3" column="1">
-                          <widget class="QToolButton" name="toolButton_clamper">
-                           <property name="enabled">
-                            <bool>false</bool>
-                           </property>
-                           <property name="text">
-                            <string/>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="0" column="3">
-                          <widget class="QLabel" name="label_269">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Driver Power</string>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="3" column="0">
-                          <widget class="QLabel" name="label_336">
-                           <property name="font">
-                            <font>
-                             <pointsize>11</pointsize>
-                             <weight>50</weight>
-                             <bold>false</bold>
-                            </font>
-                           </property>
-                           <property name="text">
-                            <string>Clamper 1-4 Ext</string>
-                           </property>
-                          </widget>
-                         </item>
-                         <item row="3" column="4">
-                          <widget class="QToolButton" name="toolButton_conveyorStatus">
                            <property name="enabled">
                             <bool>false</bool>
                            </property>
@@ -13165,6 +11978,37 @@ border: none;
                           </item>
                          </layout>
                         </item>
+                        <item row="11" column="0">
+                         <layout class="QHBoxLayout" name="horizontalLayout_lineScanAxis">
+                          <item>
+                           <widget class="QLabel" name="label_lineScanAxis">
+                            <property name="text">
+                             <string>Line Scan Axis:</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QComboBox" name="comboBox_lineScanAxis">
+                            <property name="sizePolicy">
+                             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                              <horstretch>0</horstretch>
+                              <verstretch>0</verstretch>
+                             </sizepolicy>
+                            </property>
+                            <item>
+                             <property name="text">
+                              <string>X Axis</string>
+                             </property>
+                            </item>
+                            <item>
+                             <property name="text">
+                              <string>Y Axis</string>
+                             </property>
+                            </item>
+                           </widget>
+                          </item>
+                         </layout>
+                        </item>
                         <item row="13" column="0">
                          <layout class="QHBoxLayout" name="horizontalLayout_71">
                           <item>
@@ -18254,32 +17098,6 @@ QToolButton:hover {
                        <item row="1" column="3">
                         <widget class="QLineEdit" name="lineEdit_x_velocity3d"/>
                        </item>
-                       <item row="2" column="0">
-                        <widget class="QLabel" name="label_205">
-                         <property name="text">
-                          <string>Conveyor</string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="2" column="1">
-                        <widget class="QLineEdit" name="lineEdit_cy1_acceleration"/>
-                       </item>
-                       <item row="2" column="2">
-                        <widget class="QLineEdit" name="lineEdit_cy1_velocity"/>
-                       </item>
-                       <item row="2" column="4">
-                        <widget class="QToolButton" name="toolButton_updateVelocity_cy1">
-                         <property name="sizePolicy">
-                          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-                           <horstretch>0</horstretch>
-                           <verstretch>0</verstretch>
-                          </sizepolicy>
-                         </property>
-                         <property name="text">
-                          <string>Update</string>
-                         </property>
-                        </widget>
-                       </item>
                       </layout>
                      </item>
                     </layout>
@@ -18715,308 +17533,6 @@ QToolButton:hover {
                     </layout>
                    </widget>
                   </item>
-                  <item row="1" column="0">
-                   <widget class="QFrame" name="frame_21">
-                    <property name="styleSheet">
-                     <string notr="true">QFrame{
-	background-color: #272c36;
-	border-radius:16px;
-}
-
-QGroupBox{
- border: 0px;
-}
-
-QLineEdit{
-background-color: rgb(27, 29, 35);
-border: 1px solid rgb(27, 29, 35);
-border-radius: 5px;
-padding-left: 10px;
-color: #F0F0F0;
-}
-
-QLineEdit[readOnly=true] { 
-    background: rgb(57, 59, 65);     
-    color: #F0F0F0;   
-	border: 1px solid rgb(57, 59, 65);       
-}
-
-QCheckBox{
-border-radius: 5px;
-padding: 2px;
-color: #F0F0F0;
-}
-
-QLabel{
-border-radius: 5px;
-padding: 2px;
-color: #F0F0F0;
-}
-
-QFrame{
-	background-color: #272c36;
-	border-radius:16px;
-}
-
-QToolButton {
-  background-color:  #545963;
-  color: #F0F0F0;
-  border-radius: 8px;
-  margin: 0px;
-  padding: 2px;
-}
-
-QToolButton:checked {
-  margin: 1px;
-  background-color:  rgb(39, 44, 54);
-  border: 1px solid #FFE723;
-}
-
-QToolButton:checked:disabled {
-  border: 1px solid #CFBB1C;
-}
-
-QToolButton:pressed {
-   margin: 1px;
-   border: 1px solid #FFE723;
-}
-
-QToolButton:disabled {
-	color: #6e6e6e;
-	background-color: #444444;
-	border: 2px solid #444444;
-}
-
-QToolButton:disabled:hover {
-  border: 1px solid #32414B;
-}
-
-QToolButton:hover {
- background-color: #929aaa;
-}</string>
-                    </property>
-                    <property name="frameShape">
-                     <enum>QFrame::StyledPanel</enum>
-                    </property>
-                    <property name="frameShadow">
-                     <enum>QFrame::Raised</enum>
-                    </property>
-                    <layout class="QVBoxLayout" name="verticalLayout_27">
-                     <item>
-                      <widget class="QLabel" name="label_174">
-                       <property name="font">
-                        <font>
-                         <pointsize>13</pointsize>
-                         <weight>75</weight>
-                         <bold>true</bold>
-                        </font>
-                       </property>
-                       <property name="text">
-                        <string>Conveyor</string>
-                       </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <layout class="QGridLayout" name="gridLayout_130">
-                       <item row="0" column="2">
-                        <widget class="QToolButton" name="toolButton_toggleLane1Right">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Stop</string>
-                         </property>
-                         <property name="icon">
-                          <iconset resource="VisionApp.qrc">
-                           <normaloff>:/24x24/Icon/24x24/cil-arrow-circle-right.png</normaloff>:/24x24/Icon/24x24/cil-arrow-circle-right.png</iconset>
-                         </property>
-                         <property name="checkable">
-                          <bool>true</bool>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="0" column="1">
-                        <widget class="QToolButton" name="toolButton_toggleLane1Left">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Start</string>
-                         </property>
-                         <property name="icon">
-                          <iconset resource="VisionApp.qrc">
-                           <normaloff>:/24x24/Icon/24x24/cil-arrow-circle-left.png</normaloff>:/24x24/Icon/24x24/cil-arrow-circle-left.png</iconset>
-                         </property>
-                         <property name="checkable">
-                          <bool>true</bool>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="0" column="0">
-                        <widget class="QLabel" name="label_lane1">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Continuous Move</string>
-                         </property>
-                        </widget>
-                       </item>
-                      </layout>
-                     </item>
-                     <item>
-                      <layout class="QHBoxLayout" name="horizontalLayout_76">
-                       <item>
-                        <widget class="QLabel" name="label_276">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Load To Sensor: </string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item>
-                        <widget class="QComboBox" name="comboBox_loadingPosition">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <item>
-                          <property name="text">
-                           <string>Entry</string>
-                          </property>
-                         </item>
-                         <item>
-                          <property name="text">
-                           <string>Exit</string>
-                          </property>
-                         </item>
-                         <item>
-                          <property name="text">
-                           <string>Pos1</string>
-                          </property>
-                         </item>
-                         <item>
-                          <property name="text">
-                           <string>Pos2</string>
-                          </property>
-                         </item>
-                        </widget>
-                       </item>
-                       <item>
-                        <widget class="QToolButton" name="toolButton_loadToSensor">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Load</string>
-                         </property>
-                        </widget>
-                       </item>
-                      </layout>
-                     </item>
-                     <item>
-                      <widget class="QLabel" name="label_275">
-                       <property name="text">
-                        <string/>
-                       </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <widget class="QLabel" name="label_177">
-                       <property name="font">
-                        <font>
-                         <pointsize>13</pointsize>
-                         <weight>75</weight>
-                         <bold>true</bold>
-                        </font>
-                       </property>
-                       <property name="text">
-                        <string>Flexi Rails</string>
-                       </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <layout class="QGridLayout" name="gridLayout_131">
-                       <item row="0" column="0">
-                        <widget class="QLabel" name="label_rail1">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Rail</string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="0" column="4">
-                        <widget class="QToolButton" name="toolButton_homeRail1">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Home</string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="0" column="2">
-                        <widget class="QLineEdit" name="lineEdit_railWidth1">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="0" column="3">
-                        <widget class="QToolButton" name="toolButton_setRailWidth1">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="text">
-                          <string>Set Width</string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="0" column="1">
-                        <widget class="QLineEdit" name="lineEdit_railWidth">
-                         <property name="font">
-                          <font>
-                           <pointsize>11</pointsize>
-                          </font>
-                         </property>
-                         <property name="styleSheet">
-                          <string notr="true"> background: rgb(57, 59, 65);     
-    color: #F0F0F0;   
-	border: 1px solid rgb(57, 59, 65);       </string>
-                         </property>
-                         <property name="readOnly">
-                          <bool>true</bool>
-                         </property>
-                        </widget>
-                       </item>
-                      </layout>
-                     </item>
-                    </layout>
-                   </widget>
-                  </item>
                   <item row="2" column="0">
                    <widget class="QFrame" name="frame_28">
                     <property name="styleSheet">
@@ -19164,26 +17680,6 @@ QToolButton:hover {
                          </property>
                         </widget>
                        </item>
-                       <item row="5" column="0">
-                        <widget class="QLabel" name="label_flexiRail1_2">
-                         <property name="text">
-                          <string>Flexi Rail</string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item row="5" column="3">
-                        <widget class="QToolButton" name="toolButton_updateVelocity_fr1">
-                         <property name="sizePolicy">
-                          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-                           <horstretch>0</horstretch>
-                           <verstretch>0</verstretch>
-                          </sizepolicy>
-                         </property>
-                         <property name="text">
-                          <string>Update</string>
-                         </property>
-                        </widget>
-                       </item>
                        <item row="0" column="1">
                         <widget class="QLabel" name="label_178">
                          <property name="font">
@@ -19197,12 +17693,6 @@ QToolButton:hover {
                           <string>Acceleration</string>
                          </property>
                         </widget>
-                       </item>
-                       <item row="5" column="2">
-                        <widget class="QLineEdit" name="lineEdit_fr1_velocity"/>
-                       </item>
-                       <item row="5" column="1">
-                        <widget class="QLineEdit" name="lineEdit_fr1_acceleration"/>
                        </item>
                        <item row="3" column="3">
                         <widget class="QToolButton" name="toolButton_updateVelocity_z">

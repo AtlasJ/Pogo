@@ -36,9 +36,6 @@ void VisionApp::connectJobThread() {
 		emit signalStopSRX();
 
 		switchToMainRecipe();
-		SystemData::instance()._Production_Running = false;
-		SystemData::instance()._Inspection_Done = true;
-		SystemData::instance()._Unloading_Board = false;
 		//MotionController::instance().set_DO(_motionID, 0, (int)DOA::SAFETY_DOOR_LOCK, false);
 		//runLooping(); //only run if there's loop
 	});
@@ -463,7 +460,6 @@ void VisionApp::connectJobThread() {
 	QObject::connect(this, &VisionApp::homeZ, &_jobThread, &JobThread::homeZ, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::homeXYZ, &_jobThread, &JobThread::homeXYZ, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::homeAll, &_jobThread, &JobThread::homeAll, Qt::QueuedConnection);
-	QObject::connect(this, &VisionApp::homeRail, &_jobThread, &JobThread::homeRail, Qt::QueuedConnection);
 
 	// Fiducial-related methods
 	//QObject::connect(this, &VisionApp::autoSetFiducialPoint, &_jobThread, &JobThread::autoSetFiducialPoint, Qt::QueuedConnection);
@@ -513,10 +509,6 @@ void VisionApp::connectJobThread() {
 	QObject::connect(this, &VisionApp::signalFindPortabilityPattern, &_jobThread, &JobThread::findPortabilityPattern, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::signalFindPortabilityCircle, &_jobThread, &JobThread::findPortabilityCircle, Qt::QueuedConnection);
 
-	QObject::connect(this, &VisionApp::signalSetRailWidth, &_jobThread, &JobThread::setRailWidth, Qt::QueuedConnection);
-
-	QObject::connect(this, &VisionApp::signalLoadToSensor, &_jobThread, &JobThread::loadToSensor, Qt::QueuedConnection);
-	QObject::connect(this, &VisionApp::signalLoadingDirection, &_jobThread, &JobThread::setLoadingDirection, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::signalLoadToPosition, &_jobThread, &JobThread::loadToPositionSensor, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::signalUnloadBoard, &_jobThread, &JobThread::unloadBoard, Qt::QueuedConnection);
 
@@ -565,8 +557,6 @@ void VisionApp::connectJobThread() {
 		ct::logger::info("[Barcode] Reader %d -> Barcode %d: %s",
 			readerIndex + 1, readerIndex + 1, code.toStdString().c_str());
 		});
-	QObject::connect(this, &VisionApp::signalContinuousMoveConveyor, &_jobThread, &JobThread::continuousMoveConveyor, Qt::QueuedConnection);
-	QObject::connect(this, &VisionApp::signalStressTestConveyor, &_jobThread, &JobThread::stressTestConveyor, Qt::QueuedConnection);
 
 	// Must be queued: the SR-X sockets live in the job thread, and writing to them
 	// from the GUI thread trips "QSocketNotifier ... from another thread" and drops the write.

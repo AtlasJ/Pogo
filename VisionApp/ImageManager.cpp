@@ -860,6 +860,10 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 	auto scale = ScaleManager::instance().um_per_px();
 	double extraPx= ScaleManager::instance().mm_to_px(SystemData::instance().m_extraMoveFor3DLaser);
 
+	//X-axis scans need the raw frame remapped 90 degrees so the scan direction lies along image X;
+	//Y-axis scans keep the raw orientation (profiles already stack along image Y)
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+
 	if (api == "Gocator") {
 		ct::logger::info("[ImageManager] rotate_heightmap---Gocator");
 		auto w = mtrx::get_width(mSrc);
@@ -870,12 +874,19 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 
 		auto type = mtrx::get_type(mSrc);
 
-		auto mRotate = MbufAlloc2d(M_DEFAULT, h, w, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
-		mDst = MbufAlloc2d(M_DEFAULT, sh, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
-		MimRotate(mSrc, mRotate, 90, w / 2, h / 2, h / 2, w / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
-		MimRotate(mRotate, mRotate, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
-		MimResize(mRotate, mDst, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
-		mtrx::BufferCollector bc(mRotate);
+		if (scanAlongY) {
+			mDst = MbufAlloc2d(M_DEFAULT, sw, sh, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimResize(mSrc, mDst, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+		}
+		else {
+			auto mRotate = MbufAlloc2d(M_DEFAULT, h, w, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			mDst = MbufAlloc2d(M_DEFAULT, sh, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimRotate(mSrc, mRotate, 90, w / 2, h / 2, h / 2, w / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MimRotate(mRotate, mRotate, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+			MimResize(mRotate, mDst, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+			mtrx::BufferCollector bc(mRotate);
+		}
 	}
 	else if (api == "SmartRay") {
 
@@ -899,21 +910,36 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 
 		auto type = mtrx::get_type(mSrc);
 
-		auto mResize = MbufAlloc2d(M_DEFAULT, sw, sh, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
-		MimResize(mSrc, mResize, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+		if (scanAlongY) {
+			mDst = MbufAlloc2d(M_DEFAULT, sw, sh, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimResize(mSrc, mDst, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
 
-		if (onTranslate && extraPx != 0.0) {
-			MimTranslate(mResize, mResize, -extraPx, 0.0, M_BICUBIC + M_OVERSCAN_CLEAR);
+			if (onTranslate && extraPx != 0.0) {
+				MimTranslate(mDst, mDst, 0.0, -extraPx, M_BICUBIC + M_OVERSCAN_CLEAR); //extra move is along the scan (Y) axis
+			}
+
+			//laser line lies along image X for Y-axis scans; mirror it like the vertical flip does for X-axis scans
+			MimFlip(mDst, mDst, M_FLIP_HORIZONTAL, M_DEFAULT);
+
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
 		}
-		
-		mDst = MbufAlloc2d(M_DEFAULT, sh, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
-		MimRotate(mResize, mDst, 90, sw / 2, sh / 2, sh / 2, sw / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
-		MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+		else {
+			auto mResize = MbufAlloc2d(M_DEFAULT, sw, sh, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimResize(mSrc, mResize, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
 
-		//double centerHeight = (h - 580 - 507) / 2 + 507;
-		MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
-		
-		mtrx::BufferCollector bc(mResize);
+			if (onTranslate && extraPx != 0.0) {
+				MimTranslate(mResize, mResize, -extraPx, 0.0, M_BICUBIC + M_OVERSCAN_CLEAR);
+			}
+
+			mDst = MbufAlloc2d(M_DEFAULT, sh, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimRotate(mResize, mDst, 90, sw / 2, sh / 2, sh / 2, sw / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+
+			//double centerHeight = (h - 580 - 507) / 2 + 507;
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+
+			mtrx::BufferCollector bc(mResize);
+		}
 	}
 	//else if (api == "SSZN") {
 
@@ -982,31 +1008,57 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 		MIL_INT sh_total = (MIL_INT)(sh_content * paddingRatio);
 
 		auto type = mtrx::get_type(mSrc);
-		auto mResize = MbufAlloc2d(M_DEFAULT, sw, sh_total, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
-		MbufClear(mResize, 0.0);
-		MIL_ID mResizeChild = M_NULL;
-		MbufChild2d(mResize, 0, 0, sw, sh_content, &mResizeChild);
-		MimResize(mSrc, mResizeChild, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
-		MbufFree(mResizeChild);
 
-		mtrx::BufferCollector bc(mResize);
+		if (scanAlongY) {
+			mDst = MbufAlloc2d(M_DEFAULT, sw, sh_total, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MbufClear(mDst, 0.0);
+			MIL_ID mResizeChild = M_NULL;
+			MbufChild2d(mDst, 0, 0, sw, sh_content, &mResizeChild);
+			MimResize(mSrc, mResizeChild, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MbufFree(mResizeChild);
 
-		if (onTranslate && extraPx != 0.0) {
-			MimTranslate(mResize, mResize, -extraPx, 0.0, M_BICUBIC + M_OVERSCAN_CLEAR);
+			if (onTranslate && extraPx != 0.0) {
+				MimTranslate(mDst, mDst, 0.0, -extraPx, M_BICUBIC + M_OVERSCAN_CLEAR); //extra move is along the scan (Y) axis
+			}
+
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+
+			if (invertX)
+			{
+				MimFlip(mDst, mDst, M_FLIP_HORIZONTAL, M_DEFAULT);
+			}
+			if (invertY)
+			{
+				MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+			}
 		}
+		else {
+			auto mResize = MbufAlloc2d(M_DEFAULT, sw, sh_total, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MbufClear(mResize, 0.0);
+			MIL_ID mResizeChild = M_NULL;
+			MbufChild2d(mResize, 0, 0, sw, sh_content, &mResizeChild);
+			MimResize(mSrc, mResizeChild, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MbufFree(mResizeChild);
 
-		mDst = MbufAlloc2d(M_DEFAULT, sh_total, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			mtrx::BufferCollector bc(mResize);
 
-		MimRotate(mResize, mDst, 90, sw / 2, sh_total / 2, sh_total / 2, sw / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
-		MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+			if (onTranslate && extraPx != 0.0) {
+				MimTranslate(mResize, mResize, -extraPx, 0.0, M_BICUBIC + M_OVERSCAN_CLEAR);
+			}
 
-		if (invertX)
-		{
-			MimFlip(mDst, mDst, M_FLIP_HORIZONTAL, M_DEFAULT);
-		}
-		if (invertY)
-		{
-			MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+			mDst = MbufAlloc2d(M_DEFAULT, sh_total, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+
+			MimRotate(mResize, mDst, 90, sw / 2, sh_total / 2, sh_total / 2, sw / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+
+			if (invertX)
+			{
+				MimFlip(mDst, mDst, M_FLIP_HORIZONTAL, M_DEFAULT);
+			}
+			if (invertY)
+			{
+				MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+			}
 		}
 	}
 
@@ -1624,10 +1676,13 @@ void ImageManager::mechanical_stitch_linescan(QString sID)
 
 	auto sline = (*m_linescans)[sID];
 
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+
 	double xmin_mm = 999999, xmax_mm = 0;
 	double ymin_mm = 999999, ymax_mm = 0;
 
-	int view_height_px;
+	//laser FOV size in px, perpendicular to the scan direction
+	int view_span_px = 0;
 
 	for (auto l : *m_linescans) {
 		if (l.map_to_slinescan == stitchID) {
@@ -1655,13 +1710,23 @@ void ImageManager::mechanical_stitch_linescan(QString sID)
 				ymax_mm = l.end_point.wy;
 			}
 
-			view_height_px = l.px.h;
+			if (xmin_mm > l.end_point.wx) {
+				xmin_mm = l.end_point.wx;
+			}
+
+			if (xmax_mm < l.start_point.wx) {
+				xmax_mm = l.start_point.wx;
+			}
+
+			view_span_px = scanAlongY ? l.px.w : l.px.h;
 		}
 	}
 
 	auto scale = ScaleManager::instance().um_per_px();
 	int width_px = util::mm_to_px(xmax_mm - xmin_mm, scale); //sview.px.w;
-	int height_px = util::mm_to_px(ymax_mm - ymin_mm, scale) + view_height_px; // sview.px.h;
+	int height_px = util::mm_to_px(ymax_mm - ymin_mm, scale); // sview.px.h;
+	if (scanAlongY) width_px += view_span_px;
+	else height_px += view_span_px;
 
 	ct::logger::debug("XY (min, max): %f, %f, %f, %f\n", xmin_mm, ymin_mm, xmax_mm, ymax_mm);
 	ct::logger::debug("Stitch size: %d, %d\n", width_px, height_px);

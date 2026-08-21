@@ -110,11 +110,6 @@ void VisionApp::connectMachineController()
 			nvs::set_background_color(ui.toolButton_machineState, QColor("#C62828"));
 			stopRun();
 			//_stateTimer->start(1000);
-
-			//SystemData::instance()._Production_Running = false;
-			//SystemData::instance()._Inspection_Done = false;
-			//SystemData::instance()._Machine_Ready = true;
-			//SystemData::instance()._IsBoardEntry = false;
 			break;
 		case MachineState::MACHINE_HOMING:
 			nvs::set_background_color(ui.toolButton_machineState, QColor("#F2B705"));

@@ -1196,6 +1196,7 @@ void VisionApp::initStartupState()
 	ui.comboBox_warpageMethod->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_zstack_acqType->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_stitchingMethod ->installEventFilter(new util::ComboScrollBlocker());
+	ui.comboBox_lineScanAxis->installEventFilter(new util::ComboScrollBlocker());
 }
 
 QDragBox* VisionApp::addDragBoxToScene(QMainGraphicsScene* scene, QRect rect, const QColor& color, const QString& name, const QString& id)
@@ -2027,6 +2028,13 @@ void VisionApp::connectSignalAndSlot()
 		});
 	
 	connect(ui.comboBox_stitchingMethod, SIGNAL(currentIndexChanged(int)), this, SLOT(saveStitchingMethod()));
+
+	connect(ui.comboBox_lineScanAxis, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
+		SystemData::instance()._lineScanAxis = index;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("LINESCAN_AXIS_CHANGED"));
+		showMsg(tr("Line scan axis changed. Please reassign line scans for the new axis to take effect."));
+	});
 
 	//treeViewRecipeExplorer_select
 	connect(_recipeSelectionModel, SIGNAL(selectionChanged(const QItemSelection &, const QItemSelection &)),
@@ -4442,9 +4450,6 @@ void VisionApp::testRun()
 			run();
 		}
 	}
-	else if (runType == "Conveyor Looping") {
-		emit signalStressTestConveyor();
-	}
 	else if (runType == "Full Stationary") {
 		if (online) {
 			recordMemory(QString("Start #%1").arg(_loop));
@@ -4462,7 +4467,7 @@ void VisionApp::stopRun(bool clearInspQueue)
 		MotionController::instance().stop_move(_motionID, i);
 	}
 
-	if (!_jobThread.m_failLoadToSensor) progressBarRelease();
+	progressBarRelease();
 
 	setCameraAngle(_prevCamAlignedAngle);
 
@@ -5693,64 +5698,27 @@ void VisionApp::setUIVisibility()
 
 void VisionApp::setUIVisibilityMotionControl(AccessLevel accessLevel)
 {
-	bool mainUIVisibility = true;
-	if (accessLevel == AccessLevel::ADMIN) {
-		
-		mainUIVisibility = true;
+	bool mainUIVisibility = (accessLevel == AccessLevel::ADMIN); // AccessLevel::ENGINEER, AccessLevel::OPERATOR restricted
 
-		ui.label_291->show();
-		ui.label_299->show();
-		ui.toolButton_EMXA_DO3->show();
+	//tower lights, buzzer and z brake release rows are admin only
+	const std::vector<int> restrictedDOs = { 3, 4, 5, 6, 8 };
+	for (auto i : restrictedDOs) {
+		auto wire = findChild<QLabel*>(QString("label_EMXA_DO%1_w").arg(i));
+		if (wire) wire->setVisible(mainUIVisibility);
 
-		ui.label_292->show();
-		ui.label_300->show();
-		ui.toolButton_EMXA_DO4->show();
+		auto addr = findChild<QLabel*>(QString("label_EMXA_DO%1_a").arg(i));
+		if (addr) addr->setVisible(mainUIVisibility);
 
-		ui.label_293->show();
-		ui.label_301->show();
-		ui.toolButton_EMXA_DO5->show();
+		auto desc = findChild<QLabel*>(QString("label_EMXA_DO%1_d").arg(i));
+		if (desc) desc->setVisible(mainUIVisibility);
 
-		ui.label_295->show();
-		ui.label_302->show();
-		ui.toolButton_EMXA_DO6->show();
-
-		ui.label_242->show();
-		ui.label_247->show();
-		ui.toolButton_EMXA_DO11->show();
-
-	}
-	else { // AccessLevel::ENGINEER, AccessLevel::OPERATOR
-		
-		mainUIVisibility = false;
-
-		ui.label_291->hide();
-		ui.label_299->hide();
-		ui.toolButton_EMXA_DO3->hide();
-
-		ui.label_292->hide();
-		ui.label_300->hide();
-		ui.toolButton_EMXA_DO4->hide();
-
-		ui.label_293->hide();
-		ui.label_301->hide();
-		ui.toolButton_EMXA_DO5->hide();
-
-		ui.label_295->hide();
-		ui.label_302->hide();
-		ui.toolButton_EMXA_DO6->hide();
-
-		ui.label_242->hide();
-		ui.label_247->hide();
-		ui.toolButton_EMXA_DO11->hide();
-
+		auto button = findChild<QToolButton*>(QString("toolButton_EMXA_DO%1").arg(i));
+		if (button) button->setVisible(mainUIVisibility);
 	}
 
 	ui.toolButton_servo_x->setEnabled(mainUIVisibility);
 	ui.toolButton_servo_y->setEnabled(mainUIVisibility);
 	ui.toolButton_servo_z->setEnabled(mainUIVisibility);
-
-	ui.toolButton_servo_lane1->setEnabled(mainUIVisibility);
-	ui.toolButton_servo_rail1->setEnabled(mainUIVisibility);
 
 
 	ui.lineEdit_y_acceleration->setReadOnly(!mainUIVisibility);
@@ -5760,14 +5728,6 @@ void VisionApp::setUIVisibilityMotionControl(AccessLevel accessLevel)
 	ui.lineEdit_z_acceleration->setReadOnly(!mainUIVisibility);
 	ui.lineEdit_z_velocity->setReadOnly(!mainUIVisibility);
 	ui.toolButton_updateVelocity_z->setEnabled(mainUIVisibility);
-
-	ui.lineEdit_cy1_acceleration->setReadOnly(!mainUIVisibility);
-	ui.lineEdit_cy1_velocity->setReadOnly(!mainUIVisibility);
-	ui.toolButton_updateVelocity_cy1->setEnabled(mainUIVisibility);
-
-	ui.lineEdit_fr1_acceleration->setReadOnly(!mainUIVisibility);
-	ui.lineEdit_fr1_velocity->setReadOnly(!mainUIVisibility);
-	ui.toolButton_updateVelocity_fr1->setEnabled(mainUIVisibility);
 
 	ui.toolButton_updateVelocity_all->setEnabled(mainUIVisibility);
 
@@ -6019,16 +5979,7 @@ bool VisionApp::verifyLogin()
 
 void VisionApp::initMachine()
 {
-	auto ret = MotionController::instance().set_DO(_motionID, 0, (int)DOA::POWER_DRIVE, true);
-	if (!ret) {
-		AuditLog::instance().log(QStringLiteral("MACHINE_INIT"), QStringLiteral("driver power"), QStringLiteral("FAILED"));
-		showMsg("Failed to turn on driver power!");
-		return;
-	}
-	AuditLog::instance().log(QStringLiteral("MACHINE_INIT"), QStringLiteral("driver power ON"));
-	nvs::set_background_color(ui.toolButton_EMXA_DO6, Qt::green);
-	nvs::set_background_color(ui.toolButton_drivePower, Qt::green);
-
+	//NOTE: driver power is not software controlled on this machine, no need to turn on before homing
 	emit homeAll();
 }
 
@@ -8442,7 +8393,6 @@ void VisionApp::toggleOnlineRun()
 
 	ui.comboBox_runType->clear();
 	QStringList runType = {
-		"Conveyor Looping",
 		"2D Acquisition",
 		"3D Acquisition",
 		"Full Acquisition",
@@ -9913,10 +9863,6 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 		{
 			SystemData::instance()._loadProductionAfterRun = jsonHelper::getBool(_systemObj, "Load_Production_After_Run", true);
 		}
-
-		SystemData::instance()._timeoutLoad2Sensor = systemObj.contains("Timeout_Load_To_Sensor")
-			? jsonHelper::getInteger(_systemObj, "Timeout_Load_To_Sensor", 15000)
-			: (systemObj.insert("Timeout_Load_To_Sensor", 15000), 15000);
 
 		SystemData::instance()._bypassInspection = systemObj.contains("Bypass_Inspection_Mode")
 			? jsonHelper::getBool(_systemObj, "Bypass_Inspection_Mode", false)

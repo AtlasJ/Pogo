@@ -244,7 +244,6 @@ private:
 	bool hasSubrecipe();
 
 	QTimer* _motionTimer = nullptr;
-	QTimer* _smemaTimer = nullptr;
 
 	QString _stateColor = "#5A7863";
 	QTimer* _stateTimer = nullptr;
@@ -1611,7 +1610,6 @@ signals:
 	void homeZ();
 	void homeXYZ();
 	void homeAll();
-	void homeRail();
 
 
 	void signalOnlineStitchingSimulation();
@@ -1644,17 +1642,10 @@ signals:
 
 	void collectZImages(double x, double y, double step_mm, double firstStep, double finalStep, OpticsInfo optic);
 
-	void signalSetRailWidth(double width);
-
-	void signalLoadingDirection(int index);
 	void signalLoadToPosition(int index);
-	void signalLoadToSensor(SensorIndex sensor, bool timeout, int timeout_ms);
 	void barcodeReceived(QString payload);
 	void signalUnloadBoard();
-	void signalRunProdS();           
-
-	void signalContinuousMoveConveyor(bool positive_direction);
-	void signalStressTestConveyor();
+	void signalRunProdS();
 
 	//SR-X readers: queued so the socket I/O runs in the job thread that owns the sockets
 	void signalTriggerSRX();

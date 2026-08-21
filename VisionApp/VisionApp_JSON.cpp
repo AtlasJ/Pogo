@@ -1379,6 +1379,7 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("laserApi"), laserApi);
 	obj.insert(QStringLiteral("_warpageMethod"), _warpageMethod);
 	obj.insert(QStringLiteral("stitchingMethod"), SystemData::instance()._stitchingMethod);
+	obj.insert(QStringLiteral("lineScanAxis"), (int)SystemData::instance()._lineScanAxis);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1386,8 +1387,6 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("x_2d_velocity"), speed);
 	obj.insert(QStringLiteral("x_3d_velocity"), speed3d);
 	obj.insert(QStringLiteral("x_acceleration"), ui.lineEdit_x_acceleration->text().toInt());
-	obj.insert(QStringLiteral("c_2d_velocity"), ui.lineEdit_cy1_velocity->text().toInt());
-	obj.insert(QStringLiteral("c_acceleration"), ui.lineEdit_cy1_acceleration->text().toInt());
 	// RECIPE_Z_CONVEYOR_DISABLED_BEGIN
 	// Recipe-based conveyor width persistence is disabled. Re-enable this insert
 	// to save conveyorWidth into recipeConfig.json again.
@@ -1906,64 +1905,29 @@ bool VisionApp::loadRecipeConfig()
 		if (_motions.contains(_motionID)) defaultSpeed = _motions[_motionID].axes[(int)Axis::X].move_max_velocity;
 		auto defaultSpeed3d = defaultSpeed / 10;
 
-		double defaultSpeedC = 0;
-		if (_motions.contains(_motionID)) defaultSpeedC = _motions[_motionID].axes[(int)Axis::CY1].move_max_velocity;
-
 		auto speed2d = jsonHelper::getInteger(root, QStringLiteral("x_2d_velocity"), defaultSpeed);
 		auto speed3d = jsonHelper::getInteger(root, QStringLiteral("x_3d_velocity"), defaultSpeed3d);
 		auto accel = jsonHelper::getInteger(root, QStringLiteral("x_acceleration"), defaultSpeed);
-
-		auto speedC = jsonHelper::getInteger(root, QStringLiteral("c_2d_velocity"), defaultSpeedC);
-		const auto accelCValue = root.value(QStringLiteral("c_acceleration"));
-		auto accelC = accelCValue.isString() && accelCValue.toString().trimmed().isEmpty()
-			? 200
-			: jsonHelper::getInteger(root, QStringLiteral("c_acceleration"), 200);
-		// RECIPE_Z_CONVEYOR_DISABLED_BEGIN
-		// Recipe-based conveyor width loading/application is disabled. Re-enable
-		// these lines and the block below to apply conveyorWidth on recipe open.
-		//const bool hasConveyorWidth = root.contains(QStringLiteral("conveyorWidth"));
-		//auto conWidth = jsonHelper::getDouble(root, QStringLiteral("conveyorWidth"), 0);
-		// RECIPE_Z_CONVEYOR_DISABLED_END
 
 		ui.lineEdit_x_velocity->setText(QString::number(speed2d));
 		ui.lineEdit_x_velocity3d->setText(QString::number(speed3d));
 		ui.lineEdit_x_acceleration->setText(QString::number(accel));
 
-		ui.lineEdit_cy1_velocity->setText(QString::number(speedC));
-		ui.lineEdit_cy1_acceleration->setText(QString::number(accelC));
-
-#if 0
-		// RECIPE_Z_CONVEYOR_DISABLED_BEGIN
-		// Recipe-based conveyor width UI update and rail move are disabled.
-		// Re-enable this block to restore recipe-controlled rail width.
-		if (hasConveyorWidth && conWidth > 0.0) {
-			ui.lineEdit_railWidth1->setText(QString::number(conWidth));
-
-			if (!isInit)
-			{
-				emit signalSetRailWidth(conWidth);
-			}
-		}
-		// RECIPE_Z_CONVEYOR_DISABLED_END
-#endif
-
 		_jobThread.setXSpeed(speed2d, speed3d);
 		_jobThread.setXDecel(accel);
-
-		_jobThread.setConveyorSpeed(speedC);
-		_jobThread.setConveyorDecel(accelC);
-
 
 		MotionController::instance().set_move_acceleration(_motionID, (int)Axis::X, accel);
 		MotionController::instance().set_move_deceleration(_motionID, (int)Axis::X, accel);
 
-		MotionController::instance().set_move_acceleration(_motionID, (int)Axis::CY1, accelC);
-		MotionController::instance().set_move_deceleration(_motionID, (int)Axis::CY1, accelC);
-		MotionController::instance().set_move_max_velocity(_motionID, (int)Axis::CY1, speedC);
-
 		// for laser API
 		SystemData::instance()._stitchingMethod = jsonHelper::getInteger(root, QStringLiteral("stitchingMethod"), 2);
 		ui.comboBox_stitchingMethod ->setCurrentIndex(SystemData::instance()._stitchingMethod-1);
+
+		SystemData::instance()._lineScanAxis = jsonHelper::getInteger(root, QStringLiteral("lineScanAxis"), 0);
+		{
+			QSignalBlocker blocker(ui.comboBox_lineScanAxis);
+			ui.comboBox_lineScanAxis->setCurrentIndex(SystemData::instance()._lineScanAxis);
+		}
 		//ScaleManager::instance().set_world_scale(jsonHelper::getDouble(root, QStringLiteral("worldScale"), 0.291716));
 		if (!root.contains(QStringLiteral("laserApi")) || root.value(QStringLiteral("laserApi")).toString().isEmpty()) {
 			laserApi = currentSensorApi;

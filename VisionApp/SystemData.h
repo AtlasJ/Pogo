@@ -14,16 +14,6 @@
 * The data is usually tied to a machine
 */
 
-//loading sequence
-enum class LoadingDirection {
-	LeftRight, RightLeft, LeftLeft, RightRight
-};
-
-//always put leftmost to rightmost, as the sequence will be use for logic
-enum class SensorIndex {
-	START, LEFT, SLOW, RIGHT, EXIT 
-};
-
 enum class Axis {
 	X = 0, Y = 1, Z = 2, CY1 = 3, CY2 = 4, FR1 = 5, FR2 = 6, FR3 = 7
 };
@@ -38,14 +28,6 @@ enum class DOA { //card0
 	POWER_DRIVE = 6,
 	SAFETY_DOOR_LOCK = 7,
 	BRAKE_RELEASE = 11,
-	LAST_INDEX
-};
-
-enum class DOB { //card1
-	CLAMPER = 2,
-	STOPPER = 3,
-	DOWNSTREAM = 4,
-	UPSTREAM = 5,
 	LAST_INDEX
 };
 
@@ -151,24 +133,14 @@ public:
 	std::string _currentBarcode;
 
 	int _lscTriggerMode = 1;
-	int _timeoutLoad2Sensor = 15000;
 
-	std::atomic<bool> _enableSMEMA = false;
+	//linescan scan direction: 0 = X axis, 1 = Y axis (persisted in recipeConfig.json)
+	std::atomic<int> _lineScanAxis = 0;
+	bool isLineScanAxisY() const { return _lineScanAxis == 1; }
+
 	std::atomic<bool> _bypassInspection = false;
 
-	//std::atomic<bool> _PCB_Available = false;    // EMXA_DI10
 	std::atomic<bool> _Machine_Ready = true;     // Refer to Machine
-	std::atomic<bool> _Downstream_Ready = false; // EMXA_DI18
-	std::atomic<bool> _Upstream_Ready = false;   // EMXA_DI19
-
-	std::atomic<bool> _Entry_Sensor = false;   // EMXA_DI8
-	std::atomic<bool> _Exit_Sensor = false;    // EMXA_DI10
-
-	std::atomic<bool> _IsBoardEntry = false;
-	std::atomic<bool> _Production_Running = false;
-	std::atomic<bool> _Inspection_Done = false;
-
-	std::atomic<bool> _Unloading_Board = false;
 
 	std::atomic<int> _index;
 

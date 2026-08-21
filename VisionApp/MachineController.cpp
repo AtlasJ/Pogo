@@ -25,11 +25,8 @@ MachineController::MachineController(QObject* parent)
     for (int i = 0; i < (int)MachineError::COUNT; i++) {
         m_bypassErrors.insert(i, false);
     }
-    setBypassAxis(Axis::CY1, false);
     //m_bypassErrors[(int)MachineError::AIR_PRESSURE_OFF] = true;
     //m_bypassErrors[(int)MachineError::ESTOP_PRESSED] = true;
-    //m_bypassErrors[(int)MachineError::RAIL_NEGATIVE_LIMIT_HIT] = true;
-    //m_bypassErrors[(int)MachineError::RAIL_POSITIVE_LIMIT_HIT] = true;
 
 }
 
@@ -128,7 +125,6 @@ void MachineController::notifyError(MachineError e)
     if (e == MachineError::X_SERVO_OFF) assessError(false, e);
     else if (e == MachineError::Y_SERVO_OFF) assessError(false, e);
     else if (e == MachineError::Z_SERVO_OFF) assessError(false, e);
-    else if (e == MachineError::CONVEYOR_SERVO_OFF) assessError(false, e);
    
     setMachineState(MachineState::S_ERROR);
     emit signalMachineError(e);
@@ -164,9 +160,6 @@ void MachineController::notifyEvent(MachineEvent e)
         break;
     case MachineEvent::Z_SERVO_ON:
         assessError(true, MachineError::Z_SERVO_OFF);
-        break;
-    case MachineEvent::RAIL_SERVO_ON:
-        assessError(true, MachineError::RAIL_SERVO_OFF);
         break;
     }
 }
@@ -372,32 +365,9 @@ void MachineController::handleAxisState()
     //if (elapsed >= std::chrono::minutes(10)) setMachineState(MachineState::IDLE);
 
 
-    auto optional_axisR1 = MotionController::instance().get_motion_io_status(m_motionID, (int)Axis::FR1);
-    if (optional_axisR1.has_value()) {
-        auto motion_io = optional_axisR1.value();
-
-        if (motion_io.size() != 9) ct::logger::error("[Motion_APS] Invalid size for motion io");
-
-        m_rail.alarm = motion_io[Motion_APS::ALM];
-        limit |= m_rail.positive_limit = motion_io[Motion_APS::PEL];
-        limit |= m_rail.negative_limit = motion_io[Motion_APS::NEL];
-        servo_on &= m_rail.servo_on = motion_io[Motion_APS::SVON];
-    }
-
-    auto optional_axisCY1 = MotionController::instance().get_motion_io_status(m_motionID, (int)Axis::CY1);
-    if (optional_axisCY1.has_value()) {
-        auto motion_io = optional_axisCY1.value();
-
-        if (motion_io.size() != 9) ct::logger::error("[Motion_APS] Invalid size for motion io");
-
-        m_cy.alarm = motion_io[Motion_APS::ALM];
-    }
-
     assessError(!m_x.alarm, MachineError::X_DRIVER_ALARM);
     assessError(!m_y.alarm, MachineError::Y_DRIVER_ALARM);
     assessError(!m_z.alarm, MachineError::Z_DRIVER_ALARM);
-    assessError(!m_rail.alarm, MachineError::RAIL_DRIVER_ALARM);
-    assessError(!m_cy.alarm, MachineError::CONVEYOR_DRIVER_ALARM);
 
 
     //Note: No need to check for limit if its homing, as homing uses limit to execute
@@ -408,8 +378,6 @@ void MachineController::handleAxisState()
         assessError(!m_y.negative_limit, MachineError::Y_NEGATIVE_LIMIT_HIT);
         assessError(!m_z.positive_limit, MachineError::Z_POSITIVE_LIMIT_HIT);
         assessError(!m_z.negative_limit, MachineError::Z_NEGATIVE_LIMIT_HIT);
-        assessError(!m_rail.positive_limit, MachineError::RAIL_POSITIVE_LIMIT_HIT);
-        assessError(!m_rail.negative_limit, MachineError::RAIL_NEGATIVE_LIMIT_HIT);
     }
 
     //force user home when servo is off
@@ -466,47 +434,6 @@ void MachineController::setMachineState(MachineState state)
            break;
    }
 
-}
-
-MachineController::SensorStatus MachineController::getSensorStatus()
-{
-    SensorStatus status;
-
-    //DI 8: Start, 9: Front Sensor, 10: Exit 
-    auto optional_EMXA_DIs = MotionController::instance().get_all_DI(m_motionID, 0);
-
-    if (!optional_EMXA_DIs.has_value()) {
-        ct::logger::error("Unable to load front pallet! Failed to get reading from sensors");
-        status.valid = false;
-        return status;
-    }
-
-    auto EMXA_DIs = optional_EMXA_DIs.value();
-
-    if (!(EMXA_DIs.size() > 10)) {
-        ct::logger::error("Unable to load front pallet! Not all reading from sensors is received");
-        status.valid = false;
-        return status;
-    }
-
-    status.valid = true;
-    status.sensors[(int)SensorIndex::START] = EMXA_DIs[8];
-    status.sensors[(int)SensorIndex::RIGHT] = EMXA_DIs[20];
-    status.sensors[(int)SensorIndex::LEFT] = EMXA_DIs[21];
-    status.sensors[(int)SensorIndex::SLOW] = EMXA_DIs[9];
-    status.sensors[(int)SensorIndex::EXIT] = EMXA_DIs[10];
-
-    return status;
-}
-
-bool MachineController::isAllSensorOff(const SensorStatus& status) {
-    bool off = true;
-
-    for (auto& s : status.sensors) {
-        off &= !s;
-    }
-
-    return off;
 }
 
 bool MachineController::turnOnBrake()
@@ -573,8 +500,6 @@ bool MachineController::isServoOn(Axis axis)
     if (axis == Axis::X) return m_x.servo_on;
     else if (axis == Axis::Y) return m_y.servo_on;
     else if (axis == Axis::Z) return m_z.servo_on;
-    else if (axis == Axis::FR1) return m_rail.servo_on;
-    else if (axis == Axis::CY1) return m_cy.servo_on;
     return false;
 }
 

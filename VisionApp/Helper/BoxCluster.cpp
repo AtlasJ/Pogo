@@ -4,7 +4,7 @@
 #include "Utilities.h"
 #include "ScopedTimeLogger.h"
 
-void ct::cluster_boxes(int view_width, int view_height, int padding, std::vector<SmallBox>& rois, std::vector<ClusterBox>& views, bool prioritizeY)
+void ct::cluster_boxes(int view_width, int view_height, int padding, std::vector<SmallBox>& rois, std::vector<ClusterBox>& views, ClusterPriority priority)
 {
 	ScopedTimeLogger timer("Cluster ROI");
 
@@ -23,7 +23,8 @@ void ct::cluster_boxes(int view_width, int view_height, int padding, std::vector
 		ct::Box2D topleft;
 		topleft.cx = 0;
 		topleft.cy = 0;
-		if(prioritizeY) distances.emplace_back(int(ct::distancePrioritizeY(topleft, roi.box, view_width)));
+		if (priority == ClusterPriority::Y) distances.emplace_back(int(ct::distancePrioritizeY(topleft, roi.box, view_width)));
+		else if (priority == ClusterPriority::X) distances.emplace_back(int(abs(roi.box.cy - topleft.cy) + abs(roi.box.cx - topleft.cx) * (double)view_height)); //column-major mirror of distancePrioritizeY
 		else distances.emplace_back(int(ct::distance(topleft, roi.box)));
 	}
 
@@ -226,5 +227,32 @@ void ct::fit_boxes_width(std::vector<ClusterBox>& gb, int padding)
 		b.box.cx = center;
 		b.box.compute_extremum();
 
+	}
+}
+
+void ct::fit_boxes_height(std::vector<ClusterBox>& gb, int padding)
+{
+	for (auto& b : gb)
+	{
+		b.box.compute_extremum();
+
+		//calculate the top most and bottom most from the VO
+		double topmost = 9999999.99;
+		double btmmost = 0.0;
+		for (auto vo_box : b.boxes)
+		{
+			QRect rect(vo_box.box.xmin, vo_box.box.ymin, vo_box.box.w, vo_box.box.h);
+			if (topmost > rect.topLeft().y()) {
+				topmost = rect.topLeft().y();
+			}
+			if (btmmost < rect.bottomRight().y()) {
+				btmmost = rect.bottomRight().y();
+			}
+		}
+
+		b.box.h = btmmost - topmost + 2 * padding;
+		double center = topmost - padding + b.box.h / 2;
+		b.box.cy = center;
+		b.box.compute_extremum();
 	}
 }

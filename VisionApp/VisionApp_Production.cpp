@@ -4,7 +4,6 @@
 #include "ProfilerManager.h"
 #include "LSCManager.h"
 #include "MachineController.h"
-#include "MachineSMEMAManager.h"
 #include "uidGenerator.h"
 #include "AuditLog.h"
 
@@ -28,23 +27,10 @@ void VisionApp::initProductionUI() {
 		nvs::set_background_color(ui.toolButton_lscStatus, connected ? Qt::green : Qt::red);
 	});
 
-	connect(ui.toolButton_drivePower, &QToolButton::clicked, this, [=]() {
-		auto state = MotionController::instance().set_DO(_motionID, 0, 6, true);
-		AuditLog::instance().log(QStringLiteral("DO_TOGGLE"), QStringLiteral("drive power"), state ? QStringLiteral("ON") : QStringLiteral("FAILED"));
-	});
-
 	connect(ui.toolButton_gantryStatus, &QToolButton::clicked, this, [=]() {
 		MotionController::instance().set_servo(_motionID, 0, (int)Axis::X, true);
 		MotionController::instance().set_servo(_motionID, 0, (int)Axis::Y, true);
 		MotionController::instance().set_servo(_motionID, 0, (int)Axis::Z, true);
-	});
-
-	connect(ui.toolButton_railStatus, &QToolButton::clicked, this, [=]() {
-		MotionController::instance().set_servo(_motionID, 0, (int)Axis::FR1, true);
-	});
-
-	connect(ui.toolButton_conveyorStatus, &QToolButton::clicked, this, [=]() {
-		MotionController::instance().set_servo(_motionID, 0, (int)Axis::CY1, true);
 	});
 
 
@@ -58,45 +44,7 @@ void VisionApp::initProductionUI() {
 	});
 
 	connect(ui.toolButton_startProduction, &QToolButton::clicked, this, [=]() {
-		
-		if (SystemData::instance()._enableSMEMA) return;
 		startProduction();
-	});
-
-	connect(ui.toolButton_autoStartProduction, &QToolButton::clicked, this, [=](bool checked) {
-
-		QString machineState = ui.toolButton_machineState->text();
-		if (machineState != "Initialized" && checked == true)
-		{
-			ui.toolButton_autoStartProduction->setChecked(false);
-			showMsg("Please wait for the machine to initialize before starting auto production.");
-			return;
-		}
-
-		//if (SystemData::instance()._IsBoardEntry)
-		//{
-		//	ui.toolButton_autoStartProduction->setChecked(true);
-		//	showMsg("Please wait until the board has fully left the machine before stopping auto production.");
-		//	return;
-		//}
-
-		if (checked)
-		{
-			qDebug() << "Auto Start ON";
-			SystemData::instance()._enableSMEMA = true;
-			ui.toolButton_startProduction->setEnabled(false); 
-			
-			enableUIControl(false);
-		}
-		else
-		{
-			qDebug() << "Auto Start OFF";
-			SystemData::instance()._enableSMEMA = false;
-			ui.toolButton_startProduction->setEnabled(true);
-
-			enableUIControl(true);
-		}
-
 	});
 
 	connect(ui.toolButton_stopProduction, &QToolButton::clicked, this, [=]() {
@@ -111,40 +59,8 @@ void VisionApp::initProductionUI() {
 		AuditLog::instance().log(QStringLiteral("RESET_ALARM"));
 		MachineController::instance().resetAlarm();
 
-		SystemData::instance()._Inspection_Done = false;
 		SystemData::instance()._Machine_Ready = true;
-		SystemData::instance()._IsBoardEntry = false;
-		MachineSMEMAManager::instance().changeState(SmemaState::IDLE);
 
-	});
-
-	connect(ui.toolButton_unloadBoard, &QToolButton::clicked, this, [=]() {
-
-		if (SystemData::instance()._Unloading_Board) return;
-
-		SystemData::instance()._Unloading_Board = true;
-		
-		auto& sys = SystemData::instance();
-		if (sys._enableSMEMA) {
-			MachineSMEMAManager::instance().changeState(SmemaState::BYPASS_INSPECTION);
-		}
-
-		if (!SystemData::instance()._Exit_Sensor || !SystemData::instance()._Entry_Sensor) {
-
-			unloadBoard();
-		}
-		else if (sys._enableSMEMA && (SystemData::instance()._Exit_Sensor || SystemData::instance()._Entry_Sensor)) {
-			
-			vs_stopElapseTimer();
-
-			switchToMainRecipe();
-			sys._Production_Running = false;
-			sys._Inspection_Done = true;
-			sys._Unloading_Board = false;
-
-		}
-
-		
 	});
 }
 
@@ -152,17 +68,9 @@ void VisionApp::startAcquisition()
 {
 	_processType = ProcessType::IMAGE_COLLECTION;
 
-	auto sensor = MachineController::instance().getSensorStatus();
-	if (MachineController::instance().isAllSensorOff(sensor)) {
-		MachineController::instance().notifyError(MachineError::BOARD_NOT_FOUND);
-		return;
-	}
-
-	int loadingDirection = ui.comboBox_loadingDirection->currentIndex();
 	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
 	switchToMainRecipe();
-	emit signalLoadingDirection(loadingDirection);
 	emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
 
 	if (hasSubrecipe()) {
@@ -185,11 +93,6 @@ void VisionApp::startProduction()
 		return;
 	}
 
-	// Don't touch for SMEMA USED
-	SystemData::instance()._Production_Running = true;
-	SystemData::instance()._Inspection_Done = false;
-	// Don't touch for SMEMA USED
-
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
 
 	ui.lineEdit_inspectionTimeMain->clear();
@@ -199,14 +102,6 @@ void VisionApp::startProduction()
 
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
-
-	if (!SystemData::instance()._enableSMEMA) {
-		auto sensor = MachineController::instance().getSensorStatus();
-		if (MachineController::instance().isAllSensorOff(sensor)) {
-			MachineController::instance().notifyError(MachineError::BOARD_NOT_FOUND);
-			return;
-		}
-	}
 
 	if (_enableBarcode)
 	{
@@ -246,10 +141,8 @@ void VisionApp::startProduction()
 
 	MotionController::instance().set_DO(_motionID, 0, (int)DOA::SAFETY_DOOR_LOCK, true);
 
-	int loadingDirection = ui.comboBox_loadingDirection->currentIndex();
 	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
-	emit signalLoadingDirection(loadingDirection);
 	emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
 
 	vs_startElapseTimer();
@@ -274,14 +167,6 @@ void VisionApp::startProductionS()
 
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
-
-	//if (!SystemData::instance()._enableSMEMA) {
-	//	auto sensor = MachineController::instance().getSensorStatus();
-	//	if (MachineController::instance().isAllSensorOff(sensor)) {
-	//		MachineController::instance().notifyError(MachineError::BOARD_NOT_FOUND);
-	//		return;
-	//	}
-	//}
 
 	//if (_enableBarcode)
 	//{
@@ -321,12 +206,6 @@ void VisionApp::startProductionS()
 void VisionApp::boardInPosition(int pos) {
 	ct::logger::info("Board in position");
 
-	if (SystemData::instance()._enableSMEMA) {
-		SystemData::instance()._Machine_Ready = false;
-		SystemData::instance()._IsBoardEntry = true;
-	}
-
-
 	if (_processType == ProcessType::IMAGE_COLLECTION) {
 		collectImages();
 		ct::logger::info("pew pew");
@@ -353,8 +232,6 @@ void VisionApp::runProdS()
 
 void VisionApp::unloadBoard()
 {
-	int loadingDirection = ui.comboBox_loadingDirection->currentIndex();
-	emit signalLoadingDirection(loadingDirection);
 	emit signalUnloadBoard();
 }
 

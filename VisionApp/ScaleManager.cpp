@@ -2,6 +2,7 @@
 #include <mutex>
 #include "Utilities.h"
 #include "Logger.h"
+#include "SystemData.h"
 
 void ScaleManager::update_um_per_px()
 {
@@ -243,8 +244,12 @@ ct::Box2D ScaleManager::fov_to_world(const ct::Box2D& box)
 }
 
 QPointF ScaleManager::to_fov_px(QLineScan linescan)
-{	
-	auto wpx = to_world_px(QPointF(linescan.start_point.wx, linescan.start_point.wy - m_laserFov_mm / 2));
+{
+	//start_point sits on the scan axis edge and is centered on the laser FOV along the step axis
+	auto topLeft_mm = SystemData::instance().isLineScanAxisY()
+		? QPointF(linescan.start_point.wx - m_laserFov_mm / 2, linescan.start_point.wy)
+		: QPointF(linescan.start_point.wx, linescan.start_point.wy - m_laserFov_mm / 2);
+	auto wpx = to_world_px(topLeft_mm);
 	auto xmin = wpx.x();
 	auto ymin = wpx.y();
 	xmin = world_to_fov(xmin);

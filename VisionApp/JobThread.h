@@ -36,32 +36,9 @@
 
 #define PROFILER_TIMEOUT 60000
 
-class ScopedConveyorSpeed {
-private:
-	int m_oldSpeed;
-	int m_newSpeed;
-	int m_oldAccel;
-	int m_newAccel;
-public:
-	ScopedConveyorSpeed(int oldSpeed, int newSpeed, int oldAccel, int newAccel) {
-		m_oldSpeed = oldSpeed;
-		m_newSpeed = newSpeed;
-		m_oldAccel = oldAccel;
-		m_newAccel = newAccel;
-		MotionController::instance().set_move_acceleration("motion1", (int)Axis::CY1, m_newSpeed);
-		MotionController::instance().set_move_max_velocity("motion1", (int)Axis::CY1, newAccel);
-	}
-
-	~ScopedConveyorSpeed() {
-		MotionController::instance().set_move_acceleration("motion1", (int)Axis::CY1, m_oldAccel);
-		MotionController::instance().set_move_max_velocity("motion1", (int)Axis::CY1, m_oldSpeed);
-	}
-};
-
 Q_DECLARE_METATYPE(InspStatus::FiducialDetail)
 Q_DECLARE_METATYPE(MIL_ID)
 Q_DECLARE_METATYPE(LaserAlignmentImage)
-Q_DECLARE_METATYPE(SensorIndex)
 class JobThread : public QThread {
 	Q_OBJECT
 
@@ -105,8 +82,6 @@ public:
 	void setXSpeed(int speed, int speed3d);
 	void setXDecel(int decel);
 	void getXSpeed(int& speed, int& speed3d);
-	void setConveyorSpeed(int speed);
-	void setConveyorDecel(int decel);
 
 	void enableFiducial(bool enable);
 	void enableBarcode(bool enable);
@@ -133,8 +108,6 @@ public:
 	QString m_srxOwnerThread;
 	QElapsedTimer m_srxTriggerElapsed;
 
-	bool m_failLoadToSensor = false;
-
 	void startConnectToServer();
 	void connectToServer(int readerIndex);
 	void sendToServer(QString msg);
@@ -154,9 +127,6 @@ private:
 
 	bool m_encoderCheck = false;
 
-	const int m_conveyorSlowSpeed = 6;
-	int m_conveyorSpeed = 12;
-	int m_conveyorDecel = 10;
 	int m_xDecel = 1500;
 	int m_xSpeed = 300;
 	int m_xSpeed3d = 20;
@@ -358,19 +328,8 @@ private:
 
 	QRectF m_locatedPortabilityPos;
 
-	bool isSensorFunctional();
-
-	LoadingDirection m_loadingDirection;
-
 	QStringList m_extraMoveLog;
 	QString m_laserOffsetInfo;
-
-#if 0
-	// OLD_BRANCH_REVERT_DISABLED_BEGIN
-	// Conveyor sweep timeout disabled with old rail homing/width behavior.
-	const int conveyorTimeOut = 10000;
-	// OLD_BRANCH_REVERT_DISABLED_END
-#endif
 
 public slots:
 	void incomingJob(QByteArray);
@@ -405,7 +364,6 @@ public slots:
 	void homeZ();
 	void homeXYZ();
 	void homeAll();
-	void homeRail();
 	//setup
 	void autoSetFiducialPoint(int currentFid);
 	void testFiducial(int index, bool online);
@@ -450,32 +408,10 @@ public slots:
 	//UI
 	void displayFOV_fnc(MIL_ID mBuf);
 
-	//rail
-	void setRailWidth(double width);
-
 	//load sequence
-	void setLoadingDirection(int index);
-
 	void loadToPositionSensor(int index);
-	/*bool loadToSensor(SensorIndex sensor, bool timeout, int timeout_ms);
-	void startLoadToSensor(SensorIndex sensor);*/
-
-
-	bool loadToSensor(SensorIndex sensor, bool useTimeout, int timeout_ms);
-	bool startLoadToSensor(SensorIndex sensor, int timeout_ms);
 
 	void unloadBoard();
-
-	//conveyor
-	bool toggleClamper(bool up);
-	void continuousMoveConveyor(bool positive_direction);
-	void stressTestConveyor();
-#if 0
-	// OLD_BRANCH_REVERT_DISABLED_BEGIN
-	// Conveyor sweep helper disabled with old rail homing/width behavior.
-	bool runConveyorUntilAnySensor(bool leftToRight, int timeout_ms);
-	// OLD_BRANCH_REVERT_DISABLED_END
-#endif
 
 
 signals:
