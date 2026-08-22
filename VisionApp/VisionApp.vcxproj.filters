@@ -445,6 +445,9 @@
     <ClCompile Include="Profiler_SSZN.cpp">
       <Filter>Source Files\Profiler</Filter>
     </ClCompile>
+    <ClCompile Include="Profiler_Keyence.cpp">
+      <Filter>Source Files\Profiler</Filter>
+    </ClCompile>
     <ClCompile Include="3DOpticsTab.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -809,6 +812,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Profiler_SSZN.h">
+      <Filter>Header Files\Profiler</Filter>
+    </ClInclude>
+    <ClInclude Include="Profiler_Keyence.h">
       <Filter>Header Files\Profiler</Filter>
     </ClInclude>
     <ClInclude Include="CAM_HIK_FG.h">

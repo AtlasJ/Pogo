@@ -2077,6 +2077,13 @@ bool VisionApp::loadLaserConfig()
 			ct::logger::info("[VisionAppJSON] Using SSZN FOV");
 			laser_fov = 21.76;//21.76;
 		}
+		else if (sensorType == "KeyenceLJ") {
+			ct::logger::info("[VisionAppJSON] Using KeyenceLJ FOV");
+			//TODO: CALIBRATE. Placeholder for an LJ-X8080 at full X range. The exact value is
+			//logged by Profiler_Keyence on every scan as "MEASURED LASER FOV = <mm> mm".
+			//Must be kept identical to the copy in VisionApp_CRUD.cpp.
+			laser_fov = 40.0;
+		}
 		else {
 			ct::logger::error("[VisionApp Json] Failed to get sensor type", sensorType.toStdString().c_str());
 		}

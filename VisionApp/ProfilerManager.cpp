@@ -5,6 +5,7 @@
 #include "Profiler_Gocator.h"
 #include "Profiler_SmartRay.h"
 #include "Profiler_SSZN.h"
+#include "Profiler_Keyence.h"
 
 ProfilerManager ProfilerManager::m_instance;
 
@@ -440,6 +441,12 @@ bool ProfilerManager::create(QString id, QString api)
 	}
 	else if (api == "SSZN") {
 		auto* profiler = new Profiler_SSZN();
+		m_profilers.insert(id, profiler);
+	}
+	else if (api == "KeyenceLJ") {
+		//"KeyenceLJ" not "Keyence": SRXManager already integrates a Keyence SR-X100
+		//barcode reader, so the brand alone no longer identifies a device in this tree.
+		auto* profiler = new Profiler_Keyence();
 		m_profilers.insert(id, profiler);
 	}
 	else {

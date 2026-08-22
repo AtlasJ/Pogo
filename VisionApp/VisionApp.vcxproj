@@ -31,14 +31,14 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
-    <IncludePath>$(COMMON_PATH);$(ALGO_PATH)\Algo;C:\Program Files\Matrox Imaging\MIL\Include;C:\Program Files\HuarayTech\MV Viewer\Development\Include;C:\Program Files\Cognex\VisionPro Deep Learning\1.0\Develop\include;C:\Advantech\DAQNavi\Inc;$(COMMON_PATH)\IO Card\Advantech;$(ProjectDir)Helper;$(EM_LIB)\include\;$(ProjectDir)PCI-8134A\Library\Include;$(ProjectDir)Gocator\Include;$(OPENCV_PATH)\include;$(DIR_PATH)\CommonDir;$(OPT_PATH)\include;$(CST_PATH)\;$(ONNX_INFERENCE_PATH)\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(COMMON_PATH);$(ALGO_PATH)\Algo;C:\Program Files\Matrox Imaging\MIL\Include;C:\Program Files\HuarayTech\MV Viewer\Development\Include;C:\Program Files\Cognex\VisionPro Deep Learning\1.0\Develop\include;C:\Advantech\DAQNavi\Inc;$(COMMON_PATH)\IO Card\Advantech;$(ProjectDir)Helper;$(EM_LIB)\include\;$(ProjectDir)PCI-8134A\Library\Include;$(ProjectDir)Gocator\Include;$(OPENCV_PATH)\include;$(DIR_PATH)\CommonDir;$(OPT_PATH)\include;$(CST_PATH)\;$(ONNX_INFERENCE_PATH)\include;$(ProjectDir)SmartRay\include\sr_api;$(ProjectDir)\SSZN\include;$(ProjectDir)\Keyence\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;C:\Program Files\Cognex\VisionPro Deep Learning\1.0\bin;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration)</LibraryPath>
-    <LibraryPath>C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;C:\Program Files\Cognex\VisionPro Deep Learning\1.1\bin;C:\Program Files\Matrox Imaging\MIL\LIB;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration);$(ProjectDir)PCI-8134A\Library_x64;$(ProjectDir)Gocator\Lib;$(OPENCV_PATH)\x64\vc16\lib;$(DIR_PATH)\x64\Debug;$(OPT_PATH)\x64;$(CST_PATH)\MVL\x64;$(ONNX_INFERENCE_PATH)\bin\$(Configuration)</LibraryPath>
+    <LibraryPath>C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;C:\Program Files\Cognex\VisionPro Deep Learning\1.1\bin;C:\Program Files\Matrox Imaging\MIL\LIB;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration);$(ProjectDir)PCI-8134A\Library_x64;$(ProjectDir)Gocator\Lib;$(OPENCV_PATH)\x64\vc16\lib;$(DIR_PATH)\x64\Debug;$(OPT_PATH)\x64;$(CST_PATH)\MVL\x64;$(ONNX_INFERENCE_PATH)\bin\$(Configuration);$(ProjectDir)SmartRay\lib;$(ProjectDir)\SSZN\lib;$(ProjectDir)\Keyence\lib</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
-    <IncludePath>$(ALGO_PATH)\Algo;C:\Advantech\DAQNavi\Inc;C:\Program Files\Matrox Imaging\MIL\Include;C:\Program Files\HuarayTech\MV Viewer\Development\Include;$(COMMON_PATH)\IO Card\Advantech;$(COMMON_PATH);$(ProjectDir)Helper;$(ProjectDir)Gocator\Include;$(ProjectDir)PCI-8134A\Library\Include;$(EM_LIB)\include\;$(OPENCV_PATH)\include;$(DIR_PATH)\CommonDir;$(ONNX_INFERENCE_PATH)\include;$(CST_PATH)\;$(OPT_PATH)\OPT_Controller\include;$(OPT_PATH)\OPT_Viewer\Include;$(ONNX_RUNTIME_PATH)\include;$(ProjectDir)SmartRay\include\sr_api;$(LIBVIPS_PATH)\include;$(LIBVIPS_PATH)\include\vips;$(LIBVIPS_PATH)\lib\glib-2.0\include;$(LIBVIPS_PATH)\include\glib-2.0;$(VIE_PATH)\LSC;$(HIK_PATH)\include;$(ADLINK_PATH);$(ProjectDir)\SSZN\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files\Matrox Imaging\MIL\LIB;C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration);$(ProjectDir)PCI-8134A\Library_x64;$(ProjectDir)Gocator\Lib;$(OPENCV_PATH)\x64\vc17\lib;$(DIR_PATH)\x64\Release;$(ONNX_INFERENCE_PATH)\bin\$(Configuration);$(CST_PATH)\MVL\x64;$(OPT_PATH)\OPT_Controller\x64;$(OPT_PATH)\OPT_Viewer\Lib\x64;$(ONNX_RUNTIME_PATH)\libraries;$(ProjectDir)SmartRay\lib;$(LIBVIPS_PATH)\lib;$(VIE_PATH)\LSC;$(HIK_PATH)\lib;$(ADLINK_PATH)\APS Library;$(ProjectDir)\SSZN\lib</LibraryPath>
+    <IncludePath>$(ALGO_PATH)\Algo;C:\Advantech\DAQNavi\Inc;C:\Program Files\Matrox Imaging\MIL\Include;C:\Program Files\HuarayTech\MV Viewer\Development\Include;$(COMMON_PATH)\IO Card\Advantech;$(COMMON_PATH);$(ProjectDir)Helper;$(ProjectDir)Gocator\Include;$(ProjectDir)PCI-8134A\Library\Include;$(EM_LIB)\include\;$(OPENCV_PATH)\include;$(DIR_PATH)\CommonDir;$(ONNX_INFERENCE_PATH)\include;$(CST_PATH)\;$(OPT_PATH)\OPT_Controller\include;$(OPT_PATH)\OPT_Viewer\Include;$(ONNX_RUNTIME_PATH)\include;$(ProjectDir)SmartRay\include\sr_api;$(LIBVIPS_PATH)\include;$(LIBVIPS_PATH)\include\vips;$(LIBVIPS_PATH)\lib\glib-2.0\include;$(LIBVIPS_PATH)\include\glib-2.0;$(VIE_PATH)\LSC;$(HIK_PATH)\include;$(ADLINK_PATH);$(ProjectDir)\SSZN\include;$(ProjectDir)\Keyence\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files\Matrox Imaging\MIL\LIB;C:\Program Files\HuarayTech\MV Viewer\Development\Lib\x64;$(LibraryPath);$(EM_LIB)\bin\x64\$(Configuration);$(ProjectDir)PCI-8134A\Library_x64;$(ProjectDir)Gocator\Lib;$(OPENCV_PATH)\x64\vc17\lib;$(DIR_PATH)\x64\Release;$(ONNX_INFERENCE_PATH)\bin\$(Configuration);$(CST_PATH)\MVL\x64;$(OPT_PATH)\OPT_Controller\x64;$(OPT_PATH)\OPT_Viewer\Lib\x64;$(ONNX_RUNTIME_PATH)\libraries;$(ProjectDir)SmartRay\lib;$(LIBVIPS_PATH)\lib;$(VIE_PATH)\LSC;$(HIK_PATH)\lib;$(ADLINK_PATH)\APS Library;$(ProjectDir)\SSZN\lib;$(ProjectDir)\Keyence\lib</LibraryPath>
   </PropertyGroup>
   <Target Name="QtMsBuildNotFound" BeforeTargets="CustomBuild;ClCompile" Condition="!Exists('$(QtMsBuild)\qt.targets') or !Exists('$(QtMsBuild)\qt.props')">
     <Message Importance="High" Text="QtMsBuild: could not locate qt.targets, qt.props; project may not build correctly." />
@@ -73,7 +73,7 @@
       <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
       <AdditionalLibraryDirectories>$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>qtmaind.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5Widgetsd.lib;Qt5Chartsd.lib;Qt5Networkd.lib;MVSDKmd.lib;vidi_51.lib;Wldap32.Lib;mil.lib;milim.lib;milcal.lib;milmod.lib;milpat.lib;milmeas.lib;milblob.lib;MilCode.lib;lib_em.lib;8134Ax64.lib;Qt5Sql.lib;GoSdk.lib;kApi.lib;opencv_world480d.lib;CommonDir.lib;psapi.lib;%(AdditionalDependencies);OPTController.lib;MVL_commonTool.lib;MVL_controller.lib;MVL_scontroller.lib;OnnxInferenceLib.lib;OnnxInferenceLib.lib</AdditionalDependencies>
+      <AdditionalDependencies>qtmaind.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5Widgetsd.lib;Qt5Chartsd.lib;Qt5Networkd.lib;MVSDKmd.lib;vidi_51.lib;Wldap32.Lib;mil.lib;milim.lib;milcal.lib;milmod.lib;milpat.lib;milmeas.lib;milblob.lib;MilCode.lib;lib_em.lib;8134Ax64.lib;Qt5Sql.lib;GoSdk.lib;kApi.lib;opencv_world480d.lib;CommonDir.lib;psapi.lib;%(AdditionalDependencies);OPTController.lib;MVL_commonTool.lib;MVL_controller.lib;MVL_scontroller.lib;OnnxInferenceLib.lib;OnnxInferenceLib.lib;SR_API-x64.lib;SR7Link.lib;LJX8_IF.lib</AdditionalDependencies>
     </Link>
     <QtMoc>
       <OutputFile>.\GeneratedFiles\$(ConfigurationName)\moc_%(Filename).cpp</OutputFile>
@@ -110,7 +110,7 @@
       <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
       <AdditionalLibraryDirectories>$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>qtmain.lib;Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Charts.lib;Qt5Network.lib;Qt5DataVisualization.lib;Wldap32.Lib;mil.lib;milim.lib;milcal.lib;milmod.lib;milpat.lib;milmeas.lib;milblob.lib;MilCode.lib;lib_em.lib;Qt5Sql.lib;GoSdk.lib;kApi.lib;opencv_world4100.lib;CommonDir.lib;psapi.lib;%(AdditionalDependencies);OPTController.lib;CommonToolDll.lib;ControllerDll.lib;sControllerDll.lib;OnnxInferenceLib.lib;MVSDKmd.lib;SciCamSDK.lib;onnxruntime.lib;onnxruntime_providers_cuda.lib;onnxruntime_providers_shared.lib;onnxruntime_providers_tensorrt.lib;SR_API-x64.lib;libgio-2.0.lib;libglib-2.0.lib;libgmodule-2.0.lib;libgobject-2.0.lib;libjpeg.lib;libpng16.lib;libspng.lib;libtiff.lib;libvips.lib;nvjpeg.lib;VTLightDLL64.lib;MvCameraControl.lib;MVFGControl.lib;APS168x64.lib;SR7Link.lib</AdditionalDependencies>
+      <AdditionalDependencies>qtmain.lib;Qt5Core.lib;Qt5Gui.lib;Qt5Widgets.lib;Qt5Charts.lib;Qt5Network.lib;Qt5DataVisualization.lib;Wldap32.Lib;mil.lib;milim.lib;milcal.lib;milmod.lib;milpat.lib;milmeas.lib;milblob.lib;MilCode.lib;lib_em.lib;Qt5Sql.lib;GoSdk.lib;kApi.lib;opencv_world4100.lib;CommonDir.lib;psapi.lib;%(AdditionalDependencies);OPTController.lib;CommonToolDll.lib;ControllerDll.lib;sControllerDll.lib;OnnxInferenceLib.lib;MVSDKmd.lib;SciCamSDK.lib;onnxruntime.lib;onnxruntime_providers_cuda.lib;onnxruntime_providers_shared.lib;onnxruntime_providers_tensorrt.lib;SR_API-x64.lib;libgio-2.0.lib;libglib-2.0.lib;libgmodule-2.0.lib;libgobject-2.0.lib;libjpeg.lib;libpng16.lib;libspng.lib;libtiff.lib;libvips.lib;nvjpeg.lib;VTLightDLL64.lib;MvCameraControl.lib;MVFGControl.lib;APS168x64.lib;SR7Link.lib;LJX8_IF.lib</AdditionalDependencies>
     </Link>
     <QtMoc>
       <OutputFile>.\GeneratedFiles\$(ConfigurationName)\moc_%(Filename).cpp</OutputFile>
@@ -225,6 +225,7 @@
     <ClCompile Include="Profiler_Gocator.cpp" />
     <ClCompile Include="Profiler_SmartRay.cpp" />
     <ClCompile Include="Profiler_SSZN.cpp" />
+    <ClCompile Include="Profiler_Keyence.cpp" />
     <ClCompile Include="ScaleManager.cpp" />
     <ClCompile Include="AlgoBuffers.cpp" />
     <ClCompile Include="AlgoManager.cpp" />
@@ -429,6 +430,7 @@
     <QtMoc Include="QSocketWorker.h" />
     <ClInclude Include="ProjectBased_Definition.h" />
     <ClInclude Include="Profiler_SSZN.h" />
+    <ClInclude Include="Profiler_Keyence.h" />
     <ClInclude Include="RecipeData.h" />
     <ClInclude Include="ScaleManager.h" />
     <ClInclude Include="ScopedFlag.h" />

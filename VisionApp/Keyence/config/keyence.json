@@ -1,0 +1,34 @@
+{
+  "_comment": "Profiler_Keyence driver config. Copy to C:/Advanced/Data/config/ and point profiler.json's Config_File at it. Every key is optional; omitted keys keep the built-in default shown here. Codes come from section 11.3 of the LJ-X8000A Communication Library Reference Manual.",
+
+  "deviceId": 0,
+  "programNo": 0,
+  "highSpeedPort": 24692,
+
+  "_comment_trigger": "triggerMode 0=continuous 1=external 2=encoder. Pogo scans by jogging the gantry and letting the encoder clock profiles, so this must stay 2. batchMeasurement must stay 1 or the batch callback never fires.",
+  "triggerMode": 2,
+  "batchMeasurement": 1,
+  "samplingCycle": -1,
+
+  "_comment_encoder": "encoderInputMode 0=1-phase 1=2-phase x1 2=2-phase x2 3=2-phase x4. encoderMinInputTime 0=120ns 1=150ns 2=250ns 3=500ns 4=1us 5=2us 6=5us 7=10us 8=20us.",
+  "encoderInputMode": 1,
+  "encoderMinInputTime": 0,
+
+  "_comment_ypitch": "yPitchUm is the gantry travel per encoder trigger in microns, BEFORE sub-sampling. It drives setScanLength -> batch count, and it MUST match KEYENCE_Y_PITCH_UM in ImageManager::rotate_heightMap or parts will measure long or short in Y. Measure it on the machine.",
+  "yPitchUm": 10.0,
+
+  "_comment_zpitch": "Leave zPitchUmOverride at 0 to let the driver read the head model and pick the documented factor (8020=0.4 8030/8060=0.8 8070/8080=1.6 8100/8200/8300=4 8400=8 8900=16). Set a positive value only to override.",
+  "zPitchUmOverride": 0.0,
+
+  "_comment_imaging": "dynamicRange 1..9 (this is what setGain maps onto - the LJ-X has no gain). lightControlMode 0=auto 1=manual. lightUpper/lightLower 1..99. peakSensitivity 1..5 (this is what setLaserLineThreshold maps onto). peakSelection 0=standard 1=near 2=far.",
+  "dynamicRange": 1,
+  "lightControlMode": 1,
+  "lightUpperLimit": 90,
+  "lightLowerLimit": 90,
+  "peakSensitivity": 1,
+  "peakSelection": 0,
+  "invalidInterpolation": 0,
+
+  "_comment_luminance": "luminanceOutput 0=height only, 1=height+luminance. Pogo uses the luminance map for fiducials and alignment, so keep this at 1 unless you need the extra sampling rate.",
+  "luminanceOutput": 1
+}

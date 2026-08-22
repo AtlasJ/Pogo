@@ -1,0 +1,25 @@
+{
+  "_comment": "Example C:/Advanced/Data/config/profiler.json for a Keyence LJ-X8000A machine. Back up the existing profiler.json before replacing it - the config folder convention is to keep dated variants alongside rather than edit in place.",
+
+  "Profilers": [
+    {
+      "_comment_id": "Keep 'profiler1'. Both VisionApp and JobThread hardcode it as their default profiler id.",
+      "ID": "profiler1",
+
+      "_comment_ip": "Controller IP, as shown by the KEYENCE IP Setting Tool. The high-speed port is set separately in keyence.json (highSpeedPort) and must not equal the TCP command port.",
+      "IP": "192.168.0.1",
+
+      "_comment_api": "'KeyenceLJ', not 'Keyence' - SRXManager already integrates a Keyence SR-X100 barcode reader, so the bare brand no longer identifies a device. This string must match recipeConfig.json's 'laserApi' or the FOV will be taken from the wrong table.",
+      "API": "KeyenceLJ",
+
+      "Config_File": "keyence.json",
+
+      "_comment_msr": "MSR is SmartRay-specific and ignored by this backend.",
+      "MSR": false,
+
+      "_comment_invert": "InvertX/InvertY are honoured by the KeyenceLJ branch of ImageManager::rotate_heightMap, as they are for SSZN. Gocator and SmartRay ignore them.",
+      "InvertX": false,
+      "InvertY": false
+    }
+  ]
+}

@@ -3199,6 +3199,10 @@ void JobThread::acquire3DImages()
 
 			bool waitImage = true;
 			if (SystemData::instance().getLaserType() == "SmartRay") {
+				//SmartRay converts and pushes the frame inline inside waitAcquisition(),
+				//so the image is already on the queue and there is nothing left to wait for.
+				//Backends that push from an SDK callback (Gocator, SSZN, KeyenceLJ) still
+				//need waitForImagePreprocessed, so they keep the default.
 				waitImage = false;
 			}
 

@@ -1070,6 +1070,88 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 	}
 
 
+	else if (api == "KeyenceLJ") {
+
+		int divider = 1;
+		if (!m_optics3D->isEmpty())
+		{
+			for (auto& o : *m_optics3D)
+			{
+				divider = o.divider;
+				break;
+			}
+		}
+
+		ct::logger::info("[ImageManager] rotate_heightmap---KeyenceLJ");
+		auto w = mtrx::get_width(mSrc);
+		auto h = mtrx::get_height(mSrc);
+
+		/*
+		* TODO: CALIBRATE BEFORE PRODUCTION USE.
+		*
+		* Unlike the other brands these two constants are not magic numbers - they are the
+		* sensor's X and Y sample pitches in microns, and every other factor in this
+		* function is derived from them. Compare Profiler_SSZN, where 3.5 and 4 are exactly
+		* the same two quantities.
+		*
+		*   KEYENCE_X_PITCH_UM - Profiler_Keyence logs the true value on every scan:
+		*                        "MEASURED LASER FOV = <mm> mm (<N> points @ <P> um)".
+		*                        Copy <P> here. It changes with head model and with the
+		*                        Measurement Range X / sub-sampling settings.
+		*   KEYENCE_Y_PITCH_UM - the gantry encoder pitch per trigger. Must agree with
+		*                        "yPitchUm" in keyence.json, or the scan length the driver
+		*                        requests and the height the image is stretched to will
+		*                        disagree and parts will measure long or short in Y.
+		*
+		* Placeholders below are sized for an LJ-X8080 at full X range. They will produce a
+		* recognisable but dimensionally wrong height map until measured on the machine.
+		*/
+		constexpr double KEYENCE_X_PITCH_UM = 12.5;
+		constexpr double KEYENCE_Y_PITCH_UM = 10.0;
+
+		MIL_INT sw = w * KEYENCE_X_PITCH_UM / scale;
+		MIL_INT sh = h * KEYENCE_Y_PITCH_UM * divider / scale;
+
+		auto type = mtrx::get_type(mSrc);
+
+		if (scanAlongY) {
+			//profiles already stack along image Y, so no 90 degree remap
+			mDst = MbufAlloc2d(M_DEFAULT, sw, sh, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimResize(mSrc, mDst, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+
+			if (onTranslate && extraPx != 0.0) {
+				MimTranslate(mDst, mDst, 0.0, -extraPx, M_BICUBIC + M_OVERSCAN_CLEAR); //extra move is along the scan (Y) axis
+			}
+
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+		}
+		else {
+			//scan direction must end up along image X, so resize then remap 90 degrees
+			auto mResize = MbufAlloc2d(M_DEFAULT, sw, sh, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimResize(mSrc, mResize, M_FILL_DESTINATION, M_FILL_DESTINATION, M_BICUBIC + M_OVERSCAN_ENABLE);
+
+			if (onTranslate && extraPx != 0.0) {
+				MimTranslate(mResize, mResize, -extraPx, 0.0, M_BICUBIC + M_OVERSCAN_CLEAR);
+			}
+
+			mDst = MbufAlloc2d(M_DEFAULT, sh, sw, type + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+			MimRotate(mResize, mDst, 90, sw / 2, sh / 2, sh / 2, sw / 2, M_BICUBIC + M_OVERSCAN_ENABLE);
+			MimRotate(mDst, mDst, rotateAngle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_BICUBIC + M_OVERSCAN_CLEAR);
+
+			mtrx::BufferCollector bc(mResize);
+		}
+
+		//honour the profiler.json flags, as the SSZN branch does; Gocator/SmartRay ignore them
+		if (invertX)
+		{
+			MimFlip(mDst, mDst, M_FLIP_HORIZONTAL, M_DEFAULT);
+		}
+		if (invertY)
+		{
+			MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+		}
+	}
+
 	else {
 		ct::logger::error("[Image Manager] Failed to get sensor api type", api.toStdString().c_str());
 	}
