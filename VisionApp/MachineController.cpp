@@ -25,8 +25,11 @@ MachineController::MachineController(QObject* parent)
     for (int i = 0; i < (int)MachineError::COUNT; i++) {
         m_bypassErrors.insert(i, false);
     }
-    //m_bypassErrors[(int)MachineError::AIR_PRESSURE_OFF] = true;
     //m_bypassErrors[(int)MachineError::ESTOP_PRESSED] = true;
+
+    //TODO: temporary bypass until safety relay wiring is confirmed
+    m_bypassErrors[(int)MachineError::ESTOP_RELAY_FAULT] = true;
+    m_bypassErrors[(int)MachineError::CURTAIN_RELAY_FAULT] = true;
 
 }
 
@@ -62,7 +65,8 @@ void MachineController::run()
         poolStates();
     });
 
-    safelyReleaseBrake();
+    //Startup: single live check, release brake only if servo Z is already on
+    safelyReleaseBrake(0);
 
     exec();
 }
@@ -198,8 +202,7 @@ void MachineController::assessError(bool good, MachineError e)
 
             //Specific status handling
             if (e == MachineError::ESTOP_PRESSED ||
-                e == MachineError::MAIN_POWER_OFF ||
-                e == MachineError::DRIVER_OFF)
+                e == MachineError::ESTOP_RELAY_FAULT)
             {
                 turnOnBrake();
             }
@@ -231,10 +234,10 @@ void MachineController::handleDIA()
         m_startBtnPressed = false;
     }
 
-    auto stop_btn = io[(int)DIA::STOP_BTN];
+    auto stop_btn = !io[(int)DIA::STOP_BTN]; //stop button is NC: pressed = input low
     if (stop_btn && !m_stopBtnPressed) {
         m_stopBtnPressed = true;
-        emit signalMachineEvent(MachineEvent::STOP_BTN);
+        //emit signalMachineEvent(MachineEvent::STOP_BTN);
     }
     else if (!stop_btn) {
         m_stopBtnPressed = false;
@@ -250,20 +253,17 @@ void MachineController::handleDIA()
         m_resetBtnPressed = false;
     }
 
-    //Check estop
-    //assessError(io[(int)DIA::ESTOP], MachineError::ESTOP_PRESSED); //Estop is NC, NC is invert logic
+    //Check estop triggers, NC: high = good (actual e-stop state is also assessed per-axis via the motion EMG input)
+    //assessError(io[(int)DIA::ESTOP_1], MachineError::ESTOP_PRESSED);
+    //assessError(io[(int)DIA::ESTOP_2], MachineError::ESTOP_PRESSED);
 
-    //Check power
-    assessError(!io[(int)DIA::CONTACTOR_1], MachineError::MAIN_POWER_OFF); //Contactor is NC, NC is invert logic
-    assessError(!io[(int)DIA::CONTACTOR_2], MachineError::DRIVER_OFF); //Contactor is NC, NC is invert logic
-    
-    //Check air pressure
-    assessError(io[(int)DIA::AIR_PRESSURE], MachineError::AIR_PRESSURE_OFF);
+    //Check safety relays, high = OK
+    assessError(io[(int)DIA::ESTOP_SAFETY_RELAY], MachineError::ESTOP_RELAY_FAULT);
+    assessError(io[(int)DIA::CURTAIN_SAFETY_RELAY], MachineError::CURTAIN_RELAY_FAULT);
 
-    //Check door open
-    bool doorLockClosed = !io[(int)DIA::DOOR_LOCK]; //NC
-    bool doorInterlockClosed = SystemData::instance()._machineDebugMode || m_bypassInterlock || io[(int)DIA::DOOR_INTERLOCK]; //NO, bypassed in debug mode or when config\interlock.json exists
-    assessError(doorLockClosed && doorInterlockClosed, MachineError::DOOR_OPEN);
+    //Check trolley lock guard, bypassed in debug mode or when config\interlock.json exists
+    bool trolleyLocked = SystemData::instance()._machineDebugMode || m_bypassInterlock || io[(int)DIA::TROLLEY_LOCK_GUARD];
+    assessError(trolleyLocked, MachineError::TROLLEY_GUARD_OPEN);
 }
 
 void MachineController::handleDIB()
@@ -444,13 +444,29 @@ bool MachineController::turnOnBrake()
     return ret;
 }
 
-bool MachineController::safelyReleaseBrake()
+bool MachineController::safelyReleaseBrake(int servoWaitMs)
 {
     if (!m_enable) return false;
 
+    //Read live SVON feedback instead of the cached poll value; the drive takes
+    //time to assert SVON after a servo-on command, so wait up to servoWaitMs.
+    bool servoOn = false;
+    auto start = std::chrono::steady_clock::now();
+    while (true) {
+        auto optional_io = MotionController::instance().get_motion_io_status(m_motionID, (int)Axis::Z);
+        if (optional_io.has_value() && optional_io.value()[(int)Motion_APS::SVON]) {
+            servoOn = true;
+            break;
+        }
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+        if (elapsed >= servoWaitMs) break;
+        os_tool::goSleep(50);
+    }
+
     bool ret = false;
 
-    if (m_z.servo_on) {
+    if (servoOn) {
         ret = MotionController::instance().set_DO(m_motionID, 0, (int)DOA::BRAKE_RELEASE, true);
         ct::logger::info("[MachineController] Brake is released.");
     }

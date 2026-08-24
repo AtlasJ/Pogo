@@ -35,7 +35,6 @@ void VisionApp::connectJobThread() {
 		emit signalStopSRX();
 
 		switchToMainRecipe();
-		//MotionController::instance().set_DO(_motionID, 0, (int)DOA::SAFETY_DOOR_LOCK, false);
 		//runLooping(); //only run if there's loop
 	});
 

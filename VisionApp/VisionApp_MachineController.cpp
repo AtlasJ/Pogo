@@ -149,17 +149,14 @@ void VisionApp::connectMachineController()
 		case MachineError::ESTOP_PRESSED:
 			addLogLine("Error: E-Stop Triggered");
 			break;
-		case MachineError::MAIN_POWER_OFF:
-			addLogLine("Error: Main Power OFF");
+		case MachineError::ESTOP_RELAY_FAULT:
+			addLogLine("Error: E-Stop Safety Relay Fault");
 			break;
-		case MachineError::DRIVER_OFF:
-			addLogLine("Error: Driver Is OFF");
+		case MachineError::CURTAIN_RELAY_FAULT:
+			addLogLine("Error: Curtain Sensor Safety Relay Fault");
 			break;
-		case MachineError::DOOR_OPEN:
-			addLogLine("Error: Door Open");
-			break;
-		case MachineError::AIR_PRESSURE_OFF:
-			addLogLine("Error: Air Pressure OFF");
+		case MachineError::TROLLEY_GUARD_OPEN:
+			addLogLine("Error: Trolley Lock Guard Open");
 			break;
 		case MachineError::X_SERVO_OFF:
 			addLogLine("Error: X Servo OFF");
@@ -197,29 +194,8 @@ void VisionApp::connectMachineController()
 		case MachineError::Z_DRIVER_ALARM:
 			addLogLine("Error: Z Driver Alarm");
 			break;
-		case MachineError::CONVEYOR_SERVO_OFF:
-			addLogLine("Error: Conveyor Servo OFF");
-			break;
-		case MachineError::CONVEYOR_DRIVER_ALARM:
-			addLogLine("Error: Conveyor Driver Alarm");
-			break;
-		case MachineError::RAIL_SERVO_OFF:
-			addLogLine("Error: Rail Servo OFF");
-			break;
-		case MachineError::RAIL_POSITIVE_LIMIT_HIT:
-			addLogLine("Error: Rail Positive Limit Hit");
-			break;
-		case MachineError::RAIL_NEGATIVE_LIMIT_HIT:
-			addLogLine("Error: Rail Negative Limit Hit");
-			break;
-		case MachineError::RAIL_DRIVER_ALARM:
-			addLogLine("Error: Rail Driver Alarm");
-			break;
 		case MachineError::INITIALIZATION_TIMEOUT:
 			addLogLine("Error: Initialization Timeout");
-			break;
-		case MachineError::UNLOADING_TIMEOUT:
-			addLogLine("Error: Unloading Timeout");
 			break;
 		case MachineError::X_HOMING_TIMEOUT:
 			addLogLine("Error: Homing X Timeout");
@@ -238,57 +214,6 @@ void VisionApp::connectMachineController()
 			break;
 		case MachineError::Z_MOVE_TIMEOUT:
 			addLogLine("Error: Move Z Timeout");
-			break;
-		case MachineError::RAIL_HOMING_TIMEOUT:
-			addLogLine("Error: Homing Rail Timeout");
-			break;
-		case MachineError::RAIL_MOVE_TIMEOUT:
-			addLogLine("Error: Move Rail Timeout");
-			break;
-		case MachineError::BOARD_NOT_FOUND:
-			addLogLine("Error: No Board On Conveyor");
-			break;
-		case MachineError::ENTRY_SENSOR_TIMEOUT:
-			addLogLine("Error: Entry Sensor Timeout");
-			break;
-		case MachineError::EXIT_SENSOR_TIMEOUT:
-			addLogLine("Error: Exit Sensor Timeout");
-			break;
-		case MachineError::POS1_SENSOR_TIMEOUT:
-			addLogLine("Error: Pos1 Sensor Timeout");
-			break;
-		case MachineError::POS2_SENSOR_TIMEOUT:
-			addLogLine("Error: Pos2 Sensor Timeout");
-			break;
-		case MachineError::RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT:
-			addLogLine("Error: Rail Unsafe To Move, Board Present");
-			break;
-		case MachineError::RAIL_UNSAFE_TO_MOVE_CONVEYOR_MOVING:
-			addLogLine("Error: Rail Unsafe To Move, Conveyor Moving");
-			break;
-		case MachineError::CONVEYOR_UNSAFE_TO_MOVE_RAIL_MOVING:
-			addLogLine("Error: Conveyor Unsafe To Move, Rail Moving");
-			break;
-		case MachineError::CLAMPER1_JAM:
-			addLogLine("Error: Clamper 1 Jam");
-			break;
-		case MachineError::CLAMPER2_JAM:
-			addLogLine("Error: Clamper 2 Jam");
-			break;
-		case MachineError::CLAMPER3_JAM:
-			addLogLine("Error: Clamper 3 Jam");
-			break;
-		case MachineError::CLAMPER4_JAM:
-			addLogLine("Error: Clamper 4 Jam");
-			break;
-		case MachineError::MACHINE_NOT_READY:
-			addLogLine("Error: Machince Not Ready");
-			break;
-		case MachineError::DOWNSTREAM_NOT_READY:
-			addLogLine("Error: Downstream Not Ready");
-			break;
-		case MachineError::UPSTREAM_NOT_READY:
-			addLogLine("Error: Upstream Not Ready");
 			break;
 		default:
 			break;

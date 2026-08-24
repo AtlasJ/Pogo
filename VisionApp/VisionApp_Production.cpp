@@ -78,7 +78,6 @@ void VisionApp::startAcquisition()
 		_subrecipesToRun.insert(1);
 	}
 
-	MotionController::instance().set_DO(_motionID, 0, (int)DOA::SAFETY_DOOR_LOCK, true);
 }
 
 void VisionApp::startProduction()
@@ -139,7 +138,6 @@ void VisionApp::startProduction()
 		_subrecipesToRun.insert(1);
 	}
 
-	MotionController::instance().set_DO(_motionID, 0, (int)DOA::SAFETY_DOOR_LOCK, true);
 
 	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
@@ -193,7 +191,6 @@ void VisionApp::startProductionS()
 	//}
 
 
-	//MotionController::instance().set_DO(_motionID, 0, (int)DOA::SAFETY_DOOR_LOCK, true);
 
 
 	SystemData::instance()._offlineRun = false;

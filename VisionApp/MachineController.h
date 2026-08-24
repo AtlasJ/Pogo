@@ -33,7 +33,6 @@ enum class MachineEvent {
     X_SERVO_ON,
     Y_SERVO_ON,
     Z_SERVO_ON,
-    RAIL_SERVO_ON,
 
     //Button trigger
     START_BTN,
@@ -50,15 +49,13 @@ enum class MachineWarning {
 enum class MachineError {
     //=> Machine System: DIA
     ESTOP_PRESSED,//
-    MAIN_POWER_OFF,//
-    DRIVER_OFF,//
-    DOOR_OPEN,//b
-    AIR_PRESSURE_OFF,//b
+    ESTOP_RELAY_FAULT,//e-stop safety relay not OK
+    CURTAIN_RELAY_FAULT,//curtain sensor safety relay not OK
+    TROLLEY_GUARD_OPEN,//trolley lock guard switch not on
 
-    //=> Gantry 
+    //=> Gantry
     //External from flow notify
     INITIALIZATION_TIMEOUT,//x
-    UNLOADING_TIMEOUT,
 
     X_SERVO_OFF,//
     X_HOMING_TIMEOUT,//x
@@ -71,9 +68,6 @@ enum class MachineError {
     Z_SERVO_OFF,//
     Z_HOMING_TIMEOUT,//x
     Z_MOVE_TIMEOUT,//x
-
-    RAIL_SERVO_OFF,//
-    CONVEYOR_SERVO_OFF,//
 
     //Axis state
     X_POSITIVE_LIMIT_HIT,//b
@@ -88,44 +82,11 @@ enum class MachineError {
     Z_NEGATIVE_LIMIT_HIT,//b
     Z_DRIVER_ALARM,//
 
-    //=> Conveyor
-    //Axis State
-    CONVEYOR_DRIVER_ALARM,//
-
-    RAIL_POSITIVE_LIMIT_HIT,//b
-    RAIL_NEGATIVE_LIMIT_HIT,//b
-    RAIL_DRIVER_ALARM,//
-
-    //External from flow notify
-    RAIL_HOMING_TIMEOUT,
-    RAIL_MOVE_TIMEOUT,
-
-    BOARD_NOT_FOUND,//b
-    ENTRY_SENSOR_TIMEOUT,//
-    EXIT_SENSOR_TIMEOUT,//
-    POS1_SENSOR_TIMEOUT,//
-    POS2_SENSOR_TIMEOUT,//
-
-    RAIL_UNSAFE_TO_MOVE_BOARD_PRESENT,//
-    RAIL_UNSAFE_TO_MOVE_CONVEYOR_MOVING,//
-    CONVEYOR_UNSAFE_TO_MOVE_RAIL_MOVING,//
-
-    CLAMPER1_JAM,
-    CLAMPER2_JAM,
-    CLAMPER3_JAM,
-    CLAMPER4_JAM,
-
     //Vision
     FIDUCIAL_FAIL,
     BARCODE_FAIL,
 
-    COUNT,
-
-    //SMEMA
-    MACHINE_NOT_READY,
-    DOWNSTREAM_NOT_READY,
-    UPSTREAM_NOT_READY
-
+    COUNT
 };
 
 Q_DECLARE_METATYPE(MachineState)
@@ -146,7 +107,7 @@ public:
     void release();
 
     bool turnOnBrake();
-    bool safelyReleaseBrake();
+    bool safelyReleaseBrake(int servoWaitMs = 3000);
 
     bool resetAlarm();
     void notifyEvent(MachineEvent e);

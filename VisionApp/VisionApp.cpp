@@ -5590,6 +5590,10 @@ VisionApp::~VisionApp()
 	vips_shutdown();
 	_algo.release(); //buffers + MIL application/host system
 
+	//engage the Z brake (brake release OFF) before the motion controller
+	//disconnects, so the Z axis never drops after servo power is lost
+	MachineController::instance().turnOnBrake();
+
 	MachineController::instance().release();
 	MotionController::instance().release(_motionID);
 
