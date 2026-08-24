@@ -266,6 +266,8 @@ bool OpticsControl::setGroupedOpticIntensity(QString key, const QHash<QString, Q
 
 bool OpticsControl::setBrightness(QString camID, QString ch)
 {
+	return true;
+
 	const auto& bs = m_portabilityInfo->lightingCalibrationInfo.brightness;
 
 	ct::logger::trace("Set brightness -> Cam: %s, Channel: %s", camID.toStdString().c_str(), ch.toStdString().c_str());
