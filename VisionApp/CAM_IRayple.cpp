@@ -32,13 +32,33 @@ void CAM_IRayple::FrameCallback(IMV_Frame* pFrame, void* pVoid)
 	frame.bufferSize = (int)pFrame->frameInfo.size;
 	frame.timeStamp = pFrame->frameInfo.timeStamp;
 
+	int channel = 3;
 	if (pFrame->frameInfo.pixelFormat == gvspPixelRGB8) frame.pixelFormat = ICAM_pixelFormat::RGB8;
-	else if (pFrame->frameInfo.pixelFormat == gvspPixelMono8) frame.pixelFormat = ICAM_pixelFormat::Mono8;
-	else if (pFrame->frameInfo.pixelFormat == gvspPixelBayGB8) frame.pixelFormat = ICAM_pixelFormat::BayerGB8;
-	else if (pFrame->frameInfo.pixelFormat == gvspPixelBayRG8) frame.pixelFormat = ICAM_pixelFormat::BayerRG8;
+	else if (pFrame->frameInfo.pixelFormat == gvspPixelMono8) {
+		frame.pixelFormat = ICAM_pixelFormat::Mono8;
+		channel = 1;
+	}
+	else if (pFrame->frameInfo.pixelFormat == gvspPixelBayGB8) {
+		frame.pixelFormat = ICAM_pixelFormat::BayerGB8;
+		// Bayer mosaic is single-plane 8-bit: a 3-band buffer made MbufPut read 3x
+		// past the end of the SDK frame data (crash), and ImageManager's
+		// bayer_to_rgb expects a 1-band input anyway.
+		channel = 1;
+	}
+	else if (pFrame->frameInfo.pixelFormat == gvspPixelBayRG8) {
+		frame.pixelFormat = ICAM_pixelFormat::BayerRG8;
+		channel = 1; //see BayerGB8 note
+	}
+	else {
+		ct::logger::error("[FCB] Unsupported pixel format: %d", (int)pFrame->frameInfo.pixelFormat);
+		instance->m_softTriggered = false;
+		instance->m_conditionVariable.notify_one();
+		return;
+	}
 
-	auto sbuf = mtrx::MPM::instance().acquire(frame.width, frame.height, 3, 8 + M_UNSIGNED);
+	auto sbuf = mtrx::MPM::instance().acquire(frame.width, frame.height, channel, 8 + M_UNSIGNED);
 	MbufPut(sbuf->id(), pFrame->pData);
+	frame.pImage = sbuf; //was never assigned: frames reached the queue with a null image
 	ct::logger::trace("[FCB] Data copied");
 
 	g_imageQueue.push_back(frame);
