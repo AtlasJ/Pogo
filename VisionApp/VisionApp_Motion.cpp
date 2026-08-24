@@ -148,7 +148,11 @@ void VisionApp::initMotion() {
 				auto button = findChild<QToolButton*>(QString("toolButton_EMXA_DI%1").arg(i));
 				if (!button) continue;
 
-				nvs::set_background_color(button, EMXA_DIs[i] ? Qt::green : Qt::red);
+				auto state = EMXA_DIs[i];
+				//NC inputs: stop button, estop trigger 1 & 2 read low when active
+				if (i == (int)DIA::STOP_BTN || i == (int)DIA::ESTOP_1 || i == (int)DIA::ESTOP_2) state = !state;
+
+				nvs::set_background_color(button, state ? Qt::green : Qt::red);
 			}
 		}
 
@@ -249,26 +253,26 @@ void VisionApp::initMotion() {
 
 	connect(ui.toolButton_jogFront, &QToolButton::clicked, this, [=]() {
 		if (!blockJogSignal()) return;
-		ct::logger::info("[Motion] Jog front"); // Jog Back
-		emit jogFront(_jogDistance, _mainOptics[_camID]);
+		ct::logger::info("[Motion] Jog front");
+		emit jogBack(_jogDistance, _mainOptics[_camID]);
 	});
 
 	connect(ui.toolButton_jogBack, &QToolButton::clicked, this, [=]() {
 		if (!blockJogSignal()) return;
-		ct::logger::info("[Motion] Jog back"); // Jog Front toward us
-		emit jogBack(_jogDistance, _mainOptics[_camID]);
+		ct::logger::info("[Motion] Jog back");
+		emit jogFront(_jogDistance, _mainOptics[_camID]);
 	});
 
 	connect(ui.toolButton_jogTop, &QToolButton::clicked, this, [=]() {
 		if (!blockJogSignal()) return;
 		ct::logger::info("[Motion] Jog top");
-		emit jogUp(_jogDistance, _mainOptics[_camID]);
+		emit jogDown(_jogDistance, _mainOptics[_camID]);
 	});
 
 	connect(ui.toolButton_jogBottom, &QToolButton::clicked, this, [=]() {
 		if (!blockJogSignal()) return;
 		ct::logger::info("[Motion] Jog bottom");
-		emit jogDown(_jogDistance, _mainOptics[_camID]);
+		emit jogUp(_jogDistance, _mainOptics[_camID]);
 	});
 
 	//Servo
