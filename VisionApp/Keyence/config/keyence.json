@@ -1,8 +1,15 @@
 {
   "_comment": "Profiler_Keyence driver config. Copy to C:/Advanced/Data/config/ and point profiler.json's Config_File at it. Every key is optional; omitted keys keep the built-in default shown here. Codes come from section 11.3 of the LJ-X8000A Communication Library Reference Manual.",
 
+  "_comment_hardware": "This machine: LJ-X8060 head on an LJ-X8000A controller. Data sheet figures worth knowing while tuning below - reference distance 64 mm, Z range +/-7.3 mm (F.S. 14.6 mm), X range 15 mm NEAR to 16 mm FAR, profile data interval 5 um default (adjustable from 4 um up), profile data count 3200 points, Z repeatability 0.4 um, X repeatability 0.5 um. Mount the head 64 mm off the target and keep the part well inside +/-7.3 mm of that. The head must be bolted to a metal plate for the rated ambient range.",
+
+  "_comment_derived": "5 um x 3200 points = 16 mm, which is laser_fov_mm in VisionApp_CRUD.cpp and VisionApp_JSON.cpp, and 5.0 is KEYENCE_X_PITCH_UM in ImageManager.cpp. If you change the profile data interval in Navigator, all three move together and must be updated by hand - nothing in the code detects it. The driver logs the controller's real figures every scan as MEASURED LASER FOV.",
+
   "deviceId": 0,
   "programNo": 0,
+
+  "_comment_ports": "TWO separate TCP ports, and the manual (p.69) forbids making them equal: 'Do not set the command port number and the high-speed port number to the same number.' These mirror the controller's own setting items 07h (command) and 08h (high-speed), so if you change them in Navigator, change them here to match. Equal values are rejected at load and the defaults kept. Symptom of getting this wrong: EthernetOpen succeeds and then InitializeHighSpeedSimpleArray fails with rc=0x1000 (RC_ERR_OPEN), which reads like a network fault but is not one.",
+  "commandPort": 24691,
   "highSpeedPort": 24692,
 
   "_comment_trigger": "triggerMode 0=continuous 1=external 2=encoder. Pogo scans by jogging the gantry and letting the encoder clock profiles, so this must stay 2. batchMeasurement must stay 1 or the batch callback never fires.",

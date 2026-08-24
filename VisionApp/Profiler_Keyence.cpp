@@ -259,12 +259,26 @@ bool Profiler_Keyence::initHighSpeed()
 	unsigned char octets[4] = { 0 };
 	if (!parseIp(m_ip, octets)) return false;
 
+	// Manual p.69: "Do not set the command port number and the high-speed port number to the
+	// same number." Equal ports fail in a way that reads like a network fault rather than a
+	// config error - EthernetOpen succeeds (the controller is listening on that port) and then
+	// InitializeHighSpeed... returns RC_ERR_OPEN because our own command socket already holds
+	// it. Refuse up front and say so, rather than letting that play out.
+	if (m_commandPort == m_highSpeedPort) {
+		ct::logger::error("[Profiler_Keyence] commandPort and highSpeedPort are both %d - they "
+			"must differ (manual p.69). Fix keyence.json.", m_commandPort);
+		m_errorMsg = QStringLiteral("commandPort and highSpeedPort must differ (both %1)")
+			.arg(m_commandPort);
+		m_connectionStatus = false;
+		return false;
+	}
+
 	finalizeHighSpeed();
 	LJX8IF_CommunicationClose(m_deviceId);
 
 	LJX8IF_ETHERNET_CONFIG cfg{};
 	for (int i = 0; i < 4; ++i) cfg.abyIpAddress[i] = octets[i];
-	cfg.wPortNo = static_cast<WORD>(m_highSpeedPort);
+	cfg.wPortNo = static_cast<WORD>(m_commandPort);   // command channel, NOT the high-speed one
 
 	LONG rc = LJX8IF_EthernetOpen(m_deviceId, &cfg);
 	if (rc != LJX8IF_RC_OK) {
@@ -288,8 +302,8 @@ bool Profiler_Keyence::initHighSpeed()
 
 	m_highSpeedReady = true;
 	m_highSpeedDirty = false;
-	ct::logger::info("[Profiler_Keyence] High-speed comms initialised (batch=%d, port=%d)",
-		m_batchCount, m_highSpeedPort);
+	ct::logger::info("[Profiler_Keyence] High-speed comms initialised (batch=%d, cmdPort=%d, hsPort=%d)",
+		m_batchCount, m_commandPort, m_highSpeedPort);
 	return true;
 }
 
@@ -510,8 +524,23 @@ bool Profiler_Keyence::disconnect()
 		if (m_deviceId >= 0 && m_deviceId < KY_MAX_DEVICES) g_devices[m_deviceId] = nullptr;
 	}
 
-	LJX8IF_StopMeasure(m_deviceId);
-	LJX8IF_StopHighSpeedDataCommunication(m_deviceId);
+	// Only the two stop commands need a live connection - they are command round-trips, and
+	// against a dead or half-open path each one blocks for the SDK's internal timeout (there
+	// is no API to shorten it). A failed connect that still managed EthernetOpen therefore
+	// costs ~2 timeouts on every shutdown, which is what made this feel hung. stop() has
+	// always guarded on m_connectionStatus for the same reason; this was missing it.
+	//
+	// Deliberately NOT an early return like CAM_HIK::disconnect() does: CommunicationClose
+	// and the Finalize bookkeeping below must still run, or the socket EthernetOpen left
+	// behind leaks until the process exits.
+	if (m_connectionStatus) {
+		LJX8IF_StopMeasure(m_deviceId);
+		LJX8IF_StopHighSpeedDataCommunication(m_deviceId);
+	}
+	else {
+		ct::logger::info("[Profiler_Keyence] Not connected - skipping stop commands");
+	}
+
 	finalizeHighSpeed();
 
 	const LONG rc = LJX8IF_CommunicationClose(m_deviceId);
@@ -890,6 +919,7 @@ bool Profiler_Keyence::loadConfig(QString path)
 	// setting would silently do nothing until the next app restart (and not even then).
 	const int prevDeviceId = m_deviceId;
 	const int prevPort = m_highSpeedPort;
+	const int prevCmdPort = m_commandPort;
 
 	//--- defaults, overridden by the file if present
 	int triggerMode = 2;    // encoder
@@ -916,8 +946,20 @@ bool Profiler_Keyence::loadConfig(QString path)
 		};
 
 		m_programNo = static_cast<unsigned char>(std::max(0, std::min(15, num("programNo", m_programNo))));
+		m_commandPort = num("commandPort", m_commandPort);
 		m_highSpeedPort = num("highSpeedPort", m_highSpeedPort);
 		m_deviceId = std::max(0, std::min(KY_MAX_DEVICES - 1, num("deviceId", m_deviceId)));
+
+		// Reject an equal pair here rather than at connect time, so the message names the file
+		// the operator has to edit. Keeping the previous values means a typo degrades to the
+		// working defaults instead of taking the sensor offline.
+		if (m_commandPort == m_highSpeedPort) {
+			ct::logger::error("[Profiler_Keyence] keyence.json sets commandPort and highSpeedPort "
+				"both to %d - they must differ (manual p.69). Reverting to %d/%d.",
+				m_commandPort, prevCmdPort, prevPort);
+			m_commandPort = prevCmdPort;
+			m_highSpeedPort = prevPort;
+		}
 
 		if (o.contains("yPitchUm"))  m_yPitchUm = o.value("yPitchUm").toDouble(m_yPitchUm);
 		if (o.contains("zPitchUmOverride")) {
@@ -949,9 +991,11 @@ bool Profiler_Keyence::loadConfig(QString path)
 			path.toUtf8().constData());
 	}
 
-	if (m_connectionStatus && (m_deviceId != prevDeviceId || m_highSpeedPort != prevPort)) {
-		ct::logger::warn("[Profiler_Keyence] Config changed device/port (%d/%d -> %d/%d) after connect "
-			"- reconnecting", prevDeviceId, prevPort, m_deviceId, m_highSpeedPort);
+	if (m_connectionStatus && (m_deviceId != prevDeviceId || m_highSpeedPort != prevPort
+		|| m_commandPort != prevCmdPort)) {
+		ct::logger::warn("[Profiler_Keyence] Config changed device/ports (%d, %d/%d -> %d, %d/%d) "
+			"after connect - reconnecting", prevDeviceId, prevCmdPort, prevPort,
+			m_deviceId, m_commandPort, m_highSpeedPort);
 
 		{
 			std::lock_guard<std::mutex> lock(g_deviceMutex);
@@ -1001,8 +1045,8 @@ bool Profiler_Keyence::loadConfig(QString path)
 	v = luminance;       ok &= setSetting(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_LUMINANCE_OUTPUT, &v, 4, "luminanceOutput");
 	m_luminanceEnabled = (luminance == 1);
 
-	ct::logger::info("[Profiler_Keyence] loadConfig %s (programNo=%d, yPitch=%.3f um, port=%d)",
-		ok ? "OK" : "completed WITH ERRORS", m_programNo, m_yPitchUm, m_highSpeedPort);
+	ct::logger::info("[Profiler_Keyence] loadConfig %s (programNo=%d, yPitch=%.3f um, cmdPort=%d, hsPort=%d)",
+		ok ? "OK" : "completed WITH ERRORS", m_programNo, m_yPitchUm, m_commandPort, m_highSpeedPort);
 
 	return ok;
 }

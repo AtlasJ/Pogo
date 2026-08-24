@@ -1087,27 +1087,38 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 		auto h = mtrx::get_height(mSrc);
 
 		/*
-		* TODO: CALIBRATE BEFORE PRODUCTION USE.
-		*
 		* Unlike the other brands these two constants are not magic numbers - they are the
 		* sensor's X and Y sample pitches in microns, and every other factor in this
 		* function is derived from them. Compare Profiler_SSZN, where 3.5 and 4 are exactly
 		* the same two quantities.
 		*
-		*   KEYENCE_X_PITCH_UM - Profiler_Keyence logs the true value on every scan:
-		*                        "MEASURED LASER FOV = <mm> mm (<N> points @ <P> um)".
-		*                        Copy <P> here. It changes with head model and with the
-		*                        Measurement Range X / sub-sampling settings.
-		*   KEYENCE_Y_PITCH_UM - the gantry encoder pitch per trigger. Must agree with
-		*                        "yPitchUm" in keyence.json, or the scan length the driver
-		*                        requests and the height the image is stretched to will
-		*                        disagree and parts will measure long or short in Y.
+		*   KEYENCE_X_PITCH_UM - from the LJ-X8060 data sheet: "profile data interval 5 um,
+		*                        profile data count 3200 points". Those two multiply out to
+		*                        the 16 mm FAR-side X range the same sheet quotes, and to the
+		*                        laser_fov_mm in VisionApp_CRUD.cpp / VisionApp_JSON.cpp.
+		*                        Profiler_Keyence logs the controller's own figure on every
+		*                        scan - "MEASURED LASER FOV = <mm> mm (<N> points @ <P> um)".
+		*                        If <P> is not 5.0, the profile data interval has been changed
+		*                        (the sheet says it is adjustable from 4 um up, and that doing
+		*                        so also changes the X measurement range); the controller wins,
+		*                        so copy <P> here and recompute laser_fov as <P> * 3200.
 		*
-		* Placeholders below are sized for an LJ-X8080 at full X range. They will produce a
-		* recognisable but dimensionally wrong height map until measured on the machine.
+		*   KEYENCE_Y_PITCH_UM - TODO: CALIBRATE. Gantry encoder pitch per trigger, so no data
+		*                        sheet can supply it - it is a property of the machine, not the
+		*                        head. Jog a known distance, watch the encoder count, divide.
+		*                        Must agree with "yPitchUm" in keyence.json, or the scan length
+		*                        the driver requests and the height the image is stretched to
+		*                        will disagree and parts will measure long or short in Y.
+		*
+		* Known simplification: the sheet gives the X range as 15 mm at the NEAR limit and
+		* 16 mm at FAR, so the true pitch varies by ~2% across the +/-7.3 mm Z range. A single
+		* constant cannot express that, so X scale is exact at FAR and reads ~2% narrow at
+		* NEAR. Below the other error sources for now; revisit if X accuracy ever dominates.
+		*
+		* Z pitch needs no attention here - zPitchForHead() maps 8060 to 0.8 um automatically.
 		*/
-		constexpr double KEYENCE_X_PITCH_UM = 12.5;
-		constexpr double KEYENCE_Y_PITCH_UM = 10.0;
+		constexpr double KEYENCE_X_PITCH_UM = 5.0;    //LJ-X8060 default profile data interval
+		constexpr double KEYENCE_Y_PITCH_UM = 10.0;   //placeholder - measure on the machine
 
 		MIL_INT sw = w * KEYENCE_X_PITCH_UM / scale;
 		MIL_INT sh = h * KEYENCE_Y_PITCH_UM * divider / scale;

@@ -105,7 +105,11 @@ private:
 	//--- identity / connection
 	int      m_deviceId = 0;              // 0..5, LJX8 supports up to 6 devices
 	QString  m_ip = "";
-	int      m_highSpeedPort = 24692;     // controller default; overridable from config
+	// Two DIFFERENT TCP ports, and the manual (p.69) forbids making them equal:
+	// "Do not set the command port number and the high-speed port number to the same
+	// number." These mirror the controller's own setting items 07h and 08h.
+	int      m_commandPort = 24691;       // controller default; LJX8IF_ETHERNET_CONFIG.wPortNo
+	int      m_highSpeedPort = 24692;     // controller default; wHighSpeedPortNo
 	bool     m_connectionStatus = false;
 	bool     m_enable = true;
 	std::atomic<bool> m_release = false;

@@ -2079,10 +2079,12 @@ bool VisionApp::loadLaserConfig()
 		}
 		else if (sensorType == "KeyenceLJ") {
 			ct::logger::info("[VisionAppJSON] Using KeyenceLJ FOV");
-			//TODO: CALIBRATE. Placeholder for an LJ-X8080 at full X range. The exact value is
-			//logged by Profiler_Keyence on every scan as "MEASURED LASER FOV = <mm> mm".
-			//Must be kept identical to the copy in VisionApp_CRUD.cpp.
-			laser_fov = 40.0;
+			//LJ-X8060: 3200 profile points at the default 5 um interval = 16.0 mm, which is also
+			//the FAR-side X measurement range on the data sheet. Verify against Profiler_Keyence's
+			//per-scan log "MEASURED LASER FOV = <mm> mm (<N> points @ <P> um)" - if the profile
+			//data interval has been changed in Navigator this figure moves with it, and the
+			//controller wins. Must be kept identical to the copy in VisionApp_CRUD.cpp.
+			laser_fov = 16.0;
 		}
 		else {
 			ct::logger::error("[VisionApp Json] Failed to get sensor type", sensorType.toStdString().c_str());

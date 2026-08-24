@@ -50,16 +50,52 @@ The API string must be `"KeyenceLJ"`, and the per-recipe `"laserApi"` in `recipe
 match it. It is spelled that way rather than `"Keyence"` because `SRXManager` already integrates
 a Keyence SR-X100 barcode reader — the bare brand no longer identifies a device in this tree.
 
-## Not yet calibrated
+## Hardware on this machine
 
-Three constants are placeholders marked `TODO: CALIBRATE` and must be measured on the machine
-before production use:
+**LJ-X8060 head, LJ-X8000A controller** (confirmed 2026-08-24). The sensor lives on the machine's
+IPC, not on a development laptop.
 
-| Constant | File |
+Data sheet figures the code depends on:
+
+| Spec | Value |
 | --- | --- |
-| `KEYENCE_X_PITCH_UM` | `ImageManager.cpp`, `rotate_heightMap()` |
-| `KEYENCE_Y_PITCH_UM` | `ImageManager.cpp`, and `yPitchUm` in `keyence.json` — keep both in sync |
-| `laser_fov_mm` | `VisionApp_CRUD.cpp` **and** `VisionApp_JSON.cpp` — duplicated, nothing syncs them |
+| Reference distance | 64 mm |
+| Z measurement range | ±7.3 mm (F.S. 14.6 mm) |
+| X measurement range | 15 mm NEAR → 16 mm FAR |
+| Profile data interval | **5 µm** default, adjustable from 4 µm up |
+| Profile data count | **3200 points** |
+| Repeatability | 0.4 µm Z, 0.5 µm X |
+| Linearity | ±0.04% of F.S. (≈ ±5.8 µm) |
+
+`5 µm × 3200 = 16 mm`, which is why `KEYENCE_X_PITCH_UM` is 5.0 and `laser_fov_mm` is 16.0.
+**Changing the profile data interval in Navigator moves both**, and nothing in the code detects it.
+
+The head model matters in one place automatically: `zPitchForHead()` maps `8060` to **0.8 µm per
+grey level**, so the Z axis needs no configuration. Verify it on first connect —
+
+```
+[Profiler_Keyence] Head model  : LJ-X8060
+[Profiler_Keyence] Z pitch     : 0.80 um per grey level
+```
+
+If that second line reads `1.60`, the reported model string did not match the `contains("8060")`
+test and every height will be out by exactly 2×.
+
+## Calibration status
+
+| Constant | File | Status |
+| --- | --- | --- |
+| `KEYENCE_X_PITCH_UM` = 5.0 | `ImageManager.cpp`, `rotate_heightMap()` | **From the data sheet.** Confirm against the first scan's log |
+| `laser_fov_mm` = 16.0 | `VisionApp_CRUD.cpp` **and** `VisionApp_JSON.cpp` — duplicated, nothing syncs them | **From the data sheet** (5 µm × 3200) |
+| `KEYENCE_Y_PITCH_UM` = 10.0 | `ImageManager.cpp`, and `yPitchUm` in `keyence.json` — keep both in sync | **Still a placeholder — measure it** |
+
+Only `KEYENCE_Y_PITCH_UM` remains uncalibrated. No data sheet can supply it: it is gantry travel per
+encoder trigger, a property of the machine rather than the head. Jog a known distance, read the
+encoder count, divide.
+
+One known simplification in the X scale: the sheet gives 15 mm at the NEAR limit and 16 mm at FAR,
+so the true pitch varies about 2% across the ±7.3 mm Z range. A single constant cannot express
+that, so X is exact at FAR and reads ~2% narrow at NEAR. Below the other error sources for now.
 
 The driver logs the real X pitch and field of view on every scan:
 
@@ -69,6 +105,32 @@ The driver logs the real X pitch and field of view on every scan:
 
 `Y` pitch is a gantry property (encoder travel per trigger), not a sensor one, so it has to be
 measured separately.
+
+## The two TCP ports
+
+The controller listens on **two** ports and the manual (p.69) forbids making them equal:
+
+> "Do not set the command port number and the high-speed port number to the same number."
+
+| Key in `keyence.json` | Default | Maps to |
+| --- | --- | --- |
+| `commandPort` | 24691 | `LJX8IF_ETHERNET_CONFIG.wPortNo`, controller setting item 07h |
+| `highSpeedPort` | 24692 | `wHighSpeedPortNo`, controller setting item 08h |
+
+If you change either in Navigator, change it here to match.
+
+**Failure signature when they are equal** — and this one is misleading, because it looks like a
+network fault and is not:
+
+```
+[Profiler_Keyence] InitializeHighSpeedSimpleArray failed rc=0x1000
+[Profiler] Failed to connect profiler: profiler1
+```
+
+`0x1000` is `LJX8IF_RC_ERR_OPEN`. Note there is **no** `EthernetOpen failed` line — the command
+channel opens fine, because the controller really is listening on that port. The high-speed open
+then collides with our own command socket. Both a `loadConfig` check and an `initHighSpeed` guard
+now reject an equal pair before it gets that far.
 
 ## Reference
 

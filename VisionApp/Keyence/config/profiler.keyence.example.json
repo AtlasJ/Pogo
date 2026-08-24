@@ -6,7 +6,7 @@
       "_comment_id": "Keep 'profiler1'. Both VisionApp and JobThread hardcode it as their default profiler id.",
       "ID": "profiler1",
 
-      "_comment_ip": "Controller IP, as shown by the KEYENCE IP Setting Tool. The high-speed port is set separately in keyence.json (highSpeedPort) and must not equal the TCP command port.",
+      "_comment_ip": "Controller IP, as shown by the KEYENCE IP Setting Tool. Ports are NOT set here - both live in keyence.json as 'commandPort' (24691) and 'highSpeedPort' (24692), and the manual forbids making them equal.",
       "IP": "192.168.0.1",
 
       "_comment_api": "'KeyenceLJ', not 'Keyence' - SRXManager already integrates a Keyence SR-X100 barcode reader, so the bare brand no longer identifies a device. This string must match recipeConfig.json's 'laserApi' or the FOV will be taken from the wrong table.",
