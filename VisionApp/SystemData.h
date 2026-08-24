@@ -15,44 +15,31 @@
 */
 
 enum class Axis {
-	X = 0, Y = 1, Z = 2, CY1 = 3, CY2 = 4, FR1 = 5, FR2 = 6, FR3 = 7
+	X = 0, Y = 1, Z = 2
 };
 
 enum class DOA { //card0
-	START_BTN = 0,
-	STOP_BTN = 1,
-	RESET_BTN = 2,
-	RED_TOWER_LIGHT = 3,
-	AMBER_TOWER_LIGHT = 4,
-	GREEN_TOWER_LIGHT = 5,
-	POWER_DRIVE = 6,
-	SAFETY_DOOR_LOCK = 7,
-	BRAKE_RELEASE = 11,
+	START_BTN_LED = 0,       //Y100
+	STOP_BTN_LED = 1,        //Y101
+	RESET_BTN_LED = 2,       //Y102
+	RED_TOWER_LIGHT = 3,     //Y103
+	AMBER_TOWER_LIGHT = 4,   //Y104
+	GREEN_TOWER_LIGHT = 5,   //Y105
+	BUZZER = 6,              //Y106
+	TROLLEY_LOCK_RELEASE = 7,//Y107
+	BRAKE_RELEASE = 8,       //Y108 Z axis motor brake release
 	LAST_INDEX
 };
 
 enum class DIA {
-	START_BTN = 0,
-	STOP_BTN = 1,
-	RESET_BTN = 2,
-	AIR_PRESSURE = 3,
-	ESTOP = 5,
-	CONTACTOR_1 = 6,
-	CONTACTOR_2 = 7,
-	ENTRY_SENSOR = 8,
-	SLOW_SENSOR = 9,
-	EXIT_SENSOR = 10,
-	CLAMPER_1 = 11,
-	CLAMPER_2 = 12,
-	CLAMPER_3 = 13,
-	CLAMPER_4 = 14,
-	DOWNSTREAM = 18,
-	UPSTREAM = 19,
-	POS1_SENSOR = 20,
-	POS2_SENSOR = 21,
-	DOOR_INTERLOCK = 22,
-	DOOR_SWITCH = 24,
-	DOOR_LOCK = 25,
+	START_BTN = 0,           //X100
+	STOP_BTN = 1,            //X101
+	RESET_BTN = 2,           //X102
+	ESTOP_1 = 3,             //X103 emergency stop 1 trigger
+	ESTOP_2 = 4,             //X104 emergency stop 2 trigger
+	TROLLEY_LOCK_GUARD = 5,  //X105 trolley lock guard switch on
+	ESTOP_SAFETY_RELAY = 6,  //X106 e-stop safety relay OK
+	CURTAIN_SAFETY_RELAY = 7,//X107 curtain sensor safety relay OK
 	LAST_INDEX
 };
 

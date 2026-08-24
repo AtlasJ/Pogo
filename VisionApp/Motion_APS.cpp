@@ -557,7 +557,12 @@ bool Motion_APS::absolute_move(int axis, double position_mm)
 	//HARDCODE:
 	if (axis == 1) position_mm = -position_mm;
 
-	auto ret = APS_absolute_move(axis, to_pulse(axis, position_mm), m_axisInfos[axis].move_speed.max_velocity);
+	const auto pulse = to_pulse(axis, position_mm);
+	const auto maxVelocity = m_axisInfos[axis].move_speed.max_velocity;
+	ct::logger::info("[Motion_APS] absolute_move: axis=%d, position=%.4fmm -> %d pulse, max_velocity=%d (pulse/mm=%f)",
+		axis, position_mm, (int)pulse, (int)maxVelocity, m_axisInfos[axis].pulse_per_mm);
+
+	auto ret = APS_absolute_move(axis, pulse, maxVelocity);
 	if (log_error_code("Failed to move", ret)) return false;
 	return true;
 }
@@ -623,7 +628,7 @@ bool Motion_APS::relative_move(int axis, double distance)
 	if (axis == 1) safety_distance = -safety_distance;
 	if (!is_safe(axis, opt_position_mm.value() + safety_distance)) return false;
 
-	//ct::logger::info("Relative mvoe: %.2f, %.2f", m_axisInfos[axis].move_speed.max_velocity, to_pulse(axis, distance));
+	ct::logger::info("Relative mvoe: %.2f, %.2f", m_axisInfos[axis].move_speed.max_velocity, to_pulse(axis, distance));
 	auto ret = APS_relative_move(axis, to_pulse(axis, distance), m_axisInfos[axis].move_speed.max_velocity);
 	if (log_error_code("Failed to move", ret)) return false;
 	return true;

@@ -83,7 +83,7 @@ bool CAMManager::verifyKey(QString sn, int key) const
 
 	if (key != securityKey)
 	{
-		//ct::logger::error("[CAM] Invalid camera key. Expected key: %d, Receive: %d", securityKey, key);
+		ct::logger::error("[CAM] Invalid camera key. Expected key: %d, Receive: %d", securityKey, key);
 		// Don't print the info
 		ct::logger::error("[CAM] Licensing Error: Invalid license.");
 		return false;
@@ -329,15 +329,29 @@ bool CAMManager::loadConfig(QString id, QString path)
 	return ret;
 }
 
+// Callers dereference frame() unchecked all over the acquisition paths, so an
+// invalid/disconnected camera must never yield nullptr - it crashed the app the
+// moment any flow ran with a camera that failed to connect. Hand back a dummy
+// frame instead: writes land in a scratch object, the camera calls themselves
+// still fail (and log) through their own valid() guards.
+static FrameInfo s_invalidFrame;
+
 const FrameInfo* CAMManager::frame(QString id) const
 {
-	if (!valid(id)) return nullptr;
+	if (!valid(id)) {
+		ct::logger::error("[CAM] frame() on invalid camera '%s' - returning dummy frame", id.toStdString().c_str());
+		return &s_invalidFrame;
+	}
 	return &m_cam[id]->frame();
 }
 
 FrameInfo* CAMManager::frame(QString id)
 {
-	if (!valid(id)) return nullptr;
+	if (!valid(id)) {
+		ct::logger::error("[CAM] frame() on invalid camera '%s' - returning dummy frame", id.toStdString().c_str());
+		s_invalidFrame = FrameInfo(); //fresh scratch so stale state never leaks between callers
+		return &s_invalidFrame;
+	}
 	return &m_cam[id]->frame();
 }
 

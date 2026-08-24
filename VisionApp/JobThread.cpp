@@ -239,6 +239,11 @@ const OpticsInfo3D& JobThread::getMainOptics3D()
 
 void JobThread::snapBand(const OpticsInfo& optic, QString viewID, QString stitchID, BandType bandType)
 {
+	if (!CAMManager::instance().isConnected(optic.camID)) {
+		ct::logger::error("[Acq] snapBand skipped: camera '%s' is not connected", optic.camID.toStdString().c_str());
+		return;
+	}
+
 	MachineController::instance().trackTime("Snap + Light");
 
 	TimeLogger timer;
@@ -289,6 +294,11 @@ void JobThread::snapOptic(const OpticsInfo& optic, QString viewID, QString stitc
 	}
 
 	QString camID = optic.camID;
+
+	if (!CAMManager::instance().isConnected(camID)) {
+		ct::logger::error("[Acq] snapOptic skipped: camera '%s' is not connected", camID.toStdString().c_str());
+		return;
+	}
 
 	if (resetFrame) CAMManager::instance().resetFrame(camID);
 
@@ -5246,6 +5256,8 @@ void JobThread::jogDown(double mm, const OpticsInfo& optic)
 
 void JobThread::homeX()
 {
+	m_stopRun = false;
+
 	if (!MachineController::instance().isServoOn(Axis::X)) {
 		MachineController::instance().notifyError(MachineError::X_SERVO_OFF);
 		return;
@@ -5264,6 +5276,8 @@ void JobThread::homeX()
 
 void JobThread::homeY()
 {
+	m_stopRun = false;
+
 	if (!MachineController::instance().isServoOn(Axis::Y)) {
 		MachineController::instance().notifyError(MachineError::Y_SERVO_OFF);
 		return;
@@ -5282,6 +5296,7 @@ void JobThread::homeY()
 
 void JobThread::homeZ()
 {
+	m_stopRun = false;
 
 	auto o = MotionController::instance().set_servo(m_motionID, 0, (int)Axis::Z, true);
 
@@ -5313,6 +5328,8 @@ void JobThread::homeZ()
 
 void JobThread::homeXYZ()
 {
+	m_stopRun = false;
+
 	auto o = MotionController::instance().set_servo(m_motionID, 0, (int)Axis::Z, true);
 
 	if (o)
@@ -5354,10 +5371,11 @@ void JobThread::homeXYZ()
 
 void JobThread::homeAll()
 {
+	m_stopRun = false;
+
 	if (!MachineController::instance().isServoOn(Axis::X)) MachineController::instance().notifyError(MachineError::X_SERVO_OFF);
 	if (!MachineController::instance().isServoOn(Axis::Y)) MachineController::instance().notifyError(MachineError::Y_SERVO_OFF);
 	if (!MachineController::instance().isServoOn(Axis::Z)) MachineController::instance().notifyError(MachineError::Z_SERVO_OFF);
-	//if (!MachineController::instance().isServoOn(Axis::FR1)) MachineController::instance().notifyError(MachineError::RAIL_SERVO_OFF);
 
 
 	if (MachineController::instance().getMachineState() == MachineState::S_ERROR) return;
@@ -5367,23 +5385,19 @@ void JobThread::homeAll()
 	auto axisX = (int)im390::Axis::X;
 	auto axisY = (int)im390::Axis::Y;
 	auto axisZ = (int)im390::Axis::Z;
-	//auto axisFR1 = (int)im390::Axis::FR1;
 
 	MotionController::instance().home(m_motionID, axisX);
 	MotionController::instance().home(m_motionID, axisY);
 	MotionController::instance().home(m_motionID, axisZ);
-	//MotionController::instance().home(m_motionID, axisFR1);
 
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axisX);
 	waitAxis(axisY);
 	waitAxis(axisZ);
-	//waitAxis(axisFR1);
 
 	MotionController::instance().set_position_mm(m_motionID, 0, axisX, 0.0);
 	MotionController::instance().set_position_mm(m_motionID, 0, axisY, 0.0);
 	MotionController::instance().set_position_mm(m_motionID, 0, axisZ, 0.0);
-	//MotionController::instance().set_position_mm(m_motionID, 0, axisFR1, 0.0);
 
 	MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
 }
@@ -5391,10 +5405,35 @@ void JobThread::homeAll()
 void JobThread::waitAxis(int axis)
 {
 	ct::logger::info("[Motion] Waiting for axis %d...", axis);
-	while (!MotionController::instance().move_done(m_motionID, 0, axis));
+
+	// An offline/invalid motion controller makes move_done() return false forever.
+	// The old hot spin then never returned, which froze the whole job thread - any
+	// BlockingQueuedConnection into it (e.g. snapImage) hung the GUI. Bail out when
+	// motion is not initialised, poll instead of spinning, and cap the wait.
+	if (!MotionController::instance().is_init(m_motionID)) {
+		ct::logger::error("[Motion] waitAxis(%d) skipped: motion controller not initialised", axis);
+		SystemData::instance()._MotoIsMoving = false;
+		return;
+	}
+
+	constexpr int timeoutMs = 120000; //homing can be slow, but never endless
+	QElapsedTimer timer;
+	timer.start();
+
+	while (!MotionController::instance().move_done(m_motionID, 0, axis)) {
+		if (m_stopRun) {
+			ct::logger::warn("[Motion] waitAxis(%d) aborted by stop", axis);
+			break;
+		}
+		if (timer.elapsed() > timeoutMs) {
+			ct::logger::error("[Motion] waitAxis(%d) timed out after %dms", axis, timeoutMs);
+			break;
+		}
+		os_tool::goSleep(20);
+	}
+
 	ct::logger::info("[Motion] Axis %d is in position", axis);
 	SystemData::instance()._MotoIsMoving = false;
-
 }
 
 void JobThread::loadToPositionSensor(int index) {

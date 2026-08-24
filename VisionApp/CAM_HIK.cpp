@@ -56,12 +56,15 @@ void __stdcall CAM_HIK::FrameCallback(unsigned char* pData,
 
     case PixelType_Gvsp_BayerRG8:
         frame.pixelFormat = ICAM_pixelFormat::BayerRG8;
-        channel = 3;
+        // Bayer mosaic is single-plane 8-bit. A 3-band buffer here made MbufPut
+        // read 3x past the end of the SDK's frame data (crash), and ImageManager's
+        // bayer_to_rgb expects a 1-band input anyway.
+        channel = 1;
         break;
 
     case PixelType_Gvsp_BayerGB8:
         frame.pixelFormat = ICAM_pixelFormat::BayerGB8;
-        channel = 3;
+        channel = 1; //see BayerRG8 note
         break;
 
     case PixelType_Gvsp_Mono12:
