@@ -125,6 +125,8 @@ public:
 	std::atomic<int> _lineScanAxis = 0;
 	bool isLineScanAxisY() const { return _lineScanAxis == 1; }
 
+	std::atomic<bool> _lscStrobeMode = false; //light controller default mode: strobe (trigger) vs continuous
+
 	std::atomic<bool> _bypassInspection = false;
 
 	std::atomic<bool> _Machine_Ready = true;     // Refer to Machine

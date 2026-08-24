@@ -20,6 +20,7 @@ private:
 	int m_connectionType = 0;
 
 	int m_lastIntensity[4] = { 0, 0, 0, 0 };
+	lsc::MODE m_mode = lsc::MODE::CONTINUOUS;
 
 	ControllerHandle m_handler;
 

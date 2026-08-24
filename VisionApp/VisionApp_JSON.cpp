@@ -1380,6 +1380,7 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("_warpageMethod"), _warpageMethod);
 	obj.insert(QStringLiteral("stitchingMethod"), SystemData::instance()._stitchingMethod);
 	obj.insert(QStringLiteral("lineScanAxis"), (int)SystemData::instance()._lineScanAxis);
+	obj.insert(QStringLiteral("lscStrobeMode"), (bool)SystemData::instance()._lscStrobeMode);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1928,6 +1929,14 @@ bool VisionApp::loadRecipeConfig()
 			QSignalBlocker blocker(ui.comboBox_lineScanAxis);
 			ui.comboBox_lineScanAxis->setCurrentIndex(SystemData::instance()._lineScanAxis);
 		}
+
+		SystemData::instance()._lscStrobeMode = jsonHelper::getBool(root, QStringLiteral("lscStrobeMode"), false);
+		{
+			QSignalBlocker blocker(ui.checkBox_lscStrobeMode);
+			ui.checkBox_lscStrobeMode->setChecked(SystemData::instance()._lscStrobeMode);
+		}
+		//LSC connects before this config loads, so apply the configured mode here
+		LSCManager::instance().setMode(SystemData::instance()._lscStrobeMode ? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
 		//ScaleManager::instance().set_world_scale(jsonHelper::getDouble(root, QStringLiteral("worldScale"), 0.291716));
 		if (!root.contains(QStringLiteral("laserApi")) || root.value(QStringLiteral("laserApi")).toString().isEmpty()) {
 			laserApi = currentSensorApi;
@@ -2011,7 +2020,7 @@ bool VisionApp::loadLSCConfig()
 	if (loadJson(jsonPath, root)) {
 		LSCManager::instance().loadConfig(root);
 		int ret = LSCManager::instance().connect();
-		LSCManager::instance().setMode(lsc::MODE::CONTINUOUS);
+		LSCManager::instance().setMode(SystemData::instance()._lscStrobeMode ? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
 
 		nvs::set_background_color(ui.toolButton_lscStatus, ret == (int)LSC_RC::PASS ? Qt::green : Qt::red);
 	}

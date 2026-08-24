@@ -122,7 +122,10 @@ int LSC_CST_MVL::setIntensity(int ch, int intensity)
 {
 	if (!m_enable) return (int)LSC_RC::PASS;
 
-	auto ret = SetDigitalValue(m_connectionType, ch+1, intensity, m_handler);
+	//strobe mode uses its own intensity register
+	auto ret = (m_mode == lsc::MODE::TRIGGER)
+		? SetStrobeValue(m_connectionType, ch+1, intensity, m_handler)
+		: SetDigitalValue(m_connectionType, ch+1, intensity, m_handler);
 
 	if (ret == SUCCESS) return (int)LSC_RC::PASS;
 	return (int)LSC_RC::FAIL;
@@ -130,14 +133,38 @@ int LSC_CST_MVL::setIntensity(int ch, int intensity)
 
 int LSC_CST_MVL::setMultiIntensity(lsc::IntensityData* idata, int size)
 {
-	return 0;
+	if (!m_enable) return (int)LSC_RC::PASS;
+
+	int ret = SUCCESS;
+
+	if (m_mode == lsc::MODE::TRIGGER) {
+		std::vector<MulStbValItem> items(size);
+		for (int i = 0; i < size; i++) {
+			items[i].channelIndex = idata[i].channelIndex + 1;
+			items[i].StrobeValue = idata[i].intensity;
+		}
+		ret = SetMulStrobeValue(m_connectionType, items.data(), size, m_handler);
+	}
+	else {
+		std::vector<MulDigValItem> items(size);
+		for (int i = 0; i < size; i++) {
+			items[i].channelIndex = idata[i].channelIndex + 1;
+			items[i].DigitalValue = idata[i].intensity;
+		}
+		ret = SetMulDigitalValue(m_connectionType, items.data(), size, m_handler);
+	}
+
+	if (ret == SUCCESS) return (int)LSC_RC::PASS;
+	return (int)LSC_RC::FAIL;
 }
 
 int LSC_CST_MVL::getIntensity(int ch, int & intensity)
 {
 	if (!m_enable) return (int)LSC_RC::PASS;
 
-	auto ret = GetDigitalValue(m_connectionType, &intensity, ch+1, m_handler);
+	auto ret = (m_mode == lsc::MODE::TRIGGER)
+		? GetStrobeValue(m_connectionType, &intensity, ch+1, m_handler)
+		: GetDigitalValue(m_connectionType, &intensity, ch+1, m_handler);
 
 	if (ret == SUCCESS) return (int)LSC_RC::PASS;
 	return (int)LSC_RC::FAIL;
@@ -157,7 +184,20 @@ int LSC_CST_MVL::setPort(int port)
 
 int LSC_CST_MVL::setMode(lsc::MODE mode)
 {
-	return (int)LSC_RC::PASS;
+	if (!m_enable) return (int)LSC_RC::PASS;
+
+	//0 = continuous output, 1 = external trigger (strobe)
+	int triMode = (mode == lsc::MODE::TRIGGER) ? 1 : 0;
+	auto ret = SetLightTriMode(m_connectionType, triMode, m_handler);
+
+	if (ret == SUCCESS) {
+		m_mode = mode;
+		ct::logger::info("[LSC_CST_MVL] Mode set to %s", triMode ? "STROBE" : "CONTINUOUS");
+		return (int)LSC_RC::PASS;
+	}
+
+	ct::logger::error("[LSC_CST_MVL] Failed to set light trigger mode (%d)", ret);
+	return (int)LSC_RC::FAIL;
 }
 
 int LSC_CST_MVL::setTriggerDuration(int ch, int us)
