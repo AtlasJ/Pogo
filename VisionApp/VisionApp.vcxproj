@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -231,6 +231,7 @@
     <ClCompile Include="AlgoManager.cpp" />
     <ClCompile Include="AlgoTemplate.cpp" />
     <ClCompile Include="VisionApp_AlgoSetup.cpp" />
+    <ClCompile Include="VisionApp_DryRun.cpp" />
     <ClCompile Include="PaddleOcrClient.cpp" />
     <ClCompile Include="SRXFtpServer.cpp" />
     <ClCompile Include="SRXManager.cpp" />
@@ -254,6 +255,7 @@
     <QtMoc Include="AlgoManager.h" />
     <QtMoc Include="PaddleOcrClient.h" />
     <ClInclude Include="AlgoSetupTypes.h" />
+    <ClInclude Include="DryRunTableWidget.h" />
     <QtMoc Include="SRXFtpServer.h" />
     <QtMoc Include="SRXManager.h" />
     <ClCompile Include="ImageManager.cpp" />

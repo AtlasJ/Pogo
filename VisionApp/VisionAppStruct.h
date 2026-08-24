@@ -26,7 +26,8 @@ enum SystemSettingsMenuButton
 	ZSTACK = 8,
 	OPTICS3D = 9,
 	BARCODEREADER = 10,
-	ALGOSETUP = 11
+	ALGOSETUP = 11,
+	DRYRUN = 12
 };
 
 #endif // VISIONAPPSTRUCT_H

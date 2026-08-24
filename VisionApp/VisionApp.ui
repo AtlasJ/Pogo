@@ -12009,6 +12009,13 @@ border: none;
                           </item>
                          </layout>
                         </item>
+                        <item row="12" column="0">
+                         <widget class="QCheckBox" name="checkBox_lscStrobeMode">
+                          <property name="text">
+                           <string>Light Controller Strobe Mode</string>
+                          </property>
+                         </widget>
+                        </item>
                         <item row="13" column="0">
                          <layout class="QHBoxLayout" name="horizontalLayout_71">
                           <item>
@@ -19850,6 +19857,183 @@ each Height ROI is measured against it.</string>
                   </item>
                  </layout>
                 </widget>
+                <widget class="QWidget" name="DryRunPage">
+                 <layout class="QVBoxLayout" name="verticalLayout_dryRunPage">
+                  <item>
+                   <widget class="QFrame" name="frame_dryRunPage">
+                    <property name="styleSheet">
+                     <string notr="true">QLabel{
+	font-size: 9pt;
+	color: #F0F0F0;
+}
+
+QFrame{
+	background-color: #272c36;
+	border-radius:16px;
+}
+
+QPushButton{
+	background-color: rgb(27, 29, 35);
+	border: 1px solid #3c4454;
+	border-radius: 5px;
+	color: #F0F0F0;
+	padding: 6px 12px;
+}
+
+QPushButton:hover{
+	background-color: #3c4454;
+}
+
+QPushButton:pressed{
+	background-color: #1b1d23;
+}
+
+QSpinBox{
+	background-color: rgb(27, 29, 35);
+	border: 1px solid rgb(27, 29, 35);
+	border-radius: 5px;
+	padding-left: 6px;
+	color: #F0F0F0;
+}
+
+QTableWidget{
+	background-color: rgb(27, 29, 35);
+	border: 1px solid #3c4454;
+	border-radius: 5px;
+	color: #F0F0F0;
+	gridline-color: #3c4454;
+	selection-background-color: #568af2;
+}
+
+QHeaderView::section{
+	background-color: #272c36;
+	color: #F0F0F0;
+	border: 1px solid #3c4454;
+	padding: 4px;
+}
+
+QTableCornerButton::section{
+	background-color: #272c36;
+	border: 1px solid #3c4454;
+}</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="verticalLayout_dryRunFrame">
+                     <item>
+                      <widget class="QLabel" name="label_dryRunTitle">
+                       <property name="styleSheet">
+                        <string notr="true">font-size: 12pt; font-weight: bold;</string>
+                       </property>
+                       <property name="text">
+                        <string>Dry Run</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="label_dryRunHint">
+                       <property name="styleSheet">
+                        <string notr="true">color: #8a93a5;</string>
+                       </property>
+                       <property name="text">
+                        <string>Add coordinates, drag rows to set the sequence order, select rows to remove.</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="DryRunTableWidget" name="tableWidget_dryRun">
+                       <column>
+                        <property name="text">
+                         <string>X (mm)</string>
+                        </property>
+                       </column>
+                       <column>
+                        <property name="text">
+                         <string>Y (mm)</string>
+                        </property>
+                       </column>
+                       <column>
+                        <property name="text">
+                         <string>Z (mm)</string>
+                        </property>
+                       </column>
+                      </widget>
+                     </item>
+                     <item>
+                      <layout class="QHBoxLayout" name="horizontalLayout_dryRunBtns">
+                       <item>
+                        <widget class="QPushButton" name="pushButton_dryAddCoord">
+                         <property name="text">
+                          <string>Add Position</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="pushButton_dryRemoveCoord">
+                         <property name="text">
+                          <string>Remove Selected</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="horizontalSpacer_dryRun1">
+                         <property name="orientation">
+                          <enum>Qt::Horizontal</enum>
+                         </property>
+                         <property name="sizeHint" stdset="0">
+                          <size>
+                           <width>40</width>
+                           <height>20</height>
+                          </size>
+                         </property>
+                        </spacer>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="label_dryRunLoops">
+                         <property name="text">
+                          <string>Loops:</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QSpinBox" name="spinBox_dryLoops">
+                         <property name="minimum">
+                          <number>1</number>
+                         </property>
+                         <property name="maximum">
+                          <number>9999</number>
+                         </property>
+                         <property name="value">
+                          <number>1</number>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="pushButton_dryStartRun">
+                         <property name="text">
+                          <string>Start</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="pushButton_dryStopRun">
+                         <property name="text">
+                          <string>Stop</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="label_dryRunStatus">
+                       <property name="text">
+                        <string/>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
                </widget>
               </item>
              </layout>
@@ -21432,6 +21616,11 @@ color: #F0F0F0;</string>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <customwidgets>
+  <customwidget>
+   <class>DryRunTableWidget</class>
+   <extends>QTableWidget</extends>
+   <header>DryRunTableWidget.h</header>
+  </customwidget>
   <customwidget>
    <class>QMainGraphicsView</class>
    <extends>QGraphicsView</extends>

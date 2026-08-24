@@ -31,6 +31,7 @@
 #include <QTcpSocket>
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QVector3D>
 
 #include "LSCManager.h"
 
@@ -330,6 +331,7 @@ public slots:
 	void waitAxis(int axis);
 	void waitEncoderCheck(double x_mm, double y_mm, double z_mm);
 	void jog(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
+	void dryRun(QVector<QVector3D> coords, int loops);
 	void jogSnap(double x, double y, double z, const OpticsInfo& optic);
 	void jogLeft(double mm, const OpticsInfo& optic);
 	void jogRight(double mm, const OpticsInfo& optic);
@@ -404,6 +406,7 @@ signals:
 
 	//UI
 	void promptMsg(QString msg);
+	void dryRunStatus(QString msg, bool running);
 	void displayFOV(MIL_ID mBuf);
 	void drawRectFOV(QString name, QRectF rect, QColor color);
 	void startProgressBar(QString title, int count, bool enableCancel);

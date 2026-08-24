@@ -170,7 +170,8 @@ void JobThread::resetFiducial()
 
 void JobThread::switchToContinuousModeLSC() {
 	m_lscFastMode = false;
-	LSCManager::instance().setMode(lsc::MODE::CONTINUOUS);
+	//restore the configured default mode (strobe if enabled in config)
+	LSCManager::instance().setMode(SystemData::instance()._lscStrobeMode ? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
 	LSCManager::instance().resetLatch();
 }
 
@@ -5400,6 +5401,41 @@ void JobThread::homeAll()
 	MotionController::instance().set_position_mm(m_motionID, 0, axisZ, 0.0);
 
 	MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
+}
+
+void JobThread::dryRun(QVector<QVector3D> coords, int loops)
+{
+	if (coords.isEmpty()) {
+		emit dryRunStatus("No coordinates to run.", false);
+		return;
+	}
+
+	if (!MachineController::instance().isServoOn(Axis::X) ||
+		!MachineController::instance().isServoOn(Axis::Y) ||
+		!MachineController::instance().isServoOn(Axis::Z)) {
+		emit dryRunStatus("Servo is off. Initialize the machine first.", false);
+		return;
+	}
+
+	m_stopRun = false;
+	ct::logger::info("[DryRun] Start: %d points, %d loops", coords.size(), loops);
+
+	for (int loop = 0; loop < loops && !m_stopRun; loop++) {
+		for (int i = 0; i < coords.size(); i++) {
+			if (m_stopRun) break;
+
+			const auto& c = coords[i];
+			emit dryRunStatus(QString("Loop %1/%2, point %3/%4: (%5, %6, %7)")
+				.arg(loop + 1).arg(loops).arg(i + 1).arg(coords.size())
+				.arg(c.x(), 0, 'f', 3).arg(c.y(), 0, 'f', 3).arg(c.z(), 0, 'f', 3), true);
+
+			jog(c.x(), c.y(), c.z(), "2D", true);
+		}
+	}
+
+	auto msg = m_stopRun ? QString("Dry run stopped.") : QString("Dry run completed.");
+	ct::logger::info("[DryRun] %s", msg.toStdString().c_str());
+	emit dryRunStatus(msg, false);
 }
 
 void JobThread::waitAxis(int axis)

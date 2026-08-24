@@ -33,6 +33,7 @@ ExtendedMenu::ExtendedMenu(int index,int width, int height, QWidget *parent)
 	connect(ui.toolButtonZStack, &QToolButton::pressed, this, [=]() { emit systemSettingsMenuBtnPressed(ZSTACK); });
 	connect(ui.toolButtonBarcodeReader, &QToolButton::pressed, this, [=]() { emit systemSettingsMenuBtnPressed(BARCODEREADER); });
 	connect(ui.toolButtonAlgoSetup, &QToolButton::pressed, this, [=]() { emit systemSettingsMenuBtnPressed(ALGOSETUP); });
+	connect(ui.toolButtonDryRun, &QToolButton::pressed, this, [=]() { emit systemSettingsMenuBtnPressed(DRYRUN); });
 	
 	//rightMenu
 	connect(ui.toolButtonPropertyTab, &QToolButton::pressed, this, [=]() { emit showPropertyTab(); });

@@ -1000,6 +1000,32 @@ Tab</string>
             </property>
            </widget>
           </item>
+          <item row="5" column="0">
+           <widget class="QToolButton" name="toolButtonDryRun">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Dry Run</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </widget>

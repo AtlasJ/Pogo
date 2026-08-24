@@ -149,7 +149,7 @@ enum class Direction {
 enum class UIPage {
 	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
-	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP
+	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN
 };
 
 enum class UIHierarchy {
@@ -811,6 +811,9 @@ private:
 	void initBarcodeReaderPage();
 	void refreshBarcodeReaderPage();
 	void updateSRXImagePreview(const QString& readerID);
+
+	//dry run page - VisionApp_DryRun.cpp
+	void initDryRunPage();
 
 	//algo setup page (AlgoManager) - VisionApp_AlgoSetup.cpp
 	void initAlgoSetupPage();
@@ -1613,6 +1616,7 @@ signals:
 	void testJob();
 
 	void jogTo(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
+	void signalDryRun(QVector<QVector3D> coords, int loops);
 	bool jogSnap(double x, double y, double z, const OpticsInfo& optic);
 	void jogLeft(double mm, const OpticsInfo& optic);
 	void jogRight(double mm, const OpticsInfo& optic);

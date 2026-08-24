@@ -206,7 +206,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	//recipeSettingsMenu
 	_recipeSettingsMenu = new ExtendedMenu(0, 300, 300);
 	_recipeSettingsMenu->setParent(this);
-	_systemSettingsMenu = new ExtendedMenu(2, 300, 420); //4 rows of 90px buttons + spacing
+	_systemSettingsMenu = new ExtendedMenu(2, 300, 510); //6 rows of buttons + spacing
 	_systemSettingsMenu->setParent(this);
 	_rightMenu = new ExtendedMenu(1, 100, 500);
 	_rightMenu->setParent(this);
@@ -312,6 +312,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	AlgoManager::instance().loadRecipeConfig();
 	initAlgoSetupPage();
 	refreshAlgoSetupPage(); ct::logger::info("Initialized algo setup page");
+	initDryRunPage(); ct::logger::info("Initialized dry run page");
 	initRecipeSetupZStack();
 	initStitchingMethod();
 	initPortability(); ct::logger::info("Initialized portability");
@@ -1858,6 +1859,15 @@ void VisionApp::connectSignalAndSlot()
 		saveRecipeConfig();
 		AuditLog::instance().log(QStringLiteral("LINESCAN_AXIS_CHANGED"));
 		showMsg(tr("Line scan axis changed. Please reassign line scans for the new axis to take effect."));
+	});
+
+	connect(ui.checkBox_lscStrobeMode, &QCheckBox::toggled, this, [=](bool checked) {
+		SystemData::instance()._lscStrobeMode = checked;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("LSC_STROBE_MODE"), checked ? QStringLiteral("ON") : QStringLiteral("OFF"));
+
+		auto ret = LSCManager::instance().setMode(checked ? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
+		if (ret != (int)LSC_RC::PASS) showMsg(tr("Failed to switch light controller mode."));
 	});
 
 	//treeViewRecipeExplorer_select
@@ -6861,6 +6871,10 @@ bool VisionApp::toPage(UIPage page) {
 		showRightTab((int)page, QStringLiteral("Open Algo Setup"));
 		updateAlgoRoiVisibility();
 		return true;
+	case UIPage::DRY_RUN:
+		unlockAllROIs();
+		showRightTab((int)page, QStringLiteral("Open Dry Run"));
+		return true;
 	case UIPage::UNIT_CONFIG:
 		lockAllROIs();
 		saveBorderColors();
@@ -7150,6 +7164,9 @@ void VisionApp::systemSettingsMenuBtnPressed(int btn)
 		break;
 	case ALGOSETUP:
 		toPage(UIPage::ALGO_SETUP);
+		break;
+	case DRYRUN:
+		toPage(UIPage::DRY_RUN);
 		break;
 	}
 }
