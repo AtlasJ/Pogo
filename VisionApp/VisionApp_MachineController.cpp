@@ -13,6 +13,9 @@ void VisionApp::connectMachineController()
 	//return;
 	if (!MotionController::instance().is_init(_motionID)) {
 		ct::logger::info("Motion not init, machine controller will not be activated.");
+		//Not activated means run() never executes, so the red tower timer is never
+		//created and the state machine must not accept events from JobThread.
+		MachineController::instance().enable(false);
 		nvs::set_background_color(ui.toolButton_machineState, "#1565C0");
 		ui.toolButton_machineState->setText("Offline");
 		return;

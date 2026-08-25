@@ -82,6 +82,11 @@ void MachineController::release()
     quit();  // Exits the event loop
 }
 
+void MachineController::enable(bool enable)
+{
+    m_enable = enable;
+}
+
 MachineState MachineController::getMachineState() {
     //std::lock_guard<std::mutex> lock(m_mutex);
     return m_currentState;
@@ -503,11 +508,15 @@ void MachineController::setTowerLight(DOA towerLight)
 
 void MachineController::startRedTowerLight()
 {
+    //The timer is only created in run(), but these are queued slots: they stay
+    //reachable even when the controller was never started.
+    if (m_redTowerTimer == nullptr) return;
     m_redTowerTimer->start(500);
 }
 
 void MachineController::stopRedTowerLight()
 {
+    if (m_redTowerTimer == nullptr) return;
     m_redTowerTimer->stop();
 }
 

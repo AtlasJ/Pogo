@@ -106,6 +106,10 @@ public:
     void run() override;
     void release();
 
+    //When false every entry point below is inert. Must be set false whenever the
+    //controller is not activated, or the state machine half-runs without run().
+    void enable(bool enable);
+
     bool turnOnBrake();
     bool safelyReleaseBrake(int servoWaitMs = 3000);
 
