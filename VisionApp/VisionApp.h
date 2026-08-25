@@ -814,6 +814,8 @@ private:
 
 	//dry run page - VisionApp_DryRun.cpp
 	void initDryRunPage();
+	void saveDryRunPoints();
+	void loadDryRunPoints();
 
 	//algo setup page (AlgoManager) - VisionApp_AlgoSetup.cpp
 	void initAlgoSetupPage();
