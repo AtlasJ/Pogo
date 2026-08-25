@@ -22,6 +22,11 @@ private:
 	int m_lastIntensity[4] = { 0, 0, 0, 0 };
 	lsc::MODE m_mode = lsc::MODE::CONTINUOUS;
 
+	//strobe setup (see setStrobeConfig): trigger source follows the channel
+	//trigger_type in lsc.json (LAN = internal trigger, IO = external trigger)
+	bool m_internalTrigger = true;
+	int m_strobeInternalCycle = 0;//internal trigger cycle via SetIntCycleValue, 0 = leave controller setting
+
 	ControllerHandle m_handler;
 
 public:
@@ -54,6 +59,7 @@ public:
 	int setIP(std::string ip) override;
 	int setPort(int port) override;
 
+	void setStrobeConfig(bool internalTrigger, int internalCycle);
 	int setMode(lsc::MODE mode);
 	int setTriggerDuration(int ch, int us);
 	int setTriggerSequence(const std::vector<lsc::SequenceData>& datas);

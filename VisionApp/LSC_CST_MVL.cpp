@@ -182,27 +182,57 @@ int LSC_CST_MVL::setPort(int port)
 	return (int)LSC_RC::PASS;
 }
 
+//SetLightTriMode values - adjust here if the controller maps them differently
+static constexpr int TRI_MODE_CONTINUOUS = 0;
+static constexpr int TRI_MODE_EXTERNAL = 1;
+static constexpr int TRI_MODE_INTERNAL = 2;
+
+void LSC_CST_MVL::setStrobeConfig(bool internalTrigger, int internalCycle)
+{
+	m_internalTrigger = internalTrigger;
+	m_strobeInternalCycle = internalCycle;
+	ct::logger::info("[LSC_CST_MVL] Strobe config: trigger=%s, internal_cycle=%d",
+		internalTrigger ? "INTERNAL" : "EXTERNAL", internalCycle);
+}
+
 int LSC_CST_MVL::setMode(lsc::MODE mode)
 {
 	if (!m_enable) return (int)LSC_RC::PASS;
 
-	//0 = continuous output, 1 = external trigger (strobe)
-	int triMode = (mode == lsc::MODE::TRIGGER) ? 1 : 0;
+	//trigger source follows the channel trigger_type: LAN = internal, IO = external
+	int triMode = TRI_MODE_CONTINUOUS;
+	if (mode == lsc::MODE::TRIGGER) triMode = m_internalTrigger ? TRI_MODE_INTERNAL : TRI_MODE_EXTERNAL;
+
 	auto ret = SetLightTriMode(m_connectionType, triMode, m_handler);
 
-	if (ret == SUCCESS) {
-		m_mode = mode;
-		ct::logger::info("[LSC_CST_MVL] Mode set to %s", triMode ? "STROBE" : "CONTINUOUS");
-		return (int)LSC_RC::PASS;
+	if (ret != SUCCESS) {
+		ct::logger::error("[LSC_CST_MVL] Failed to set light trigger mode %d (%d)", triMode, ret);
+		return (int)LSC_RC::FAIL;
 	}
 
-	ct::logger::error("[LSC_CST_MVL] Failed to set light trigger mode (%d)", ret);
-	return (int)LSC_RC::FAIL;
+	m_mode = mode;
+	ct::logger::info("[LSC_CST_MVL] Mode set to %s (tri_mode=%d)",
+		mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS", triMode);
+
+	//internal trigger cycle (strobe period when self-triggered)
+	if (mode == lsc::MODE::TRIGGER && m_internalTrigger && m_strobeInternalCycle > 0) {
+		ret = SetIntCycleValue(m_connectionType, m_strobeInternalCycle, m_handler);
+		if (ret != SUCCESS) ct::logger::error("[LSC_CST_MVL] Failed to set internal cycle %d (%d)", m_strobeInternalCycle, ret);
+		else ct::logger::info("[LSC_CST_MVL] Internal cycle set to %d", m_strobeInternalCycle);
+	}
+
+	return (int)LSC_RC::PASS;
 }
 
 int LSC_CST_MVL::setTriggerDuration(int ch, int us)
 {
-	return (int)LSC_RC::PASS;
+	if (!m_enable) return (int)LSC_RC::PASS;
+
+	auto ret = SetPulseUnit(m_connectionType, ch + 1, us, m_handler);
+
+	if (ret == SUCCESS) return (int)LSC_RC::PASS;
+	ct::logger::error("[LSC_CST_MVL] Failed to set pulse width on ch %d (%d)", ch + 1, ret);
+	return (int)LSC_RC::FAIL;
 }
 
 int LSC_CST_MVL::setTriggerSequence(const std::vector<lsc::SequenceData>& datas)

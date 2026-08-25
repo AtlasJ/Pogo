@@ -21,6 +21,7 @@ private:
 	int m_connectionTimeout = 3000;
 	int m_responseTimeout = 1000;
 	lsc::MODE m_mode = lsc::MODE::CONTINUOUS;
+	int m_currentPulseWidth = -1;
 
 	struct Channel {
 		QString id;
@@ -88,6 +89,7 @@ public:
 	int setMode(lsc::MODE mode);
 	lsc::MODE getMode();
 	int setTriggerDuration(QString ch, int us);
+	int setStrobePulseWidth(int us); //all channels, latched, no-op unless in strobe mode
 
 	int setTriggerSequence(const QVector<LSCManager::SequenceData>& datas);
 

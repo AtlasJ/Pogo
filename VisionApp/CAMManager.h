@@ -23,6 +23,9 @@ public:
 	const double getExposure(QString id) const;
 	const double getGain(QString id) const;
 
+	//last exposure set through setExposure - saved state, no camera API round trip
+	double currentExposure(QString id) const { return m_currentExposure.value(id, 0.0); }
+
 	const QString& getName(QString id) const;
 	const QString& getSerialNumber(QString id) const;
 
