@@ -1165,13 +1165,13 @@ void VisionApp::connectShortcuts()
 	connect(shortcut_up, &QShortcut::activated, [=]() { 
 		if (notAllowToAccess(AccessLevel::OPERATOR)) return;
 		
-		if (!blockJogSignal()) return; emit jogFront(_jogDistance, _mainOptics[_camID]); });
+		if (!blockJogSignal()) return; emit jogBack(_jogDistance, _mainOptics[_camID]); });
 
 	QShortcut *shortcut_down = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_Down), this);
-	connect(shortcut_down, &QShortcut::activated, [=]() { 
-		if (notAllowToAccess(AccessLevel::OPERATOR)) return; 
-		
-		if (!blockJogSignal()) return; emit jogBack(_jogDistance, _mainOptics[_camID]); });
+	connect(shortcut_down, &QShortcut::activated, [=]() {
+		if (notAllowToAccess(AccessLevel::OPERATOR)) return;
+
+		if (!blockJogSignal()) return; emit jogFront(_jogDistance, _mainOptics[_camID]); });
 
 	QShortcut *shortcut_left = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_Left), this);
 	connect(shortcut_left, &QShortcut::activated, [=]() { 
@@ -1242,13 +1242,13 @@ void VisionApp::connectShortcuts()
 	connect(shortcut_top, &QShortcut::activated, [=]() { 
 		if (notAllowToAccess(AccessLevel::OPERATOR)) return; 
 		
-		if (!blockJogSignal()) return; emit jogUp(_jogDistance, _mainOptics[_camID]); });
+		if (!blockJogSignal()) return; emit jogDown(_jogDistance, _mainOptics[_camID]); });
 
 	QShortcut *shortcut_btm = new QShortcut(QKeySequence(Qt::Key_PageDown), this);
-	connect(shortcut_btm, &QShortcut::activated, [=]() { 
-		if (notAllowToAccess(AccessLevel::OPERATOR)) return; 
-		
-		if (!blockJogSignal()) return; emit jogDown(_jogDistance, _mainOptics[_camID]); });
+	connect(shortcut_btm, &QShortcut::activated, [=]() {
+		if (notAllowToAccess(AccessLevel::OPERATOR)) return;
+
+		if (!blockJogSignal()) return; emit jogUp(_jogDistance, _mainOptics[_camID]); });
 
 	QShortcut *shortcut_ctrlS = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_S), this);
 	connect(shortcut_ctrlS, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; saveRecipe(); });
