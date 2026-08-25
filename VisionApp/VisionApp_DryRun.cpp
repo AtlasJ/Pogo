@@ -1,18 +1,81 @@
 #include "VisionApp.h"
 #include "MotionController.h"
 #include "AuditLog.h"
+#include "CommonDir.h"
+#include <QJsonArray>
+#include <QJsonDocument>
 
 //Dry Run page: a table of XYZ coordinates the user can add (from the current
 //position), drag to reorder, and select to delete. Start moves through the
 //sequence for the requested number of loops on the job thread.
+//The sequence persists in config\dryRun.json.
 
 static bool g_dryRunActive = false;
+static bool g_dryRunLoading = false;
+
+static QString dryRunJsonPath()
+{
+	return QStringLiteral("%1/dryRun.json").arg(Common::Directory::ConfigPath());
+}
+
+void VisionApp::saveDryRunPoints()
+{
+	if (g_dryRunLoading) return;
+
+	auto* table = ui.tableWidget_dryRun;
+
+	QJsonArray points;
+	for (int r = 0; r < table->rowCount(); r++) {
+		QJsonArray p;
+		for (int c = 0; c < 3; c++) p.append(table->item(r, c) ? table->item(r, c)->text().toDouble() : 0.0);
+		points.append(p);
+	}
+
+	QJsonObject obj;
+	obj.insert(QStringLiteral("loops"), ui.spinBox_dryLoops->value());
+	obj.insert(QStringLiteral("points"), points);
+
+	saveJson(dryRunJsonPath(), QJsonDocument(obj));
+}
+
+void VisionApp::loadDryRunPoints()
+{
+	QJsonObject root;
+	if (!loadJson(dryRunJsonPath(), root)) return;
+
+	g_dryRunLoading = true;
+
+	auto* table = ui.tableWidget_dryRun;
+	table->setRowCount(0);
+
+	auto points = root.value(QStringLiteral("points")).toArray();
+	for (const auto& v : points) {
+		auto p = v.toArray();
+		int row = table->rowCount();
+		table->insertRow(row);
+		for (int c = 0; c < 3; c++)
+			table->setItem(row, c, new QTableWidgetItem(QString::number(p.at(c).toDouble(), 'f', 3)));
+	}
+
+	QSignalBlocker blocker(ui.spinBox_dryLoops);
+	ui.spinBox_dryLoops->setValue(root.value(QStringLiteral("loops")).toInt(1));
+
+	g_dryRunLoading = false;
+}
 
 void VisionApp::initDryRunPage()
 {
 	auto* table = ui.tableWidget_dryRun;
 	table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 	table->verticalHeader()->setVisible(true);
+
+	loadDryRunPoints();
+
+	//persist on any change: cell edits, drag reorder (insert/remove), loops
+	connect(table, &QTableWidget::itemChanged, this, [=]() { saveDryRunPoints(); });
+	connect(table->model(), &QAbstractItemModel::rowsInserted, this, [=]() { saveDryRunPoints(); });
+	connect(table->model(), &QAbstractItemModel::rowsRemoved, this, [=]() { saveDryRunPoints(); });
+	connect(ui.spinBox_dryLoops, QOverload<int>::of(&QSpinBox::valueChanged), this, [=]() { saveDryRunPoints(); });
 
 	qRegisterMetaType<QVector<QVector3D>>("QVector<QVector3D>");
 	QObject::connect(this, &VisionApp::signalDryRun, &_jobThread, &JobThread::dryRun, Qt::QueuedConnection);

@@ -249,6 +249,11 @@ void JobThread::snapBand(const OpticsInfo& optic, QString viewID, QString stitch
 
 	TimeLogger timer;
 
+	//strobe mode: pulse width must cover the camera exposure. Uses the saved
+	//exposure state (no camera API round trip); latched inside, no-op unless
+	//the LSC is in strobe mode.
+	LSCManager::instance().setStrobePulseWidth((int)CAMManager::instance().currentExposure(optic.camID));
+
 	if (m_lscFastMode) {
 		CAMManager::instance().setDO(m_camID, m_camTriggerIO, true);
 	}

@@ -89,6 +89,8 @@ void LSCManager::loadConfig(QJsonObject obj)
 				lsc->setPort(port);
 				lsc->enable(enable);
 
+				QString lscTriggerType;
+
 				if (lscObj.contains("channels")) {
 					auto channels = lscObj["channels"].toArray();
 
@@ -108,6 +110,7 @@ void LSCManager::loadConfig(QJsonObject obj)
 						channel.optic = jsonHelper::getString(chObj, "optic");
 						channel.group = jsonHelper::getString(chObj, "group");
 						channel.trigger_type = jsonHelper::getString(chObj, "trigger_type");
+						if (lscTriggerType.isEmpty()) lscTriggerType = channel.trigger_type;
 						channel.lighting_type = jsonHelper::getString(chObj, "lighting_type");
 						channel.io_bit = jsonHelper::getInteger(chObj, "io_bit");
 						channel.io_port = jsonHelper::getInteger(chObj, "io_port");
@@ -119,6 +122,14 @@ void LSCManager::loadConfig(QJsonObject obj)
 
 						channel_index++;
 					}
+				}
+
+				if (id == "CST_MVL") {
+					//strobe trigger source follows the channel trigger_type:
+					//LAN = internal trigger, IO = external trigger
+					static_cast<LSC_CST_MVL*>(lsc)->setStrobeConfig(
+						lscTriggerType == "LAN",
+						jsonHelper::getInteger(lscObj, "strobe_internal_cycle", 0));
 				}
 			}
 			else {
@@ -362,11 +373,37 @@ int LSCManager::setMode(lsc::MODE mode)
 	if (!m_enable) return (int)LSC_RC::PASS;
 
 	int ret = 0;
-	
+
 	for (auto lsc : m_lsc) {
 		ret = lsc->setMode(mode);
 		if (ret == (int)LSC_RC::PASS) m_mode = mode;
 	}
+
+	//continuous and strobe intensities live in different controller registers,
+	//so the cached values no longer reflect the active register after a mode
+	//change - reset so the next setIntensity writes through
+	resetLatch();
+	m_currentPulseWidth = -1;
+
+	return ret;
+}
+
+int LSCManager::setStrobePulseWidth(int us)
+{
+	if (!m_enable) return (int)LSC_RC::PASS;
+	if (m_mode != lsc::MODE::TRIGGER) return (int)LSC_RC::PASS; //only relevant in strobe mode
+	if (us <= 0) return (int)LSC_RC::PASS;
+	if (m_currentPulseWidth == us) return (int)LSC_RC::PASS; //latched
+
+	int ret = (int)LSC_RC::PASS;
+
+	for (const auto& channel : m_channels.values()) {
+		if (!validLSC(channel.lsc_index)) continue;
+		ret = m_lsc[channel.lsc_index]->setTriggerDuration(channel.channel_index, us);
+	}
+
+	m_currentPulseWidth = us;
+	ct::logger::info("[LSC] Strobe pulse width set to %d (camera exposure)", us);
 
 	return ret;
 }

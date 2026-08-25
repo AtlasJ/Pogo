@@ -233,7 +233,7 @@ void MachineController::handleDIA()
     auto start_btn = io[(int)DIA::START_BTN];
     if (start_btn && !m_startBtnPressed) {
         m_startBtnPressed = true;
-        emit signalMachineEvent(MachineEvent::START_BTN);
+        //emit signalMachineEvent(MachineEvent::START_BTN); //TODO: temporarily disabled, re-enable to start production from the physical button
     }
     else if (!start_btn) {
         m_startBtnPressed = false;
