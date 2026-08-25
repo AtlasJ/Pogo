@@ -338,6 +338,59 @@ void VisionApp::initMotion() {
 		}
 	});
 
+	//Reset driver alarms on all axes, then clear the software error state
+	connect(ui.toolButton_io_resetAlarm, &QToolButton::clicked, this, [=]() {
+		ct::logger::info("[Motion] Reset alarm (all axes)");
+		AuditLog::instance().log(QStringLiteral("RESET_ALARM"), QStringLiteral("ALL"));
+
+		//alarm reset drops the servo command, so engage the Z brake first
+		MachineController::instance().turnOnBrake();
+
+		QStringList failed;
+		for (auto axis : { Axis::X, Axis::Y, Axis::Z }) {
+			if (!MotionController::instance().reset_alarm(_motionID, (int)axis)) {
+				failed << QString("Axis %1: %2").arg((int)axis).arg(MotionController::instance().error_msg(_motionID));
+			}
+		}
+
+		if (!failed.isEmpty()) {
+			showMsg(QString("Failed to reset alarm.\n%1\n\n"
+				"Check the alarm code on the drive panel - some alarms can only be "
+				"cleared by removing the cause or power cycling the drive.").arg(failed.join("\n")));
+			return;
+		}
+
+		//servos are back on after the reset - release the Z brake again
+		//(waits for live SVON) and clear the servo-off error state
+		MachineController::instance().safelyReleaseBrake();
+		MachineController::instance().notifyEvent(MachineEvent::Z_SERVO_ON);
+
+		MachineController::instance().resetAlarm();
+	});
+
+	//Reconnect the motion card after a power cycle (runs in JobThread - the
+	//APS re-init blocks for up to ~20s and must not freeze the UI or run
+	//concurrently with the status polling)
+	connect(ui.toolButton_io_reconnectMotion, &QToolButton::clicked, this, [=]() {
+		auto reply = QMessageBox::question(this, "Reconnect Motion",
+			"Reconnect the motion controller?\nThis takes up to 20 seconds.",
+			QMessageBox::Yes | QMessageBox::No);
+		if (reply != QMessageBox::Yes) return;
+
+		AuditLog::instance().log(QStringLiteral("MOTION_RECONNECT"));
+		ui.toolButton_io_reconnectMotion->setEnabled(false);
+		if (_motionTimer) _motionTimer->stop(); //no UI-thread APS calls during re-init
+
+		emit signalReconnectMotion();
+	});
+
+	connect(&_jobThread, &JobThread::reconnectMotionDone, this, [=](bool ok) {
+		if (_motionTimer) _motionTimer->start(300);
+		ui.toolButton_io_reconnectMotion->setEnabled(true);
+		showMsg(ok ? "Motion controller reconnected. Please home the machine."
+			: "Failed to reconnect motion controller. Check power and cabling, then check the log.");
+	}, Qt::QueuedConnection);
+
 	//Velocity
 	connect(ui.toolButton_updateVelocity_x, &QToolButton::clicked, this, [=]() {
 		ct::logger::info("[Motion] Update velocity x");

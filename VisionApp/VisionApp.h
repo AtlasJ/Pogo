@@ -1619,6 +1619,7 @@ signals:
 
 	void jogTo(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
 	void signalDryRun(QVector<QVector3D> coords, int loops);
+	void signalReconnectMotion();
 	bool jogSnap(double x, double y, double z, const OpticsInfo& optic);
 	void jogLeft(double mm, const OpticsInfo& optic);
 	void jogRight(double mm, const OpticsInfo& optic);

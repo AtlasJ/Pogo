@@ -13,6 +13,7 @@ public:
     // lifecycle
     bool init(QString id);
     bool release(QString id);
+    bool reconnect(QString id, bool releaseFirst = true); //release + full startup flow (init, configs)
 
     void enable(bool enable);
     void enable_motion(bool enable);
@@ -61,6 +62,7 @@ public:
     bool move_done(QString id, int cardID, int axis);
 
     // Misc
+    bool reset_alarm(QString id, int axis);
     bool is_init(QString id);
     bool is_safe(QString id, int axis, double position_mm);
     bool get_soft_limit(QString id, int axis, double position_mm, double& softLimit_mm);
@@ -77,6 +79,7 @@ private:
 
 	bool m_enable = true;
     bool m_enableMotion = true;
+    QString m_configPath; //motion.json path, kept for reconnect
 
     QHash<QString, bool> m_initStatus;
 	QHash<QString, nvs::motion::IMotion*> m_motion;

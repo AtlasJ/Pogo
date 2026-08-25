@@ -2,12 +2,15 @@
 #include "IMotion.h"
 #include "APS Library/Include/type_def.h"
 #include <unordered_map>
+#include <chrono>
 
 namespace nvs {
 	namespace motion {
 		class Motion_APS : public IMotion {
 		private:
 			bool m_is_init = false;
+			bool m_wasClosed = false;
+			std::chrono::steady_clock::time_point m_lastCloseTime{};
 
 			const int MAX_DI = 32;
 			const int MAX_DO = 14;
@@ -45,6 +48,7 @@ namespace nvs {
 
 			bool init();
 			bool release();
+			bool reset_alarm(int axis);
 
 			//Query
 			std::optional<std::string> version(int cardID) const;

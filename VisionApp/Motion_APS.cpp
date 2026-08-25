@@ -4,6 +4,7 @@
 #include "APS Library/Include/ErrorCodeDef.h"
 #include "Logger.h"
 #include "MachineController.h"
+#include <thread>
 
 using namespace nvs::motion;
 
@@ -119,13 +120,31 @@ bool Motion_APS::init()
 	I32 ret = ERR_NoError;
 	I32 cardBit, cardName, firstAxisID, totalAxis;
 
-	ret = APS_register_emx(1, 0);
-	if (log_error_code("Failed to register EMX", ret)) return false;
+	//Reset discovery state so init can be called again on reconnect
+	m_cardIDs.clear();
+	m_totalAxis = 0;
 
+	//The EMX-100 requires ~20s between APS_close and re-initialization
+	//(APS manual, APS_initial note) - registering earlier hangs the library.
+	if (m_wasClosed) {
+		auto since = std::chrono::steady_clock::now() - m_lastCloseTime;
+		auto required = std::chrono::seconds(20);
+		if (since < required) {
+			auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(required - since);
+			ct::logger::info("[Motion_APS] Waiting %lld ms after APS_close before re-init (EMX-100 requirement)",
+				(long long)wait.count());
+			std::this_thread::sleep_for(wait);
+		}
+	}
+
+	//Not fatal on reconnect (EMX may still be registered from the first init) -
+	//APS_initial below is the real gate.
+	ret = APS_register_emx(1, 0);
+	log_error_code("Failed to register EMX", ret);
 
 	ret = APS_initial(&cardBit, mode);
 	if (log_error_code("Failed to initialize EMX", ret)) return false;
-	
+
 
 	for (I32 i = 0; i < 16; i++) {
 		if ((cardBit >> i) & 1) {
@@ -163,9 +182,47 @@ bool Motion_APS::release()
 {
 	auto ret = APS_close();
 	m_is_init = false;
+	m_lastCloseTime = std::chrono::steady_clock::now();
+	m_wasClosed = true;
 
 	if (log_error_code("Failed to close EMX", ret)) return false;
 
+	return true;
+}
+
+bool Motion_APS::reset_alarm(int axis)
+{
+	if (invalid_axis("Failed to reset alarm", axis)) return false;
+
+	//The EMX rejects a reset on an axis with no active alarm (invalid input) -
+	//treat that as a no-op instead of an error.
+	auto status = APS_motion_io_status(axis);
+	if (!((status >> IO::ALM) & 1)) return true;
+
+	ct::logger::info("[Motion_APS] Resetting alarm on axis %d, motion IO status: 0x%X", axis, status);
+
+	//Release the servo command first - the drive may reject an alarm reset
+	//while the servo command is latched on. Not fatal if it fails: an alarmed
+	//drive usually trips the servo off by itself and may reject the command.
+	auto ret = APS_set_servo_on(axis, 0);
+	log_error_code("Failed to set servo off before alarm reset", ret);
+	std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+	ret = APS_reset_emx_alarm(axis);
+	if (log_error_code("Failed to reset alarm", ret)) return false;
+	std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+	status = APS_motion_io_status(axis);
+	if ((status >> IO::ALM) & 1) {
+		m_errorMsg = "Alarm still active after reset";
+		ct::logger::error("[Motion_APS] Axis %d alarm still active after reset", axis);
+		return false;
+	}
+
+	ret = APS_set_servo_on(axis, 1);
+	if (log_error_code("Failed to set servo on after alarm reset", ret)) return false;
+
+	ct::logger::info("[Motion_APS] Reset alarm on axis %d", axis);
 	return true;
 }
 
@@ -555,7 +612,7 @@ bool Motion_APS::absolute_move(int axis, double position_mm)
 	}
 
 	//HARDCODE:
-	if (axis == 1) position_mm = -position_mm;
+	//if (axis == 1) position_mm = -position_mm;
 
 	const auto pulse = to_pulse(axis, position_mm);
 	const auto maxVelocity = m_axisInfos[axis].move_speed.max_velocity;
@@ -596,7 +653,7 @@ bool nvs::motion::Motion_APS::absolute_multi_move(const std::vector<MoveParam>& 
 		axes[index] = p.axis;
 		positions[index] = to_pulse(p.axis, p.position_mm);
 
-		if (p.axis == 1) positions[index] = -positions[index];
+		//if (p.axis == 1) positions[index] = -positions[index];
 
 		if (m_axisInfos[p.axis].move_speed.max_velocity > max_speed) {
 			max_speed = m_axisInfos[p.axis].move_speed.max_velocity;
@@ -625,7 +682,7 @@ bool Motion_APS::relative_move(int axis, double distance)
 
 	//HARDCODE FOR Y-AXIS:
 	auto safety_distance = distance;
-	if (axis == 1) safety_distance = -safety_distance;
+	//if (axis == 1) safety_distance = -safety_distance;
 	if (!is_safe(axis, opt_position_mm.value() + safety_distance)) return false;
 
 	ct::logger::info("Relative mvoe: %.2f, %.2f", m_axisInfos[axis].move_speed.max_velocity, to_pulse(axis, distance));

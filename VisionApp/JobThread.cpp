@@ -5443,6 +5443,46 @@ void JobThread::dryRun(QVector<QVector3D> coords, int loops)
 	emit dryRunStatus(msg, false);
 }
 
+void JobThread::reconnectMotion()
+{
+	ct::logger::info("[Reconnect] Started (JobThread)");
+
+	//1 park + 20 close-wait ticks + 1 re-init + 1 resume
+	constexpr int closeWaitSec = 20; //EMX-100 requires ~20s between APS_close and re-init
+	emit startProgressBar("Reconnecting Motion Controller...", closeWaitSec + 3, false);
+
+	bool ok = false;
+
+	//The APS re-init must not run concurrently with the machine state polling.
+	ct::logger::info("[Reconnect] Parking machine state polling...");
+	if (!MachineController::instance().pauseStatePolling(true)) {
+		ct::logger::error("[Reconnect] State polling did not park - reconnect aborted");
+	}
+	else {
+		emit incrementProgress();
+		ct::logger::info("[Reconnect] State polling parked, releasing motion card...");
+
+		//release here and sit out the EMX close-to-init interval with progress
+		//ticks, so Motion_APS::init does not have to block silently
+		MotionController::instance().release(m_motionID);
+		for (int i = 0; i < closeWaitSec; i++) {
+			os_tool::goSleep(1000);
+			emit incrementProgress();
+		}
+
+		ok = MotionController::instance().reconnect(m_motionID, false /*already released*/);
+		emit incrementProgress();
+		ct::logger::info("[Reconnect] Motion card reconnect returned: %d", ok);
+	}
+	MachineController::instance().pauseStatePolling(false);
+	emit incrementProgress();
+	ct::logger::info("[Reconnect] State polling resumed");
+
+	emit stopProgressBar();
+	emit reconnectMotionDone(ok);
+	ct::logger::info("[Reconnect] Done (ok=%d)", ok);
+}
+
 void JobThread::waitAxis(int axis)
 {
 	ct::logger::info("[Motion] Waiting for axis %d...", axis);

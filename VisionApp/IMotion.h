@@ -123,6 +123,7 @@ namespace nvs {
             virtual bool move_done(int cardID, int axis) = 0;
 
             // Misc
+            virtual bool reset_alarm(int axis) = 0;
             virtual bool is_safe(int axis, double position_mm) = 0;
             virtual bool get_soft_limit(int axis, double position_mm, double& softLimit_mm) = 0;
             virtual bool load_config(const std::string& path) = 0;

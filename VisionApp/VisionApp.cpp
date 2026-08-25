@@ -3901,7 +3901,7 @@ void VisionApp::testRun()
 void VisionApp::stopRun(bool clearInspQueue)
 {
 	//_progressDialog = nullptr;
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 3; i++) { //X, Y, Z
 		MotionController::instance().stop_move(_motionID, i);
 	}
 

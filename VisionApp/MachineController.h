@@ -114,6 +114,7 @@ public:
     bool safelyReleaseBrake(int servoWaitMs = 3000);
 
     bool resetAlarm();
+    bool pauseStatePolling(bool pause); //park the state poll loop (for motion reconnect)
     void notifyEvent(MachineEvent e);
     void notifyWarning(MachineWarning w);
     void notifyError(MachineError e);
@@ -163,6 +164,8 @@ private:
 
     bool m_enable = true;
     std::atomic<bool> m_running = true;
+    std::atomic<bool> m_pausePolling = false;
+    std::atomic<bool> m_pollingParked = false;
     std::atomic<std::chrono::steady_clock::time_point> m_lastZMotionTime;
     std::mutex m_mutex;
     std::thread m_stateThread;

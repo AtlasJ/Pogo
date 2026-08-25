@@ -176,6 +176,13 @@ void MachineController::notifyEvent(MachineEvent e)
 void MachineController::poolStates()
 {
     while (m_running) {
+        if (m_pausePolling) {
+            m_pollingParked = true;
+            os_tool::goSleep(50);
+            continue;
+        }
+        m_pollingParked = false;
+
         handleDIA();
         handleDIB();
         handleDOA();
@@ -183,6 +190,29 @@ void MachineController::poolStates()
         handleAxisState();
         os_tool::goSleep(10);
     }
+}
+
+bool MachineController::pauseStatePolling(bool pause)
+{
+    m_pausePolling = pause;
+    if (!pause) return true;
+
+    //No polling running (e.g. offline start) - nothing to park
+    if (!m_stateThread.joinable()) return true;
+
+    //Wait (bounded) for the poll loop to finish its current iteration and
+    //park, so no APS call is in flight when the caller proceeds. A stuck
+    //iteration must NOT be ignored - the caller has to abort rather than
+    //run concurrently with it.
+    const auto start = std::chrono::steady_clock::now();
+    while (m_running && !m_pollingParked) {
+        if (std::chrono::steady_clock::now() - start >= std::chrono::seconds(15)) {
+            ct::logger::error("[MachineController] Timed out waiting for state polling to park");
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return true;
 }
 
 void MachineController::assessError(bool good, MachineError e)

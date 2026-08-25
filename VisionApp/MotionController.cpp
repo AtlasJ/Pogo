@@ -24,6 +24,9 @@ MotionController::~MotionController()
 
 bool MotionController::create(QString id, QString api)
 {
+	//Reuse the existing instance when reconnecting
+	if (m_motion.contains(id)) return true;
+
 	if (api == "8134A") {
 		//auto* p = new Motion_8134A();
 		//m_motion.insert(id, p);
@@ -44,13 +47,22 @@ bool MotionController::create(QString id, QString api)
 bool MotionController::valid(QString id) const
 {
 	if (!m_enable) return false;
-    if (!m_motion.contains(id)) ct::logger::warn("[Motion] Trying to access invalid motion controller: %s", id.toStdString().c_str());
-    return m_motion.contains(id);
+    if (!m_motion.contains(id)) {
+        ct::logger::warn("[Motion] Trying to access invalid motion controller: %s", id.toStdString().c_str());
+        return false;
+    }
+    //Block APS access while the card is released or re-initializing (reconnect):
+    //calls into the APS DLL during APS_close/APS_initial can crash the process
+    //(e.g. the tower light timer firing set_DO mid-reconnect).
+    if (!m_initStatus.value(id, false)) return false;
+    return true;
 }
 
 void MotionController::load_config(QString path)
 {
 	QJsonObject obj;
+
+	m_configPath = path;
 
 	if (!jsonHelper::loadJson(path, obj)) {
 		ct::logger::error("[Motion] Failed to load motion.json");
@@ -118,7 +130,8 @@ void MotionController::load_config(QString path)
 
 bool MotionController::init(QString id)
 {
-	if (!valid(id)) return false;
+	//direct check: valid() requires init status, which is not set yet here
+	if (!m_enable || !m_motion.contains(id)) return false;
 	auto ret = m_motion[id]->init();
 	m_initStatus.insert(id, ret);
 
@@ -134,8 +147,43 @@ bool MotionController::init(QString id)
 
 bool MotionController::release(QString id)
 {
-	if (!valid(id)) return false;
+	if (!m_enable || !m_motion.contains(id)) return false;
+
+	//block all other APS access from here on (see valid())
+	m_initStatus.insert(id, false);
 	return m_motion[id]->release();
+}
+
+bool MotionController::reconnect(QString id, bool releaseFirst)
+{
+	if (!m_enable || !m_motion.contains(id)) return false;
+
+	m_initStatus.insert(id, false);
+
+	if (releaseFirst) {
+		ct::logger::info("[Reconnect] Releasing motion card: %s", id.toStdString().c_str());
+		m_motion[id]->release(); //ignore result - the link may already be dead
+		ct::logger::info("[Reconnect] Motion card released");
+	}
+
+	//Re-run the full startup flow: init, controller param file and axis configs
+	ct::logger::info("[Reconnect] Running startup flow (init + configs)...");
+	load_config(m_configPath);
+	ct::logger::info("[Reconnect] Startup flow finished");
+
+	if (!is_init(id)) {
+		ct::logger::error("[Reconnect] Failed to reconnect motion card: %s", id.toStdString().c_str());
+		return false;
+	}
+
+	ct::logger::info("[Reconnect] Motion card reconnected: %s", id.toStdString().c_str());
+	return true;
+}
+
+bool MotionController::reset_alarm(QString id, int axis)
+{
+	if (!valid(id)) return false;
+	return m_motion[id]->reset_alarm(axis);
 }
 
 void MotionController::enable(bool enable)

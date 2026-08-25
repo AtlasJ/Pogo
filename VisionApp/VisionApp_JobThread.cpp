@@ -442,6 +442,7 @@ void VisionApp::connectJobThread() {
 	QObject::connect(this, &VisionApp::testJob, &_jobThread, &JobThread::test, Qt::QueuedConnection);
 
 	QObject::connect(this, &VisionApp::jogTo, &_jobThread, &JobThread::jog, Qt::QueuedConnection);
+	QObject::connect(this, &VisionApp::signalReconnectMotion, &_jobThread, &JobThread::reconnectMotion, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::jogSnap, &_jobThread, &JobThread::jogSnap, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::jogLeft, &_jobThread, &JobThread::jogLeft, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::jogRight, &_jobThread, &JobThread::jogRight, Qt::QueuedConnection);
