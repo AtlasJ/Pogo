@@ -667,9 +667,38 @@ bool Profiler_Keyence::stop()
 
 bool Profiler_Keyence::snapShot()
 {
-	// A single software trigger cannot work while the controller is in encoder-trigger
-	// batch mode, which is the only mode Pogo configures. Returning false rather than a
-	// silent true so the teach/preview UI reports the truth.
+	// NOT a hardware limitation. The controller and the SDK both support single-shot
+	// capture: LJX8IF_Trigger() fires a software trigger (LJX8_IF.h:356) and
+	// LJX8IF_GetProfile() fetches one profile over the command channel, no batch and no
+	// high-speed stream. Neither is called anywhere in this tree. The manual (p.5-4) lists
+	// "communication command" as a documented input for External trigger.
+	//
+	// The blocker is the mode WE impose: loadConfig writes triggerMode = 2 (encoder) on
+	// connect and nothing ever changes it, so the trigger source is the encoder terminal
+	// and a stationary gantry generates no profile to fetch. Implementing this means
+	// switching mode (continuous for a live preview, external for a true one-shot),
+	// capturing, and switching back - where the hard part is not the API calls but state
+	// restoration: a failed switch-back leaves the controller free-running at the sampling
+	// clock, and the next production scan is silently wrong.
+	//
+	// Returning false rather than faking success the way Profiler_SSZN does: a fake would
+	// feed a stale or empty frame into warpage compensation and corrupt the height map.
+	//
+	// But be aware what false actually buys, because it is less than it looks. EVERY caller
+	// ignores this return value (JobThread.cpp:1753, 1800, 1845, 1913) and then calls
+	// waitAcquisition(id, PROFILER_TIMEOUT) unconditionally - 60 s (JobThread.h:38) - before
+	// carrying on with whatever frame was already in the buffer. In fullWarpageCompensation
+	// that pair sits inside a per-view loop, so it is 60 s PER VIEW.
+	//
+	// Harmless today only because nothing live calls it: centerLaserZ has no caller at all,
+	// and warpageCompensation is reached from preAcquisition() but only when _warpageMethod
+	// is "Subsampling" or "Fullsampling" - it is "None" or absent in every recipe. Note the
+	// Guided 2D/3D Alignment tab does NOT go through here, so laserConfig.json's offset is
+	// not blocked by this.
+	//
+	// REVISIT WHEN: someone sets _warpageMethod to Subsampling or Fullsampling on a Keyence
+	// recipe. That needs both the capture above and a fast-fail in waitAcquisition, or
+	// production stalls a minute per view and then measures against a stale frame.
 	ct::logger::error("[Profiler_Keyence] snapShot not available in encoder batch mode");
 	m_errorMsg = QStringLiteral("snapShot not supported in encoder batch mode");
 	return false;

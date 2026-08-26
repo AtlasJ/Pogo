@@ -758,6 +758,23 @@ void Optics3DTab::initProfilerHwUi()
     ui.comboBox_profTriggerMode->addItem(tr("1  External"), 1);
     ui.comboBox_profTriggerMode->addItem(tr("2  Encoder"), 2);
 
+    //Displayed for confirmation, never editable. There is exactly one correct value for this
+    //machine - 2, encoder - and both wrong ones let a scan COMPLETE while producing wrong
+    //geometry, which is the worst failure shape there is:
+    //  Continuous -> the internal clock triggers at the sampling frequency, so the scan axis is
+    //                scaled by TIME, not distance.
+    //  External   -> same ENCODER_A+ pin, but every edge counts as a plain trigger with no
+    //                quadrature and no direction, so the return stroke adds counts too.
+    //batchMeasurement was kept off this page for the same reason and fails more kindly (no
+    //callback at all, immediately obvious). Showing this one still earns its place: the
+    //controller's Running area is volatile, so after a power cycle you want to confirm at a
+    //glance that it is still on encoder.
+    ui.comboBox_profTriggerMode->setEnabled(false);
+    ui.comboBox_profTriggerMode->setToolTip(
+        tr("Read-only. This application only scans correctly with encoder trigger - the other "
+           "modes still complete a scan but scale the height map by time instead of distance. "
+           "Change it in keyence.json only if the machine's triggering is genuinely rewired."));
+
     ui.comboBox_profEncoderMode->clear();
     ui.comboBox_profEncoderMode->addItem(tr("0  1-phase (no direction)"), 0);
     ui.comboBox_profEncoderMode->addItem(tr("1  2-phase x1"), 1);
@@ -815,8 +832,8 @@ void Optics3DTab::initProfilerHwUi()
         this, [=](int) { markProfilerHwDirty(); });
     connect(ui.spinBox_profHsPort, QOverload<int>::of(&QSpinBox::valueChanged),
         this, [=](int) { markProfilerHwDirty(); });
-    connect(ui.comboBox_profTriggerMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
-        this, [=](int) { markProfilerHwDirty(); });
+    //No dirty hook for comboBox_profTriggerMode: the user cannot change it, and the only writer
+    //is loadProfilerHwToUi(), which blocks signals anyway.
     connect(ui.comboBox_profEncoderMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
         this, [=](int) { markProfilerHwDirty(); });
     connect(ui.comboBox_profEncoderMinTime, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -959,6 +976,15 @@ bool Optics3DTab::loadProfilerHwToUi()
     selectByData(ui.comboBox_profEncoderMinTime, encTime);
 
     ui.label_profYPitch->setText(QString::number(yPitch, 'f', 2));
+
+    //The field is read-only, so a non-encoder value can only have arrived by hand-editing the
+    //driver config. Say so loudly: the scan would still complete and the height map would still
+    //look plausible, with its scan axis scaled by time rather than distance.
+    if (trig != 2) {
+        ct::logger::warn("[Optics3DTab/Prof] triggerMode is %d, not 2 (encoder) - scans will "
+            "produce a plausible but WRONGLY SCALED height map. Fix it in %s",
+            trig, qPrintable(_profilerConfigFile));
+    }
 
     //Widgets now equal the file by construction.
     _profilerHwDirty = false;
@@ -1118,7 +1144,8 @@ void Optics3DTab::refreshProfilerStatus()
     ui.lineEdit_profIP->setEnabled(configurable);
     ui.spinBox_profCmdPort->setEnabled(configurable);
     ui.spinBox_profHsPort->setEnabled(configurable);
-    ui.comboBox_profTriggerMode->setEnabled(configurable);
+    //comboBox_profTriggerMode is deliberately absent - it is permanently read-only, see
+    //initProfilerHwUi(). Re-enabling it here would undo that on the first status poll.
     ui.comboBox_profEncoderMode->setEnabled(configurable);
     ui.comboBox_profEncoderMinTime->setEnabled(configurable);
     ui.toolButton_profSave->setEnabled(configurable);
