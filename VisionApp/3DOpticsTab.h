@@ -6,6 +6,8 @@
 #include <QHash>
 #include <QSet>
 #include <QString>
+#include <QTimer>
+#include <QJsonObject>
 #include "ui_3DOpticsTab.h"
 #include "QView.h"
 #include "QCommonStruct.h"
@@ -32,6 +34,12 @@ public:
     void attachRecipeOptics3D(QHash<QString, OpticsInfo3D>* recipeOptics3D);
     bool syncToRecipeOptics3D();
 
+    //Profiler hardware section. MACHINE level (config\profiler.json + the driver config it
+    //names), NOT part of the recipe. Deliberately kept out of Optics3DParams, _cacheById and
+    //saveAllOptics3DByIdToJson() - anything in those is per-optics-ID and would silently change
+    //when the user picks a different ID from the combo.
+    bool loadProfilerHwToUi();
+
 private:
 	Ui::Optics3DClass ui;
 
@@ -53,9 +61,26 @@ private:
     
     QHash<QString, OpticsInfo3D>* _recipeOptics3D = nullptr;
 
+    //--- Profiler hardware section ---
+    QString profilerId() const;                 //live id from ProfilerManager, else "profiler1"
+    QString profilerJsonPath() const;           //config\profiler.json
+    QString driverConfigPath() const;           //config\<Config_File> named by profiler.json
+
+    void initProfilerHwUi();                    //combo contents + signal wiring, called once
+    void refreshProfilerStatus();               //status pill, info, enablement, message line
+    bool saveProfilerHwToJson();                //read-modify-write, keeps every untouched key
+    bool profilerBusy() const;                  //grabbing or gantry moving = refuse to touch it
+    void runProfilerConnect(bool wantConnected); //blocking; wait cursor + section disabled
+    bool readProfilerEntry(QJsonObject& entry) const; //this profiler's entry in profiler.json
+    void markProfilerHwDirty();                 //an edit is pending a Save
+
+    QTimer* _profStatusTimer = nullptr;
+    QString _profilerConfigFile;                //Config_File value as written in profiler.json
+    bool _profilerBusyUi = false;
+    bool _profilerHwDirty = false;              //widgets differ from what is saved on disk
 
 private slots:
-    void onOpticsIdChanged();   
+    void onOpticsIdChanged();
 
 
 public:

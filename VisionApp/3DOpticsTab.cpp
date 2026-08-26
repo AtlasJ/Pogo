@@ -2,6 +2,13 @@
 #include "CommonDir.h"
 #include "Logger.h"
 #include "AuditLog.h"
+#include "ProfilerManager.h"
+#include "SystemData.h"
+#include <QApplication>
+#include <QStandardItemModel>
+#include <QPushButton>
+#include <QRegExp>
+#include <QRegExpValidator>
 
 
 
@@ -30,6 +37,7 @@ Optics3DTab::Optics3DTab(QWidget* parent)
     connect(ui.toolButton_del3DOptics, &QToolButton::clicked,
         this, [=]() { deleteCurrentOptics3D(); });
 
+    initProfilerHwUi();
 }
 
 Optics3DTab::~Optics3DTab()
@@ -669,4 +677,576 @@ bool Optics3DTab::syncToRecipeOptics3D()
     qDebug() << "=======================================";
 
     return true;
+}
+
+
+//---------------------------------------------------------------------------------------------
+// Profiler hardware section - MACHINE level
+//
+// Reads/writes config\profiler.json (IP) and the driver config it names through Config_File
+// (ports, trigger, encoder). None of this goes near Optics3DParams, _cacheById or
+// saveAllOptics3DByIdToJson(): those are per-optics-ID recipe state, and a machine setting that
+// leaked into them would silently change every time the user picked a different Optics ID.
+//---------------------------------------------------------------------------------------------
+
+namespace {
+
+    bool readJsonObject(const QString& path, QJsonObject& out)
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {
+            ct::logger::warn("[Optics3DTab/Prof] Cannot open read: %s", qPrintable(path));
+            return false;
+        }
+
+        QJsonParseError err{};
+        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+        f.close();
+
+        if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+            ct::logger::warn("[Optics3DTab/Prof] JSON parse error in %s: %s",
+                qPrintable(path), qPrintable(err.errorString()));
+            return false;
+        }
+
+        out = doc.object();
+        return true;
+    }
+
+    bool writeJsonObject(const QString& path, const QJsonObject& obj)
+    {
+        QSaveFile out(path);
+        if (!out.open(QIODevice::WriteOnly)) {
+            ct::logger::warn("[Optics3DTab/Prof] Cannot open write: %s", qPrintable(path));
+            return false;
+        }
+
+        out.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+        if (!out.commit()) {
+            ct::logger::warn("[Optics3DTab/Prof] Commit failed: %s", qPrintable(path));
+            return false;
+        }
+        return true;
+    }
+
+}
+
+QString Optics3DTab::profilerId() const
+{
+    const auto ids = ProfilerManager::instance().keys();
+    if (!ids.isEmpty()) return ids.first();
+    return QStringLiteral("profiler1");   //JobThread's default when profiler.json never loaded
+}
+
+QString Optics3DTab::profilerJsonPath() const
+{
+    return Common::Directory::ConfigPath() + QStringLiteral("profiler.json");
+}
+
+QString Optics3DTab::driverConfigPath() const
+{
+    if (_profilerConfigFile.isEmpty()) return QString();
+    return Common::Directory::ConfigPath() + _profilerConfigFile;
+}
+
+void Optics3DTab::initProfilerHwUi()
+{
+    //Every one of these is an enumeration in the driver config, so carry the numeric code as
+    //itemData instead of parsing it back out of the label.
+    ui.comboBox_profTriggerMode->clear();
+    ui.comboBox_profTriggerMode->addItem(tr("0  Continuous"), 0);
+    ui.comboBox_profTriggerMode->addItem(tr("1  External"), 1);
+    ui.comboBox_profTriggerMode->addItem(tr("2  Encoder"), 2);
+
+    ui.comboBox_profEncoderMode->clear();
+    ui.comboBox_profEncoderMode->addItem(tr("0  1-phase (no direction)"), 0);
+    ui.comboBox_profEncoderMode->addItem(tr("1  2-phase x1"), 1);
+    ui.comboBox_profEncoderMode->addItem(tr("2  2-phase x2"), 2);
+    ui.comboBox_profEncoderMode->addItem(tr("3  2-phase x4"), 3);
+
+    static const char* const minTimes[] = {
+        "120 ns", "150 ns", "250 ns", "500 ns", "1 us", "2 us", "5 us", "10 us", "20 us" };
+
+    ui.comboBox_profEncoderMinTime->clear();
+    for (int i = 0; i < 9; ++i)
+        ui.comboBox_profEncoderMinTime->addItem(QStringLiteral("%1  %2").arg(i).arg(minTimes[i]), i);
+
+    //A typo'd octet is not a cheap mistake here: it gets past a mere is-empty check, and Connect
+    //then freezes the GUI for the SDK's internal EthernetOpen timeout (~10 s, and LJX8_IF.h
+    //exposes no way to shorten it). Reject it at the keystroke instead. The validator still
+    //admits partial input ("192.168.") as Intermediate, so saveProfilerHwToJson() also asks
+    //hasAcceptableInput() before writing.
+    const QString octet = QStringLiteral("(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])");
+    const QString ipPattern = QStringLiteral("^") + octet + "\\." + octet + "\\."
+                            + octet + "\\." + octet + QStringLiteral("$");
+    ui.lineEdit_profIP->setValidator(new QRegExpValidator(QRegExp(ipPattern), this));
+    ui.lineEdit_profIP->setPlaceholderText(QStringLiteral("192.168.0.1"));
+
+    //yPitchUm is shown but not editable: it must stay equal to KEYENCE_Y_PITCH_UM in
+    //ImageManager::rotate_heightMap, and nothing in the code detects a mismatch - parts just
+    //measure long or short along the scan axis. Make it editable only once that duplication is
+    //resolved in favour of a single source of truth.
+    ui.label_profYPitch->setToolTip(
+        tr("Read-only. Must match KEYENCE_Y_PITCH_UM in ImageManager.cpp - edit keyence.json and "
+           "the constant together, or parts measure long/short along the scan axis."));
+
+    //The LJ-X8000A is a single head. setMultiExposure, setDynamicExposure, setParallelExposure
+    //and setDuoHeadGain all refuse in Profiler_Keyence, and JobThread::scan() ignores their
+    //return values - so choosing one of those modes silently scans with whatever exposure was
+    //set last. Only Single is real on this sensor. Disabled rather than removed so an existing
+    //recipe value still displays instead of being quietly rewritten.
+    if (ProfilerManager::instance().getAPI().compare(QStringLiteral("KeyenceLJ"), Qt::CaseInsensitive) == 0) {
+        if (auto* model = qobject_cast<QStandardItemModel*>(ui.comboBox_exposureMode->model())) {
+            for (int i = 0; i < model->rowCount(); ++i) {
+                QStandardItem* item = model->item(i);
+                if (!item) continue;
+                if (item->text().compare(QStringLiteral("single"), Qt::CaseInsensitive) == 0) continue;
+                item->setEnabled(false);
+                item->setToolTip(tr("Not available on the LJ-X8000A (single head)."));
+            }
+        }
+    }
+
+    //Dirty tracking exists only to sequence Save before Connect. textEdited rather than
+    //textChanged so loadProfilerHwToUi() cannot mark itself dirty.
+    connect(ui.lineEdit_profIP, &QLineEdit::textEdited,
+        this, [=](const QString&) { markProfilerHwDirty(); });
+    connect(ui.spinBox_profCmdPort, QOverload<int>::of(&QSpinBox::valueChanged),
+        this, [=](int) { markProfilerHwDirty(); });
+    connect(ui.spinBox_profHsPort, QOverload<int>::of(&QSpinBox::valueChanged),
+        this, [=](int) { markProfilerHwDirty(); });
+    connect(ui.comboBox_profTriggerMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, [=](int) { markProfilerHwDirty(); });
+    connect(ui.comboBox_profEncoderMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, [=](int) { markProfilerHwDirty(); });
+    connect(ui.comboBox_profEncoderMinTime, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, [=](int) { markProfilerHwDirty(); });
+
+    connect(ui.toolButton_profConnect, &QToolButton::clicked, this, [=]() {
+        if (ProfilerManager::instance().isConnected(profilerId())) {
+            runProfilerConnect(false);
+            return;
+        }
+
+        //Editing is only possible while disconnected, so this is the one place an unsaved edit
+        //can be stranded. Connect applies the SAVED config, so never silently drop the edit and
+        //never apply it without persisting it first.
+        if (_profilerHwDirty) {
+            QMessageBox box(this);
+            box.setIcon(QMessageBox::Question);
+            box.setWindowTitle(tr("Unsaved changes"));
+            box.setText(tr("The profiler settings on this page have not been saved."));
+            box.setInformativeText(tr("Connect applies the saved configuration."));
+
+            QPushButton* saveBtn = box.addButton(tr("Save && Connect"), QMessageBox::AcceptRole);
+            QPushButton* discardBtn = box.addButton(tr("Discard && Connect"), QMessageBox::DestructiveRole);
+            box.addButton(QMessageBox::Cancel);
+            box.setDefaultButton(saveBtn);
+            box.exec();
+
+            if (box.clickedButton() == saveBtn) {
+                if (!saveProfilerHwToJson()) return;
+                _profilerHwDirty = false;
+                AuditLog::instance().log(QStringLiteral("PROFILER_CONFIG_SAVE"), profilerId());
+            }
+            else if (box.clickedButton() == discardBtn) {
+                loadProfilerHwToUi();   //pull the saved values back over the edits
+            }
+            else {
+                return;                 //cancel
+            }
+        }
+
+        runProfilerConnect(true);
+        });
+
+    //Save only. Applying is Connect's job, so the heavyweight, connection-dropping action is
+    //never hidden behind the word "Save".
+    connect(ui.toolButton_profSave, &QToolButton::clicked, this, [=]() {
+        if (!saveProfilerHwToJson()) return;
+        _profilerHwDirty = false;
+        AuditLog::instance().log(QStringLiteral("PROFILER_CONFIG_SAVE"), profilerId());
+        refreshProfilerStatus();
+        });
+
+    loadProfilerHwToUi();
+
+    //Connection state changes underneath this page (startup, JobThread, a failed scan), so poll
+    //rather than trying to hook every path that could change it.
+    _profStatusTimer = new QTimer(this);
+    connect(_profStatusTimer, &QTimer::timeout, this, [=]() { refreshProfilerStatus(); });
+    _profStatusTimer->start(1000);
+
+    refreshProfilerStatus();
+}
+
+void Optics3DTab::markProfilerHwDirty()
+{
+    if (_profilerHwDirty) return;
+    _profilerHwDirty = true;
+    refreshProfilerStatus();
+}
+
+bool Optics3DTab::readProfilerEntry(QJsonObject& entry) const
+{
+    QJsonObject root;
+    if (!readJsonObject(profilerJsonPath(), root)) return false;
+
+    const QJsonArray arr = root.value("Profilers").toArray();
+    if (arr.isEmpty()) {
+        ct::logger::warn("[Optics3DTab/Prof] No Profilers array in %s", qPrintable(profilerJsonPath()));
+        return false;
+    }
+
+    //Match the live id when there is one, else fall back to the first entry so the section still
+    //populates on a machine where the profiler never connected.
+    const QString wantId = profilerId();
+    entry = arr.first().toObject();
+    for (const auto& it : arr) {
+        if (!it.isObject()) continue;
+        if (it.toObject().value("ID").toString() == wantId) {
+            entry = it.toObject();
+            break;
+        }
+    }
+    return true;
+}
+
+bool Optics3DTab::loadProfilerHwToUi()
+{
+    QJsonObject entry;
+    if (!readProfilerEntry(entry)) return false;
+
+    const QString wantId = profilerId();
+    _profilerConfigFile = entry.value("Config_File").toString();
+
+    {
+        QSignalBlocker b(ui.lineEdit_profIP);
+        ui.lineEdit_profIP->setText(entry.value("IP").toString());
+    }
+
+    //Every driver-config key is optional, so fall back to the driver's own built-in defaults.
+    QJsonObject drv;
+    const QString drvPath = driverConfigPath();
+    if (drvPath.isEmpty() || !readJsonObject(drvPath, drv)) {
+        ct::logger::warn("[Optics3DTab/Prof] Driver config not read (Config_File='%s'), showing defaults",
+            qPrintable(_profilerConfigFile));
+    }
+
+    const int cmdPort = drv.value("commandPort").toInt(24691);
+    const int hsPort = drv.value("highSpeedPort").toInt(24692);
+    const int trig = drv.value("triggerMode").toInt(2);
+    const int encMode = drv.value("encoderInputMode").toInt(1);
+    const int encTime = drv.value("encoderMinInputTime").toInt(0);
+    const double yPitch = drv.value("yPitchUm").toDouble(10.0);
+
+    QSignalBlocker b1(ui.spinBox_profCmdPort);
+    QSignalBlocker b2(ui.spinBox_profHsPort);
+    QSignalBlocker b3(ui.comboBox_profTriggerMode);
+    QSignalBlocker b4(ui.comboBox_profEncoderMode);
+    QSignalBlocker b5(ui.comboBox_profEncoderMinTime);
+
+    ui.spinBox_profCmdPort->setValue(cmdPort);
+    ui.spinBox_profHsPort->setValue(hsPort);
+
+    auto selectByData = [](QComboBox* cb, int code) {
+        const int i = cb->findData(code);
+        cb->setCurrentIndex(i < 0 ? 0 : i);
+        };
+
+    selectByData(ui.comboBox_profTriggerMode, trig);
+    selectByData(ui.comboBox_profEncoderMode, encMode);
+    selectByData(ui.comboBox_profEncoderMinTime, encTime);
+
+    ui.label_profYPitch->setText(QString::number(yPitch, 'f', 2));
+
+    //Widgets now equal the file by construction.
+    _profilerHwDirty = false;
+    ct::logger::info("[Optics3DTab/Prof] Loaded hw config: id=%s ip=%s cfg=%s ports=%d/%d trig=%d enc=%d/%d",
+        qPrintable(wantId), qPrintable(ui.lineEdit_profIP->text()),
+        qPrintable(_profilerConfigFile), cmdPort, hsPort, trig, encMode, encTime);
+    return true;
+}
+
+bool Optics3DTab::saveProfilerHwToJson()
+{
+    const int cmdPort = ui.spinBox_profCmdPort->value();
+    const int hsPort = ui.spinBox_profHsPort->value();
+
+    //Manual p.69 forbids equal ports, and getting it wrong is misleading to diagnose:
+    //EthernetOpen succeeds and InitializeHighSpeedSimpleArray then fails rc=0x1000, which reads
+    //like a network fault but is not one. Reject it here as well as in the driver's loader.
+    if (cmdPort == hsPort) {
+        QMessageBox::warning(this, tr("Invalid ports"),
+            tr("Command port and high-speed port must be different."));
+        return false;
+    }
+
+    //The validator admits partial input as Intermediate, so "192.168.0" reaches here happily.
+    //hasAcceptableInput() is the one that insists on a complete address.
+    const QString ip = ui.lineEdit_profIP->text().trimmed();
+    if (ip.isEmpty() || !ui.lineEdit_profIP->hasAcceptableInput()) {
+        QMessageBox::warning(this, tr("Invalid IP"),
+            tr("Enter a complete IPv4 address, for example 192.168.0.1."));
+        return false;
+    }
+
+    const int trig = ui.comboBox_profTriggerMode->currentData().toInt();
+    const int encMode = ui.comboBox_profEncoderMode->currentData().toInt();
+    const int encTime = ui.comboBox_profEncoderMinTime->currentData().toInt();
+
+    //--- Read and validate BOTH files before writing EITHER. profiler.json used to be written
+    //--- first, so an unreadable driver config was only discovered afterwards - leaving the IP on
+    //--- disk while the page still said "Unsaved changes", with no way to see which half landed.
+    //--- profiler.json: IP only. Read-modify-write so API/Config_File/MSR/InvertX/InvertY and
+    //--- any other profiler entry survive untouched.
+    QJsonObject root;
+    if (!readJsonObject(profilerJsonPath(), root)) return false;
+
+    QJsonArray arr = root.value("Profilers").toArray();
+    if (arr.isEmpty()) {
+        ct::logger::warn("[Optics3DTab/Prof] Save aborted: no Profilers array");
+        return false;
+    }
+
+    const QString wantId = profilerId();
+    int target = 0;
+    for (int i = 0; i < arr.size(); ++i) {
+        if (!arr[i].isObject()) continue;
+        if (arr[i].toObject().value("ID").toString() == wantId) {
+            target = i;
+            break;
+        }
+    }
+
+    QJsonObject entry = arr[target].toObject();
+    entry["IP"] = ip;
+    arr[target] = entry;
+    root["Profilers"] = arr;
+
+    //--- driver config: ports, trigger, encoder. Read-modify-write keeps every other key,
+    //--- including the _comment_* documentation and yPitchUm, which this page never writes.
+    const QString drvPath = driverConfigPath();
+    QJsonObject drv;
+    bool haveDrv = false;
+
+    if (drvPath.isEmpty()) {
+        ct::logger::warn("[Optics3DTab/Prof] No Config_File in profiler.json, driver config not saved");
+    }
+    else if (!readJsonObject(drvPath, drv)) {
+        return false;                       //nothing written yet, so nothing to unwind
+    }
+    else {
+        drv["commandPort"] = cmdPort;
+        drv["highSpeedPort"] = hsPort;
+        drv["triggerMode"] = trig;
+        drv["encoderInputMode"] = encMode;
+        drv["encoderMinInputTime"] = encTime;
+        haveDrv = true;
+    }
+
+    //--- every read done and every value validated: only now write.
+    if (haveDrv && !writeJsonObject(drvPath, drv)) return false;
+    if (!writeJsonObject(profilerJsonPath(), root)) return false;
+
+    ct::logger::info("[Optics3DTab/Prof] Saved hw config: ip=%s ports=%d/%d trig=%d enc=%d/%d",
+        qPrintable(ip), cmdPort, hsPort, trig, encMode, encTime);
+    return true;
+}
+
+bool Optics3DTab::profilerBusy() const
+{
+    //JobThread drives the profiler during a scan and the gantry during a move. Tearing the
+    //connection down underneath either of those is the one way this section can do damage.
+    //Ask whether the id is known first - see refreshProfilerStatus() for why.
+    const QString id = profilerId();
+    if (ProfilerManager::instance().keys().contains(id)
+        && ProfilerManager::instance().isGrabbing(id)) return true;
+    if (SystemData::instance()._MotoIsMoving) return true;
+    return false;
+}
+
+void Optics3DTab::refreshProfilerStatus()
+{
+    const QString id = profilerId();
+
+    //profilerId() falls back to the literal "profiler1" when no profiler was ever created, and
+    //that id is not in m_profilers - so isConnected() and isGrabbing() would each log
+    //"[Profiler] Trying to access invalid profiler" through ProfilerManager::valid()
+    //(ProfilerManager.cpp:464). This function is on a 1 Hz timer, so that is two lines every
+    //second for as long as the page exists, in the very log used to diagnose the sensor. Ask the
+    //cheap question locally instead of letting the manager answer it noisily.
+    const bool known = ProfilerManager::instance().keys().contains(id);
+    const bool connected = known && ProfilerManager::instance().isConnected(id);
+    const bool grabbing = known && ProfilerManager::instance().isGrabbing(id);
+
+    QString text;
+    QString bg;
+    if (_profilerBusyUi)  { text = tr("Working...");     bg = QStringLiteral("#B98900"); }
+    else if (!known)      { text = tr("Not configured"); bg = QStringLiteral("#5A5A5A"); }
+    else if (grabbing)    { text = tr("Scanning");       bg = QStringLiteral("#1565C0"); }
+    else if (connected)   { text = tr("Connected");      bg = QStringLiteral("#2E7D32"); }
+    else                  { text = tr("Disconnected");   bg = QStringLiteral("#8E1B1B"); }
+
+    ui.label_profStatus->setText(text);
+    ui.label_profStatus->setStyleSheet(
+        QStringLiteral("color:white; background-color:%1; border-radius:6px; padding:3px;").arg(bg));
+
+    const QString api = ProfilerManager::instance().getAPI();
+    ui.label_profApi->setText(api.isEmpty() ? QStringLiteral("-") : api);
+
+    if (connected) {
+        ui.label_profSerial->setText(ProfilerManager::instance().getSerialNumber(id));
+        ui.label_profFirmware->setText(ProfilerManager::instance().getFirmwareVersion(id));
+        ui.label_profYRes->setText(
+            QString::number(ProfilerManager::instance().getYResolution(id), 'f', 4));
+    }
+    else {
+        ui.label_profSerial->setText(QStringLiteral("-"));
+        ui.label_profFirmware->setText(QStringLiteral("-"));
+        ui.label_profYRes->setText(QStringLiteral("-"));
+    }
+
+    ui.toolButton_profConnect->setText(connected ? tr("Disconnect") : tr("Connect"));
+
+    //Two modes. Connected = monitor: the inputs are read-only, so what is displayed is what was
+    //pushed to the controller. Disconnected = configure. These settings genuinely only apply at
+    //connect, so the enablement state is the honest way to say so - more reliable than a message
+    //the user has to read and remember.
+    const bool configurable = !connected && !_profilerBusyUi && !grabbing;
+
+    ui.lineEdit_profIP->setEnabled(configurable);
+    ui.spinBox_profCmdPort->setEnabled(configurable);
+    ui.spinBox_profHsPort->setEnabled(configurable);
+    ui.comboBox_profTriggerMode->setEnabled(configurable);
+    ui.comboBox_profEncoderMode->setEnabled(configurable);
+    ui.comboBox_profEncoderMinTime->setEnabled(configurable);
+    ui.toolButton_profSave->setEnabled(configurable);
+
+    //Editing stays available with no profiler created - the fields are backed by JSON files, not
+    //by the sensor, so preparing a machine offline is legitimate. Connecting is not: there is no
+    //driver object to connect. Disable the button rather than let it fail down in the manager.
+    ui.toolButton_profConnect->setEnabled(known && !_profilerBusyUi && !grabbing);
+
+    QString msg;
+    if (_profilerBusyUi)       msg = tr("Working...");
+    else if (!known)           msg = tr("No profiler '%1' was created - check API and ID in profiler.json. "
+                                        "Editing and saving still work.").arg(id);
+    else if (grabbing)         msg = tr("Scan in progress.");
+    else if (connected)        msg = tr("Connected - these values are running on the controller. Disconnect to edit.");
+    else if (_profilerHwDirty) msg = tr("Unsaved changes - press Save.");
+    else                       msg = tr("Disconnected. Edit, Save, then Connect to apply.");
+
+    //This runs at 1 Hz, and QLineEdit::setText() clears the selection and drops the cursor at the
+    //end of the string. Writing unconditionally would therefore make the field impossible to
+    //select for copying, and would show the tail of a message too long for the widget. So write
+    //only on an actual change, then rewind to the start. Tooltip carries the full text either way.
+    if (ui.lineEdit_profMessage->text() != msg) {
+        ui.lineEdit_profMessage->setText(msg);
+        ui.lineEdit_profMessage->setCursorPosition(0);
+        ui.lineEdit_profMessage->setToolTip(msg);
+    }
+}
+
+void Optics3DTab::runProfilerConnect(bool wantConnected)
+{
+    if (profilerBusy()) {
+        QMessageBox::warning(this, tr("Profiler busy"),
+            tr("The profiler is acquiring, or the gantry is moving.\n"
+               "Wait for it to finish before changing the connection."));
+        return;
+    }
+
+    const QString id = profilerId();
+
+    //Connect applies the SAVED configuration, never the widgets. That is what makes the
+    //read-only display after a connect provably equal to what was pushed: the ports, trigger and
+    //encoder settings reach the controller through loadConfig() reading this same file, so
+    //sourcing the IP from anywhere else would make one field behave differently from the rest.
+    QString ip;
+    if (wantConnected) {
+        QJsonObject entry;
+        if (!readProfilerEntry(entry)) {
+            QMessageBox::warning(this, tr("Profiler config missing"),
+                tr("Could not read %1.").arg(profilerJsonPath()));
+            return;
+        }
+
+        ip = entry.value("IP").toString().trimmed();
+        _profilerConfigFile = entry.value("Config_File").toString();
+
+        if (ip.isEmpty()) {
+            QMessageBox::warning(this, tr("Profiler config invalid"),
+                tr("No IP address saved for '%1'.").arg(id));
+            return;
+        }
+    }
+
+    //This blocks the GUI thread. A failed EthernetOpen sits out the SDK's internal timeout
+    //(~10 s, and LJX8_IF.h exposes no way to shorten it), and a successful connect spends
+    //roughly 9 s applying the driver config one setting at a time. Show a wait cursor and lock
+    //the section rather than letting it look hung.
+    _profilerBusyUi = true;
+    refreshProfilerStatus();
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+
+    bool ok = true;
+    bool applied = true;
+
+    //Safe when already disconnected: disconnect() guards its stop commands on the connection
+    //status, so this does not sit out a timeout.
+    ProfilerManager::instance().disconnect(id);
+
+    if (wantConnected) {
+        ok = ProfilerManager::instance().connect(id, ip);
+
+        if (ok) {
+            //Mirror ProfilerManager::loadConfig's startup order, or the reconnected sensor keeps
+            //whatever settings the controller happened to be holding.
+            const QString drvPath = driverConfigPath();
+            if (!drvPath.isEmpty()) applied = ProfilerManager::instance().loadConfig(id, drvPath);
+
+            if (!applied) {
+                ct::logger::warn("[Optics3DTab/Prof] Connected, but driver config failed to apply: %s",
+                    qPrintable(drvPath));
+            }
+
+            ProfilerManager::instance().setMSR(id, ProfilerManager::instance().getMSR());
+        }
+    }
+
+    QApplication::restoreOverrideCursor();
+    _profilerBusyUi = false;
+
+    //Re-read from the file so the now read-only fields show exactly what was just pushed.
+    if (wantConnected && ok) loadProfilerHwToUi();
+
+    refreshProfilerStatus();
+
+    AuditLog::instance().log(
+        wantConnected ? QStringLiteral("PROFILER_CONNECT") : QStringLiteral("PROFILER_DISCONNECT"),
+        id, ok ? QStringLiteral("OK") : QStringLiteral("FAILED"));
+
+    ct::logger::info("[Optics3DTab/Prof] %s id=%s ip=%s -> %s",
+        wantConnected ? "Connect" : "Disconnect",
+        qPrintable(id), qPrintable(ip), ok ? "OK" : "FAILED");
+
+    if (wantConnected && !ok) {
+        QMessageBox::warning(this, tr("Profiler connect failed"),
+            tr("Could not connect to '%1' at %2.\n\n%3")
+            .arg(id, ip, ProfilerManager::instance().errorMsg(id)));
+        return;
+    }
+
+    //The read-only display is only trustworthy if every setting was accepted. loadConfig ANDs 13
+    //setSetting results together, so a single rejection means the page can be showing a value the
+    //controller is not running - which is exactly the kind of number that ends up transcribed
+    //into a constant. Say so rather than leaving it in the log.
+    if (wantConnected && !applied) {
+        QMessageBox::warning(this, tr("Settings not fully applied"),
+            tr("Connected to '%1', but at least one driver setting was rejected.\n\n"
+               "The values shown here may not all be running on the controller. "
+               "Check the log for [Profiler_Keyence] setSetting failures before trusting them.")
+            .arg(id));
+    }
 }
