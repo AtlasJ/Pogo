@@ -454,15 +454,16 @@ void VisionApp::initBarcodeReaderPage()
 		QToolButton* stop;
 		QLineEdit* code;
 		QLabel* readTime;
+		QCheckBox* live;
 	};
 
 	const QVector<Row> rows = {
 		{ SRXManager::SRX1, ui.checkBox_srx1Enable, ui.lineEdit_srx1Ip, ui.lineEdit_srx1Port,
 		  ui.toolButton_srx1Connect, ui.toolButton_srx1Status, ui.toolButton_srx1Trigger,
-		  ui.toolButton_srx1Stop, ui.lineEdit_srx1Code, ui.label_srx1ReadTime },
+		  ui.toolButton_srx1Stop, ui.lineEdit_srx1Code, ui.label_srx1ReadTime, ui.checkBox_srx1Live },
 		{ SRXManager::SRX2, ui.checkBox_srx2Enable, ui.lineEdit_srx2Ip, ui.lineEdit_srx2Port,
 		  ui.toolButton_srx2Connect, ui.toolButton_srx2Status, ui.toolButton_srx2Trigger,
-		  ui.toolButton_srx2Stop, ui.lineEdit_srx2Code, ui.label_srx2ReadTime },
+		  ui.toolButton_srx2Stop, ui.lineEdit_srx2Code, ui.label_srx2ReadTime, ui.checkBox_srx2Live },
 	};
 
 	for (const auto& row : rows) {
@@ -488,7 +489,17 @@ void VisionApp::initBarcodeReaderPage()
 		});
 
 		connect(row.stop, &QToolButton::clicked, this, [=]() {
+			//stop also ends live read - reflect that in the checkbox without re-firing setLiveRead
+			QSignalBlocker blocker(row.live);
+			row.live->setChecked(false);
 			SRXManager::instance().stopReader(id);
+		});
+
+		connect(row.live, &QCheckBox::toggled, this, [=](bool checked) {
+			row.code->clear();
+			row.readTime->setText("-");
+			SRXManager::instance().setLiveRead(id, checked);
+			AuditLog::instance().log(QStringLiteral("SRX_LIVE_READ"), id, checked ? QStringLiteral("ON") : QStringLiteral("OFF"));
 		});
 	}
 
@@ -582,6 +593,11 @@ void VisionApp::updateSRXImagePreview(const QString& readerID)
 	if (readerID == SRXManager::SRX1) target = ui.label_srx1Image;
 	else if (readerID == SRXManager::SRX2) target = ui.label_srx2Image;
 	if (!target) return;
+
+	//the pixmap must not drive the layout: with a default size policy the label
+	//grows to the scaled pixmap, which enlarges the label, which enlarges the
+	//next scale - stretching the page a little on every image
+	target->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
 	auto result = SRXManager::instance().lastResult(readerID);
 	QImage image = SRXManager::instance().lastImage(readerID);

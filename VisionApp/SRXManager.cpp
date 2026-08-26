@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QFileInfo>
 #include <QDir>
+#include <QTimer>
 #include <QTextCodec>
 #include <QMetaObject>
 
@@ -286,13 +287,18 @@ void SRXManager::setReaderConfig(const ReaderConfig& cfg)
 	int index = indexOf(cfg.id);
 	if (index < 0) return;
 
+	ReaderConfig fixed = cfg;
+	if (fixed.port <= 0) fixed.port = 9004; //SR-X non-procedural command port
+
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		m_config[index] = cfg;
+		m_config[index] = fixed;
 	}
 
-	if (cfg.enabled) connectReader(cfg.id);
-	else disconnectReader(cfg.id);
+	saveConfig(); //persist page edits across restarts
+
+	if (fixed.enabled) connectReader(fixed.id);
+	else disconnectReader(fixed.id);
 }
 
 void SRXManager::setFtpConfig(const FtpConfig& cfg)
@@ -302,6 +308,8 @@ void SRXManager::setFtpConfig(const FtpConfig& cfg)
 		m_ftpConfig = cfg;
 		if (m_ftpConfig.dropPath.isEmpty()) m_ftpConfig.dropPath = SRX_DEFAULT_DROP;
 	}
+
+	saveConfig(); //persist page edits across restarts
 
 	QMetaObject::invokeMethod(this, "doApplyFtp", Qt::QueuedConnection);
 }
@@ -341,6 +349,18 @@ void SRXManager::trigger(const QString& id)
 	int index = indexOf(id);
 	if (index < 0) return;
 	QMetaObject::invokeMethod(this, "doTrigger", Qt::QueuedConnection, Q_ARG(int, index));
+}
+
+void SRXManager::setLiveRead(const QString& id, bool on)
+{
+	int index = indexOf(id);
+	if (index < 0) return;
+
+	m_liveRead[index] = on;
+	ct::logger::info("[SRX] %s live read %s", id.toStdString().c_str(), on ? "ON" : "OFF");
+
+	if (on) trigger(id);
+	else stopReader(id);
 }
 
 void SRXManager::triggerAll()
@@ -474,12 +494,31 @@ void SRXManager::doTrigger(int index)
 	if (writeCommand(index, "LON\r", "Trigger LON")) {
 		//reply latency is measured from here; see the "rx ... after trigger" line on receive
 		m_triggerElapsed.start();
+
+		//Live read: the reader-side read timeout can be very long (or unlimited),
+		//in which case a no-decode cycle never ends on its own - no result, no
+		//image, no retrigger. Cap the cycle: if no reply arrives in time, force
+		//it closed with LOFF; the reader then reports ERROR and pushes its image,
+		//and the ERROR reply schedules the next live trigger.
+		if (m_liveRead[index]) {
+			constexpr int liveCycleTimeoutMs = 100;
+			const int seq = m_cycleSeq[index].load();
+			QTimer::singleShot(liveCycleTimeoutMs, this, [this, index, seq]() {
+				if (m_liveRead[index] && m_cycleSeq[index].load() == seq) {
+					ct::logger::info("[SRX] %s live read: no decode within cycle window, closing cycle",
+						idOf(index).toStdString().c_str());
+					writeCommand(index, "LOFF\r", "Live cycle LOFF");
+				}
+			});
+		}
 	}
 }
 
 void SRXManager::doStop(int index)
 {
 	if (index < 0 || index >= READER_COUNT) return;
+
+	m_liveRead[index] = false; //stop always ends live read
 
 	writeCommand(index, "LOFF\r", "Stop LOFF");
 
@@ -556,6 +595,8 @@ void SRXManager::processMessage(int index, const QString& msg)
 {
 	const QString id = idOf(index);
 
+	m_cycleSeq[index]++; //a reply arrived - the live cycle watchdog for this trigger stands down
+
 	if (msg.contains("ERROR")) {
 		ct::logger::error("[SRX] %s reported ERROR", id.toStdString().c_str());
 		{
@@ -566,6 +607,7 @@ void SRXManager::processMessage(int index, const QString& msg)
 			m_result[index].timestamp = QDateTime::currentDateTime();
 		}
 		emit barcodeReceived(id, "ERROR");
+		scheduleLiveRetrigger(index);
 		return;
 	}
 
@@ -588,6 +630,18 @@ void SRXManager::processMessage(int index, const QString& msg)
 	}
 
 	emit barcodeReceived(id, barcode);
+	scheduleLiveRetrigger(index);
+}
+
+void SRXManager::scheduleLiveRetrigger(int index)
+{
+	if (!m_liveRead[index]) return;
+
+	//short pause between cycles so the reader can finish its output (image
+	//FTP push) before the next LON
+	QTimer::singleShot(300, this, [this, index]() {
+		if (m_liveRead[index]) doTrigger(index);
+	});
 }
 
 //---------------------------------------------------------------- image path
@@ -616,15 +670,26 @@ void SRXManager::onFtpFile(QString peerIp, QString filePath)
 	const QString suffix = QFileInfo(filePath).suffix().toLower();
 
 	if (suffix == "jpg" || suffix == "jpeg" || suffix == "png" || suffix == "bmp") {
-		{
-			std::lock_guard<std::mutex> lock(m_mutex);
-			m_result[index].imagePath = filePath;
+		QImage img(filePath);
+		if (img.isNull()) {
+			ct::logger::warn("[SRX] %s pushed unreadable image: %s", id.toStdString().c_str(), filePath.toStdString().c_str());
 		}
-		ct::logger::info("[SRX] %s image received: %s", id.toStdString().c_str(), filePath.toStdString().c_str());
-		emit imageReceived(id, filePath);
+		else {
+			{
+				std::lock_guard<std::mutex> lock(m_mutex);
+				m_result[index].imagePath = filePath;
+				m_result[index].image = img;
+			}
+			ct::logger::info("[SRX] %s image received: %s", id.toStdString().c_str(), filePath.toStdString().c_str());
+		}
+
+		QFile::remove(filePath); //loaded into memory - keep the drop folder clean
+
+		if (!img.isNull()) emit imageReceived(id, filePath);
 	}
 	else if (suffix == "json") {
 		parseHistoricalJson(index, filePath);
+		QFile::remove(filePath);
 	}
 	else {
 		ct::logger::debug("[SRX FTP] %s pushed unhandled file type: %s",
@@ -714,9 +779,9 @@ QString SRXManager::lastImagePath(const QString& id) const
 
 QImage SRXManager::lastImage(const QString& id) const
 {
-	const QString path = lastImagePath(id);
-	if (path.isEmpty() || !QFile::exists(path)) return QImage();
-	return QImage(path);
+	std::lock_guard<std::mutex> lock(m_mutex);
+	int index = indexOf(id);
+	return (index >= 0) ? m_result[index].image : QImage();
 }
 
 void SRXManager::clearResults()
@@ -724,8 +789,10 @@ void SRXManager::clearResults()
 	std::lock_guard<std::mutex> lock(m_mutex);
 	for (int i = 0; i < READER_COUNT; i++) {
 		QString imagePath = m_result[i].imagePath; //keep the last image on screen
+		QImage image = m_result[i].image;
 		m_result[i] = SRXReadResult();
 		m_result[i].id = idOf(i);
 		m_result[i].imagePath = imagePath;
+		m_result[i].image = image;
 	}
 }

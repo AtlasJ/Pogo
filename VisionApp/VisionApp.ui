@@ -18001,10 +18001,17 @@ QToolButton:hover {
                         </property>
                        </widget>
                      </item>
-                     <item row="1" column="2" colspan="4">
+                     <item row="1" column="2" colspan="3">
                        <widget class="QLineEdit" name="lineEdit_srx1Code">
                         <property name="readOnly">
                          <bool>true</bool>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="5">
+                       <widget class="QCheckBox" name="checkBox_srx1Live">
+                        <property name="text">
+                         <string>Live Read</string>
                         </property>
                        </widget>
                      </item>
@@ -18149,10 +18156,17 @@ QToolButton:hover {
                         </property>
                        </widget>
                      </item>
-                     <item row="1" column="2" colspan="4">
+                     <item row="1" column="2" colspan="3">
                        <widget class="QLineEdit" name="lineEdit_srx2Code">
                         <property name="readOnly">
                          <bool>true</bool>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="5">
+                       <widget class="QCheckBox" name="checkBox_srx2Live">
+                        <property name="text">
+                         <string>Live Read</string>
                         </property>
                        </widget>
                      </item>

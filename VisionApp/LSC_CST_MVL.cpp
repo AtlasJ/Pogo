@@ -114,7 +114,11 @@ int LSC_CST_MVL::toggle(int ch, bool on)
 
 	auto ret = SetON_OFF_s(m_connectionType, ch+1, (int)on, m_handler);
 
+	ct::logger::debug("[LSC_CST_MVL] SetON_OFF ch=%d on=%d ret=%d (mode=%s)",
+		ch + 1, on ? 1 : 0, ret, m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS");
+
 	if (ret == SUCCESS) return (int)LSC_RC::PASS;
+	ct::logger::error("[LSC_CST_MVL] Failed to toggle ch %d (%d)", ch + 1, ret);
 	return (int)LSC_RC::FAIL;
 }
 
@@ -123,11 +127,17 @@ int LSC_CST_MVL::setIntensity(int ch, int intensity)
 	if (!m_enable) return (int)LSC_RC::PASS;
 
 	//strobe mode uses its own intensity register
-	auto ret = (m_mode == lsc::MODE::TRIGGER)
+	const bool strobe = (m_mode == lsc::MODE::TRIGGER);
+	auto ret = strobe
 		? SetStrobeValue(m_connectionType, ch+1, intensity, m_handler)
 		: SetDigitalValue(m_connectionType, ch+1, intensity, m_handler);
 
+	ct::logger::debug("[LSC_CST_MVL] %s ch=%d val=%d ret=%d",
+		strobe ? "SetStrobeValue" : "SetDigitalValue", ch + 1, intensity, ret);
+
 	if (ret == SUCCESS) return (int)LSC_RC::PASS;
+	ct::logger::error("[LSC_CST_MVL] Failed to set %s intensity ch %d (%d)",
+		strobe ? "strobe" : "digital", ch + 1, ret);
 	return (int)LSC_RC::FAIL;
 }
 

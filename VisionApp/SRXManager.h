@@ -9,6 +9,7 @@
 #include <QImage>
 #include <QVector>
 #include <mutex>
+#include <atomic>
 
 class SRXFtpServer;
 
@@ -37,7 +38,8 @@ struct SRXReadResult {
 	QVector<QPolygonF> corners;   //one quad per code, in image pixel space
 	int imageWidth = 0;
 	int imageHeight = 0;
-	QString imagePath;            //last pushed capture for this reader
+	QString imagePath;            //file name of the last pushed capture (file itself is deleted after loading)
+	QImage image;                 //last pushed capture, held in memory
 	QDateTime timestamp;
 };
 
@@ -85,6 +87,7 @@ public:
 	void disconnectReader(const QString& id);
 	void trigger(const QString& id);   //LON
 	void triggerAll();
+	void setLiveRead(const QString& id, bool on); //auto re-trigger after each read cycle
 	void stopReader(const QString& id); //LOFF
 	void stopAll();
 
@@ -112,6 +115,11 @@ private slots:
 	void doDisconnect(int index);
 	void doTrigger(int index);
 	void doStop(int index);
+
+private:
+	void scheduleLiveRetrigger(int index);
+
+private slots:
 	void doApplyFtp();
 	void onSocketData(int index);
 	void onFtpFile(QString peerIp, QString filePath);
@@ -144,4 +152,6 @@ private:
 	SRXReadResult m_result[READER_COUNT];
 
 	SRXFtpServer* m_ftpServer = nullptr;
+	std::atomic<bool> m_liveRead[READER_COUNT] = {};
+	std::atomic<int> m_cycleSeq[READER_COUNT] = {}; //bumped on every reader reply; detects a stuck live cycle
 };

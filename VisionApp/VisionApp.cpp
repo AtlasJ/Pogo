@@ -142,7 +142,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	std::signal(SIGABRT_COMPAT, &VisionApp::terminated);
 	std::set_terminate([]()
 	{
-		//terminated(999);
+		terminated(999);
 	});
 
 	g_viewMode = (int)ViewMode::PLANE;

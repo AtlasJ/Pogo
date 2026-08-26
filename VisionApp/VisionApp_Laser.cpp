@@ -200,6 +200,8 @@ void VisionApp::scanDone() //WARNING: Dont put UI related stuff here. Emit it th
 
 void VisionApp::terminated(int signum)
 {
+	MachineController::instance().turnOnBrake();
+
 	std::string messageCode = "Unknown";
 	if (signum == 2) messageCode = "Process Interrupted";
 	else if (signum == 4) messageCode = "Illegal Instruction";
