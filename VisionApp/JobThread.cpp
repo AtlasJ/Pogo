@@ -3144,12 +3144,39 @@ void JobThread::acquire2DImages()
 bool JobThread::acquireBarcodeAndOcr()
 {
 	if (m_stopRun) return false;
+
+	auto& sd = SystemData::instance();
+
+	//Pitch mode: iterate the taught unit grid - base per unit = point 1 (top
+	//left) + unit index * pitch. The line scan mid point is not used.
+	if (sd._setupRegionPitchMode) {
+		if (!sd._pitchP1Set) {
+			ct::logger::error("[Acq] Pitch mode: point 1 not taught - cannot run barcode flow");
+			return false;
+		}
+
+		const int unitsX = std::max(1, (int)sd._unitsX);
+		const int unitsY = std::max(1, (int)sd._unitsY);
+		ct::logger::info("[Acq] Pitch mode: %dx%d units, pitch %.3f / %.3f mm",
+			unitsX, unitsY, sd._pitchX.load(), sd._pitchY.load());
+
+		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
+			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+				ct::logger::info("[Acq] Unit (%d, %d)", ix + 1, iy + 1);
+				acquireBarcodeAndOcrAt(
+					sd._pitchP1x + ix * sd._pitchX,
+					sd._pitchP1y + iy * sd._pitchY,
+					sd._pitchP1z,
+					QString("unit_%1_%2").arg(ix + 1).arg(iy + 1));
+			}
+		}
+
+		return !m_stopRun;
+	}
+
+	//Plane mode: single read at the middle of the 3D scan area
 	if (!safeGuardLineScan()) return false;
 
-	ScopedTimeLogger stl("[Acq] Barcode + OCR acquisition");
-	auto& srx = SRXManager::instance();
-
-	//jog to the middle of the 3D scan area so both readers see the part
 	double sumX = 0, sumY = 0, z = 0;
 	int n = 0;
 	for (const auto& l : *m_linescans) {
@@ -3165,7 +3192,15 @@ bool JobThread::acquireBarcodeAndOcr()
 		return false;
 	}
 
-	const double midX = sumX / n, midY = sumY / n;
+	return acquireBarcodeAndOcrAt(sumX / n, sumY / n, z);
+}
+
+bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ, const QString& unitID)
+{
+	if (m_stopRun) return false;
+
+	ScopedTimeLogger stl("[Acq] Barcode + OCR acquisition");
+	auto& srx = SRXManager::instance();
 	auto& sd = SystemData::instance();
 
 	//jog the base camera position, then apply the taught camera-to-reader offset (XYZ)
@@ -3174,8 +3209,8 @@ bool JobThread::acquireBarcodeAndOcr()
 		const double dx = (reader == 1) ? sd._brR1dx.load() : sd._brR2dx.load();
 		const double dy = (reader == 1) ? sd._brR1dy.load() : sd._brR2dy.load();
 		const double dz = (reader == 1) ? sd._brR1dz.load() : sd._brR2dz.load();
-		if (!taught) ct::logger::warn("[Acq] Reader %d offset not taught - scanning at the 3D mid point", reader);
-		jog(midX + (taught ? dx : 0), midY + (taught ? dy : 0), z + (taught ? dz : 0), "2D", true);
+		if (!taught) ct::logger::warn("[Acq] Reader %d offset not taught - scanning at the base point", reader);
+		jog(baseX + (taught ? dx : 0), baseY + (taught ? dy : 0), baseZ + (taught ? dz : 0), "2D", true);
 	};
 
 	auto readerID = [](int reader) { return reader == 1 ? SRXManager::SRX1 : SRXManager::SRX2; };
@@ -3233,10 +3268,17 @@ bool JobThread::acquireBarcodeAndOcr()
 	if (winner == 0) {
 		ct::logger::error("[Acq] No barcode found on either reader - saving as No_Barcode");
 		emit barcodeDecoded("No_Barcode");
+		emit unitBarcode(unitID, "No_Barcode");
+		if (sd._setupRegionPitchMode) emit incrementProgress(); //barcode step
+		if (InspectionThread::instance().isActive())
+			InspectionThread::instance().reportSkipped(unitID, "OCR", "no barcode");
+		else if (sd._setupRegionPitchMode)
+			emit incrementProgress(); //keep the accounting when inspection is inactive
 		return true; //run continues, no OCR image for this board
 	}
 
 	emit barcodeDecoded(barcode);
+	emit unitBarcode(unitID, barcode);
 
 	//the non-barcode side faces the label text: get its capture for OCR
 	const int loser = (winner == 1) ? 2 : 1;
@@ -3267,6 +3309,8 @@ bool JobThread::acquireBarcodeAndOcr()
 		os_tool::goSleep(20);
 	}
 
+	bool ocrEnqueued = false;
+
 	if (ocrImg.isNull()) {
 		ct::logger::error("[Acq] No OCR image received from reader %d within %dms - OCR skipped for this board",
 			loser, imageTimeoutMs);
@@ -3274,15 +3318,26 @@ bool JobThread::acquireBarcodeAndOcr()
 	else if (InspectionThread::instance().isActive()) {
 		FrameInfo info;
 		info.type = "srx_ocr";
-		info.viewID = "OCR";
+		info.viewID = unitID; //ties the OCR result back to its unit
 		info.opticID = loserID;
 		info.cameraID = loserID;
 		info.width = ocrImg.width();
 		info.height = ocrImg.height();
 		InspectionThread::instance().enqueue(info, ocrImg);
+		ocrEnqueued = true;
 	}
 	else {
 		ct::logger::info("[Acq] OCR image from reader %d captured (inspection inactive, image saved only)", loser);
+	}
+
+	if (sd._setupRegionPitchMode) emit incrementProgress(); //barcode step done
+
+	if (!ocrEnqueued) {
+		//no OCR result will come for this unit - close it out
+		if (InspectionThread::instance().isActive())
+			InspectionThread::instance().reportSkipped(unitID, "OCR", "no OCR image");
+		else if (sd._setupRegionPitchMode)
+			emit incrementProgress();
 	}
 
 	return true;
@@ -3406,6 +3461,90 @@ void JobThread::acquire3DImages()
 
 			scan(l.id, l.start_point, l.end_point, optic, waitImage);
 			firstRun = false;
+		}
+	}
+
+	MachineController::instance().logTime("3D Acquisition");
+}
+
+void JobThread::acquire3DImagesPitch()
+{
+	ScopedTimeLogger Stimer("[Acq] Total 3D Acquisition Time (pitch)");
+	MachineController::instance().trackTime("3D Acquisition");
+
+	auto& sd = SystemData::instance();
+	if (!sd._pitchP1Set) {
+		ct::logger::error("[Acq] Pitch mode: point 1 not taught - 3D scan skipped");
+		return;
+	}
+
+	const bool scanAlongY = sd.isLineScanAxisY();
+	const double halfLen = std::max(0.1, sd._pitchScanLen_mm.load()) / 2.0;
+	const int unitsX = std::max(1, (int)sd._unitsX);
+	const int unitsY = std::max(1, (int)sd._unitsY);
+
+	//scan the intensity-carrying optic first, same rule as acquire3DImages
+	std::deque<QString> opticsSeq;
+	int smallestExposure = 999999999;
+	QString smallestKey = "";
+
+	for (auto o : *m_optics3D) {
+		if (o.exposure < smallestExposure) {
+			smallestExposure = o.exposure;
+			smallestKey = o.id;
+		}
+
+		if (o.intensity) opticsSeq.push_front(o.id);
+		else opticsSeq.push_back(o.id);
+	}
+
+	if (opticsSeq.size()) {
+		if (!(*m_optics3D)[opticsSeq.front()].intensity) {
+			(*m_optics3D)[smallestKey].intensity = true;
+		}
+	}
+
+	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
+		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+
+			const double baseX = sd._pitchP1x + ix * sd._pitchX;
+			const double baseY = sd._pitchP1y + iy * sd._pitchY;
+
+			dat::WorldCoordinate start, end;
+			start.wx = end.wx = baseX;
+			start.wy = end.wy = baseY;
+			start.wz = end.wz = sd._pitchP1z;
+
+			//scan of the recipe length, centered on the unit
+			if (scanAlongY) {
+				start.wy = baseY - halfLen;
+				end.wy = baseY + halfLen;
+			}
+			else {
+				start.wx = baseX - halfLen;
+				end.wx = baseX + halfLen;
+			}
+
+			const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+			ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
+				scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
+
+			bool firstRun = true;
+			for (auto o : opticsSeq) {
+				if (m_stopRun) break;
+
+				ProfilerManager::instance().getFrame(m_profilerID)->stitchID = "";
+				ProfilerManager::instance().getFrame(m_profilerID)->postTask.rotationalAngle = 0.0;
+
+				auto optic = (*m_optics3D)[o];
+				if (!firstRun) optic.intensity = false;
+
+				bool waitImage = (SystemData::instance().getLaserType() != "SmartRay");
+				scan(unitID, start, end, optic, waitImage);
+				firstRun = false;
+			}
+
+			if (!m_stopRun) emit incrementProgress(); //3D scan step done for this unit
 		}
 	}
 
@@ -4870,12 +5009,21 @@ void JobThread::run2D3D() {
 	m_stopRun = false;
 	preAcquisition();
 
-	//2D camera acquisition replaced for Pogo: read the barcode with the SR-X
-	//readers at the middle of the 3D scan area and capture the OCR-side image
-	const bool barcodeOk = acquireBarcodeAndOcr();
+	auto& sd = SystemData::instance();
 
-	//only proceed to the 3D scan when the barcode was read
-	if (barcodeOk) acquire3DImages();
+	//2D camera acquisition replaced for Pogo: barcode via the SR-X readers,
+	//then the 3D scan - each gated by its recipe checkbox
+	bool barcodeOk = true;
+	if (sd._pitchEnableBarcode) barcodeOk = acquireBarcodeAndOcr();
+	else ct::logger::info("[Acq] Barcode flow disabled in recipe, skipped");
+
+	if (sd._pitchEnable3D && barcodeOk) {
+		if (sd._setupRegionPitchMode) acquire3DImagesPitch();
+		else acquire3DImages();
+	}
+	else if (!sd._pitchEnable3D) {
+		ct::logger::info("[Acq] 3D scan disabled in recipe, skipped");
+	}
 
 	postAcquisition();
 	if (!m_stopRun) emit acquisitionDone();
