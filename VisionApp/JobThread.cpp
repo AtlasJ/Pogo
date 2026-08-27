@@ -5198,8 +5198,16 @@ void JobThread::jogLaserBasedOnFiducial(double x, double y, double z, QString ty
 	return jog(x, y, z, type);
 }
 
+void JobThread::jogUser(double x, double y, double z, QString type, bool waitJogDone)
+{
+	m_stopRun = false; //stale stop flag must not abort waitAxis
+	jog(x, y, z, type, waitJogDone);
+}
+
 void JobThread::jogSnap(double x, double y, double z, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	jog(x, y, z, "2D");
 	if (SystemData::instance()._snapDelay_ms != 0) os_tool::doNothing(SystemData::instance()._snapDelay_ms);
 	snapOptic(optic, "", "");
@@ -5218,6 +5226,8 @@ void JobThread::jogBasedOnFiducial(double x, double y, double z, QString type, b
 
 void JobThread::jogLeft(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::X;
@@ -5231,6 +5241,8 @@ void JobThread::jogLeft(double mm, const OpticsInfo& optic)
 
 void JobThread::jogRight(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::X;
@@ -5244,6 +5256,8 @@ void JobThread::jogRight(double mm, const OpticsInfo& optic)
 
 void JobThread::jogBack(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Y;
@@ -5257,6 +5271,8 @@ void JobThread::jogBack(double mm, const OpticsInfo& optic)
 
 void JobThread::jogFront(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Y;
@@ -5270,6 +5286,8 @@ void JobThread::jogFront(double mm, const OpticsInfo& optic)
 
 void JobThread::jogUp(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Z;
@@ -5283,6 +5301,8 @@ void JobThread::jogUp(double mm, const OpticsInfo& optic)
 
 void JobThread::jogDown(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Z;
