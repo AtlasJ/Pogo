@@ -578,8 +578,8 @@ void VisionApp::connectJobThread() {
 
 	//production inspection worker (OCR + 3D height); idle until production starts
 	QObject::connect(&InspectionThread::instance(), &InspectionThread::inspectionResult, this,
-		[=](QString algo, bool pass, QString detail) {
-			addLogLine(QString("[Inspection] %1: %2 (%3)").arg(algo, pass ? "PASS" : "FAIL", detail));
+		[=](QString unitID, QString algo, bool pass, QString detail) {
+			addLogLine(QString("[Inspection] %1 %2: %3 (%4)").arg(unitID, algo, pass ? "PASS" : "FAIL", detail));
 		}, Qt::QueuedConnection);
 	InspectionThread::instance().start();
 }

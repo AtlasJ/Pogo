@@ -3363,6 +3363,11 @@ QToolButton:hover {
                       </column>
                       <column>
                        <property name="text">
+                        <string>XY Unit</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
                         <string>Barcode</string>
                        </property>
                       </column>
