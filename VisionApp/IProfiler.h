@@ -74,6 +74,10 @@ public:
 		return false;
 	}
 
+	//Microns of height per grey level, so a caller can turn raw buffer values into a real
+	//measurement. 0.0 when the backend does not work that way.
+	virtual double getZPitchUm() const { return 0.0; }
+
 	//Raw dimensions of the last batch the driver received, BEFORE any resize or rotate. The
 	//processed height map is stretched by the pitch constants and the divider, so its size is
 	//not the profile count and must never be used as one. Returns false when unsupported.

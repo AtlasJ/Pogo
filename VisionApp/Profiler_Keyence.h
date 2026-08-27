@@ -100,7 +100,7 @@ public:
 	}
 
 	//Keyence specific - useful during bring-up, not part of IProfiler
-	const double getZPitchUm() const { return m_zPitchUm; }
+	double getZPitchUm() const override { return m_zPitchUm; }
 	const double getMeasuredFovMm() const { return m_measuredFovMm; }
 	const QString& getHeadModel() const { return m_headModel; }
 

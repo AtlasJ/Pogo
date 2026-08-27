@@ -3029,6 +3029,73 @@ void JobThread::verifyLaserAlignment(dat::WorldCoordinate currentPoint)
 
 /* ------------------------------------------------------- Profiler Scan Test */
 
+namespace {
+
+	/*
+	* Height statistics taken from the RAW batch, where 0 means "no measurement".
+	*
+	* This exists because min/max off the PROCESSED height map is not a measurement of
+	* anything. rotate_heightMap resizes with M_BICUBIC, and interpolating between a real
+	* height (~28000) and an invalid marker (0) rings past both ends of the real range - on
+	* Codetrace-CK that turned a true maximum of 32865 into a reported 45572, i.e. +10.2 mm
+	* on a sensor with +/-7.3 mm of range. Percentiles off the raw buffer are immune to that.
+	*
+	* A 65536-bin histogram is the cheapest exact way to get percentiles out of uint16, and
+	* one pass over a 56 Mpx batch costs tens of milliseconds - irrelevant for a diagnostic.
+	*/
+	struct HeightStats {
+		bool    ok = false;
+		quint64 total = 0;
+		quint64 valid = 0;
+		int     lo = 0, p01 = 0, p50 = 0, p99 = 0, hi = 0;   //grey levels
+	};
+
+	HeightStats rawHeightStats(MIL_ID mBuf)
+	{
+		HeightStats s;
+		if (mBuf == M_NULL) return s;
+
+		const MIL_INT w = mtrx::get_width(mBuf);
+		const MIL_INT h = mtrx::get_height(mBuf);
+		if (w <= 0 || h <= 0) return s;
+
+		MIL_UINT16* base = M_NULL;
+		MIL_INT pitch = 0;
+		MbufInquire(mBuf, M_HOST_ADDRESS, &base);
+		MbufInquire(mBuf, M_PITCH, &pitch);
+		if (!base) return s;
+
+		std::vector<quint64> hist(65536, 0);
+		for (MIL_INT r = 0; r < h; ++r) {
+			const MIL_UINT16* line = base + r * pitch;
+			for (MIL_INT c = 0; c < w; ++c) ++hist[line[c]];
+		}
+
+		s.total = quint64(w) * quint64(h);
+		s.valid = s.total - hist[0];
+		s.ok = true;
+		if (s.valid == 0) return s;
+
+		auto pct = [&](double frac) {
+			const quint64 target = quint64(double(s.valid) * frac);
+			quint64 run = 0;
+			for (int g = 1; g < 65536; ++g) {
+				run += hist[g];
+				if (run >= target) return g;
+			}
+			return 65535;
+		};
+
+		s.p01 = pct(0.01);
+		s.p50 = pct(0.50);
+		s.p99 = pct(0.99);
+		for (int g = 1; g < 65536; ++g)  { if (hist[g]) { s.lo = g; break; } }
+		for (int g = 65535; g >= 1; --g) { if (hist[g]) { s.hi = g; break; } }
+		return s;
+	}
+
+} // namespace
+
 void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
 	bool saveImages, bool returnToStart)
 {
@@ -3449,23 +3516,73 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 	* re-analysis should start from - and it is worth having even when the height map
 	* downstream failed to build.
 	*/
-	if (saveImages) {
+	//Taken unconditionally - the statistics below are worth having even when images are not
+	//being written, and takeLastRawFrame() has to be called once either way to release the
+	//driver's hold on the pool buffers.
+	{
 		mtrx::SharedMilID rawHeight, rawIntensity;
 
 		if (profiler->takeLastRawFrame(rawHeight, rawIntensity) && rawHeight) {
 			const MIL_ID mRawH = rawHeight->id();
-			MbufSaveA((dir + QStringLiteral("raw_heightmap.tiff")).toUtf8().constData(), mRawH);
 
 			out << "\n  Raw height map  : " << mtrx::get_width(mRawH) << " x " << mtrx::get_height(mRawH)
-				<< " px, 16-bit   -> raw_heightmap.tiff\n";
-			out << "                    grey = height; recover microns with\n";
-			out << "                    (grey - 32768) * zPitchUm, and 0 means INVALID.\n";
+				<< " px, 16-bit\n";
 
-			if (rawIntensity) {
+			const HeightStats hs = rawHeightStats(mRawH);
+			const double zPitch = profiler->getZPitchUm();
+
+			if (hs.ok && hs.valid > 0) {
+				auto um = [&](int grey) { return (double(grey) - 32768.0) * zPitch; };
+
+				out << "\n  Valid points    : " << hs.valid << " of " << hs.total
+					<< "   (" << QString::number(100.0 * double(hs.valid) / double(hs.total), 'f', 1) << "%)\n";
+				out << "                    0 means no measurement, so empty space around the part\n";
+				out << "                    counts here too - judge this against how much of the\n";
+				out << "                    scan the part actually occupies.\n";
+
+				if (zPitch > 0.0) {
+					out << "\n  Height spread (raw, 0 excluded; um relative to reference distance):\n";
+					out << "    min           : " << QString::number(um(hs.lo), 'f', 1) << " um\n";
+					out << "    1st pct       : " << QString::number(um(hs.p01), 'f', 1) << " um\n";
+					out << "    median        : " << QString::number(um(hs.p50), 'f', 1) << " um\n";
+					out << "    99th pct      : " << QString::number(um(hs.p99), 'f', 1) << " um\n";
+					out << "    max           : " << QString::number(um(hs.hi), 'f', 1) << " um\n";
+					out << "                    Percentiles, not min/max, are the honest summary: a\n";
+					out << "                    handful of stray peaks moves the extremes a long way.\n";
+
+					//The 8060 measures +/-7.3 mm about the reference distance. Anything beyond that
+					//cannot be a real height, so it is either a stray peak or the head is mounted
+					//at the wrong standoff - which is worth saying out loud, not leaving to be read
+					//off a number.
+					const double limit = 7300.0;
+					if (std::abs(um(hs.p50)) > limit) {
+						out << "\n  WARNING: the median height is outside the sensor's +/-7.3 mm range.\n";
+						out << "  The head standoff is wrong - it wants 64 mm to the target.\n";
+					}
+					else if (std::abs(um(hs.p01)) > limit || std::abs(um(hs.p99)) > limit) {
+						out << "\n  WARNING: more than 1% of measured points fall outside +/-7.3 mm.\n";
+						out << "  Part height variation is exceeding the measuring window.\n";
+					}
+				}
+			}
+			else if (hs.ok) {
+				out << "\n  Valid points    : NONE - every point in the batch is 0 (no measurement).\n";
+				out << "                    The laser line never came back. Check standoff first,\n";
+				out << "                    then exposure.\n";
+			}
+
+			if (saveImages) {
+				MbufSaveA((dir + QStringLiteral("raw_heightmap.tiff")).toUtf8().constData(), mRawH);
+				out << "\n  Saved           : raw_heightmap.tiff\n";
+				out << "                    grey = height; recover microns with\n";
+				out << "                    (grey - 32768) * " << QString::number(zPitch, 'f', 2) << ", and 0 means INVALID.\n";
+			}
+
+			if (rawIntensity && saveImages) {
 				const MIL_ID mRawI = rawIntensity->id();
 				MbufSaveA((dir + QStringLiteral("raw_intensity.tiff")).toUtf8().constData(), mRawI);
-				out << "  Raw intensity   : " << mtrx::get_width(mRawI) << " x " << mtrx::get_height(mRawI)
-					<< " px, 8-bit    -> raw_intensity.tiff\n";
+				out << "                    raw_intensity.tiff, " << mtrx::get_width(mRawI)
+					<< " x " << mtrx::get_height(mRawI) << " px, 8-bit\n";
 			}
 
 			out << "                    One row per profile, one column per sample point, in\n";
@@ -3493,9 +3610,14 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 		const MIL_INT hh = mtrx::get_height(mHeight);
 
 		out << "\n  Height map      : " << hw << " x " << hh << " px   (after resize and rotate)\n";
-		out << "  Height min/max  : " << QString::number(mtrx::get_min(mHeight), 'f', 1)
-			<< " / " << QString::number(mtrx::get_max(mHeight), 'f', 1) << " grey\n";
 
+		/*
+		* Deliberately NOT reporting min/max here. rotate_heightMap resizes with M_BICUBIC,
+		* and interpolating between a real height and the 0 that means "no measurement" rings
+		* past both ends of the real range: a batch whose true maximum was 32865 reported
+		* 45572 through this path, which converts to +10.2 mm on a sensor with +/-7.3 mm of
+		* range. Use the raw percentiles above; they cannot be distorted that way.
+		*/
 		if (mtrx::get_max(mHeight) <= 0.0) {
 			out << "  WARNING: the height map is entirely zero. 0 means invalid on this sensor,\n";
 			out << "  so the laser saw nothing - a different fault from receiving no triggers.\n";
@@ -3551,26 +3673,70 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 
 			if (trigRate > 0.0) {
 				const double ratio = encRate / trigRate;
-				out << "    ratio          : " << QString::number(ratio, 'f', 3) << " encoder counts per trigger\n";
+				const int div = std::max(1, optic->divider);
 
-				if (ratio > 1.15) {
-					out << "\n  The controller is accepting FEWER triggers than the encoder produced.\n";
-					out << "  Two explanations, and one slow run separates them:\n";
-					out << "    - Saturation. The demanded rate is above the sampling frequency, so the\n";
-					out << "      surplus is discarded and TRG_PASS fires. The ratio would then FALL\n";
-					out << "      towards 1.0 at a lower scan speed.\n";
-					out << "    - A fixed pitch-between-triggers setting on the controller. The ratio\n";
-					out << "      would then stay put at any speed.\n";
-					out << "  Re-run this at roughly a third of the speed and compare the ratio.\n";
-					out << "  If it is saturation, the ceiling is the sampling frequency: keep\n";
-					out << "  speed_mm_s * 1000 / (yPitchUm * divider) below it.\n";
+				out << "    ratio          : " << QString::number(ratio, 'f', 3)
+					<< " encoder counts per trigger   (expected " << div << " at divider " << div << ")\n";
+
+				/*
+				* The expected ratio is the DIVIDER, not 1.0 - sub-sampling deliberately takes
+				* one encoder count in N. Comparing against 1.0 made every correct run at
+				* divider > 1 look like a fault.
+				*/
+				if (ratio > double(div) * 1.15) {
+					out << "\n  The controller accepted FEWER triggers than the divider asks for.\n";
+					out << "  That is saturation: the demanded rate is above the sampling frequency,\n";
+					out << "  so the surplus is discarded and TRG_PASS fires (manual p.5-5). The pitch\n";
+					out << "  you actually got is coarser than the one you set, and it moves with\n";
+					out << "  speed - so it cannot be written into a constant.\n";
+					out << "  Fix by raising the divider or lowering the speed: keep\n";
+					out << "  speed_mm_s * 1000 / (yPitchUm * divider) under the sampling frequency.\n";
+				}
+
+				/*
+				* Triggers outnumbering encoder counts is impossible for encoder-clocked
+				* triggering measured against NET displacement - unless the axis reverses.
+				* With 2-phase decoding a dither nets out in the counter while every accepted
+				* edge still fires a trigger, so the profiles end up UNEVENLY spaced: locally
+				* bunched where the gantry hesitated. That is worse than saturation, which at
+				* least drops profiles evenly and leaves a correctable scale error.
+				*
+				* Observed on Codetrace-CK at 1 mm/s: 21462 triggers against 17968 counts, and
+				* the resulting height map measured 2x wrong along the scan while looking
+				* entirely plausible. It took a raw-buffer analysis to find, hence this check.
+				*/
+				if (encDelta != 0 && trigDelta > qint64(std::abs(double(encDelta)) * 1.02)) {
+					const double excess = 100.0 * (double(trigDelta) / std::abs(double(encDelta)) - 1.0);
+					out << "\n  *** WARNING: " << QString::number(excess, 'f', 1)
+						<< "% MORE TRIGGERS THAN ENCODER COUNTS ***\n";
+					out << "  Encoder-clocked triggers cannot outnumber net encoder counts unless the\n";
+					out << "  axis changed direction. That means the gantry dithered - stick-slip at\n";
+					out << "  low speed is the usual cause - and the extra profiles are NOT evenly\n";
+					out << "  spaced, so this height map is locally stretched and squeezed.\n";
+					out << "  It will look plausible and measure wrong. RAISE THE SCAN SPEED and\n";
+					out << "  compare a feature's size between runs before trusting this scan.\n";
 				}
 			}
 		}
 
-		if (encDelta != 0 && travelled_mm > 0.0) {
+		/*
+		* Only trustworthy when the batch did NOT fill before the move ended. Once the batch
+		* completes the counters stop advancing while the gantry keeps going, so dividing the
+		* FULL travel by a delta that covers only part of it inflates the answer. That is what
+		* produced 4.33 um/count on runs whose true pitch was 4.00 - the encoder delta had
+		* landed on the batch size (17553 against a batch of 17500) while travel included the
+		* 6 mm overshoot. Withhold it rather than print a number I know is high.
+		*/
+		if (encDelta != 0 && travelled_mm > 0.0 && !acquired) {
 			out << "  Encoder scaling : " << QString::number(travelled_mm * 1000.0 / double(encDelta), 'f', 4)
-				<< " um per encoder count   (MEASURED)\n";
+				<< " um per encoder count   (MEASURED over the whole move)\n";
+		}
+		else if (encDelta != 0 && travelled_mm > 0.0) {
+			out << "  Encoder scaling : not measurable this run - the batch filled before the move\n";
+			out << "                    ended, so the counters stopped part way while the gantry\n";
+			out << "                    carried on. Measure it from a run that times out: ask for a\n";
+			out << "                    scan longer than the travel available, then this figure\n";
+			out << "                    covers the whole move and is exact.\n";
 		}
 		else if (travelled_mm > 0.0) {
 			out << "\n  The encoder counter did not move while the gantry travelled "
