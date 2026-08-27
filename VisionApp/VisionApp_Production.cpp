@@ -253,6 +253,10 @@ void VisionApp::startProduction()
 
 	_processType = ProcessType::PRODUCTION;
 
+	//fresh run: clear the unit status table and the machine status log
+	ui.tableWidget_prodStatus->setRowCount(0);
+	clearErrorLogs();
+
 	//production runs inspect: OCR + 3D height on the acquired images
 	InspectionThread::instance().setActive(true);
 
@@ -319,6 +323,10 @@ void VisionApp::startProductionS()
 
 
 	_processType = ProcessType::PRODUCTION;
+
+	//fresh run: clear the unit status table and the machine status log
+	ui.tableWidget_prodStatus->setRowCount(0);
+	clearErrorLogs();
 
 	//production runs inspect: OCR + 3D height on the acquired images
 	InspectionThread::instance().setActive(true);
