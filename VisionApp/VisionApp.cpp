@@ -1861,6 +1861,18 @@ void VisionApp::connectSignalAndSlot()
 		showMsg(tr("Line scan axis changed. Please reassign line scans for the new axis to take effect."));
 	});
 
+	connect(ui.comboBox_camRotation, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
+		SystemData::instance()._camImageRotation = index * 90;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("CAM_ROTATION"), QString::number(index * 90));
+	});
+
+	connect(ui.checkBox_homeOnStartup, &QCheckBox::toggled, this, [=](bool checked) {
+		SystemData::instance()._homeOnStartup = checked;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("HOME_ON_STARTUP"), checked ? QStringLiteral("ON") : QStringLiteral("OFF"));
+	});
+
 	connect(ui.checkBox_lscStrobeMode, &QCheckBox::toggled, this, [=](bool checked) {
 		SystemData::instance()._lscStrobeMode = checked;
 		saveRecipeConfig();

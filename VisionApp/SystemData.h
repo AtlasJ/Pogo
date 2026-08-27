@@ -127,6 +127,10 @@ public:
 
 	std::atomic<bool> _lscStrobeMode = false; //light controller default mode: strobe (trigger) vs continuous
 
+	std::atomic<int> _camImageRotation = 0; //camera alignment rotation option: 0/90/180/270, applied in ImageManager preprocessing
+
+
+
 	std::atomic<bool> _bypassInspection = false;
 
 	std::atomic<bool> _Machine_Ready = true;     // Refer to Machine

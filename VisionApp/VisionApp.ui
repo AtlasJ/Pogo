@@ -14358,6 +14358,37 @@ QToolButton:hover {
                         </widget>
                        </item>
                        <item>
+                        <widget class="QLabel" name="label_camRotation">
+                         <property name="text">
+                          <string>Rotate:</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QComboBox" name="comboBox_camRotation">
+                         <item>
+                          <property name="text">
+                           <string>No Rotation</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>90</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>180</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>270</string>
+                          </property>
+                         </item>
+                        </widget>
+                       </item>
+                       <item>
                         <widget class="QToolButton" name="toolButton_6">
                          <property name="toolTip">
                           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;1. Jog to somewhere with circular shape. &lt;/p&gt;&lt;p&gt;2. Set the diameter according to the size of the circle (pixel)&lt;/p&gt;&lt;p&gt;3. Click &amp;quot;Perform Camera Alignment&amp;quot;&lt;/p&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;p&gt;Purpose: To ensure that camera and gantry are coplanar. Otherwise stitching plane image will not be accurate.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>

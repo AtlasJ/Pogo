@@ -663,6 +663,36 @@ void ImageManager::process_sizing(FrameInfo& info)
 	}
 }
 
+void ImageManager::rotate_image_discrete(FrameInfo& info)
+{
+	const int angle = SystemData::instance()._camImageRotation;
+	if (angle == 0) return;
+	if (!info.pImage) return;
+	if (info.type == ct::s_height_map) return; //camera images only
+
+	ScopedTimeLogger stl("[IM] Rotate camera image " + std::to_string(angle));
+
+	MIL_ID src = info.pImage->id();
+	MIL_INT band = MbufInquire(src, M_SIZE_BAND, M_NULL);
+	MIL_INT type = MbufInquire(src, M_TYPE, M_NULL);
+	MIL_INT w = MbufInquire(src, M_SIZE_X, M_NULL);
+	MIL_INT h = MbufInquire(src, M_SIZE_Y, M_NULL);
+	MIL_INT attribute = MbufInquire(src, M_EXTENDED_ATTRIBUTE, M_NULL);
+
+	//90/270 swap the buffer dimensions
+	MIL_INT dw = (angle == 180) ? w : h;
+	MIL_INT dh = (angle == 180) ? h : w;
+
+	MIL_ID mDst = M_NULL;
+	MbufAllocColor(M_DEFAULT_HOST, band, dw, dh, type, attribute, &mDst);
+	MimRotate(src, mDst, angle, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_DEFAULT, M_NEAREST_NEIGHBOR + M_OVERSCAN_CLEAR);
+
+	info.pImage = mtrx::MbufPoolManager::instance().attach(mDst);
+	info.width = (int)dw;
+	info.height = (int)dh;
+	info.bufferSize = (int)(band * dw * dh);
+}
+
 void ImageManager::preprocess_done(FrameInfo& info)
 {
 	auto id = util::combineID(info.viewID, info.opticID);
@@ -670,6 +700,9 @@ void ImageManager::preprocess_done(FrameInfo& info)
 	ct::logger::debug("[IM] Done preprocessing");
 	auto s = QString("[IM] Preprocess done: %1").arg(id);
 	ScopedTimeLogger Stimer(s.toStdString().c_str());
+
+	//camera alignment rotation option (90/180/270), applied before the image leaves preprocessing
+	rotate_image_discrete(info);
 
 	ct::logger::debug("[IM] Emit image preprocessed");
 	emit imagePreprocessed(info);

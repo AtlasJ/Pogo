@@ -1381,6 +1381,7 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("stitchingMethod"), SystemData::instance()._stitchingMethod);
 	obj.insert(QStringLiteral("lineScanAxis"), (int)SystemData::instance()._lineScanAxis);
 	obj.insert(QStringLiteral("lscStrobeMode"), (bool)SystemData::instance()._lscStrobeMode);
+	obj.insert(QStringLiteral("camImageRotation"), (int)SystemData::instance()._camImageRotation);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1937,6 +1938,15 @@ bool VisionApp::loadRecipeConfig()
 		}
 		//LSC connects before this config loads, so apply the configured mode here
 		LSCManager::instance().setMode(SystemData::instance()._lscStrobeMode ? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
+
+		SystemData::instance()._camImageRotation = jsonHelper::getInteger(root, QStringLiteral("camImageRotation"), 0);
+		{
+			QSignalBlocker blocker(ui.comboBox_camRotation);
+			ui.comboBox_camRotation->setCurrentIndex(SystemData::instance()._camImageRotation / 90);
+		}
+
+		{
+		}
 		//ScaleManager::instance().set_world_scale(jsonHelper::getDouble(root, QStringLiteral("worldScale"), 0.291716));
 		if (!root.contains(QStringLiteral("laserApi")) || root.value(QStringLiteral("laserApi")).toString().isEmpty()) {
 			laserApi = currentSensorApi;
