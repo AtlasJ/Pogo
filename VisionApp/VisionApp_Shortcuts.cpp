@@ -1110,6 +1110,10 @@ void VisionApp::connectShortcuts()
 		if (!ok) return;
 
 		_jogDistance = text.simplified().toDouble();
+
+		//keep the motion page step field in sync
+		QSignalBlocker blocker(ui.lineEdit_stepMM);
+		ui.lineEdit_stepMM->setText(QString::number(_jogDistance));
 	});
 
 	QShortcut *shortcut_ctrlk = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_K), this);
