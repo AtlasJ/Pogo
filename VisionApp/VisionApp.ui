@@ -3363,6 +3363,11 @@ QToolButton:hover {
                       </column>
                       <column>
                        <property name="text">
+                        <string>XY Unit</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
                         <string>Barcode</string>
                        </property>
                       </column>
@@ -9871,6 +9876,181 @@ QToolButton:hover {
                        <property name="text">
                         <string notr="true">Setup Region</string>
                        </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <layout class="QHBoxLayout" name="horizontalLayout_setupRegionMode">
+                       <item>
+                        <widget class="QLabel" name="label_setupRegionMode">
+                         <property name="font">
+                          <font>
+                           <pointsize>9</pointsize>
+                          </font>
+                         </property>
+                         <property name="text">
+                          <string>Mode:</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QComboBox" name="comboBox_setupRegionMode">
+                         <property name="font">
+                          <font>
+                           <pointsize>9</pointsize>
+                          </font>
+                         </property>
+                         <item>
+                          <property name="text">
+                           <string>Plane</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>Pitch</string>
+                          </property>
+                         </item>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                     <item>
+                      <widget class="QWidget" name="widget_pitchSetup" native="true">
+                       <property name="styleSheet">
+                        <string notr="true">QCheckBox { color: #F0F0F0; }
+QLabel { color: #F0F0F0; }</string>
+                       </property>
+                       <layout class="QGridLayout" name="gridLayout_pitchSetup">
+                        <item row="0" column="0">
+                         <widget class="QToolButton" name="toolButton_setPitchP1">
+                          <property name="minimumSize">
+                           <size>
+                            <width>130</width>
+                            <height>26</height>
+                           </size>
+                          </property>
+                          <property name="text">
+                           <string>Set Point 1 (Top Left)</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="0" column="1">
+                         <widget class="QToolButton" name="toolButton_setPitchP2">
+                          <property name="minimumSize">
+                           <size>
+                            <width>130</width>
+                            <height>26</height>
+                           </size>
+                          </property>
+                          <property name="text">
+                           <string>Set Point 2 (Diagonal)</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="1" column="0">
+                         <widget class="QLabel" name="label_pitchP1">
+                          <property name="text">
+                           <string>P1: not set</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="1" column="1">
+                         <widget class="QLabel" name="label_pitchP2">
+                          <property name="text">
+                           <string>P2: not set</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="2" column="0">
+                         <widget class="QLabel" name="label_pitchXCap">
+                          <property name="text">
+                           <string>Pitch X (mm)</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="2" column="1">
+                         <widget class="QLineEdit" name="lineEdit_pitchX">
+                          <property name="text">
+                           <string>0</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="3" column="0">
+                         <widget class="QLabel" name="label_pitchYCap">
+                          <property name="text">
+                           <string>Pitch Y (mm)</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="3" column="1">
+                         <widget class="QLineEdit" name="lineEdit_pitchY">
+                          <property name="text">
+                           <string>0</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="4" column="0">
+                         <widget class="QLabel" name="label_unitsXCap">
+                          <property name="text">
+                           <string>X Units</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="4" column="1">
+                         <widget class="QLineEdit" name="lineEdit_unitsX">
+                          <property name="text">
+                           <string>1</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="5" column="0">
+                         <widget class="QLabel" name="label_unitsYCap">
+                          <property name="text">
+                           <string>Y Units</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="5" column="1">
+                         <widget class="QLineEdit" name="lineEdit_unitsY">
+                          <property name="text">
+                           <string>1</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="6" column="0">
+                         <widget class="QCheckBox" name="checkBox_pitchBarcode">
+                          <property name="text">
+                           <string>Barcode</string>
+                          </property>
+                          <property name="checked">
+                           <bool>true</bool>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="6" column="1">
+                         <widget class="QCheckBox" name="checkBox_pitch3D">
+                          <property name="text">
+                           <string>3D</string>
+                          </property>
+                          <property name="checked">
+                           <bool>true</bool>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="7" column="0">
+                         <widget class="QLabel" name="label_pitchScanLenCap">
+                          <property name="text">
+                           <string>Scan Length (mm)</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item row="7" column="1">
+                         <widget class="QLineEdit" name="lineEdit_pitchScanLen">
+                          <property name="text">
+                           <string>10</string>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </widget>
                      </item>
                      <item>

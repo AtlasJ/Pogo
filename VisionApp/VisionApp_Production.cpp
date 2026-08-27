@@ -6,61 +6,149 @@
 #include "MachineController.h"
 #include "uidGenerator.h"
 #include "AuditLog.h"
+#include "AlgoManager.h"
 
 void VisionApp::initProductionUI() {
 	//NOTE: for hardware side, user can only turn on in this production page
 	// Only config can be toggle on off
 
-	//── live production status table: one row per board ──
+	//── page layout: Production Info + status table on the left, the production
+	//buttons and Production Config one column to the right ──
+	if (auto* page = qobject_cast<QGridLayout*>(ui.scrollAreaWidgetContents_4->layout())) {
+		//drop the old spacer between the first two columns
+		if (auto* sp = page->itemAtPosition(0, 1)) {
+			page->removeItem(sp);
+			delete sp;
+		}
+
+		//pull Production Info out of the left stack, move the rest (buttons + config) right
+		ui.gridLayout_160->removeWidget(ui.frame_analytics);
+		page->removeItem(ui.gridLayout_160);
+		ui.gridLayout_160->setParent(nullptr);
+
+		page->addWidget(ui.frame_analytics, 0, 0, Qt::AlignTop);
+		page->addLayout(ui.gridLayout_160, 0, 1, Qt::AlignTop);
+
+		//status table below Production Info; fixed height so only the table scrolls
+		page->addWidget(ui.tableWidget_prodStatus, 1, 0, 1, 2);
+	}
+	ui.tableWidget_prodStatus->setMinimumHeight(260);
+	ui.tableWidget_prodStatus->setMaximumHeight(420);
 	ui.tableWidget_prodStatus->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-	//result column bitmask kept in Qt::UserRole: bit0 = OCR passed, bit1 = 3D height passed
+	//pitch runs: algo results can finish after acquisition; close the progress
+	//bar when the inspection queue has fully drained (increments can drift when
+	//a unit produces no result, so this is the reliable closer)
+	auto* inspDrainTimer = new QTimer(this);
+	connect(inspDrainTimer, &QTimer::timeout, this, [=]() {
+		if (InspectionThread::instance().isIdle() && !AlgoManager::instance().isBusy()) {
+			inspDrainTimer->stop();
+			progressBarRelease();
+		}
+	});
+	connect(&_jobThread, &JobThread::acquisitionDone, this, [=]() {
+		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._setupRegionPitchMode) {
+			inspDrainTimer->start(500);
+		}
+	}, Qt::QueuedConnection);
+
+	//columns: 0 Time | 1 XY Unit | 2 Barcode | 3 OCR | 4 Pass/Fail
+	//result cell Qt::UserRole: pass bitmask (bit0 OCR, bit1 3D height)
+	//result cell Qt::UserRole+1: 1 = still inspecting (animated)
 	constexpr int kOcrPassBit = 1, kHeightPassBit = 2;
 
-	connect(&_jobThread, &JobThread::barcodeDecoded, this, [=](QString code) {
+	//find a unit's row by the unitID stored on its time item (newest first)
+	auto findUnitRow = [=](const QString& unitID) -> int {
+		auto* t = ui.tableWidget_prodStatus;
+		for (int r = t->rowCount() - 1; r >= 0; r--) {
+			auto* it = t->item(r, 0);
+			if (it && it->data(Qt::UserRole).toString() == unitID) return r;
+		}
+		return t->rowCount() - 1; //fallback: newest row
+	};
+
+	connect(&_jobThread, &JobThread::unitBarcode, this, [=](QString unitID, QString code) {
 		if (_processType != ProcessType::PRODUCTION) return;
-		if (code == "External_Barcode") return; //pre-acquisition placeholder, not a read result
 
 		auto* t = ui.tableWidget_prodStatus;
 		const int row = t->rowCount();
 		t->insertRow(row);
 
-		t->setItem(row, 0, new QTableWidgetItem(QTime::currentTime().toString("hh:mm:ss")));
+		auto* tItem = new QTableWidgetItem(QTime::currentTime().toString("hh:mm:ss"));
+		tItem->setData(Qt::UserRole, unitID);
+		t->setItem(row, 0, tItem);
+
+		//"unit_3_2" -> "3, 2"
+		QString xy = unitID;
+		if (unitID.startsWith("unit_")) {
+			auto parts = unitID.mid(5).split('_');
+			if (parts.size() == 2) xy = parts[0] + ", " + parts[1];
+		}
+		t->setItem(row, 1, new QTableWidgetItem(xy));
 
 		const bool codeOk = (code != "No_Barcode" && code != "Fail_to_read_barcode" && code != "ERROR");
 		auto* bItem = new QTableWidgetItem(code);
 		bItem->setForeground(codeOk ? QBrush(Qt::green) : QBrush(Qt::red));
-		t->setItem(row, 1, bItem);
+		t->setItem(row, 2, bItem);
 
-		t->setItem(row, 2, new QTableWidgetItem("-"));
+		t->setItem(row, 3, new QTableWidgetItem("-"));
 
-		auto* rItem = new QTableWidgetItem(codeOk ? "-" : "FAIL");
-		if (!codeOk) rItem->setForeground(QBrush(Qt::red));
+		auto* rItem = new QTableWidgetItem(codeOk ? "Inspecting" : "FAIL");
+		rItem->setForeground(codeOk ? QBrush(QColor(255, 191, 0)) : QBrush(Qt::red));
 		rItem->setData(Qt::UserRole, 0);
-		t->setItem(row, 3, rItem);
+		rItem->setData(Qt::UserRole + 1, codeOk ? 1 : 0);
+
+		//PASS requires only the algos enabled in the recipe
+		int required = 0;
+		if (SystemData::instance()._pitchEnableBarcode) required |= kOcrPassBit;
+		if (SystemData::instance()._pitchEnable3D) required |= kHeightPassBit;
+		if (required == 0) required = kOcrPassBit;
+		rItem->setData(Qt::UserRole + 2, required);
+
+		t->setItem(row, 4, rItem);
 
 		t->scrollToBottom();
 	}, Qt::QueuedConnection);
 
+	//animate the "Inspecting" cells so in-progress units are visible at a glance
+	auto* inspectAnimTimer = new QTimer(this);
+	connect(inspectAnimTimer, &QTimer::timeout, this, [=]() {
+		static int phase = 0;
+		phase = (phase + 1) % 4;
+		auto* t = ui.tableWidget_prodStatus;
+		for (int r = 0; r < t->rowCount(); r++) {
+			auto* rItem = t->item(r, 4);
+			if (rItem && rItem->data(Qt::UserRole + 1).toInt() == 1) {
+				rItem->setText(QStringLiteral("Inspecting") + QString(".").repeated(phase));
+			}
+		}
+	});
+	inspectAnimTimer->start(400);
+
 	connect(&InspectionThread::instance(), &InspectionThread::inspectionResult, this,
-		[=](QString algo, bool pass, QString detail) {
+		[=](QString unitID, QString algo, bool pass, QString detail) {
+			//pitch mode: each finished algo is a progress step
+			if (SystemData::instance()._setupRegionPitchMode) incrementProgressBar();
+
 			auto* t = ui.tableWidget_prodStatus;
 			if (t->rowCount() == 0) return;
-			const int row = t->rowCount() - 1;
+			const int row = findUnitRow(unitID);
+			if (row < 0) return;
 
 			if (algo == "OCR") {
 				auto* item = new QTableWidgetItem(detail.isEmpty() ? (pass ? "PASS" : "FAIL") : detail);
 				item->setForeground(pass ? QBrush(Qt::green) : QBrush(Qt::red));
-				t->setItem(row, 2, item);
+				t->setItem(row, 3, item);
 			}
 
-			auto* rItem = t->item(row, 3);
+			auto* rItem = t->item(row, 4);
 			if (!rItem) return;
 			if (rItem->text() == "FAIL") return; //already failed, stays failed
 
 			if (!pass) {
 				rItem->setText("FAIL");
 				rItem->setForeground(QBrush(Qt::red));
+				rItem->setData(Qt::UserRole + 1, 0);
 				return;
 			}
 
@@ -69,9 +157,11 @@ void VisionApp::initProductionUI() {
 			else if (algo == "3D Height") mask |= kHeightPassBit;
 			rItem->setData(Qt::UserRole, mask);
 
-			if ((mask & kOcrPassBit) && (mask & kHeightPassBit)) {
+			const int required = rItem->data(Qt::UserRole + 2).toInt();
+			if (required != 0 && (mask & required) == required) {
 				rItem->setText("PASS");
 				rItem->setForeground(QBrush(Qt::green));
+				rItem->setData(Qt::UserRole + 1, 0);
 			}
 		}, Qt::QueuedConnection);
 

@@ -1159,11 +1159,19 @@ void AlgoManager::doRunOcr(QImage fov)
 	timer.start();
 
 	AlgoOcrOutput out;
-	const AlgoOcrParams param = ocrParams();
+	AlgoOcrParams param = ocrParams();
 
 	do {
 		if (fov.isNull()) { out.message = "No image loaded"; break; }
-		if (param.roi1Geo.isEmpty()) { out.message = "OCR ROI 1 is not set"; break; }
+
+		//no ROI configured by the user: default to the centered 50% of the image
+		//(with PaddleOCR, which is on by default)
+		if (param.roi1Geo.isEmpty()) {
+			param.roi1Geo = QRectF(fov.width() * 0.25, fov.height() * 0.25,
+				fov.width() * 0.5, fov.height() * 0.5);
+			ct::logger::info("[AlgoOCR] ROI 1 not set - using default centered 50%% ROI (%.0fx%.0f)",
+				param.roi1Geo.width(), param.roi1Geo.height());
+		}
 
 		cv::Mat fovBgr = qimageToBgr(fov);
 		cv::Mat fovGray;
@@ -1236,7 +1244,10 @@ void AlgoManager::doRunOcr(QImage fov)
 			out.overlay.append(AlgoOverlayItem::makeText(out.roi2Text, t2.roiGeo.topLeft() - QPointF(0, 40), Qt::green, 24));
 		}
 
-		out.ok = true;
+		//recognizing nothing is a fail, not a pass (e.g. Paddle server missing
+		//or nothing readable in the ROI)
+		out.ok = !out.roi1Text.trimmed().isEmpty();
+		if (!out.ok && out.message.isEmpty()) out.message = "No text recognized";
 	} while (false);
 
 	out.elapsedMs = timer.elapsed();

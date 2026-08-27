@@ -1991,6 +1991,113 @@ void VisionApp::connectSignalAndSlot()
 		emit jogSnap(wx, wy, wz, _mainOptics[_camID]);
 	});
 
+	//── setup region mode: Plane (corner teach) vs Pitch (unit grid for the barcode flow) ──
+	{
+		auto applySetupRegionMode = [=]() {
+			const bool pitch = SystemData::instance()._setupRegionPitchMode;
+			ui.widget_pitchSetup->setVisible(pitch);
+
+			//plane-teach controls hide in pitch mode
+			for (QWidget* w : QVector<QWidget*>{
+				ui.toolButton_setFrontLeft, ui.toolButton_setBackRight,
+				ui.label_frontLeft, ui.label_backRight,
+				ui.toolButton_jogToTopLeft, ui.toolButton_jogToBottomRight,
+				ui.toolButton_collectPlaneImages }) {
+				w->setVisible(!pitch);
+			}
+		};
+		_applySetupRegionMode = applySetupRegionMode;
+		applySetupRegionMode();
+
+		connect(ui.comboBox_setupRegionMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
+			SystemData::instance()._setupRegionPitchMode = (index == 1);
+			applySetupRegionMode();
+			saveRecipeConfig();
+			AuditLog::instance().log(QStringLiteral("SETUP_REGION_MODE"), index == 1 ? QStringLiteral("PITCH") : QStringLiteral("PLANE"));
+		});
+
+		auto refreshPitchLabels = [=]() {
+			auto& sd = SystemData::instance();
+			ui.label_pitchP1->setText(sd._pitchP1Set
+				? QString("P1: %1, %2, %3").arg(sd._pitchP1x.load(), 0, 'f', 3).arg(sd._pitchP1y.load(), 0, 'f', 3).arg(sd._pitchP1z.load(), 0, 'f', 3)
+				: QStringLiteral("P1: not set"));
+		};
+		_refreshPitchLabels = refreshPitchLabels;
+
+		connect(ui.toolButton_setPitchP1, &QToolButton::clicked, this, [=]() {
+			double wx, wy, wz;
+			getCurrentPoint(wx, wy, wz);
+			auto& sd = SystemData::instance();
+			sd._pitchP1x = wx;
+			sd._pitchP1y = wy;
+			sd._pitchP1z = wz;
+			sd._pitchP1Set = true;
+			refreshPitchLabels();
+			saveRecipeConfig();
+			AuditLog::instance().log(QStringLiteral("PITCH_SET_P1"));
+		});
+
+		connect(ui.toolButton_setPitchP2, &QToolButton::clicked, this, [=]() {
+			auto& sd = SystemData::instance();
+			if (!sd._pitchP1Set) {
+				showMsg("Set point 1 (top left) first.");
+				return;
+			}
+
+			double wx, wy, wz;
+			getCurrentPoint(wx, wy, wz);
+
+			//point 2 is the diagonally adjacent unit toward bottom right: pitch is signed p2 - p1
+			sd._pitchX = wx - sd._pitchP1x;
+			sd._pitchY = wy - sd._pitchP1y;
+			ui.label_pitchP2->setText(QString("P2: %1, %2, %3").arg(wx, 0, 'f', 3).arg(wy, 0, 'f', 3).arg(wz, 0, 'f', 3));
+			{
+				QSignalBlocker b1(ui.lineEdit_pitchX);
+				QSignalBlocker b2(ui.lineEdit_pitchY);
+				ui.lineEdit_pitchX->setText(QString::number(sd._pitchX.load(), 'f', 3));
+				ui.lineEdit_pitchY->setText(QString::number(sd._pitchY.load(), 'f', 3));
+			}
+			saveRecipeConfig();
+			AuditLog::instance().log(QStringLiteral("PITCH_SET_P2"));
+		});
+
+		connect(ui.lineEdit_pitchX, &QLineEdit::editingFinished, this, [=]() {
+			SystemData::instance()._pitchX = ui.lineEdit_pitchX->text().toDouble();
+			saveRecipeConfig();
+		});
+		connect(ui.lineEdit_pitchY, &QLineEdit::editingFinished, this, [=]() {
+			SystemData::instance()._pitchY = ui.lineEdit_pitchY->text().toDouble();
+			saveRecipeConfig();
+		});
+		connect(ui.lineEdit_unitsX, &QLineEdit::editingFinished, this, [=]() {
+			int v = std::max(1, ui.lineEdit_unitsX->text().toInt());
+			ui.lineEdit_unitsX->setText(QString::number(v));
+			SystemData::instance()._unitsX = v;
+			saveRecipeConfig();
+		});
+		connect(ui.lineEdit_unitsY, &QLineEdit::editingFinished, this, [=]() {
+			int v = std::max(1, ui.lineEdit_unitsY->text().toInt());
+			ui.lineEdit_unitsY->setText(QString::number(v));
+			SystemData::instance()._unitsY = v;
+			saveRecipeConfig();
+		});
+
+		connect(ui.checkBox_pitchBarcode, &QCheckBox::toggled, this, [=](bool checked) {
+			SystemData::instance()._pitchEnableBarcode = checked;
+			saveRecipeConfig();
+		});
+		connect(ui.checkBox_pitch3D, &QCheckBox::toggled, this, [=](bool checked) {
+			SystemData::instance()._pitchEnable3D = checked;
+			saveRecipeConfig();
+		});
+		connect(ui.lineEdit_pitchScanLen, &QLineEdit::editingFinished, this, [=]() {
+			double v = ui.lineEdit_pitchScanLen->text().toDouble();
+			if (v <= 0) { v = 10.0; ui.lineEdit_pitchScanLen->setText("10"); }
+			SystemData::instance()._pitchScanLen_mm = v;
+			saveRecipeConfig();
+		});
+	}
+
 	connect(ui.toolButton_generateSetupRegion, &QToolButton::clicked, [=]() { 
 		generatePlane(_plane);
 		stitchPlaneImage(_plane);

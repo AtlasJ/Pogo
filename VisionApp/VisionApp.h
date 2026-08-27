@@ -14,6 +14,7 @@
 #include <QElapsedTimer>
 
 #include <fstream>
+#include <functional>
 #include <queue>
 #include <set>
 #include <array>
@@ -827,6 +828,10 @@ private:
 	void saveAlignmentConfig();
 	void loadAlignmentConfig();
 	AlignFeatureParams buildAlignFeatureParams(bool& ok);
+
+	//setup region pitch mode UI refreshers (set up in the connect block, reused on recipe load)
+	std::function<void()> _applySetupRegionMode;
+	std::function<void()> _refreshPitchLabels;
 
 	//dry run page - VisionApp_DryRun.cpp
 	void initDryRunPage();

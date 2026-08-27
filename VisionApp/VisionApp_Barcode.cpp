@@ -600,6 +600,13 @@ void VisionApp::initBarcodeReaderPage()
 
 	connect(&srx, &SRXManager::imageReceived, this, [=](const QString& id, const QString&) {
 		updateSRXImagePreview(id);
+
+		//production: show the reader capture on the main FOV so the operator
+		//sees what each unit snap looks like
+		if (_processType == ProcessType::PRODUCTION) {
+			QImage img = SRXManager::instance().lastImage(id);
+			if (!img.isNull()) displayFOV(img);
+		}
 	});
 
 	connect(&srx, &SRXManager::ftpStateChanged, this, [=](bool running) {

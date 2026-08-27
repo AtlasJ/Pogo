@@ -282,7 +282,9 @@ private:
 	void continuousSnap();
 	void savePostResult();
 	void acquire2DImages();
-	bool acquireBarcodeAndOcr(); //SR-X barcode read + OCR-side capture at the 3D mid point
+	bool acquireBarcodeAndOcr(); //SR-X barcode read + OCR-side capture (pitch unit grid, or 3D mid point in plane mode)
+	bool acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ, const QString& unitID = QStringLiteral("board")); //one read cycle at a base camera position
+	void acquire3DImagesPitch(); //pitch mode: one scan of the recipe scan length centered on each unit
 	void acquire3DImages();
 	void collectPlane();
 
@@ -460,6 +462,7 @@ signals:
 	void fiducialFailed();
 
 	void barcodeDecoded(QString code);
+	void unitBarcode(QString unitID, QString code); //per pitch unit (or "board"), for the live status table
 	void locatedBarcode(QRectF roi, int index, bool pass, QString code);
 	void barcodeFailed();
 
