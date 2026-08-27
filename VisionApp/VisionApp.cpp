@@ -3841,6 +3841,18 @@ void VisionApp::testRun()
 	ui.textEdit_loopStatus->clear();
 
 	auto runType = ui.comboBox_runType->currentText();
+
+	/*
+	* Exact match, and deliberately BEFORE the contains() chain below. That chain dispatches
+	* on substrings - "2D", "3D", "Full", then "Acquisition" / "Inspection" - so a run type
+	* matching none of them falls through every branch and the Run button silently does
+	* nothing. Keep "3D" out of this item's text for the same reason.
+	*/
+	if (runType == QStringLiteral("Profiler Scan Test")) {
+		runProfilerScanTest();
+		return;
+	}
+
 	bool online = ui.toolButton_toggleOnlineRun->isChecked();
 	auto run1stFOVOnly = ui.checkBox_runOneFOVonly->isChecked();
 	bool disable2DInspection = ui.checkBox_disable2D->isChecked();
@@ -7753,7 +7765,10 @@ void VisionApp::toggleOnlineRun()
 		"2D Inspection",
 		"3D Inspection",
 		"Full Inspection",
-		"Full Stationary"
+		"Full Stationary",
+		//Profiler bring-up only: a bare 3D acquisition with no views, no 2D and no
+		//production error handling. Handled by an exact-match branch in testRun().
+		"Profiler Scan Test"
 	};
 	ui.comboBox_runType->addItems(runType);
 	ui.comboBox_runType->setCurrentText("Full Inspection");

@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
+#include <QTextStream>
 #include <algorithm>
 #include <cmath>
 #include <chrono>
@@ -63,7 +64,36 @@ namespace {
 
 	constexpr int KY_MAX_DEVICES = 6;
 	constexpr int KY_BATCH_MIN = 50;
-	constexpr int KY_BATCH_MAX = 60000;
+
+	/*
+	* Upper limit of the batch point. NOT a single number: User's Manual Table A-10, "Upper
+	* Limit of the Batch Point at Batch Measurement" (LJ-X series head), makes it depend on
+	* luminance output, the profile point count, and the controller's memory assignment.
+	*
+	* 60,000 is the LJ-V figure and this code used to assume it for the LJ-X too. It is wrong:
+	* at luminance ON with 3200 points the real ceiling is 42,000, which Navigator confirms as
+	* the largest batch point it will accept on Codetrace-CK.
+	*
+	* These are the "All area" column, i.e. memory assignment = single buffer. That is the
+	* correct setting for this application, not a machine-specific preference: p.5-24 says
+	* double buffer exists so one program's data can be read while the next is measured, and
+	* Pogo uses one fixed programNo and never switches programs - so double buffering costs
+	* half the batch capacity and buys nothing. On double buffer these limits roughly halve
+	* (3200 points at luminance ON becomes 21,000), which is why setScanLength points at this
+	* setting by name when the controller rejects a batch count.
+	*
+	* Luminance OFF is 60,000 at every point count, so only the ON table needs rows. Ordered
+	* ascending by point count; the limit falls as the count rises, so a value between two
+	* rows takes the higher row's (lower) limit.
+	*/
+	struct BatchLimit { int points; int maxBatch; };
+
+	constexpr BatchLimit KY_BATCH_LIMITS_LUM_ON[] = {
+		{  200, 60000 }, {  300, 60000 }, {  400, 60000 }, {  600, 60000 }, {  800, 60000 },
+		{ 1200, 60000 }, { 1600, 60000 }, { 1900, 60000 }, { 2300, 58000 }, { 2400, 56000 },
+		{ 3200, 42000 } };
+
+	constexpr int KY_BATCH_MAX_LUM_OFF = 60000;
 
 	//LJ-X exposure indices, manual p.74. Deliberately NOT sorted - 10..15 interleave with
 	//0..9, which is why the nearest-match below scans the whole table instead of bisecting.
@@ -337,6 +367,12 @@ void _cdecl Profiler_Keyence::SimpleArrayCallback(LJX8IF_PROFILE_HEADER* /*pHead
 
 	if (dwCount == 0 || pHeightArray == nullptr) return;
 	if (!self->m_softTriggered) {
+		// Recorded before returning: a batch that never reached its armed count still
+		// arrives here when the acquisition is stopped, and how many profiles DID make it
+		// is the most useful number in a timeout post-mortem. The data itself is still
+		// discarded - enqueuing a short frame here would put a stray image into the
+		// production pipeline.
+		self->m_lastDiscarded = static_cast<int>(dwCount);
 		ct::logger::warn("[Profiler_Keyence] Callback fired while not armed - discarding %u profiles", dwCount);
 		return;
 	}
@@ -350,6 +386,12 @@ void _cdecl Profiler_Keyence::SimpleArrayCallback(LJX8IF_PROFILE_HEADER* /*pHead
 
 	ct::logger::info("[Profiler_Keyence] Batch received: %d profiles x %d points (luminance=%u)",
 		rows, cols, dwLuminanceEnable);
+
+	// Raw batch dimensions as they arrived, before ImageManager resizes and rotates the
+	// height map. Reported by getLastBatchSize() - the post-processed image is stretched by
+	// the pitch constants and the divider, so its dimensions are NOT the profile count.
+	self->m_lastProfiles = rows;
+	self->m_lastPoints = cols;
 
 	FrameInfo& frame = self->m_frameInfo;
 	frame.profiles.clear();
@@ -408,6 +450,19 @@ void _cdecl Profiler_Keyence::SimpleArrayCallback(LJX8IF_PROFILE_HEADER* /*pHead
 		else {
 			std::memset(gLine, 0, static_cast<size_t>(cols));
 		}
+	}
+
+	/*
+	* Keep a reference to the raw buffers before the frame is handed on. Copying a
+	* shared_ptr costs nothing here - no pixels move, and the callback must return fast -
+	* but it keeps the batch alive as the controller delivered it: cols x rows, before
+	* ImageManager resizes by the pitch constants and rotates 90 degrees. takeLastRawFrame()
+	* hands them over and releases ours, so nothing is pinned once the caller is done.
+	*/
+	{
+		std::lock_guard<std::mutex> lock(self->m_mutex);
+		self->m_lastRawHeight = frame.pHeightMap;
+		self->m_lastRawIntensity = frame.pImage;
 	}
 
 	g_imageQueue.push_back(frame);
@@ -580,6 +635,21 @@ bool Profiler_Keyence::start()
 		return false;
 	}
 
+	// Clear the previous batch's dimensions before arming. Without this a scan that times
+	// out with no data would still report the LAST scan's profile count as if it were this
+	// one's - a stale number that reads as a successful acquisition.
+	m_lastProfiles = 0;
+	m_lastPoints = 0;
+	m_lastDiscarded = 0;
+
+	// Drop any raw batch still held from the previous run, so a scan that produces nothing
+	// cannot leave the caller saving the last one's data, and the pool gets its memory back.
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_lastRawHeight.reset();
+		m_lastRawIntensity.reset();
+	}
+
 	// The callback delivery size is baked in at Initialize time, so a changed batch
 	// count means a full re-init before we arm.
 	if (m_highSpeedDirty && !initHighSpeed()) {
@@ -720,6 +790,23 @@ bool Profiler_Keyence::enableIntensityMap(bool enable)
 	return true;
 }
 
+int Profiler_Keyence::batchPointMax() const
+{
+	if (!m_luminanceEnabled) return KY_BATCH_MAX_LUM_OFF;
+
+	//The controller only reports the point count at PreStart, and setScanLength runs before
+	//that on the first scan of a session. 3200 is both this head's default and the row with
+	//the lowest limit, so assuming it while unknown errs the safe way.
+	const int points = (m_xPoints > 0) ? m_xPoints : 3200;
+
+	for (const auto& row : KY_BATCH_LIMITS_LUM_ON) {
+		if (points <= row.points) return row.maxBatch;
+	}
+
+	//Past the last row: more points than the table covers, so take its tightest limit.
+	return KY_BATCH_LIMITS_LUM_ON[sizeof(KY_BATCH_LIMITS_LUM_ON) / sizeof(KY_BATCH_LIMITS_LUM_ON[0]) - 1].maxBatch;
+}
+
 bool Profiler_Keyence::setScanLength(double mm)
 {
 	if (!safeGuard()) return false;
@@ -732,19 +819,32 @@ bool Profiler_Keyence::setScanLength(double mm)
 		return false;
 	}
 
+	const int batchMax = batchPointMax();
+
 	int batch = static_cast<int>(std::lround(mm / effectivePitchMm));
-	if (batch < KY_BATCH_MIN || batch > KY_BATCH_MAX) {
-		ct::logger::warn("[Profiler_Keyence] Batch count %d out of range [%d..%d] - clamping",
-			batch, KY_BATCH_MIN, KY_BATCH_MAX);
-		batch = std::max(KY_BATCH_MIN, std::min(KY_BATCH_MAX, batch));
+	if (batch < KY_BATCH_MIN || batch > batchMax) {
+		ct::logger::warn("[Profiler_Keyence] Batch count %d out of range [%d..%d] - clamping. "
+			"The scan will cover only %.3f mm of the %.3f mm requested.",
+			batch, KY_BATCH_MIN, batchMax,
+			std::max(KY_BATCH_MIN, std::min(batchMax, batch)) * effectivePitchMm, mm);
+		batch = std::max(KY_BATCH_MIN, std::min(batchMax, batch));
 	}
 
 	ct::logger::info("[Profiler_Keyence] setScanLength %.3f mm -> %d profiles (pitch %.4f mm)",
 		mm, batch, effectivePitchMm);
 
 	int32_t v = batch;
-	if (!setSetting(0x10 + m_programNo, KY_CAT_TRIGGER, KY_IT_BATCH_COUNT, &v, 4, "batchCount"))
+	if (!setSetting(0x10 + m_programNo, KY_CAT_TRIGGER, KY_IT_BATCH_COUNT, &v, 4, "batchCount")) {
+		//A rejected batch count is the one failure here that production cannot see:
+		//JobThread::scan() ignores this return value, so the scan would run at the PREVIOUS
+		//batch count and quietly cover the wrong distance. Name the likeliest cause.
+		ct::logger::error("[Profiler_Keyence] Controller rejected batchCount %d (limit computed as "
+			"%d for %d points, luminance %s). If Navigator's memory assignment is Double buffer "
+			"the real limit is about half this - set it to Single buffer, which is what this "
+			"application wants anyway.",
+			batch, batchMax, (m_xPoints > 0 ? m_xPoints : 3200), m_luminanceEnabled ? "ON" : "OFF");
 		return false;
+	}
 
 	if (batch != m_batchCount) {
 		m_batchCount = batch;
@@ -1046,32 +1146,47 @@ bool Profiler_Keyence::loadConfig(QString path)
 
 	const unsigned char prog = 0x10 + m_programNo;
 	bool ok = true;
-	int32_t v = 0;
 
-	v = triggerMode;    ok &= setSetting(prog, KY_CAT_TRIGGER, KY_IT_TRIGGER_MODE, &v, 4, "triggerMode");
-	v = batchEnable;    ok &= setSetting(prog, KY_CAT_TRIGGER, KY_IT_BATCH_ENABLE, &v, 4, "batchMeasurement");
-	v = encoderMode;    ok &= setSetting(prog, KY_CAT_TRIGGER, KY_IT_ENCODER_MODE, &v, 4, "encoderInputMode");
+	// Every push is recorded so diagnostics() can report the value AND whether the controller
+	// accepted it. Previously all 13 results collapsed into one bool and a single rejection
+	// was invisible without reading the log line by line.
+	m_configPath = path;
+	m_appliedSettings.clear();
+
+	auto apply = [&](unsigned char type, unsigned char category, unsigned char item,
+		int value, const char* what) {
+		int32_t v = value;
+		const bool r = setSetting(type, category, item, &v, 4, what);
+		m_appliedSettings.push_back({ QString::fromLatin1(what), value, r });
+		ok &= r;
+		return r;
+	};
+
+	apply(prog, KY_CAT_TRIGGER, KY_IT_TRIGGER_MODE, triggerMode, "triggerMode");
+	apply(prog, KY_CAT_TRIGGER, KY_IT_BATCH_ENABLE, batchEnable, "batchMeasurement");
+	apply(prog, KY_CAT_TRIGGER, KY_IT_ENCODER_MODE, encoderMode, "encoderInputMode");
 
 	if (samplingCycle >= 0) {
-		v = samplingCycle;
-		ok &= setSetting(prog, KY_CAT_TRIGGER, KY_IT_SAMPLING_CYCLE, &v, 4, "samplingCycle");
+		apply(prog, KY_CAT_TRIGGER, KY_IT_SAMPLING_CYCLE, samplingCycle, "samplingCycle");
+	}
+	else {
+		// Skipped on purpose: a negative value means "leave the controller's own setting
+		// alone", so Pogo inherits whatever Navigator last set. Recorded because that
+		// frequency caps jog speed and is easy to forget.
+		m_appliedSettings.push_back({ QStringLiteral("samplingCycle (not sent - inherited from controller)"), samplingCycle, true });
 	}
 
-	v = dynamicRange;    ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_DYNAMIC_RANGE, &v, 4, "dynamicRange");
-	v = lightCtrlMode;   ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_LIGHT_CTRL_MODE, &v, 4, "lightControlMode");
-	v = std::max(1, std::min(99, lightUpper));
-	ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_LIGHT_UPPER, &v, 4, "lightUpperLimit");
-	v = std::max(1, std::min(99, lightLower));
-	ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_LIGHT_LOWER, &v, 4, "lightLowerLimit");
-	v = std::max(1, std::min(5, peakSensitivity));
-	ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_PEAK_SENSITIVITY, &v, 4, "peakSensitivity");
-	v = peakSelection;   ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_PEAK_SELECTION, &v, 4, "peakSelection");
-	v = std::max(0, std::min(255, invalidInterp));
-	ok &= setSetting(prog, KY_CAT_IMAGING, KY_IT_INVALID_INTERP, &v, 4, "invalidInterpolation");
+	apply(prog, KY_CAT_IMAGING, KY_IT_DYNAMIC_RANGE, dynamicRange, "dynamicRange");
+	apply(prog, KY_CAT_IMAGING, KY_IT_LIGHT_CTRL_MODE, lightCtrlMode, "lightControlMode");
+	apply(prog, KY_CAT_IMAGING, KY_IT_LIGHT_UPPER, std::max(1, std::min(99, lightUpper)), "lightUpperLimit");
+	apply(prog, KY_CAT_IMAGING, KY_IT_LIGHT_LOWER, std::max(1, std::min(99, lightLower)), "lightLowerLimit");
+	apply(prog, KY_CAT_IMAGING, KY_IT_PEAK_SENSITIVITY, std::max(1, std::min(5, peakSensitivity)), "peakSensitivity");
+	apply(prog, KY_CAT_IMAGING, KY_IT_PEAK_SELECTION, peakSelection, "peakSelection");
+	apply(prog, KY_CAT_IMAGING, KY_IT_INVALID_INTERP, std::max(0, std::min(255, invalidInterp)), "invalidInterpolation");
 
 	//--- common settings
-	v = encoderMinTime;  ok &= setSetting(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_ENCODER_MIN_TIME, &v, 4, "encoderMinInputTime");
-	v = luminance;       ok &= setSetting(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_LUMINANCE_OUTPUT, &v, 4, "luminanceOutput");
+	apply(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_ENCODER_MIN_TIME, encoderMinTime, "encoderMinInputTime");
+	apply(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_LUMINANCE_OUTPUT, luminance, "luminanceOutput");
 	m_luminanceEnabled = (luminance == 1);
 
 	ct::logger::info("[Profiler_Keyence] loadConfig %s (programNo=%d, yPitch=%.3f um, cmdPort=%d, hsPort=%d)",
@@ -1083,4 +1198,167 @@ bool Profiler_Keyence::loadConfig(QString path)
 QString Profiler_Keyence::errorMsg()
 {
 	return m_errorMsg;
+}
+
+
+/* -------------------------------------------------------------- Diagnostics */
+
+/*
+* Read the controller's own trigger and encoder pulse counters (manual p.4-15 shows the same
+* two numbers on the [Display Terminal status] screen). Costs one command-channel round trip
+* and needs no triggering, no batch and no scan - only a connection.
+*
+* Reading this before and after a scan is the cheapest available answer to "is the encoder
+* actually driving the triggers": the trigger delta tells you how many profiles the controller
+* believes it took, and the encoder delta tells you how far it believes the gantry moved. If
+* the encoder delta stays 0 while triggers climb, the triggers are not coming from the encoder.
+*/
+bool Profiler_Keyence::getCounters(quint32& triggerCount, qint32& encoderCount)
+{
+	if (!safeGuard()) return false;
+	if (!m_connectionStatus) return false;
+
+	DWORD trig = 0;
+	LONG  enc = 0;
+
+	const LONG rc = LJX8IF_GetTriggerAndPulseCount(m_deviceId, &trig, &enc);
+	if (rc != LJX8IF_RC_OK) {
+		ct::logger::warn("[Profiler_Keyence] GetTriggerAndPulseCount failed (rc=0x%04X)", rc);
+		return false;
+	}
+
+	triggerCount = static_cast<quint32>(trig);
+	encoderCount = static_cast<qint32>(enc);
+	return true;
+}
+
+/*
+* The failure modes worth refusing over are the ones that still let a scan COMPLETE and
+* produce a plausible-looking height map - those are the ones that put a wrong number into a
+* code constant. A setting that breaks acquisition outright announces itself; these do not.
+*/
+bool Profiler_Keyence::isSafeToScan(QString& reason) const
+{
+	if (!m_connectionStatus) {
+		reason = QStringLiteral("profiler is not connected");
+		return false;
+	}
+
+	if (m_appliedSettings.isEmpty()) {
+		reason = QStringLiteral("loadConfig has not run, so the controller's settings are unknown");
+		return false;
+	}
+
+	QStringList rejected;
+	for (const auto& a : m_appliedSettings) {
+		if (!a.ok) rejected << a.name;
+
+		if (a.name == QLatin1String("triggerMode") && a.value != 2) {
+			reason = QString("triggerMode is %1, expected 2 (encoder). A scan would still "
+				"complete, but with %2 the scan axis is scaled by TIME, not distance - the "
+				"height map would look plausible and be wrong.")
+				.arg(a.value)
+				.arg(a.value == 0 ? QStringLiteral("Continuous the internal clock triggers")
+					: QStringLiteral("External there is no quadrature and no direction, so the return stroke also counts"));
+			return false;
+		}
+
+		if (a.name == QLatin1String("batchMeasurement") && a.value != 1) {
+			reason = QString("batchMeasurement is %1, expected 1 - the batch callback never fires").arg(a.value);
+			return false;
+		}
+	}
+
+	if (!rejected.isEmpty()) {
+		reason = QString("the controller rejected %1 of the connect-time settings: %2")
+			.arg(rejected.size()).arg(rejected.join(", "));
+		return false;
+	}
+
+	return true;
+}
+
+bool Profiler_Keyence::takeLastRawFrame(mtrx::SharedMilID& height, mtrx::SharedMilID& intensity)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+	if (!m_lastRawHeight) return false;
+
+	height = std::move(m_lastRawHeight);
+	intensity = std::move(m_lastRawIntensity);
+	m_lastRawHeight.reset();
+	m_lastRawIntensity.reset();
+	return true;
+}
+
+QString Profiler_Keyence::diagnostics() const
+{
+	QString s;
+	QTextStream o(&s);
+
+	auto yesNo = [](bool b) { return b ? QStringLiteral("yes") : QStringLiteral("no"); };
+
+	o << "  Head model        : " << (m_headModel.isEmpty() ? QStringLiteral("(unread)") : m_headModel) << "\n";
+	o << "  Serial            : " << (m_serialNumber.isEmpty() ? QStringLiteral("(unread)") : m_serialNumber) << "\n";
+	o << "  Firmware/library  : " << (m_firmwareVersion.isEmpty() ? QStringLiteral("(unread)") : m_firmwareVersion) << "\n";
+	o << "  IP                : " << m_ip << "\n";
+	o << "  Device id         : " << m_deviceId << "\n";
+	o << "  Program no        : " << int(m_programNo) << "\n";
+	o << "  Command port      : " << m_commandPort << "\n";
+	o << "  High-speed port   : " << m_highSpeedPort << "\n";
+	o << "  Connected         : " << yesNo(m_connectionStatus) << "\n";
+	o << "  High-speed ready  : " << yesNo(m_highSpeedReady) << "\n";
+	o << "  Driver config     : " << (m_configPath.isEmpty() ? QStringLiteral("(not loaded)") : m_configPath) << "\n";
+	o << "\n";
+	o << "  Z pitch (um/grey) : " << QString::number(m_zPitchUm, 'f', 3) << "   (from head model)\n";
+	o << "  Y pitch (um/trig) : " << QString::number(m_yPitchUm, 'f', 3) << "   (keyence.json 'yPitchUm')\n";
+	o << "  Divider           : " << m_divider << "\n";
+	o << "  Batch count       : " << m_batchCount << " profiles   (max "
+		<< batchPointMax() << " at " << (m_xPoints > 0 ? m_xPoints : 3200) << " points, luminance "
+		<< (m_luminanceEnabled ? "ON" : "OFF") << ")\n";
+	o << "                      Assumes memory assignment = Single buffer. On Double buffer the\n";
+	o << "                      limit roughly halves and long scans would be clamped short.\n";
+	o << "  Points per profile: " << m_xPoints << "\n";
+	o << "  Measured FOV      : " << QString::number(m_measuredFovMm, 'f', 4) << " mm   (reported by the controller)\n";
+	o << "  Luminance output  : " << yesNo(m_luminanceEnabled) << "\n";
+
+	if (m_lastDiscarded > 0) {
+		o << "\n  Discarded batch   : " << m_lastDiscarded << " profiles arrived after the acquisition was\n";
+		o << "                      stopped and were thrown away. The batch was armed for "
+			<< m_batchCount << ",\n";
+		o << "                      so it never reached its count - the scan needed more travel\n";
+		o << "                      than it got, or the trigger pitch is coarser than yPitchUm says.\n";
+	}
+
+	if (m_appliedSettings.isEmpty()) {
+		o << "\n  Settings pushed at connect: none recorded (loadConfig has not run).\n";
+		return s;
+	}
+
+	o << "\n  Settings pushed to the controller at connect (Running area, volatile):\n";
+	for (const auto& a : m_appliedSettings) {
+		QString note;
+		if (a.name == QLatin1String("triggerMode")) {
+			if (a.value == 0)      note = "Continuous - internal clock, scan axis would be scaled by TIME";
+			else if (a.value == 1) note = "External - every edge is a plain trigger, no direction";
+			else if (a.value == 2) note = "Encoder - the only correct value for this machine";
+			else                   note = "unrecognised";
+		}
+		else if (a.name == QLatin1String("encoderInputMode") && a.value == 1) {
+			note = "2-phase x1";
+		}
+		else if (a.name == QLatin1String("encoderMinInputTime") && a.value == 0) {
+			note = "120 ns - the LEAST filtering available";
+		}
+		else if (a.name == QLatin1String("batchMeasurement") && a.value != 1) {
+			note = "must be 1 or the batch callback never fires";
+		}
+
+		o << QString("    %1 %2 = %3%4\n")
+			.arg(a.ok ? QStringLiteral("[ok]  ") : QStringLiteral("[FAIL]"))
+			.arg(a.name, -34)
+			.arg(a.value)
+			.arg(note.isEmpty() ? QString() : QString("   (%1)").arg(note));
+	}
+
+	return s;
 }

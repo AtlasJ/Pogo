@@ -1,6 +1,7 @@
 #pragma once
 #include "IProfiler.h"
 #include <QString>
+#include <QVector>
 #include "FrameInfo.h"
 #include <mutex>
 #include <condition_variable>
@@ -87,9 +88,21 @@ public:
 	bool loadConfig(QString path);
 	QString errorMsg();
 
+	//Diagnostics (IProfiler optional overrides) - see the Profiler Scan Test report
+	QString diagnostics() const override;
+	bool getCounters(quint32& triggerCount, qint32& encoderCount) override;
+	bool isSafeToScan(QString& reason) const override;
+	bool takeLastRawFrame(mtrx::SharedMilID& height, mtrx::SharedMilID& intensity) override;
+	bool getLastBatchSize(int& profiles, int& pointsPerProfile) const override {
+		profiles = m_lastProfiles;
+		pointsPerProfile = m_lastPoints;
+		return true;
+	}
+
 	//Keyence specific - useful during bring-up, not part of IProfiler
 	const double getZPitchUm() const { return m_zPitchUm; }
 	const double getMeasuredFovMm() const { return m_measuredFovMm; }
+	const QString& getHeadModel() const { return m_headModel; }
 
 	// dwUser carries the device id, so one static entry point serves every instance.
 	static void _cdecl SimpleArrayCallback(LJX8IF_PROFILE_HEADER* pHeaderArray,
@@ -122,7 +135,21 @@ private:
 	double   m_measuredFovMm = 0.0;       // lXPitch * wProfileDataCount, logged at PreStart
 	int      m_batchCount = 1000;         // profiles per batch == image height
 	int      m_xPoints = 0;               // profile data count reported by the controller
+	int      m_lastProfiles = 0;          // rows in the last batch the callback actually got
+	int      m_lastPoints = 0;            // and its points per profile
+	int      m_lastDiscarded = 0;         // profiles that arrived too late to be kept
 	bool     m_luminanceEnabled = true;
+
+	//--- what loadConfig last pushed to the controller, kept for diagnostics()
+	// loadConfig ANDs 13 setSetting results into one bool, so a single rejection is invisible
+	// unless you read the log line by line. Recording them makes the report able to say which.
+	struct AppliedSetting {
+		QString name;
+		int     value = 0;
+		bool    ok = false;
+	};
+	QVector<AppliedSetting> m_appliedSettings;
+	QString  m_configPath = "";
 
 	//--- settings mirrored for the getters
 	double   m_exposure = 0.0;
@@ -130,6 +157,12 @@ private:
 	QString  m_serialNumber = "";
 	QString  m_firmwareVersion = "";
 	QString  m_errorMsg = "";
+
+	//--- last raw batch, kept only as shared references so a diagnostic can save the data
+	//    as the controller delivered it. Handed over by takeLastRawFrame(), which clears
+	//    these so the pool buffers are not pinned for the life of the process.
+	mtrx::SharedMilID m_lastRawHeight = nullptr;
+	mtrx::SharedMilID m_lastRawIntensity = nullptr;
 
 	//--- acquisition state
 	FrameInfo m_frameInfo;
@@ -140,6 +173,9 @@ private:
 	bool     m_highSpeedDirty = true;     // batch count changed since last init
 
 	//--- helpers
+	//Largest batch point this controller will accept, from User's Manual Table A-10: it
+	//depends on luminance output and the profile point count, not on one constant.
+	int  batchPointMax() const;
 	bool safeGuard() const;
 	bool setSetting(unsigned char type, unsigned char category, unsigned char item,
 		const void* data, unsigned int size, const char* what,

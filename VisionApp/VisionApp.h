@@ -1442,6 +1442,11 @@ public slots:
 	void guidedAlignCameraAndLaser();
 	void guidedAlignCameraAndLaserSetup();
 	void verifyLaserAlignment();
+
+	//Profiler Scan Test (Test Run page, online). Raises the parameter dialog and hands off
+	//to JobThread; returns immediately. See JobThread::profilerScanTest.
+	void runProfilerScanTest();
+
 	void drawCrossOnQImage(int cx, int cy, int size, QImage& qimg);
 	void saveQImageWithCrossSection(QImage qimg, QString path);
 	void displayCurrentAlignmentImage();
@@ -1651,6 +1656,8 @@ signals:
 	void captureAlignmentImages(dat::WorldCoordinate currentPoint, int camThreshold, int laserThreshold);
 	void performGuidedLaserAlignment(dat::WorldCoordinate currentPoint);
 	void signalVerifyLaserAlignment(dat::WorldCoordinate currentPoint);
+	void signalProfilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
+		bool saveImages, bool returnToStart);
 
 	void signalGetAllIntensityFromExpectedGV(QString camID, QString opticType, int idealR, int idealG, int idealB, QRectF roi);
 	void calibrateGoldenLightingProfile(QString camID, QRectF roi);

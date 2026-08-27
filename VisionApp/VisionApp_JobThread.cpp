@@ -208,6 +208,24 @@ void VisionApp::connectJobThread() {
 		showMsg("Done scanning, you may check the Verification Images.");
 	});
 
+	QObject::connect(&_jobThread, &JobThread::profilerScanTestProgress, this, [=](QString line) {
+		ui.textEdit_loopStatus->append(line);
+	});
+
+	QObject::connect(&_jobThread, &JobThread::profilerScanTestDone, this,
+		[=](bool scanRan, QString reportPath, QString summary) {
+		ui.textEdit_loopStatus->append(summary);
+		ui.textEdit_loopStatus->append(reportPath);
+
+		//A refused run is a normal outcome here, not an error - the report explains why, and
+		//is worth reading either way.
+		showMsg(QStringLiteral("%1\n\n%2\n\nReport:\n%3")
+			.arg(scanRan ? QStringLiteral("Profiler scan test finished.")
+				: QStringLiteral("Profiler scan test did not run."))
+			.arg(summary)
+			.arg(reportPath));
+	});
+
 	QObject::connect(&_jobThread, &JobThread::laserAlignmentDone, this, [=]() {
 		updateLaserOffsetUI(_laserConfig.offset);
 		saveLaserConfig();
@@ -484,6 +502,8 @@ void VisionApp::connectJobThread() {
 	QObject::connect(this, &VisionApp::performGuidedLaserAlignment, &_jobThread, &JobThread::performGuidedLaserAlignment, Qt::QueuedConnection);
 
 	QObject::connect(this, &VisionApp::signalVerifyLaserAlignment, &_jobThread, &JobThread::verifyLaserAlignment, Qt::QueuedConnection);
+
+	QObject::connect(this, &VisionApp::signalProfilerScanTest, &_jobThread, &JobThread::profilerScanTest, Qt::QueuedConnection);
 
 	// Intensity and lighting calibration
 	QObject::connect(this, &VisionApp::signalGetAllIntensityFromExpectedGV, &_jobThread, &JobThread::getAllIntensityFromExpectedGV, Qt::QueuedConnection);

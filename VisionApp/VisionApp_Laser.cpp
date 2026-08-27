@@ -2,6 +2,16 @@
 #include "CAMManager.h"
 #include "ScaleManager.h"
 #include "Guided_2D3D_AlignmentTab.h"
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QVBoxLayout>
+#include <QDoubleSpinBox>
+#include <QComboBox>
+#include <QCheckBox>
+#include <QLabel>
+#include <QPushButton>
+#include "ProfilerManager.h"
 
 void VisionApp::initLaserUI()
 {
@@ -196,6 +206,116 @@ void VisionApp::scanDone() //WARNING: Dont put UI related stuff here. Emit it th
 {
 	ct::logger::debug("Scan done");
 	ct::logger::debug("DONE SCAN ACTIONS");
+}
+
+
+/* ------------------------------------------------------- Profiler Scan Test */
+
+/*
+* Test Run page -> Online -> "Profiler Scan Test" -> Run.
+*
+* Only the two things that change per run are asked for here: how far, and which way. Scan
+* speed is deliberately NOT on this dialog - it already has one home (Config page, X 3D
+* velocity) and a second control for the same value is how the two drift apart.
+*/
+void VisionApp::runProfilerScanTest()
+{
+	if (_recipeOptics3D.isEmpty()) {
+		showMsg(QStringLiteral(
+			"This recipe has no 3D optics entries.\n\n"
+			"Create at least one on the 3D Optics page first. The scan path picks the first "
+			"entry with intensity enabled, and has no defined behaviour when there is none."));
+		return;
+	}
+
+	if (!ProfilerManager::instance().keys().contains(_profilerID)) {
+		showMsg(QStringLiteral(
+			"No profiler is configured under ID '%1'.\n\n"
+			"Check profiler.json, or the Profiler Hardware section on the 3D Optics page.")
+			.arg(_profilerID));
+		return;
+	}
+
+	QDialog dlg(this);
+	dlg.setWindowTitle(QStringLiteral("Profiler Scan Test"));
+
+	auto* spinDistance = new QDoubleSpinBox(&dlg);
+	spinDistance->setRange(0.1, 1000.0);
+	spinDistance->setDecimals(2);
+	spinDistance->setSingleStep(1.0);
+	spinDistance->setValue(20.0);
+	spinDistance->setSuffix(QStringLiteral(" mm"));
+
+	auto* comboDir = new QComboBox(&dlg);
+	comboDir->addItem(QStringLiteral("+X   (increasing)"));
+	comboDir->addItem(QStringLiteral("-X   (decreasing)"));
+
+	auto* comboOptic = new QComboBox(&dlg);
+	int mainIndex = 0;
+	bool foundMain = false;
+	for (const auto& o : _recipeOptics3D) {
+		if (o.intensity && !foundMain) {
+			mainIndex = comboOptic->count();
+			foundMain = true;
+		}
+		comboOptic->addItem(o.id);
+	}
+	comboOptic->setCurrentIndex(mainIndex);
+	comboOptic->setToolTip(QStringLiteral(
+		"A normal scan uses the first entry with intensity enabled. Picking a different one "
+		"here is allowed - the report says which was used and warns if they disagree."));
+
+	auto* checkSave = new QCheckBox(QStringLiteral("Save height map and intensity images"), &dlg);
+	checkSave->setChecked(true);
+
+	auto* checkReturn = new QCheckBox(QStringLiteral("Return to the start position afterwards"), &dlg);
+	checkReturn->setChecked(true);
+	checkReturn->setToolTip(QStringLiteral(
+		"Turn this off to leave the gantry parked at the end of the move, so the travel can "
+		"be measured by hand."));
+
+	const auto here = SystemData::instance().currentCoordinate();
+	int speed2d = 0, speed3d = 0;
+	_jobThread.getXSpeed(speed2d, speed3d);
+
+	auto* info = new QLabel(QStringLiteral(
+		"Scans along X from where the gantry is now (X = %1 mm).\n"
+		"Scan speed is %2 mm/s - change it on the Config page (X 3D velocity),\n"
+		"not here, so there is only ever one copy of that number.\n\n"
+		"No 2D camera, no laser offset, no recipe views. A report is written to\n"
+		"the recipe's Images\\ProfilerTest folder whether or not the scan runs.")
+		.arg(here.wx, 0, 'f', 3).arg(speed3d), &dlg);
+	info->setWordWrap(true);
+	info->setStyleSheet(QStringLiteral("color: #929aaa;"));
+
+	auto* form = new QFormLayout();
+	form->addRow(QStringLiteral("Scan distance"), spinDistance);
+	form->addRow(QStringLiteral("Direction"), comboDir);
+	form->addRow(QStringLiteral("Optics 3D"), comboOptic);
+
+	auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+	buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Run"));
+	connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+	auto* layout = new QVBoxLayout(&dlg);
+	layout->addWidget(info);
+	layout->addLayout(form);
+	layout->addWidget(checkSave);
+	layout->addWidget(checkReturn);
+	layout->addWidget(buttons);
+
+	if (dlg.exec() != QDialog::Accepted) return;
+
+	const double distance = spinDistance->value();
+	const bool positive = (comboDir->currentIndex() == 0);
+	const QString opticID = comboOptic->currentText();
+
+	ui.textEdit_loopStatus->append(QStringLiteral("Profiler Scan Test: %1 mm %2X, optics %3")
+		.arg(distance).arg(positive ? "+" : "-").arg(opticID));
+
+	emit signalProfilerScanTest(distance, positive, opticID,
+		checkSave->isChecked(), checkReturn->isChecked());
 }
 
 void VisionApp::terminated(int signum)

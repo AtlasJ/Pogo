@@ -10,6 +10,10 @@
 #include "cvUtil.h"
 #include "ImagePathManager.h"
 #include <QHostInfo>
+#include <QDir>
+#include <QFile>
+#include <QDateTime>
+#include <QTextStream>
 #include "SystemData.h"
 #include "CAMManager.h"
 #include "ProfilerManager.h"
@@ -2986,6 +2990,604 @@ void JobThread::verifyLaserAlignment(dat::WorldCoordinate currentPoint)
 
 	emit verifyLaserAlignmentDone();
 }
+
+
+/* ------------------------------------------------------- Profiler Scan Test */
+
+void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
+	bool saveImages, bool returnToStart)
+{
+	QString report;
+	QTextStream out(&report);
+
+	//Stands in for the profiler diagnostics block until finish(), so the values it prints
+	//are the ones in force when the run ended rather than before it was configured.
+	static const QString KY_DIAG_TOKEN = QStringLiteral("<<PROFILER_DIAGNOSTICS>>");
+
+	auto say = [&](const QString& line) {
+		ct::logger::info("[ProfilerTest] %s", line.toUtf8().constData());
+		emit profilerScanTestProgress(line);
+	};
+	auto section = [&](const QString& title) {
+		out << "\n" << title << "\n" << QString(title.size(), QLatin1Char('-')) << "\n";
+	};
+	auto yesNo = [](bool b) { return b ? QStringLiteral("yes") : QStringLiteral("no"); };
+
+	// The output folder is created FIRST so that even a refusal has somewhere to land.
+	const QDateTime now = QDateTime::currentDateTime();
+	const QString stamp = now.toString(QStringLiteral("yyyyMMdd_HHmmss"));
+	const QString dir = Common::Directory::getRecipeImagesPath() + QStringLiteral("ProfilerTest/") + stamp + "/";
+	const QString reportPath = dir + QStringLiteral("report.txt");
+
+	if (!QDir().mkpath(dir)) {
+		ct::logger::error("[ProfilerTest] Could not create output folder: %s", dir.toUtf8().constData());
+	}
+
+	//Resolved in the PROFILER section below; declared here so finish() can reach it.
+	IProfiler* profiler = nullptr;
+
+	// Single exit point: writes the report and reports back, whatever happened.
+	auto finish = [&](bool scanRan, const QString& summary) {
+		section(QStringLiteral("WHERE TO CHANGE WHAT"));
+		out << "  Scan speed (mm/s)      Config page -> X 3D velocity -> Update Velocity X.\n"
+			<< "                         Applies immediately and saves to recipeConfig.json\n"
+			<< "                         ('x_3d_velocity'). No restart needed.\n"
+			<< "  Scan axis              Config page -> Recipe Configuration -> Line Scan Axis.\n"
+			<< "                         Must be saved with the recipe or it reverts.\n"
+			<< "  Exposure, gain,        3D Optics page, per optics ID. Applied on every scan.\n"
+			<< "  divider, threshold\n"
+			<< "  IP, ports, encoder     3D Optics page -> Profiler Hardware. Applied on connect.\n"
+			<< "  mode, min input time\n"
+			<< "  Trigger mode           Read-only by design. Exactly one correct value (2 =\n"
+			<< "                         encoder) for this machine. Edit keyence.json only if\n"
+			<< "                         you mean it, then reconnect.\n"
+			<< "  Sampling frequency,    Navigator only. Persists into every later Pogo run and\n"
+			<< "  profile data interval  nothing here detects a change. The interval changes the\n"
+			<< "                         point count, which invalidates X pitch and laser FOV.\n"
+			<< "  Y pitch (um/trigger)   3D Optics page -> Profiler Hardware -> Y Pitch. Applies\n"
+			<< "                         on connect, and the image maths reads the same value.\n"
+			<< "  X pitch, laser FOV,    Code constants - ImageManager.cpp and the two copies of\n"
+			<< "  batch max              laser_fov_mm. Need a rebuild.\n"
+			<< "  lightSensitivity,      On the 3D Optics page and saved to the recipe, but DEAD\n"
+			<< "  peakSensitivity,       on the Keyence path - they reach Profiler_SSZN only.\n"
+			<< "  peakSelection,         Tuning them here has no effect on this sensor.\n"
+			<< "  upper/lowerLaserLimit\n";
+
+		out << "\n" << QString(78, QLatin1Char('=')) << "\n";
+		out << "VERDICT: " << summary << "\n";
+
+		report.replace(KY_DIAG_TOKEN, profiler
+			? profiler->diagnostics()
+			: QStringLiteral("  (no profiler - nothing to report)"));
+
+		QFile f(reportPath);
+		if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+			QTextStream ts(&f);
+			ts << report;
+			f.close();
+			ct::logger::info("[ProfilerTest] Report written: %s", reportPath.toUtf8().constData());
+		}
+		else {
+			ct::logger::error("[ProfilerTest] Could not write %s", reportPath.toUtf8().constData());
+		}
+
+		emit profilerScanTestDone(scanRan, reportPath, summary);
+	};
+
+	//--------------------------------------------------------------- header
+	out << QString(78, QLatin1Char('=')) << "\n";
+	out << "PROFILER SCAN TEST\n";
+	out << QString(78, QLatin1Char('=')) << "\n";
+	out << "  When            : " << now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")) << "\n";
+	out << "  Machine         : " << QHostInfo::localHostName() << "\n";
+	out << "  Recipe          : " << Common::Directory::CurrentRecipe << "\n";
+	out << "  Output folder   : " << dir << "\n";
+
+	section(QStringLiteral("WHAT WAS REQUESTED"));
+	out << "  Scan distance   : " << QString::number(distance_mm, 'f', 3) << " mm\n";
+	out << "  Direction       : " << (positiveDir ? QStringLiteral("+X") : QStringLiteral("-X")) << "\n";
+	out << "  Optics 3D ID    : " << (optic3DId.isEmpty() ? QStringLiteral("(auto)") : optic3DId) << "\n";
+	out << "  Save images     : " << yesNo(saveImages) << "\n";
+	out << "  Return to start : " << yesNo(returnToStart) << "\n";
+
+	//------------------------------------------------------------- profiler
+	section(QStringLiteral("PROFILER"));
+
+	const QString api = ProfilerManager::instance().getAPI();
+	out << "  API             : " << (api.isEmpty() ? QStringLiteral("(none)") : api) << "\n";
+	out << "  Profiler ID     : " << m_profilerID << "\n";
+
+	QStringList blockers;
+
+	if (ProfilerManager::instance().keys().contains(m_profilerID)) {
+		profiler = ProfilerManager::instance().profiler(m_profilerID);
+	}
+
+	if (!profiler) {
+		out << "  Status          : NOT CONFIGURED - no profiler with this ID exists\n";
+		blockers << QStringLiteral("no profiler is configured under ID '%1'").arg(m_profilerID);
+	}
+	else {
+		const bool connected = ProfilerManager::instance().isConnected(m_profilerID);
+		out << "  Status          : " << (connected ? QStringLiteral("connected") : QStringLiteral("DISCONNECTED")) << "\n";
+
+		/*
+		* Placeholder, substituted in finish(). Batch count, points per profile and the
+		* measured FOV are only learned when the profiler is configured and armed, which
+		* happens further down - printing diagnostics() here reported them as 0 and 1000,
+		* which reads as a fault rather than as "not known yet". Filling it in at the end
+		* means a completed scan shows the real values and a refusal shows the pre-scan
+		* state, which is the truth in both cases.
+		*/
+		out << "\n" << KY_DIAG_TOKEN << "\n";
+
+		if (!connected) blockers << QStringLiteral("the profiler is not connected");
+	}
+
+	//------------------------------------------------- recipe optics3D entry
+	section(QStringLiteral("RECIPE OPTICS 3D"));
+
+	/*
+	* A POINTER, never a copy. OpticsInfo3D::operator= (Common/OpticsInfo.h) silently omits
+	* divider, lightSensitivity, peakSensitivity and peakSelection, so `optic = o` would leave
+	* divider at its default of 1 and push that to the controller no matter what the recipe
+	* says - and the report would print the 1 as though it were the recipe's value.
+	* JobThread::scan() takes a const reference for the same reason.
+	*/
+	const OpticsInfo3D* optic = nullptr;
+
+	if (!m_optics3D || m_optics3D->isEmpty()) {
+		out << "  No optics3D entries exist in this recipe.\n";
+		out << "  JobThread::getMainOptics3D() has no return path when nothing matches, so the\n";
+		out << "  scan path would be undefined behaviour. Create at least one entry on the\n";
+		out << "  3D Optics page.\n";
+		blockers << QStringLiteral("the recipe has no optics3D entries");
+	}
+	else {
+		// What the scan would have used, and what rotate_heightMap independently uses. These
+		// can disagree, and when they do the divider that reaches the image maths is not the
+		// one you set on the entry you were looking at.
+		QString autoPick;
+		for (const auto& o : *m_optics3D) {
+			if (o.intensity) { autoPick = o.id; break; }
+		}
+		const QString firstInHash = m_optics3D->begin()->id;
+
+		if (optic3DId.isEmpty()) optic3DId = autoPick;
+
+		for (const auto& o : *m_optics3D) {
+			if (o.id == optic3DId) { optic = &o; break; }
+		}
+
+		out << "  Entries in recipe        : " << m_optics3D->size() << "\n";
+		out << "  Used for this scan       : " << (optic ? optic->id : QStringLiteral("(not found)")) << "\n";
+		out << "  getMainOptics3D() picks  : " << (autoPick.isEmpty() ? QStringLiteral("(none has intensity=true)") : autoPick) << "\n";
+		out << "  rotate_heightMap uses    : " << firstInHash << "   (first entry in the hash, for the divider)\n";
+
+		if (autoPick.isEmpty()) {
+			out << "\n  WARNING: no optics3D entry has intensity=true. getMainOptics3D() falls off\n";
+			out << "  the end of the function in that case (the C4715 in every build).\n";
+			blockers << QStringLiteral("no optics3D entry has intensity=true");
+		}
+		if (!optic) {
+			blockers << QStringLiteral("optics3D ID '%1' was not found in this recipe").arg(optic3DId);
+		}
+		if (optic && !autoPick.isEmpty() && autoPick != optic->id) {
+			out << "\n  NOTE: a normal scan would use '" << autoPick << "', not '" << optic->id << "'.\n";
+		}
+		if (optic && firstInHash != optic->id) {
+			out << "  NOTE: the height map is stretched using '" << firstInHash << "' divider, not '"
+				<< optic->id << "' divider. Set the divider on every entry.\n";
+		}
+
+		if (optic) {
+			out << "\n  exposure        : " << QString::number(optic->exposure, 'f', 1) << " us\n";
+			out << "  exposureMode    : " << optic->exposureMode << "\n";
+			out << "  gain            : " << QString::number(optic->gain, 'f', 1) << "   (sent as Dynamic Range 1-9)\n";
+			out << "  lineThreshold   : " << QString::number(optic->lineThreshold, 'f', 1) << "   (sent as Peak Sensitivity 1-5)\n";
+			out << "  divider         : " << optic->divider << "\n";
+			out << "  intensity       : " << yesNo(optic->intensity) << "\n";
+
+			if (optic->divider < 1) {
+				out << "\n  REFUSING: divider is " << optic->divider << ". ImageManager computes the height map\n";
+				out << "  height as h * pitch * divider, so 0 gives a zero-height MbufAlloc2d, a null\n";
+				out << "  buffer, and a dead ImageManager thread. Set it to 1 or more on EVERY entry.\n";
+				blockers << QStringLiteral("optics3D '%1' has divider %2 (must be 1 or more)").arg(optic->id).arg(optic->divider);
+			}
+		}
+	}
+
+	//----------------------------------------------------------- geometry
+	section(QStringLiteral("GEOMETRY AND MOTION"));
+
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+	int speed2d = 0, speed3d = 0;
+	getXSpeed(speed2d, speed3d);
+
+	out << "  Line scan axis  : " << (scanAlongY ? QStringLiteral("Y") : QStringLiteral("X")) << "\n";
+	out << "  3D scan speed   : " << speed3d << " mm/s   (X 3D velocity, from the recipe config)\n";
+	out << "  X pitch         : 5.000 um    (KEYENCE_X_PITCH_UM, ImageManager.cpp - code constant)\n";
+
+	// Read from the driver, which is the same source the image maths uses - so this figure
+	// cannot drift from the one the height map was actually stretched by.
+	const double linePitchUm = ProfilerManager::instance().getLinePitchUm();
+	out << "  Line pitch      : " << QString::number(linePitchUm, 'f', 3)
+		<< " um   (yPitchUm x divider, from keyence.json)\n";
+	out << "                                 Editable on the 3D Optics page under Profiler\n";
+	out << "                                 Hardware. Single source of truth: rotate_heightMap\n";
+	out << "                                 reads this same value, so they cannot disagree.\n";
+	out << "  Laser offset    : not applied - this test jogs from the current position with no\n";
+	out << "                    2D/3D offset, so an uncalibrated laserConfig.json cannot skew it.\n";
+
+	if (scanAlongY) {
+		out << "\n  NOTE: line scan axis is Y but this test always scans along X. On this machine\n";
+		out << "  the axis should be X - check the Config page.\n";
+	}
+
+	//---------------------------------------------------------- pre-flight
+	section(QStringLiteral("PRE-FLIGHT"));
+
+	if (distance_mm <= 0.0) {
+		blockers << QStringLiteral("scan distance must be greater than zero");
+	}
+
+	if (profiler) {
+		QString reason;
+		if (!profiler->isSafeToScan(reason)) {
+			blockers << reason;
+		}
+	}
+
+	if (!blockers.isEmpty()) {
+		out << "  SCAN NOT RUN. " << blockers.size() << " blocker(s):\n\n";
+		for (int i = 0; i < blockers.size(); ++i) {
+			out << "    " << (i + 1) << ". " << blockers[i] << "\n";
+		}
+		out << "\n  Nothing was moved, armed or written apart from this report.\n";
+
+		say(QStringLiteral("Scan not run - %1 blocker(s). Report: %2").arg(blockers.size()).arg(reportPath));
+		finish(false, QStringLiteral("SCAN NOT RUN - %1").arg(blockers.first()));
+		return;
+	}
+
+	out << "  All checks passed.\n";
+
+	//--------------------------------------------------------------- scan
+	section(QStringLiteral("SCAN"));
+
+	/*
+	* Clear any stale stop flag before moving. m_stopRun survives a failed or aborted run, and
+	* jog() -> waitAxis() honours it - so the scan move would return early, the gantry would
+	* travel less than asked, and every distance-derived number in the report below would be
+	* quietly wrong. That is worse here than in production: this tool exists to measure.
+	*
+	* Pressing Run is explicit new intent, the same reasoning as JobThread::jogUser() and the
+	* jog helpers, which clear it for exactly this reason.
+	*/
+	if (m_stopRun) {
+		ct::logger::info("[ProfilerTest] Clearing a stale stop flag left by an earlier run");
+		out << "  NOTE: a stop flag from an earlier run was still set; cleared so the scan move\n";
+		out << "  is not cut short. Nothing else about that earlier run is affected.\n\n";
+	}
+	m_stopRun = false;
+
+	const dat::WorldCoordinate origin = SystemData::instance().currentCoordinate();
+	const double sign = positiveDir ? 1.0 : -1.0;
+
+	// scan() hardcodes a POSITIVE 6 mm overshoot, so a -X scan there stops 6 mm short and the
+	// batch can never fill. Here the overshoot follows the direction. Its purpose is to
+	// guarantee the batch fills before the move ends, which is why it is past the end point.
+	const double overshoot_mm = 6.0;
+	const double endX = origin.wx + sign * distance_mm;
+	const double targetX = endX + sign * overshoot_mm;
+
+	out << "  Start (encoder) : X=" << QString::number(origin.wx, 'f', 3)
+		<< "  Y=" << QString::number(origin.wy, 'f', 3)
+		<< "  Z=" << QString::number(origin.wz, 'f', 3) << "\n";
+	out << "  Scan end        : X=" << QString::number(endX, 'f', 3) << "\n";
+	out << "  Move target     : X=" << QString::number(targetX, 'f', 3)
+		<< "   (scan end plus a " << QString::number(overshoot_mm, 'f', 1) << " mm overshoot so the batch always fills)\n";
+
+	say(QStringLiteral("Configuring profiler..."));
+
+	QElapsedTimer step;
+	step.start();
+
+	ProfilerManager::instance().stop(m_profilerID);
+	const bool okIntensity = ProfilerManager::instance().enableIntensityMap(m_profilerID, optic->intensity);
+	const bool okMode = ProfilerManager::instance().setExposureMode(m_profilerID, IProfiler::SINGLE);
+	const bool okExposure = ProfilerManager::instance().setExposure(m_profilerID, optic->exposure);
+	const bool okGain = ProfilerManager::instance().setGain(m_profilerID, optic->gain);
+	const bool okDivider = ProfilerManager::instance().setDivider(m_profilerID, optic->divider);
+	const bool okThreshold = ProfilerManager::instance().setLaserLineThreshold(m_profilerID, optic->lineThreshold);
+	const bool okLength = ProfilerManager::instance().setScanLength(m_profilerID, distance_mm);
+	const qint64 configMs = step.elapsed();
+
+	out << "\n  Configuration (all at RUNNING depth, applied per scan):\n";
+	out << "    enableIntensityMap    : " << yesNo(okIntensity) << "\n";
+	out << "    setExposureMode SINGLE: " << yesNo(okMode) << "\n";
+	out << "    setExposure           : " << yesNo(okExposure) << "\n";
+	out << "    setGain               : " << yesNo(okGain) << "\n";
+	out << "    setDivider            : " << yesNo(okDivider) << "\n";
+	out << "    setLaserLineThreshold : " << yesNo(okThreshold) << "\n";
+	out << "    setScanLength         : " << yesNo(okLength) << "\n";
+	out << "    took                  : " << configMs << " ms\n";
+
+	// Tag the frame so ImageManager routes it and waitForImagePreprocessed can match it.
+	FrameInfo* pending = ProfilerManager::instance().getFrame(m_profilerID);
+	if (pending) {
+		pending->type = ct::s_height_map;
+		pending->viewID = QStringLiteral("pst");
+		pending->opticID = optic->id;
+		pending->baseOpticID = QString();
+	}
+
+	quint32 trig0 = 0, trig1 = 0;
+	qint32  enc0 = 0, enc1 = 0;
+	const bool haveCounters = profiler->getCounters(trig0, enc0);
+
+	say(QStringLiteral("Arming..."));
+	step.restart();
+
+	if (!ProfilerManager::instance().start(m_profilerID)) {
+		out << "\n  ARM FAILED - start() returned false. Nothing was moved.\n";
+		out << "  Driver error: " << ProfilerManager::instance().errorMsg(m_profilerID) << "\n";
+		say(QStringLiteral("Arm failed. Report: %1").arg(reportPath));
+		finish(false, QStringLiteral("ARM FAILED - the profiler did not start"));
+		return;
+	}
+	const qint64 armMs = step.elapsed();
+
+	say(QStringLiteral("Scanning %1 mm %2X at %3 mm/s...")
+		.arg(distance_mm).arg(positiveDir ? "+" : "-").arg(speed3d));
+
+	step.restart();
+	jog(targetX, origin.wy, origin.wz, QStringLiteral("3D"));
+	const qint64 moveMs = step.elapsed();
+
+	step.restart();
+	const bool acquired = ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT);
+	const qint64 waitMs = step.elapsed();
+
+	// Deliberately NOT stopRun() / unloadBoard() here, unlike scan(). A timeout during a
+	// diagnostic must not leave m_stopRun set for the next run to trip over.
+	if (!acquired) {
+		out << "\n  ACQUISITION TIMED OUT after " << waitMs << " ms.\n";
+		out << "  The batch did not fill. Nothing was force-stopped, so the next run starts clean.\n";
+		out << "\n  Before blaming the sensor, check the arithmetic. The batch count is derived\n";
+		out << "  from yPitchUm, so if triggers actually arrive further apart than yPitchUm says,\n";
+		out << "  the batch needs MORE travel than the scan length asked for and can never fill.\n";
+		out << "  Compare 'Implied pitch' below against the Y pitch in the profiler block.\n";
+	}
+
+	const dat::WorldCoordinate landed = SystemData::instance().currentCoordinate();
+	if (haveCounters) profiler->getCounters(trig1, enc1);
+
+	say(QStringLiteral("Waiting for the height map..."));
+	step.restart();
+	FrameInfo info = waitForImagePreprocessed(5000);
+	const qint64 imageMs = step.elapsed();
+
+	ProfilerManager::instance().stop(m_profilerID);
+
+	//------------------------------------------------------------ results
+	section(QStringLiteral("RESULTS"));
+
+	const double travelled_mm = std::abs(landed.wx - origin.wx);
+
+	out << "  Acquisition     : " << (acquired ? QStringLiteral("completed") : QStringLiteral("TIMED OUT")) << "\n";
+	out << "  Landed at       : X=" << QString::number(landed.wx, 'f', 3) << "\n";
+	out << "  Gantry travel   : " << QString::number(travelled_mm, 'f', 3) << " mm"
+		<< "   (requested " << QString::number(distance_mm + overshoot_mm, 'f', 3) << " mm including overshoot)\n";
+
+	if (std::abs(travelled_mm - (distance_mm + overshoot_mm)) > 0.5) {
+		out << "\n  WARNING: the gantry did not travel what was asked. A soft limit may have\n";
+		out << "  clamped the move. Every distance-derived number below is unreliable.\n";
+	}
+
+	out << "\n  Timing:\n";
+	out << "    configure     : " << configMs << " ms\n";
+	out << "    arm           : " << armMs << " ms\n";
+	out << "    move          : " << moveMs << " ms\n";
+	out << "    wait for batch: " << waitMs << " ms\n";
+	out << "    wait for image: " << imageMs << " ms\n";
+
+	// The RAW batch, straight from the driver's callback. The processed height map below is
+	// stretched by the pitch constants and the divider, so its dimensions are NOT the profile
+	// count and must never be used as one.
+	int profiles = 0;
+	int pointsPerProfile = 0;
+	const bool haveBatchSize = profiler->getLastBatchSize(profiles, pointsPerProfile);
+
+	if (haveBatchSize) {
+		out << "\n  Batch received  : " << profiles << " profiles x " << pointsPerProfile
+			<< " points   (raw, before any resize)\n";
+		if (profiles == 0) {
+			out << "  No profiles arrived at all - the controller never delivered a batch.\n";
+		}
+	}
+
+	/*
+	* The RAW batch, saved before ImageManager touches it. Deliberately done first and
+	* independently of the processed image: the raw data is the only copy that is not
+	* stretched by the pitch constants or rotated, so it is what any real measurement or
+	* re-analysis should start from - and it is worth having even when the height map
+	* downstream failed to build.
+	*/
+	if (saveImages) {
+		mtrx::SharedMilID rawHeight, rawIntensity;
+
+		if (profiler->takeLastRawFrame(rawHeight, rawIntensity) && rawHeight) {
+			const MIL_ID mRawH = rawHeight->id();
+			MbufSaveA((dir + QStringLiteral("raw_heightmap.tiff")).toUtf8().constData(), mRawH);
+
+			out << "\n  Raw height map  : " << mtrx::get_width(mRawH) << " x " << mtrx::get_height(mRawH)
+				<< " px, 16-bit   -> raw_heightmap.tiff\n";
+			out << "                    grey = height; recover microns with\n";
+			out << "                    (grey - 32768) * zPitchUm, and 0 means INVALID.\n";
+
+			if (rawIntensity) {
+				const MIL_ID mRawI = rawIntensity->id();
+				MbufSaveA((dir + QStringLiteral("raw_intensity.tiff")).toUtf8().constData(), mRawI);
+				out << "  Raw intensity   : " << mtrx::get_width(mRawI) << " x " << mtrx::get_height(mRawI)
+					<< " px, 8-bit    -> raw_intensity.tiff\n";
+			}
+
+			out << "                    One row per profile, one column per sample point, in\n";
+			out << "                    acquisition order. No resize, no rotate, no divider\n";
+			out << "                    stretch - so a pitch constant being wrong cannot\n";
+			out << "                    corrupt this copy.\n";
+		}
+		else {
+			out << "\n  Raw batch       : not available.\n";
+			out << "                    The driver only holds raw buffers for a batch that\n";
+			out << "                    COMPLETED. A batch abandoned on timeout is discarded\n";
+			out << "                    before the buffers are ever allocated, so there is\n";
+			out << "                    nothing to save - see the discarded count above.\n";
+		}
+	}
+
+	if (info.viewID.isEmpty() || !info.pHeightMap) {
+		out << "\n  NO IMAGE. waitForImagePreprocessed returned an empty frame.\n";
+		out << "  If the acquisition completed, the batch arrived but the height map was never\n";
+		out << "  built - check the ImageManager thread in the log.\n";
+	}
+	else {
+		const MIL_ID mHeight = info.pHeightMap->id();
+		const MIL_INT hw = mtrx::get_width(mHeight);
+		const MIL_INT hh = mtrx::get_height(mHeight);
+
+		out << "\n  Height map      : " << hw << " x " << hh << " px   (after resize and rotate)\n";
+		out << "  Height min/max  : " << QString::number(mtrx::get_min(mHeight), 'f', 1)
+			<< " / " << QString::number(mtrx::get_max(mHeight), 'f', 1) << " grey\n";
+
+		if (mtrx::get_max(mHeight) <= 0.0) {
+			out << "  WARNING: the height map is entirely zero. 0 means invalid on this sensor,\n";
+			out << "  so the laser saw nothing - a different fault from receiving no triggers.\n";
+		}
+
+		if (info.pImage) {
+			out << "  Intensity map   : " << mtrx::get_width(info.pImage->id())
+				<< " x " << mtrx::get_height(info.pImage->id()) << " px   (after resize and rotate)\n";
+		}
+
+		if (saveImages) {
+			MbufSaveA((dir + QStringLiteral("heightmap.tiff")).toUtf8().constData(), mHeight);
+			mtrx::to_qimg(mHeight).save(dir + QStringLiteral("heightmap.png"));
+			if (info.pImage) {
+				MbufSaveA((dir + QStringLiteral("intensity.tiff")).toUtf8().constData(), info.pImage->id());
+				mtrx::to_qimg(info.pImage->id()).save(dir + QStringLiteral("intensity.png"));
+			}
+			out << "  Images saved    : yes\n";
+		}
+	}
+
+	//-------------------------------------------- the encoder question
+	section(QStringLiteral("TRIGGER AND ENCODER"));
+
+	if (!haveCounters) {
+		out << "  The controller's counters could not be read on this backend.\n";
+	}
+	else {
+		const qint64 trigDelta = qint64(trig1) - qint64(trig0);
+		const qint64 encDelta = qint64(enc1) - qint64(enc0);
+		/*
+		* Rates are computed over the MOVE, not the whole counter window. The counters are
+		* read just before start() and just after the batch wait, so their window includes
+		* arming and any timeout spent standing still - and a 60 s timeout dilutes the rate
+		* by a factor of five, which reads as a slow trigger rate rather than a stalled one.
+		* Pulses only happen while the gantry moves, so the move is the honest denominator.
+		*/
+		const double windowSec = double(armMs + moveMs + waitMs) / 1000.0;
+		const double moveSec = double(moveMs) / 1000.0;
+
+		out << "  Trigger count   : " << trig0 << " -> " << trig1 << "   delta " << trigDelta << "\n";
+		out << "  Encoder count   : " << enc0 << " -> " << enc1 << "   delta " << encDelta << "\n";
+		out << "  Counter window  : " << QString::number(windowSec, 'f', 3) << " s   (arm + move + wait)\n";
+		out << "  Move time       : " << QString::number(moveSec, 'f', 3) << " s\n";
+
+		if (moveSec > 0.0) {
+			const double trigRate = double(trigDelta) / moveSec;
+			const double encRate = std::abs(double(encDelta)) / moveSec;
+
+			out << "\n  During the move:\n";
+			out << "    encoder pulses : " << QString::number(encRate, 'f', 1) << " /s   (what the gantry demanded)\n";
+			out << "    triggers taken : " << QString::number(trigRate, 'f', 1) << " /s   (what the controller accepted)\n";
+
+			if (trigRate > 0.0) {
+				const double ratio = encRate / trigRate;
+				out << "    ratio          : " << QString::number(ratio, 'f', 3) << " encoder counts per trigger\n";
+
+				if (ratio > 1.15) {
+					out << "\n  The controller is accepting FEWER triggers than the encoder produced.\n";
+					out << "  Two explanations, and one slow run separates them:\n";
+					out << "    - Saturation. The demanded rate is above the sampling frequency, so the\n";
+					out << "      surplus is discarded and TRG_PASS fires. The ratio would then FALL\n";
+					out << "      towards 1.0 at a lower scan speed.\n";
+					out << "    - A fixed pitch-between-triggers setting on the controller. The ratio\n";
+					out << "      would then stay put at any speed.\n";
+					out << "  Re-run this at roughly a third of the speed and compare the ratio.\n";
+					out << "  If it is saturation, the ceiling is the sampling frequency: keep\n";
+					out << "  speed_mm_s * 1000 / (yPitchUm * divider) below it.\n";
+				}
+			}
+		}
+
+		if (encDelta != 0 && travelled_mm > 0.0) {
+			out << "  Encoder scaling : " << QString::number(travelled_mm * 1000.0 / double(encDelta), 'f', 4)
+				<< " um per encoder count   (MEASURED)\n";
+		}
+		else if (travelled_mm > 0.0) {
+			out << "\n  The encoder counter did not move while the gantry travelled "
+				<< QString::number(travelled_mm, 'f', 3) << " mm.\n";
+			out << "  The controller is not seeing the encoder at all.\n";
+		}
+
+		if (trigDelta > 0 && travelled_mm > 0.0) {
+			out << "  Implied pitch   : " << QString::number(travelled_mm * 1000.0 / double(trigDelta), 'f', 4)
+				<< " um per trigger\n";
+		}
+
+		out << "\n  How to read this: run the same distance twice at two clearly different\n";
+		out << "  speeds (Config page -> X 3D velocity -> Update Velocity X).\n";
+		out << "    Same trigger delta both times      -> triggers follow DISTANCE. Encoder real.\n";
+		out << "    Same elapsed time both times       -> triggers follow TIME. Sampling clock.\n";
+		out << "    Trigger rate near the sampling\n";
+		out << "    frequency regardless of speed      -> saturated: something is triggering\n";
+		out << "                                          faster than the controller accepts.\n";
+	}
+
+	if (profiles > 0) {
+		out << "\n  Profiles vs the requested scan length:\n";
+		out << "    " << QString::number(distance_mm * 1000.0 / double(profiles), 'f', 4)
+			<< " um per profile, if the batch really spanned the requested "
+			<< QString::number(distance_mm, 'f', 3) << " mm.\n";
+		out << "    Treat that as an upper bound, not a measurement: the batch fills whenever\n";
+		out << "    enough triggers arrive, which is why the move overshoots the end point.\n";
+		out << "    The encoder scaling above is the number to trust.\n";
+	}
+
+	//--------------------------------------------------------------- tidy
+	if (returnToStart) {
+		say(QStringLiteral("Returning to start..."));
+		jog(origin.wx, origin.wy, origin.wz, QStringLiteral("2D"));
+		out << "\n  Returned to the start position.\n";
+	}
+	else {
+		out << "\n  Left parked at X=" << QString::number(landed.wx, 'f', 3)
+			<< " so the travel can be measured by hand.\n";
+	}
+
+	const bool gotImage = !info.viewID.isEmpty() && info.pHeightMap;
+	QString summary;
+	if (acquired && gotImage)      summary = QStringLiteral("OK - batch acquired and height map built");
+	else if (acquired && !gotImage) summary = QStringLiteral("PARTIAL - batch acquired but no height map was produced");
+	else                            summary = QStringLiteral("FAILED - the acquisition timed out");
+
+	say(QStringLiteral("%1. Report: %2").arg(summary).arg(reportPath));
+	finish(true, summary);
+}
+
 
 void JobThread::preAcquisition()
 {

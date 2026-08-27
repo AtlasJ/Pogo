@@ -361,6 +361,20 @@ public slots:
 	void performGuidedLaserAlignment(dat::WorldCoordinate currentPoint);
 	void verifyLaserAlignment(dat::WorldCoordinate currentPoint);
 
+	/*
+	* Profiler Scan Test - Test Run page, online run type "Profiler Scan Test".
+	*
+	* A 3D-only acquisition with no 2D camera in the loop, no recipe views and no production
+	* error handling. Scans from wherever the gantry is now, distance_mm along X in the chosen
+	* direction, and writes a full settings-and-results report under the current recipe.
+	*
+	* Deliberately NOT built on scan(): that path calls stopRun() on an acquisition timeout,
+	* which leaves m_stopRun set and aborts the NEXT run's axis wait. A diagnostic must leave
+	* the machine exactly as it found it. Any failure aborts the scan, never the report.
+	*/
+	void profilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
+		bool saveImages, bool returnToStart);
+
 	void getAllIntensityFromExpectedGV(QString camID, QString opticType, int idealR, int idealG, int idealB, QRectF roi);
 	void calibrateGoldenLightingProfile(QString camID, QRectF roi);
 	void calibrateCurrentLightingProfile(QString camID, QRectF roi);
@@ -436,6 +450,10 @@ signals:
 
 	void appendLaserAlignmentImage(LaserAlignmentImage);
 	void verifyLaserAlignmentDone();
+
+	//Profiler Scan Test: a running commentary, then the verdict plus the report path
+	void profilerScanTestProgress(QString line);
+	void profilerScanTestDone(bool scanRan, QString reportPath, QString summary);
 	void captureAlignmentDone();
 	void laserAlignmentDone();
 	void guidedLaserAlignmentDone();
