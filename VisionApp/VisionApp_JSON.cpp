@@ -1382,6 +1382,7 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("lineScanAxis"), (int)SystemData::instance()._lineScanAxis);
 	obj.insert(QStringLiteral("lscStrobeMode"), (bool)SystemData::instance()._lscStrobeMode);
 	obj.insert(QStringLiteral("camImageRotation"), (int)SystemData::instance()._camImageRotation);
+	obj.insert(QStringLiteral("homeOnStartup"), (bool)SystemData::instance()._homeOnStartup);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1945,7 +1946,10 @@ bool VisionApp::loadRecipeConfig()
 			ui.comboBox_camRotation->setCurrentIndex(SystemData::instance()._camImageRotation / 90);
 		}
 
+		SystemData::instance()._homeOnStartup = jsonHelper::getBool(root, QStringLiteral("homeOnStartup"), true);
 		{
+			QSignalBlocker blocker(ui.checkBox_homeOnStartup);
+			ui.checkBox_homeOnStartup->setChecked(SystemData::instance()._homeOnStartup);
 		}
 		//ScaleManager::instance().set_world_scale(jsonHelper::getDouble(root, QStringLiteral("worldScale"), 0.291716));
 		if (!root.contains(QStringLiteral("laserApi")) || root.value(QStringLiteral("laserApi")).toString().isEmpty()) {

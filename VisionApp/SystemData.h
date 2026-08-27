@@ -129,6 +129,7 @@ public:
 
 	std::atomic<int> _camImageRotation = 0; //camera alignment rotation option: 0/90/180/270, applied in ImageManager preprocessing
 
+	std::atomic<bool> _homeOnStartup = true; //auto home the machine after login
 
 
 	std::atomic<bool> _bypassInspection = false;

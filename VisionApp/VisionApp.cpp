@@ -5309,6 +5309,11 @@ bool VisionApp::verifyLogin()
 
 void VisionApp::initMachine()
 {
+	if (!SystemData::instance()._homeOnStartup) {
+		ct::logger::info("[Machine] Home on startup disabled, skipping auto home");
+		return;
+	}
+
 	//NOTE: driver power is not software controlled on this machine, no need to turn on before homing
 	emit homeAll();
 }

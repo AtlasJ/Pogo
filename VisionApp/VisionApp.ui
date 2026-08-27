@@ -12036,11 +12036,25 @@ border: none;
                          </layout>
                         </item>
                         <item row="12" column="0">
-                         <widget class="QCheckBox" name="checkBox_lscStrobeMode">
-                          <property name="text">
-                           <string>Light Controller Strobe Mode</string>
-                          </property>
-                         </widget>
+                         <layout class="QHBoxLayout" name="horizontalLayout_configChecks">
+                          <item>
+                           <widget class="QCheckBox" name="checkBox_lscStrobeMode">
+                            <property name="text">
+                             <string>Light Controller Strobe Mode</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QCheckBox" name="checkBox_homeOnStartup">
+                            <property name="text">
+                             <string>Home on Startup</string>
+                            </property>
+                            <property name="checked">
+                             <bool>true</bool>
+                            </property>
+                           </widget>
+                          </item>
+                         </layout>
                         </item>
                         <item row="13" column="0">
                          <layout class="QHBoxLayout" name="horizontalLayout_71">
