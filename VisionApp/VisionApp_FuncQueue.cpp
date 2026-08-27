@@ -75,12 +75,21 @@ void VisionApp::inspect2D3D()
 	int numView = 0;
 	int multiplier = 3;
 
+	auto& sd = SystemData::instance();
 
-	if (_enable2D && _enable3D) numView = getNumOfViewToProcess() + getNumOfLineScanToProcess();
+	if (sd._setupRegionPitchMode) {
+		//pitch mode: one step per unit for the barcode cycle, its OCR result,
+		//the 3D scan, and its height result (skipped steps are credited by the flow)
+		const int units = std::max(1, (int)sd._unitsX) * std::max(1, (int)sd._unitsY);
+		if (sd._pitchEnableBarcode) numView += units * 2;
+		if (sd._pitchEnable3D) numView += units * 2;
+		if (numView == 0) numView = 1;
+	}
+	else if (_enable2D && _enable3D) numView = getNumOfViewToProcess() + getNumOfLineScanToProcess();
 	else if (_enable2D)  numView = getNumOfViewToProcess();
 	else if (_enable3D)  numView = getNumOfLineScanToProcess();
 
-	if (ui.checkBox_runOneFOVonly->isChecked()) numView = 2;
+	if (!sd._setupRegionPitchMode && ui.checkBox_runOneFOVonly->isChecked()) numView = 2;
 
 	progressBarSetup("Running Inspection...", numView, true);
 

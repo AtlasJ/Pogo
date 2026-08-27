@@ -140,6 +140,17 @@ public:
 	std::atomic<double> _brR1dx = 0.0, _brR1dy = 0.0, _brR1dz = 0.0; //camera-to-reader offsets (mm)
 	std::atomic<double> _brR2dx = 0.0, _brR2dy = 0.0, _brR2dz = 0.0;
 
+	//setup region pitch mode (recipe): barcode flow iterates a unit grid from
+	//point 1 (top left) using the taught XY pitch, instead of the 3D mid point
+	std::atomic<bool> _setupRegionPitchMode = false;
+	std::atomic<bool> _pitchP1Set = false;
+	std::atomic<double> _pitchP1x = 0.0, _pitchP1y = 0.0, _pitchP1z = 0.0;
+	std::atomic<double> _pitchX = 0.0, _pitchY = 0.0; //signed, direction from point 1 to point 2
+	std::atomic<int> _unitsX = 1, _unitsY = 1;
+	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow
+	std::atomic<bool> _pitchEnable3D = true;      //production runs the 3D scan
+	std::atomic<double> _pitchScanLen_mm = 10.0;  //3D scan length, centered on each unit's mid point
+
 	std::atomic<bool> _bypassInspection = false;
 
 	std::atomic<bool> _Machine_Ready = true;     // Refer to Machine

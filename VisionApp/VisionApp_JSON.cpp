@@ -1383,6 +1383,19 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("lscStrobeMode"), (bool)SystemData::instance()._lscStrobeMode);
 	obj.insert(QStringLiteral("camImageRotation"), (int)SystemData::instance()._camImageRotation);
 	obj.insert(QStringLiteral("homeOnStartup"), (bool)SystemData::instance()._homeOnStartup);
+
+	obj.insert(QStringLiteral("setupRegionPitchMode"), (bool)SystemData::instance()._setupRegionPitchMode);
+	obj.insert(QStringLiteral("pitchP1Set"), (bool)SystemData::instance()._pitchP1Set);
+	obj.insert(QStringLiteral("pitchP1x"), SystemData::instance()._pitchP1x.load());
+	obj.insert(QStringLiteral("pitchP1y"), SystemData::instance()._pitchP1y.load());
+	obj.insert(QStringLiteral("pitchP1z"), SystemData::instance()._pitchP1z.load());
+	obj.insert(QStringLiteral("pitchX"), SystemData::instance()._pitchX.load());
+	obj.insert(QStringLiteral("pitchY"), SystemData::instance()._pitchY.load());
+	obj.insert(QStringLiteral("unitsX"), (int)SystemData::instance()._unitsX);
+	obj.insert(QStringLiteral("unitsY"), (int)SystemData::instance()._unitsY);
+	obj.insert(QStringLiteral("pitchEnableBarcode"), (bool)SystemData::instance()._pitchEnableBarcode);
+	obj.insert(QStringLiteral("pitchEnable3D"), (bool)SystemData::instance()._pitchEnable3D);
+	obj.insert(QStringLiteral("pitchScanLen_mm"), SystemData::instance()._pitchScanLen_mm.load());
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1951,6 +1964,40 @@ bool VisionApp::loadRecipeConfig()
 			QSignalBlocker blocker(ui.checkBox_homeOnStartup);
 			ui.checkBox_homeOnStartup->setChecked(SystemData::instance()._homeOnStartup);
 		}
+
+		//setup region pitch mode (per recipe)
+		SystemData::instance()._setupRegionPitchMode = jsonHelper::getBool(root, QStringLiteral("setupRegionPitchMode"), false);
+		SystemData::instance()._pitchP1Set = jsonHelper::getBool(root, QStringLiteral("pitchP1Set"), false);
+		SystemData::instance()._pitchP1x = jsonHelper::getDouble(root, QStringLiteral("pitchP1x"), 0.0);
+		SystemData::instance()._pitchP1y = jsonHelper::getDouble(root, QStringLiteral("pitchP1y"), 0.0);
+		SystemData::instance()._pitchP1z = jsonHelper::getDouble(root, QStringLiteral("pitchP1z"), 0.0);
+		SystemData::instance()._pitchX = jsonHelper::getDouble(root, QStringLiteral("pitchX"), 0.0);
+		SystemData::instance()._pitchY = jsonHelper::getDouble(root, QStringLiteral("pitchY"), 0.0);
+		SystemData::instance()._unitsX = std::max(1, jsonHelper::getInteger(root, QStringLiteral("unitsX"), 1));
+		SystemData::instance()._unitsY = std::max(1, jsonHelper::getInteger(root, QStringLiteral("unitsY"), 1));
+		SystemData::instance()._pitchEnableBarcode = jsonHelper::getBool(root, QStringLiteral("pitchEnableBarcode"), true);
+		SystemData::instance()._pitchEnable3D = jsonHelper::getBool(root, QStringLiteral("pitchEnable3D"), true);
+		SystemData::instance()._pitchScanLen_mm = jsonHelper::getDouble(root, QStringLiteral("pitchScanLen_mm"), 10.0);
+		{
+			QSignalBlocker b0(ui.comboBox_setupRegionMode);
+			QSignalBlocker b1(ui.lineEdit_pitchX);
+			QSignalBlocker b2(ui.lineEdit_pitchY);
+			QSignalBlocker b3(ui.lineEdit_unitsX);
+			QSignalBlocker b4(ui.lineEdit_unitsY);
+			QSignalBlocker b5(ui.checkBox_pitchBarcode);
+			QSignalBlocker b6(ui.checkBox_pitch3D);
+			QSignalBlocker b7(ui.lineEdit_pitchScanLen);
+			ui.comboBox_setupRegionMode->setCurrentIndex(SystemData::instance()._setupRegionPitchMode ? 1 : 0);
+			ui.lineEdit_pitchX->setText(QString::number(SystemData::instance()._pitchX.load(), 'f', 3));
+			ui.lineEdit_pitchY->setText(QString::number(SystemData::instance()._pitchY.load(), 'f', 3));
+			ui.lineEdit_unitsX->setText(QString::number((int)SystemData::instance()._unitsX));
+			ui.lineEdit_unitsY->setText(QString::number((int)SystemData::instance()._unitsY));
+			ui.checkBox_pitchBarcode->setChecked(SystemData::instance()._pitchEnableBarcode);
+			ui.checkBox_pitch3D->setChecked(SystemData::instance()._pitchEnable3D);
+			ui.lineEdit_pitchScanLen->setText(QString::number(SystemData::instance()._pitchScanLen_mm.load()));
+		}
+		if (_applySetupRegionMode) _applySetupRegionMode();
+		if (_refreshPitchLabels) _refreshPitchLabels();
 		//ScaleManager::instance().set_world_scale(jsonHelper::getDouble(root, QStringLiteral("worldScale"), 0.291716));
 		if (!root.contains(QStringLiteral("laserApi")) || root.value(QStringLiteral("laserApi")).toString().isEmpty()) {
 			laserApi = currentSensorApi;
