@@ -5615,15 +5615,28 @@ void JobThread::run2D3D() {
 
 	//2D camera acquisition replaced for Pogo: barcode via the SR-X readers,
 	//then the 3D scan - each gated by its recipe checkbox
-	bool barcodeOk = true;
-	if (sd._pitchEnableBarcode) barcodeOk = acquireBarcodeAndOcr();
-	else ct::logger::info("[Acq] Barcode flow disabled in recipe, skipped");
-
-	if (sd._pitchEnable3D && barcodeOk) {
-		if (sd._setupRegionPitchMode) acquire3DImagesPitch();
-		else acquire3DImages();
+	if (sd._pitchEnableBarcode) {
+		//failed units are recorded as No_Barcode; the run always continues
+		if (!acquireBarcodeAndOcr()) {
+			ct::logger::warn("[Acq] Barcode step did not complete - continuing with the run");
+		}
 	}
-	else if (!sd._pitchEnable3D) {
+	else {
+		ct::logger::info("[Acq] Barcode flow disabled in recipe, skipped");
+	}
+
+	if (sd._pitchEnable3D) {
+		if (m_stopRun) {
+			ct::logger::info("[Acq] Run stopped - 3D scan skipped");
+		}
+		else if (sd._setupRegionPitchMode) {
+			acquire3DImagesPitch();
+		}
+		else {
+			acquire3DImages();
+		}
+	}
+	else {
 		ct::logger::info("[Acq] 3D scan disabled in recipe, skipped");
 	}
 
