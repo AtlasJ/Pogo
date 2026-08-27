@@ -232,6 +232,7 @@
     <ClCompile Include="AlgoTemplate.cpp" />
     <ClCompile Include="VisionApp_AlgoSetup.cpp" />
     <ClCompile Include="VisionApp_DryRun.cpp" />
+    <ClCompile Include="InspectionThread.cpp" />
     <ClCompile Include="PaddleOcrClient.cpp" />
     <ClCompile Include="SRXFtpServer.cpp" />
     <ClCompile Include="SRXManager.cpp" />
@@ -253,6 +254,7 @@
     <ClInclude Include="AlgoBuffers.h" />
     <ClInclude Include="AlgoTemplate.h" />
     <QtMoc Include="AlgoManager.h" />
+    <QtMoc Include="InspectionThread.h" />
     <QtMoc Include="PaddleOcrClient.h" />
     <ClInclude Include="AlgoSetupTypes.h" />
     <ClInclude Include="DryRunTableWidget.h" />

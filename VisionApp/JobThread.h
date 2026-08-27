@@ -37,6 +37,22 @@
 
 #define PROFILER_TIMEOUT 60000
 
+//feature-finding setup for camera alignment/scaling: circle or learned pattern
+struct AlignFeatureParams {
+	bool usePattern = false;
+
+	//circle: expected diameter comes from the on-screen ROI +- tolerance
+	int minDiameter = 0;
+	int maxDiameter = 0;
+	mtrx::ForegoundType foreground = mtrx::ForegoundType::FOREGROUND_WHITE;
+
+	//pattern
+	QString modelPath;      //learned .mpat
+	QRectF searchRoi;       //px, empty = whole FOV
+	double minScore = 70.0;
+};
+Q_DECLARE_METATYPE(AlignFeatureParams)
+
 Q_DECLARE_METATYPE(InspStatus::FiducialDetail)
 Q_DECLARE_METATYPE(MIL_ID)
 Q_DECLARE_METATYPE(LaserAlignmentImage)
@@ -266,6 +282,7 @@ private:
 	void continuousSnap();
 	void savePostResult();
 	void acquire2DImages();
+	bool acquireBarcodeAndOcr(); //SR-X barcode read + OCR-side capture at the 3D mid point
 	void acquire3DImages();
 	void collectPlane();
 
@@ -331,6 +348,7 @@ public slots:
 	void waitAxis(int axis);
 	void waitEncoderCheck(double x_mm, double y_mm, double z_mm);
 	void jog(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
+	void jogUser(double x, double y, double z, QString type = "2D", bool waitJogDone = true); //user-initiated: clears a stale stop flag first
 	void dryRun(QVector<QVector3D> coords, int loops);
 	void reconnectMotion();
 	void jogSnap(double x, double y, double z, const OpticsInfo& optic);
@@ -353,8 +371,9 @@ public slots:
 	QString readBarcode(int index, bool online = true);
 
 	//calibration
-	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
-	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
+	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams);
+	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams);
+	bool findAlignFeature(MIL_ID mMono, const AlignFeatureParams& p, mtrx::PatternOutput& out);
 
 	void performLaserAlignment(dat::WorldCoordinate currentPoint, QRectF roi, int camThreshold, int laserThreshold);
 	void captureAlignmentImages(dat::WorldCoordinate currentPoint, int camThreshold, int laserThreshold);

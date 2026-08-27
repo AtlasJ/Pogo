@@ -27,6 +27,7 @@
 #include "FiducialInfo.h"
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
+#include "InspectionThread.h"
 #include "AlgoDefectResult.h"
 #include "ErrorInfo.h"
 #include "OpenWorkspaceInfo.h"
@@ -798,6 +799,11 @@ private:
 	QDragBox* _algoOcrRoi2Box = nullptr;
 	QDragBox* _algoOcrLearnBox = nullptr;
 	QDragBox* _algoLocLearnBox = nullptr;
+
+	//camera alignment/scaling feature ROIs (laser/alignment page) - VisionApp_Laser.cpp
+	QDragBox* _alignCircleRoi = nullptr;
+	QDragBox* _alignLearnBox = nullptr;
+	QDragBox* _alignSearchBox = nullptr;
 	QDragBox* _algoLocSearchBox = nullptr;
 	QVector<QDragBox*> _algoPlaneBoxes;
 	QVector<QDragBox*> _algoHeightBoxes;
@@ -809,8 +815,18 @@ private:
 
 	//external barcode reader setup page (SRXManager)
 	void initBarcodeReaderPage();
+	void initBarcodeReaderAlignment();
 	void refreshBarcodeReaderPage();
 	void updateSRXImagePreview(const QString& readerID);
+
+	//camera alignment method (circle/pattern) - VisionApp_Laser.cpp
+	void initAlignmentMethodUI();
+	void updateAlignMethodWidgets();
+	void updateAlignRoiVisibility();
+	void hideAlignRois();
+	void saveAlignmentConfig();
+	void loadAlignmentConfig();
+	AlignFeatureParams buildAlignFeatureParams(bool& ok);
 
 	//dry run page - VisionApp_DryRun.cpp
 	void initDryRunPage();
@@ -1649,8 +1665,8 @@ signals:
 	QString readBarcode(int index, bool online = true);
 
 	//calibration
-	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
-	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
+	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams);
+	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams);
 
 	void performLaserAlignment(dat::WorldCoordinate currentPoint, QRectF roi, int camThreshold, int laserThreshold);
 	void captureAlignmentImages(dat::WorldCoordinate currentPoint, int camThreshold, int laserThreshold);

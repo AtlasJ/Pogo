@@ -292,19 +292,18 @@ bool OpticsControl::setBrightness(QString camID, QString ch)
 
 bool OpticsControl::setBrightnessBasedOnBand(QString camID, const OpticsInfo& optic, BandType bandType)
 {
-	bool ret = true;
+	//exposure/gain come straight from the optic the user configured, not the
+	//portability lighting-calibration table
+	auto ret = CAMManager::instance().setExposure(camID, optic.exposure);
+	ret &= CAMManager::instance().setGain(camID, optic.gain);
 
-	const auto& band = getBand(optic, bandType);
-
-	auto keys = band.keys();
-	qSort(keys);
-
-	for (const auto& key : keys) {
-		const auto& intensity = band[key];
-		if (intensity == 0) continue;
-
-		ret &= setBrightness(camID, key);
-		break;
+	if (ret) {
+		ct::logger::info("[Optics] %s: set %s exposure %.0f, gain %.2f",
+			optic.id.toStdString().c_str(), camID.toStdString().c_str(), optic.exposure, optic.gain);
+	}
+	else {
+		ct::logger::error("[Optics] %s: failed to set exposure/gain on %s",
+			optic.id.toStdString().c_str(), camID.toStdString().c_str());
 	}
 
 	return ret;

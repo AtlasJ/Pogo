@@ -11,6 +11,70 @@ void VisionApp::initProductionUI() {
 	//NOTE: for hardware side, user can only turn on in this production page
 	// Only config can be toggle on off
 
+	//── live production status table: one row per board ──
+	ui.tableWidget_prodStatus->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+	//result column bitmask kept in Qt::UserRole: bit0 = OCR passed, bit1 = 3D height passed
+	constexpr int kOcrPassBit = 1, kHeightPassBit = 2;
+
+	connect(&_jobThread, &JobThread::barcodeDecoded, this, [=](QString code) {
+		if (_processType != ProcessType::PRODUCTION) return;
+		if (code == "External_Barcode") return; //pre-acquisition placeholder, not a read result
+
+		auto* t = ui.tableWidget_prodStatus;
+		const int row = t->rowCount();
+		t->insertRow(row);
+
+		t->setItem(row, 0, new QTableWidgetItem(QTime::currentTime().toString("hh:mm:ss")));
+
+		const bool codeOk = (code != "No_Barcode" && code != "Fail_to_read_barcode" && code != "ERROR");
+		auto* bItem = new QTableWidgetItem(code);
+		bItem->setForeground(codeOk ? QBrush(Qt::green) : QBrush(Qt::red));
+		t->setItem(row, 1, bItem);
+
+		t->setItem(row, 2, new QTableWidgetItem("-"));
+
+		auto* rItem = new QTableWidgetItem(codeOk ? "-" : "FAIL");
+		if (!codeOk) rItem->setForeground(QBrush(Qt::red));
+		rItem->setData(Qt::UserRole, 0);
+		t->setItem(row, 3, rItem);
+
+		t->scrollToBottom();
+	}, Qt::QueuedConnection);
+
+	connect(&InspectionThread::instance(), &InspectionThread::inspectionResult, this,
+		[=](QString algo, bool pass, QString detail) {
+			auto* t = ui.tableWidget_prodStatus;
+			if (t->rowCount() == 0) return;
+			const int row = t->rowCount() - 1;
+
+			if (algo == "OCR") {
+				auto* item = new QTableWidgetItem(detail.isEmpty() ? (pass ? "PASS" : "FAIL") : detail);
+				item->setForeground(pass ? QBrush(Qt::green) : QBrush(Qt::red));
+				t->setItem(row, 2, item);
+			}
+
+			auto* rItem = t->item(row, 3);
+			if (!rItem) return;
+			if (rItem->text() == "FAIL") return; //already failed, stays failed
+
+			if (!pass) {
+				rItem->setText("FAIL");
+				rItem->setForeground(QBrush(Qt::red));
+				return;
+			}
+
+			int mask = rItem->data(Qt::UserRole).toInt();
+			if (algo == "OCR") mask |= kOcrPassBit;
+			else if (algo == "3D Height") mask |= kHeightPassBit;
+			rItem->setData(Qt::UserRole, mask);
+
+			if ((mask & kOcrPassBit) && (mask & kHeightPassBit)) {
+				rItem->setText("PASS");
+				rItem->setForeground(QBrush(Qt::green));
+			}
+		}, Qt::QueuedConnection);
+
 
 	//This section must always be on
 	connect(ui.toolButton_cameraStatus, &QToolButton::clicked, this, [=]() {
@@ -99,6 +163,9 @@ void VisionApp::startProduction()
 
 	_processType = ProcessType::PRODUCTION;
 
+	//production runs inspect: OCR + 3D height on the acquired images
+	InspectionThread::instance().setActive(true);
+
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
 
@@ -162,6 +229,9 @@ void VisionApp::startProductionS()
 
 
 	_processType = ProcessType::PRODUCTION;
+
+	//production runs inspect: OCR + 3D height on the acquired images
+	InspectionThread::instance().setActive(true);
 
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();

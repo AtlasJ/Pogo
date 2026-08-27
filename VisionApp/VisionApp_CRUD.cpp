@@ -6,6 +6,7 @@
 #include "EM_TSP.h"
 #include "TemplateLibraryTab.h"
 #include "CAMManager.h"
+#include "SRXManager.h"
 #include "QRectItem.h"
 #include "ScaleManager.h"
 
@@ -1554,6 +1555,10 @@ void VisionApp::showCrossHair(bool show)
 		if (show)_crossHairY->show();
 		else _crossHairY->hide();
 	}
+
+	//barcode page: reader image viewers follow the same toggle
+	updateSRXImagePreview(SRXManager::SRX1);
+	updateSRXImagePreview(SRXManager::SRX2);
 }
 
 void VisionApp::showView(bool show)

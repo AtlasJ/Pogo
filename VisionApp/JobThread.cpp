@@ -1,5 +1,6 @@
 #include "JobThread.h"
 #include "SRXManager.h"
+#include "InspectionThread.h"
 #include "TimeLogger.h"
 #include "ScopedTimeLogger.h"
 #include "Utilities.h"
@@ -550,7 +551,68 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 	return info;
 }
 
-void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type)
+bool JobThread::findAlignFeature(MIL_ID mMono, const AlignFeatureParams& p, mtrx::PatternOutput& out)
+{
+	if (p.usePattern) {
+		if (p.modelPath.isEmpty() || !QFile::exists(p.modelPath)) {
+			ct::logger::error("[Align] Pattern model not learned: %s", p.modelPath.toStdString().c_str());
+			return false;
+		}
+
+		//constrain to the search ROI when one is drawn
+		MIL_ID mSearch = mMono;
+		double offX = 0, offY = 0;
+		bool cropped = false;
+
+		if (!p.searchRoi.isEmpty()) {
+			const MIL_INT w = MbufInquire(mMono, M_SIZE_X, M_NULL);
+			const MIL_INT h = MbufInquire(mMono, M_SIZE_Y, M_NULL);
+			QRectF sr = p.searchRoi.intersected(QRectF(0, 0, (double)w, (double)h));
+			if (sr.width() > 10 && sr.height() > 10) {
+				mSearch = mtrx::crop(mMono, sr.x(), sr.y(), sr.width(), sr.height());
+				offX = sr.x();
+				offY = sr.y();
+				cropped = true;
+			}
+		}
+
+		mtrx::PatternOutput patOut;
+		patOut.acceptance_min_score = p.minScore;
+		const bool found = mtrx::find_pattern(mSearch, p.modelPath.toStdString(), patOut);
+		if (cropped) MbufFree(mSearch);
+
+		if (!found || patOut.score < p.minScore) {
+			ct::logger::warn("[Align] Pattern not found (best %.1f, min %.1f)", patOut.score, p.minScore);
+			return false;
+		}
+
+		out = patOut;
+		out.x += offX;
+		out.y += offY;
+		out.cx += offX;
+		out.cy += offY;
+		ct::logger::info("[Align] Pattern found at (%.1f, %.1f), score %.1f", out.cx, out.cy, out.score);
+		return true;
+	}
+
+	mtrx::Circle circle;
+	if (!mtrx::find_circle(circle, mMono, (double)p.minDiameter / 2.0, (double)p.maxDiameter / 2.0,
+		mtrx::CircleType::LARGEST_RADIUS, p.foreground)) {
+		ct::logger::warn("[Align] Circle not found (diameter %d-%d px)", p.minDiameter, p.maxDiameter);
+		return false;
+	}
+
+	out.x = circle.cx - circle.radius;
+	out.y = circle.cy - circle.radius;
+	out.w = circle.radius * 2;
+	out.h = circle.radius * 2;
+	out.cx = circle.cx;
+	out.cy = circle.cy;
+	ct::logger::info("[Align] Circle found at (%.1f, %.1f), diameter %.1f px", out.cx, out.cy, out.w);
+	return true;
+}
+
+void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams)
 {
 	//NOTE: Inconsistency is usually due to gantry error and not the algorithm itself. Can easily be proven by loading the same image to test if the circle found is different. 
 	auto origin = currentPoint;
@@ -569,13 +631,8 @@ void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double
 	mtrx::BufferCollector bc2(mMono);
 
 	mtrx::PatternOutput output;
-	mtrx::Circle circle;
 
-	if (mtrx::find_circle(circle, mMono, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-		output.x = circle.cx - circle.radius;
-		output.y = circle.cy - circle.radius;
-		output.w = circle.radius * 2;
-		output.h = circle.radius * 2;
+	if (findAlignFeature(mMono, featureParams, output)) {
 		emit drawRectFOV("cam_align", QRectF(output.x, output.y, output.w, output.h), Qt::yellow);
 	}else {
 		emit cameraAlignmentFailed("Camera Alignment Failed: Origin feature not found!");
@@ -599,12 +656,7 @@ void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double
 
 
 	mtrx::PatternOutput outputH;
-	mtrx::Circle circleH;
-	if (mtrx::find_circle(circleH, mMonoH, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-		outputH.x = circleH.cx - circleH.radius;
-		outputH.y = circleH.cy - circleH.radius;
-		outputH.w = circleH.radius * 2;
-		outputH.h = circleH.radius * 2;
+	if (findAlignFeature(mMonoH, featureParams, outputH)) {
 		emit drawRectFOV("cam_align", QRectF(outputH.x, outputH.y, outputH.w, outputH.h), Qt::yellow);
 	}else {
 		emit cameraAlignmentFailed("Camera Alignment Failed: Horizontal feature not found!");
@@ -630,7 +682,7 @@ void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double
 	snapOptic(mainOptic, "H", "", true);
 }
 
-void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type)
+void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams)
 {
 	auto origin = currentPoint;
 	auto horizontal_step = origin;
@@ -657,12 +709,7 @@ void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double s
 	bool ret1 = false, retH = false, retV = false;
 
 	mtrx::PatternOutput output;
-	mtrx::Circle circle;
-	if (mtrx::find_circle(circle, mMono, (double)minDiameter / 2.0, (double)maxDiameter / 2.0, mtrx::CircleType::LARGEST_RADIUS, type)) {
-		output.x = circle.cx - circle.radius;
-		output.y = circle.cy - circle.radius;
-		output.w = circle.radius * 2;
-		output.h = circle.radius * 2;
+	if (findAlignFeature(mMono, featureParams, output)) {
 		emit drawRectFOV("cam_scaling", QRectF(output.x, output.y, output.w, output.h), Qt::yellow);
 	}
 	else {
@@ -687,13 +734,7 @@ void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double s
 
 
 	mtrx::PatternOutput outputH;
-	mtrx::Circle circleH;
-	if (mtrx::find_circle(circleH, mMonoH, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-
-		outputH.x = circleH.cx - circleH.radius;
-		outputH.y = circleH.cy - circleH.radius;
-		outputH.w = circleH.radius * 2;
-		outputH.h = circleH.radius * 2;
+	if (findAlignFeature(mMonoH, featureParams, outputH)) {
 		emit drawRectFOV("cam_scaling", QRectF(outputH.x, outputH.y, outputH.w, outputH.h), Qt::yellow);
 	}
 	else {
@@ -721,13 +762,7 @@ void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double s
 	mtrx::BufferCollector bc6(mMonoV);
 
 	mtrx::PatternOutput outputV;
-	mtrx::Circle circleV;
-	if (mtrx::find_circle(circleV, mMonoV, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-
-		outputV.x = circleV.cx - circleV.radius;
-		outputV.y = circleV.cy - circleV.radius;
-		outputV.w = circleV.radius * 2;
-		outputV.h = circleV.radius * 2;
+	if (findAlignFeature(mMonoV, featureParams, outputV)) {
 		emit drawRectFOV("cam_scaling", QRectF(outputV.x, outputV.y, outputV.w, outputV.h), Qt::yellow);
 	}
 	else {
@@ -3708,6 +3743,153 @@ void JobThread::acquire2DImages()
 	ct::logger::info("[Acq] Done acquiring 2D images");
 }
 
+bool JobThread::acquireBarcodeAndOcr()
+{
+	if (m_stopRun) return false;
+	if (!safeGuardLineScan()) return false;
+
+	ScopedTimeLogger stl("[Acq] Barcode + OCR acquisition");
+	auto& srx = SRXManager::instance();
+
+	//jog to the middle of the 3D scan area so both readers see the part
+	double sumX = 0, sumY = 0, z = 0;
+	int n = 0;
+	for (const auto& l : *m_linescans) {
+		if (l.type == ct::s_stitch_linescan || l.id.isEmpty()) continue;
+		sumX += (l.start_point.wx + l.end_point.wx) / 2.0;
+		sumY += (l.start_point.wy + l.end_point.wy) / 2.0;
+		z = l.start_point.wz;
+		n++;
+	}
+
+	if (n == 0) {
+		ct::logger::error("[Acq] No line scans assigned - cannot locate the barcode read position");
+		return false;
+	}
+
+	const double midX = sumX / n, midY = sumY / n;
+	auto& sd = SystemData::instance();
+
+	//jog the base camera position, then apply the taught camera-to-reader offset (XYZ)
+	auto jogToReader = [&](int reader) {
+		const bool taught = (reader == 1) ? (bool)sd._brR1Taught : (bool)sd._brR2Taught;
+		const double dx = (reader == 1) ? sd._brR1dx.load() : sd._brR2dx.load();
+		const double dy = (reader == 1) ? sd._brR1dy.load() : sd._brR2dy.load();
+		const double dz = (reader == 1) ? sd._brR1dz.load() : sd._brR2dz.load();
+		if (!taught) ct::logger::warn("[Acq] Reader %d offset not taught - scanning at the 3D mid point", reader);
+		jog(midX + (taught ? dx : 0), midY + (taught ? dy : 0), z + (taught ? dz : 0), "2D", true);
+	};
+
+	auto readerID = [](int reader) { return reader == 1 ? SRXManager::SRX1 : SRXManager::SRX2; };
+	auto readerDuration = [&](int reader) { return (reader == 1) ? (int)sd._brR1Duration_ms : (int)sd._brR2Duration_ms; };
+
+	//scan sequentially: first reader from recipe settings, fall back to the other
+	const int first = (sd._brFirstReader == 2) ? 2 : 1;
+	const int second = (first == 1) ? 2 : 1;
+
+	const QString prevImg1 = srx.lastImagePath(SRXManager::SRX1);
+	const QString prevImg2 = srx.lastImagePath(SRXManager::SRX2);
+
+	int winner = 0;
+	QString barcode;
+	bool loserTriggered = false; //true when the non-barcode reader already ran a cycle
+
+	for (int reader : { first, second }) {
+		if (m_stopRun) return false;
+
+		jogToReader(reader);
+		if (m_stopRun) return false;
+
+		const QString id = readerID(reader);
+		const QDateTime t0 = QDateTime::currentDateTime();
+		srx.trigger(id);
+
+		const int durationMs = readerDuration(reader);
+		QElapsedTimer timer;
+		timer.start();
+		bool decoded = false;
+
+		while (timer.elapsed() < durationMs && !m_stopRun) {
+			auto r = srx.lastResult(id);
+			if (r.ok && r.timestamp >= t0) {
+				barcode = r.code;
+				decoded = true;
+				break;
+			}
+			os_tool::goSleep(20);
+		}
+
+		if (decoded) {
+			winner = reader;
+			ct::logger::info("[Acq] Barcode read by reader %d: %s", reader, barcode.toStdString().c_str());
+			break;
+		}
+
+		//close the cycle - the reader then reports and pushes its capture,
+		//which doubles as the OCR image if the other reader finds the barcode
+		ct::logger::warn("[Acq] Reader %d: no barcode within %dms", reader, durationMs);
+		srx.stopReader(id);
+		if (reader == first) loserTriggered = true;
+	}
+
+	if (winner == 0) {
+		ct::logger::error("[Acq] No barcode found on either reader - saving as No_Barcode");
+		emit barcodeDecoded("No_Barcode");
+		return true; //run continues, no OCR image for this board
+	}
+
+	emit barcodeDecoded(barcode);
+
+	//the non-barcode side faces the label text: get its capture for OCR
+	const int loser = (winner == 1) ? 2 : 1;
+	const QString loserID = readerID(loser);
+	const QString prevLoserImg = (loser == 1) ? prevImg1 : prevImg2;
+
+	if (!loserTriggered) {
+		//winner decoded on the first try - the other side has not run a cycle yet
+		if (m_stopRun) return true;
+		jogToReader(loser);
+		if (m_stopRun) return true;
+
+		srx.trigger(loserID);
+		os_tool::doNothing(500); //let it capture
+		srx.stopReader(loserID); //close the cycle so the image pushes
+	}
+
+	QImage ocrImg;
+	QElapsedTimer imgTimer;
+	imgTimer.start();
+	constexpr int imageTimeoutMs = 5000;
+
+	while (imgTimer.elapsed() < imageTimeoutMs && !m_stopRun) {
+		if (srx.lastImagePath(loserID) != prevLoserImg) {
+			ocrImg = srx.lastImage(loserID);
+			break;
+		}
+		os_tool::goSleep(20);
+	}
+
+	if (ocrImg.isNull()) {
+		ct::logger::error("[Acq] No OCR image received from reader %d within %dms - OCR skipped for this board",
+			loser, imageTimeoutMs);
+	}
+	else if (InspectionThread::instance().isActive()) {
+		FrameInfo info;
+		info.type = "srx_ocr";
+		info.viewID = "OCR";
+		info.opticID = loserID;
+		info.cameraID = loserID;
+		info.width = ocrImg.width();
+		info.height = ocrImg.height();
+		InspectionThread::instance().enqueue(info, ocrImg);
+	}
+	else {
+		ct::logger::info("[Acq] OCR image from reader %d captured (inspection inactive, image saved only)", loser);
+	}
+
+	return true;
+}
+
 void JobThread::acquire3DImages()
 {
 	ScopedTimeLogger Stimer("[Acq] Total 3D Acquisition Time");
@@ -5289,8 +5471,14 @@ void JobThread::run2D3D() {
 
 	m_stopRun = false;
 	preAcquisition();
-	acquire2DImages();
-	acquire3DImages();
+
+	//2D camera acquisition replaced for Pogo: read the barcode with the SR-X
+	//readers at the middle of the 3D scan area and capture the OCR-side image
+	const bool barcodeOk = acquireBarcodeAndOcr();
+
+	//only proceed to the 3D scan when the barcode was read
+	if (barcodeOk) acquire3DImages();
+
 	postAcquisition();
 	if (!m_stopRun) emit acquisitionDone();
 }
@@ -5766,8 +5954,16 @@ void JobThread::jogLaserBasedOnFiducial(double x, double y, double z, QString ty
 	return jog(x, y, z, type);
 }
 
+void JobThread::jogUser(double x, double y, double z, QString type, bool waitJogDone)
+{
+	m_stopRun = false; //stale stop flag must not abort waitAxis
+	jog(x, y, z, type, waitJogDone);
+}
+
 void JobThread::jogSnap(double x, double y, double z, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	jog(x, y, z, "2D");
 	if (SystemData::instance()._snapDelay_ms != 0) os_tool::doNothing(SystemData::instance()._snapDelay_ms);
 	snapOptic(optic, "", "");
@@ -5786,6 +5982,8 @@ void JobThread::jogBasedOnFiducial(double x, double y, double z, QString type, b
 
 void JobThread::jogLeft(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::X;
@@ -5799,6 +5997,8 @@ void JobThread::jogLeft(double mm, const OpticsInfo& optic)
 
 void JobThread::jogRight(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::X;
@@ -5812,6 +6012,8 @@ void JobThread::jogRight(double mm, const OpticsInfo& optic)
 
 void JobThread::jogBack(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Y;
@@ -5825,6 +6027,8 @@ void JobThread::jogBack(double mm, const OpticsInfo& optic)
 
 void JobThread::jogFront(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Y;
@@ -5838,6 +6042,8 @@ void JobThread::jogFront(double mm, const OpticsInfo& optic)
 
 void JobThread::jogUp(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Z;
@@ -5851,6 +6057,8 @@ void JobThread::jogUp(double mm, const OpticsInfo& optic)
 
 void JobThread::jogDown(double mm, const OpticsInfo& optic)
 {
+	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
+
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Z;
