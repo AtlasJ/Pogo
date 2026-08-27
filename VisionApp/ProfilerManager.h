@@ -24,6 +24,17 @@ public:
 	bool isConnected(QString id) const;
 	const bool isGrabbing(QString id) const;
 
+	/*
+	* Y pitch per acquired profile line, in MICRONS - the encoder pitch multiplied by the
+	* sub-sampling count the driver actually applied. Returns 0.0 when no profiler object
+	* exists, which is legitimate: profiler.json sets the API even offline.
+	*
+	* Id-less on purpose, matching getAPI()/getInvertX()/getInvertY(): the only caller is
+	* ImageManager::rotate_heightMap, which has no profiler id to hand. This exists so the
+	* image maths and the driver cannot disagree about the pitch - see the comment there.
+	*/
+	double getLinePitchUm() const;
+
 	const QString& getAPI() const { return m_sensortype; }
 	const bool& getMSR() const { return m_enableMSR; }
 	const bool& getInvertX() const { return m_invertX; }

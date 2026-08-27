@@ -799,13 +799,28 @@ void Optics3DTab::initProfilerHwUi()
     ui.lineEdit_profIP->setValidator(new QRegExpValidator(QRegExp(ipPattern), this));
     ui.lineEdit_profIP->setPlaceholderText(QStringLiteral("192.168.0.1"));
 
-    //yPitchUm is shown but not editable: it must stay equal to KEYENCE_Y_PITCH_UM in
-    //ImageManager::rotate_heightMap, and nothing in the code detects a mismatch - parts just
-    //measure long or short along the scan axis. Make it editable only once that duplication is
-    //resolved in favour of a single source of truth.
-    ui.label_profYPitch->setToolTip(
-        tr("Read-only. Must match KEYENCE_Y_PITCH_UM in ImageManager.cpp - edit keyence.json and "
-           "the constant together, or parts measure long/short along the scan axis."));
+    /*
+    * yPitchUm is now editable, and it is the SINGLE source of truth. It used to be duplicated
+    * as KEYENCE_Y_PITCH_UM in ImageManager::rotate_heightMap with nothing detecting a mismatch,
+    * which is why this field was read-only. That constant is gone: the image maths reads the
+    * driver's value through ProfilerManager::getLinePitchUm(), so this field, keyence.json and
+    * the height map cannot disagree any more.
+    *
+    * It earns an editable control because it varies per machine - it is gantry travel per
+    * encoder trigger, not a property of the head - so it is commissioning configuration, and
+    * needing a rebuild to change it was wrong. Contrast comboBox_profTriggerMode above, which
+    * has exactly one correct value on every machine and is therefore permanently read-only.
+    *
+    * Guarded rather than hidden: disconnected-only (via refreshProfilerStatus), range-limited
+    * by the widget, confirmed on save, and written to the audit log. Hiding it in a constant
+    * did not remove the risk, it just meant whoever changed it did so with a compiler, no
+    * validation and no audit trail - and usually forgot the second copy.
+    */
+    ui.doubleSpinBox_profYPitch->setToolTip(
+        tr("Gantry travel per encoder trigger, in microns. Measure it - the Profiler Scan Test "
+           "reports it as 'Encoder scaling'.\n\n"
+           "This scales every 3D measurement along the scan axis. Views and line scans taught "
+           "before a change will measure long or short until they are re-taught."));
 
     //The LJ-X8000A is a single head. setMultiExposure, setDynamicExposure, setParallelExposure
     //and setDuoHeadGain all refuse in Profiler_Keyence, and JobThread::scan() ignores their
@@ -838,6 +853,8 @@ void Optics3DTab::initProfilerHwUi()
         this, [=](int) { markProfilerHwDirty(); });
     connect(ui.comboBox_profEncoderMinTime, QOverload<int>::of(&QComboBox::currentIndexChanged),
         this, [=](int) { markProfilerHwDirty(); });
+    connect(ui.doubleSpinBox_profYPitch, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+        this, [=](double) { markProfilerHwDirty(); });
 
     connect(ui.toolButton_profConnect, &QToolButton::clicked, this, [=]() {
         if (ProfilerManager::instance().isConnected(profilerId())) {
@@ -962,6 +979,7 @@ bool Optics3DTab::loadProfilerHwToUi()
     QSignalBlocker b3(ui.comboBox_profTriggerMode);
     QSignalBlocker b4(ui.comboBox_profEncoderMode);
     QSignalBlocker b5(ui.comboBox_profEncoderMinTime);
+    QSignalBlocker b6(ui.doubleSpinBox_profYPitch);
 
     ui.spinBox_profCmdPort->setValue(cmdPort);
     ui.spinBox_profHsPort->setValue(hsPort);
@@ -975,7 +993,16 @@ bool Optics3DTab::loadProfilerHwToUi()
     selectByData(ui.comboBox_profEncoderMode, encMode);
     selectByData(ui.comboBox_profEncoderMinTime, encTime);
 
-    ui.label_profYPitch->setText(QString::number(yPitch, 'f', 2));
+    //Clamped to the widget's range so a hand-edited absurdity in keyence.json is visible as a
+    //clamp rather than silently accepted. The load is what defines "not dirty", so the value
+    //shown must be the value that would be saved.
+    ui.doubleSpinBox_profYPitch->setValue(yPitch);
+    if (qAbs(ui.doubleSpinBox_profYPitch->value() - yPitch) > 1e-6) {
+        ct::logger::warn("[Optics3DTab/Prof] yPitchUm %.4f in %s is outside %.2f..%.2f - showing %.2f",
+            yPitch, qPrintable(_profilerConfigFile),
+            ui.doubleSpinBox_profYPitch->minimum(), ui.doubleSpinBox_profYPitch->maximum(),
+            ui.doubleSpinBox_profYPitch->value());
+    }
 
     //The field is read-only, so a non-encoder value can only have arrived by hand-editing the
     //driver config. Say so loudly: the scan would still complete and the height map would still
@@ -1020,6 +1047,7 @@ bool Optics3DTab::saveProfilerHwToJson()
     const int trig = ui.comboBox_profTriggerMode->currentData().toInt();
     const int encMode = ui.comboBox_profEncoderMode->currentData().toInt();
     const int encTime = ui.comboBox_profEncoderMinTime->currentData().toInt();
+    const double yPitch = ui.doubleSpinBox_profYPitch->value();
 
     //--- Read and validate BOTH files before writing EITHER. profiler.json used to be written
     //--- first, so an unreadable driver config was only discovered afterwards - leaving the IP on
@@ -1050,8 +1078,8 @@ bool Optics3DTab::saveProfilerHwToJson()
     arr[target] = entry;
     root["Profilers"] = arr;
 
-    //--- driver config: ports, trigger, encoder. Read-modify-write keeps every other key,
-    //--- including the _comment_* documentation and yPitchUm, which this page never writes.
+    //--- driver config: ports, trigger, encoder, Y pitch. Read-modify-write keeps every other
+    //--- key, including the _comment_* documentation and everything this page does not expose.
     const QString drvPath = driverConfigPath();
     QJsonObject drv;
     bool haveDrv = false;
@@ -1063,11 +1091,38 @@ bool Optics3DTab::saveProfilerHwToJson()
         return false;                       //nothing written yet, so nothing to unwind
     }
     else {
+        /*
+        * Y pitch is the one value on this page that rescales taught geometry, so a change is
+        * confirmed before anything is written. Compared against the FILE rather than against
+        * the last load, so an edit made and then undone does not prompt, and a value changed
+        * behind our back does.
+        */
+        const double oldYPitch = drv.value("yPitchUm").toDouble(10.0);
+        if (qAbs(oldYPitch - yPitch) > 1e-6) {
+            const auto answer = QMessageBox::warning(this, tr("Change Y pitch?"),
+                tr("Y pitch changes from %1 to %2 um per encoder trigger.\n\n"
+                   "This rescales every 3D measurement along the scan axis. Views and line scans "
+                   "taught with the old value will measure long or short until they are re-taught.\n\n"
+                   "Only change this if you have measured it on this machine - the Profiler Scan "
+                   "Test reports it as 'Encoder scaling'.")
+                    .arg(oldYPitch, 0, 'f', 2).arg(yPitch, 0, 'f', 2),
+                QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Cancel);
+
+            if (answer != QMessageBox::Save) return false;
+
+            //Logged before the write: a measurement shift noticed months later is otherwise
+            //untraceable, and this is the single setting most likely to have caused it.
+            AuditLog::instance().log(QStringLiteral("YPITCH_UPDATE"),
+                QStringLiteral("%1 -> %2 um/trigger")
+                    .arg(oldYPitch, 0, 'f', 2).arg(yPitch, 0, 'f', 2));
+        }
+
         drv["commandPort"] = cmdPort;
         drv["highSpeedPort"] = hsPort;
         drv["triggerMode"] = trig;
         drv["encoderInputMode"] = encMode;
         drv["encoderMinInputTime"] = encTime;
+        drv["yPitchUm"] = yPitch;
         haveDrv = true;
     }
 
@@ -1075,8 +1130,8 @@ bool Optics3DTab::saveProfilerHwToJson()
     if (haveDrv && !writeJsonObject(drvPath, drv)) return false;
     if (!writeJsonObject(profilerJsonPath(), root)) return false;
 
-    ct::logger::info("[Optics3DTab/Prof] Saved hw config: ip=%s ports=%d/%d trig=%d enc=%d/%d",
-        qPrintable(ip), cmdPort, hsPort, trig, encMode, encTime);
+    ct::logger::info("[Optics3DTab/Prof] Saved hw config: ip=%s ports=%d/%d trig=%d enc=%d/%d yPitch=%.2f",
+        qPrintable(ip), cmdPort, hsPort, trig, encMode, encTime, yPitch);
     return true;
 }
 
@@ -1148,6 +1203,10 @@ void Optics3DTab::refreshProfilerStatus()
     //initProfilerHwUi(). Re-enabling it here would undo that on the first status poll.
     ui.comboBox_profEncoderMode->setEnabled(configurable);
     ui.comboBox_profEncoderMinTime->setEnabled(configurable);
+    //Y pitch is not pushed to the controller - setScanLength does the maths in software and
+    //the image maths reads it back through getLinePitchUm(). It is still locked while
+    //connected, for the same reason as the rest: what is displayed should be what is running.
+    ui.doubleSpinBox_profYPitch->setEnabled(configurable);
     ui.toolButton_profSave->setEnabled(configurable);
 
     //Editing stays available with no profiler created - the fields are backed by JSON files, not

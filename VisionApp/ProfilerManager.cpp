@@ -403,6 +403,17 @@ QHash<QString, IProfiler*>& ProfilerManager::profilers()
 	return m_profilers;
 }
 
+double ProfilerManager::getLinePitchUm() const
+{
+	if (m_profilers.isEmpty()) return 0.0;
+
+	const IProfiler* p = m_profilers.begin().value();
+	if (!p) return 0.0;
+
+	//getYResolution() is mm per acquired line; the image maths works in microns.
+	return p->getYResolution() * 1000.0;
+}
+
 IProfiler* ProfilerManager::profiler(QString id)
 {
 	if (m_profilers.contains(id)) return m_profilers[id];

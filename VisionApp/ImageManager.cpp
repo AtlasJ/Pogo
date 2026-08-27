@@ -1082,15 +1082,32 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 			}
 		}
 
+		/*
+		* This divider is now only used by the offline fallback below - the live path takes
+		* the sub-sampling count from the driver, which applied it. Still clamped, because a
+		* 0 reaching the height maths gives sh == 0, MbufAlloc2d returns M_NULL, and the null
+		* buffer propagates as "BufferPool: created a new pool: 0_0_0_0" -> "Trying to attach
+		* a NULL ID", killing the ImageManager thread mid-scan with no useful error.
+		*
+		* The asymmetry that hid that: Profiler_Keyence::setDivider() clamps the very same
+		* value with std::max(1, divider) and logs "setDivider OK (divider = 1)", so the
+		* driver looked healthy while the image maths still saw 0.
+		*/
+		if (divider < 1)
+		{
+			ct::logger::warn("[ImageManager] optics3D divider is %d - clamping to 1. "
+				"Fix the recipe; a 0 here used to take the app down.", divider);
+			divider = 1;
+		}
+
 		ct::logger::info("[ImageManager] rotate_heightmap---KeyenceLJ");
 		auto w = mtrx::get_width(mSrc);
 		auto h = mtrx::get_height(mSrc);
 
 		/*
-		* Unlike the other brands these two constants are not magic numbers - they are the
-		* sensor's X and Y sample pitches in microns, and every other factor in this
-		* function is derived from them. Compare Profiler_SSZN, where 3.5 and 4 are exactly
-		* the same two quantities.
+		* X pitch is still a constant; Y pitch is not, and no longer lives here at all - see
+		* the block below. Compare Profiler_SSZN, where 3.5 and 4 are the same two quantities
+		* and both are still hardcoded.
 		*
 		*   KEYENCE_X_PITCH_UM - from the LJ-X8060 data sheet: "profile data interval 5 um,
 		*                        profile data count 3200 points". Those two multiply out to
@@ -1103,12 +1120,11 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 		*                        so also changes the X measurement range); the controller wins,
 		*                        so copy <P> here and recompute laser_fov as <P> * 3200.
 		*
-		*   KEYENCE_Y_PITCH_UM - TODO: CALIBRATE. Gantry encoder pitch per trigger, so no data
-		*                        sheet can supply it - it is a property of the machine, not the
-		*                        head. Jog a known distance, watch the encoder count, divide.
-		*                        Must agree with "yPitchUm" in keyence.json, or the scan length
-		*                        the driver requests and the height the image is stretched to
-		*                        will disagree and parts will measure long or short in Y.
+		*   Y pitch            - gantry travel per encoder trigger. No data sheet can supply it:
+		*                        it is a property of the machine, not the head, so it belongs in
+		*                        config and is read from the driver below. Measured on
+		*                        Codetrace-CK 2026-08-27 at 4.0 um per encoder count, from
+		*                        155.999 mm of travel against 39000 counts.
 		*
 		* Known simplification: the sheet gives the X range as 15 mm at the NEAR limit and
 		* 16 mm at FAR, so the true pitch varies by ~2% across the +/-7.3 mm Z range. A single
@@ -1118,10 +1134,36 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 		* Z pitch needs no attention here - zPitchForHead() maps 8060 to 0.8 um automatically.
 		*/
 		constexpr double KEYENCE_X_PITCH_UM = 5.0;    //LJ-X8060 default profile data interval
-		constexpr double KEYENCE_Y_PITCH_UM = 10.0;   //placeholder - measure on the machine
+
+		/*
+		* Y pitch comes from the DRIVER, not from a constant here. getLinePitchUm() returns
+		* keyence.json's yPitchUm multiplied by the sub-sampling count setDivider() actually
+		* pushed, which is exactly the quantity this line needs. That one call removes both
+		* defects the old code carried:
+		*
+		*   - There used to be a KEYENCE_Y_PITCH_UM constant that had to be kept equal to
+		*     keyence.json by hand. Nothing detected a mismatch; parts simply measured long
+		*     or short along the scan axis, and setScanLength's batch count was sized from
+		*     one value while the image was stretched by the other.
+		*   - The divider was read from the FIRST entry in the optics hash, which is not
+		*     necessarily the entry the scan used. The driver's copy is the one applied.
+		*
+		* The fallback only matters offline - profiler.json sets the API even when no driver
+		* object exists, so this branch can run with nothing connected (replaying saved
+		* images, for instance). It is the old constant, and it says so in the log.
+		*/
+		constexpr double KEYENCE_Y_PITCH_FALLBACK_UM = 10.0;
+
+		double linePitchUm = ProfilerManager::instance().getLinePitchUm();
+		if (linePitchUm <= 0.0) {
+			linePitchUm = KEYENCE_Y_PITCH_FALLBACK_UM * divider;
+			ct::logger::warn("[ImageManager] No profiler object - falling back to %.3f um per line "
+				"(%.1f um x divider %d). Height maps are only to scale if that matches the machine.",
+				linePitchUm, KEYENCE_Y_PITCH_FALLBACK_UM, divider);
+		}
 
 		MIL_INT sw = w * KEYENCE_X_PITCH_UM / scale;
-		MIL_INT sh = h * KEYENCE_Y_PITCH_UM * divider / scale;
+		MIL_INT sh = h * linePitchUm / scale;
 
 		auto type = mtrx::get_type(mSrc);
 

@@ -85,13 +85,22 @@ test and every height will be out by exactly 2×.
 
 | Constant | File | Status |
 | --- | --- | --- |
-| `KEYENCE_X_PITCH_UM` = 5.0 | `ImageManager.cpp`, `rotate_heightMap()` | **From the data sheet.** Confirm against the first scan's log |
+| `KEYENCE_X_PITCH_UM` = 5.0 | `ImageManager.cpp`, `rotate_heightMap()` | **From the data sheet.** Confirmed by the controller: `MEASURED LASER FOV = 16.0000 mm (3200 points @ 5.0000 um)` |
 | `laser_fov_mm` = 16.0 | `VisionApp_CRUD.cpp` **and** `VisionApp_JSON.cpp` — duplicated, nothing syncs them | **From the data sheet** (5 µm × 3200) |
-| `KEYENCE_Y_PITCH_UM` = 10.0 | `ImageManager.cpp`, and `yPitchUm` in `keyence.json` — keep both in sync | **Still a placeholder — measure it** |
+| `yPitchUm` | `keyence.json` **only** — no longer a code constant | **Measured 2026-08-27: 4.0 µm per encoder count** |
 
-Only `KEYENCE_Y_PITCH_UM` remains uncalibrated. No data sheet can supply it: it is gantry travel per
-encoder trigger, a property of the machine rather than the head. Jog a known distance, read the
-encoder count, divide.
+`yPitchUm` used to be duplicated as a `KEYENCE_Y_PITCH_UM` constant in `ImageManager.cpp` that had to
+be kept equal to `keyence.json` by hand, with nothing detecting a mismatch. That constant is gone:
+`rotate_heightMap` now reads `ProfilerManager::getLinePitchUm()`, which returns the driver's
+`yPitchUm × divider`. One source of truth, and the divider is the one `setDivider()` actually pushed
+rather than whichever optics entry happened to be first in the hash.
+
+It is editable on the **3D Optics page → Profiler Hardware**, guarded by a confirmation and an
+`YPITCH_UPDATE` audit entry, because it is a property of the machine's gantry rather than of the head
+or the code — so it should never have needed a rebuild.
+
+**Measured on Codetrace-CK:** 155.999 mm of travel against 39000 encoder counts = **4.0000 µm/count**
+at 2-phase ×1. The Profiler Scan Test reports this as `Encoder scaling` on every run.
 
 One known simplification in the X scale: the sheet gives 15 mm at the NEAR limit and 16 mm at FAR,
 so the true pitch varies about 2% across the ±7.3 mm Z range. A single constant cannot express

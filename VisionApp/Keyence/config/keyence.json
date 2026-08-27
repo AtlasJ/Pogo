@@ -21,7 +21,7 @@
   "encoderInputMode": 1,
   "encoderMinInputTime": 0,
 
-  "_comment_ypitch": "yPitchUm is the gantry travel per encoder trigger in microns, BEFORE sub-sampling. It drives setScanLength -> batch count, and it MUST match KEYENCE_Y_PITCH_UM in ImageManager::rotate_heightMap or parts will measure long or short in Y. Measure it on the machine.",
+  "_comment_ypitch": "yPitchUm is the gantry travel per encoder trigger in microns, BEFORE sub-sampling. It is the SINGLE source of truth: it drives setScanLength -> batch count, and ImageManager::rotate_heightMap reads it back through ProfilerManager::getLinePitchUm() (yPitchUm x divider), so there is no constant to keep in sync any more. Editable on the 3D Optics page under Profiler Hardware. Measure it on the machine - the Profiler Scan Test reports it as 'Encoder scaling'. Codetrace-CK measured 4.0 um per count at 2-phase x1.",
   "yPitchUm": 10.0,
 
   "_comment_zpitch": "Leave zPitchUmOverride at 0 to let the driver read the head model and pick the documented factor (8020=0.4 8030/8060=0.8 8070/8080=1.6 8100/8200/8300=4 8400=8 8900=16). Set a positive value only to override.",
