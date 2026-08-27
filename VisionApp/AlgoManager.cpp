@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QTimer>
 #include <QElapsedTimer>
 #include <QMetaObject>
 #include <QtMath>
@@ -209,6 +210,25 @@ void AlgoManager::init()
 	m_thread.start();
 
 	ct::logger::info("[Algo] Manager worker thread started");
+
+	//Paddle environment check + warm-up: the server import takes many seconds,
+	//so start it now in the background instead of on the first OCR of the day.
+	//This only STARTS an existing environment - it does not install anything;
+	//the machine needs C:/Advanced/Scripts (script + VirtualEnv) and the
+	//per-user .paddlex model cache in place.
+	QTimer::singleShot(0, this, [this]() {
+		if (!QFileInfo::exists("C:/Advanced/Scripts/pyPaddleAPI.py") ||
+			!QFileInfo::exists("C:/Advanced/Scripts/VirtualEnv/Scripts/python.exe")) {
+			ct::logger::error("[PaddleOCR] Environment MISSING on this machine "
+				"(C:/Advanced/Scripts: pyPaddleAPI.py + VirtualEnv). OCR will fail until it is installed.");
+			return;
+		}
+
+		if (!m_paddle) m_paddle = new PaddleOcrClient(this);
+		ct::logger::info("[PaddleOCR] Warming up server at startup...");
+		if (m_paddle->ensureStarted()) ct::logger::info("[PaddleOCR] Server ready");
+		else ct::logger::error("[PaddleOCR] Warm-up failed - see previous [PaddleOCR] lines");
+	});
 }
 
 void AlgoManager::release()
