@@ -5003,16 +5003,7 @@ void VisionApp::setUIVisibility()
 	//ui.toolButton_setOpticAsMain->hide();
 	ui.toolButton_generateSetupRegion->hide();
 
-	//exposure and gain
-	ui.label_17->hide();
-	ui.label_18->hide();
-	ui.lineEdit_exposure->hide();
-	ui.lineEdit_gain->hide();
-	ui.label_125->hide();
-	ui.label_126->hide();
-	ui.lineEdit_recipeExposure->hide();
-	ui.lineEdit_recipeGain->hide();
-	ui.toolButton_updateExposureAndGain->hide();
+	//exposure and gain: per-optic camera settings, editable on the optics page
 
 	//hide:result viewer
 	//ui.label_78->hide();
