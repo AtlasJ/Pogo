@@ -27,6 +27,7 @@
 #include "FiducialInfo.h"
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
+#include "InspectionThread.h"
 #include "AlgoDefectResult.h"
 #include "ErrorInfo.h"
 #include "OpenWorkspaceInfo.h"
@@ -814,8 +815,18 @@ private:
 
 	//external barcode reader setup page (SRXManager)
 	void initBarcodeReaderPage();
+	void initBarcodeReaderAlignment();
 	void refreshBarcodeReaderPage();
 	void updateSRXImagePreview(const QString& readerID);
+
+	//camera alignment method (circle/pattern) - VisionApp_Laser.cpp
+	void initAlignmentMethodUI();
+	void updateAlignMethodWidgets();
+	void updateAlignRoiVisibility();
+	void hideAlignRois();
+	void saveAlignmentConfig();
+	void loadAlignmentConfig();
+	AlignFeatureParams buildAlignFeatureParams(bool& ok);
 
 	//dry run page - VisionApp_DryRun.cpp
 	void initDryRunPage();

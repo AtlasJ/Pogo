@@ -2569,6 +2569,9 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 		//keep the latest heightmap available for the Algo Setup page ("Use Last Scan")
 		if (info.type == ct::s_height_map && info.pHeightMap) {
 			AlgoManager::instance().setHeightMap(info.pHeightMap);
+
+			//production: hand the scan to the inspection thread for the 3D algo
+			InspectionThread::instance().enqueue(info);
 		}
 
 		if (SystemData::instance()._psp) {
@@ -3916,6 +3919,8 @@ void VisionApp::stopRun(bool clearInspQueue)
 	for (int i = 0; i < 3; i++) { //X, Y, Z
 		MotionController::instance().stop_move(_motionID, i);
 	}
+
+	InspectionThread::instance().setActive(false);
 
 	progressBarRelease();
 
@@ -5565,6 +5570,12 @@ VisionApp::~VisionApp()
 
 	MachineController::instance().notifyEvent(MachineEvent::SOFTWARE_OFF);
 
+	//stop live read (LOFF to both readers) and camera live view before teardown
+	SRXManager::instance().setLiveRead(SRXManager::SRX1, false);
+	SRXManager::instance().setLiveRead(SRXManager::SRX2, false);
+	stopLiveView();
+	SRXManager::instance().release(); //worker drains the queued LOFFs, then exits
+
 	resetFilterInfo();
 
 	//release hardware
@@ -5599,6 +5610,7 @@ VisionApp::~VisionApp()
 	//Release qthreads
 	_imageManager.release();
 	_jobThread.release();
+	InspectionThread::instance().release();
 	mtrx::MPM::instance().release_pools();
 	_databaseThread.terminate(); 
 	_networkPathChecker.terminate(); 
@@ -6759,6 +6771,9 @@ bool VisionApp::toPage(UIPage page) {
 
 	//algo setup ROIs are page-scoped: leaving the page hides them
 	if (page != UIPage::ALGO_SETUP && _algoOcrRoi1Box) hideAlgoSetupRois();
+
+	//alignment feature ROIs are page-scoped too
+	if (page != UIPage::LASER && _alignCircleRoi) hideAlignRois();
 	bool shown;
 	bool isTop = true;
 	QString facing;
@@ -6853,6 +6868,7 @@ bool VisionApp::toPage(UIPage page) {
 	case UIPage::LASER:
 		unlockAllROIs();
 		showRightTab((int)page, QStringLiteral("Open Laser"));
+		updateAlignRoiVisibility();
 		return true;
 	case UIPage::PORTABILITY:
 		unlockAllROIs();
@@ -12436,18 +12452,16 @@ void VisionApp::setCameraAngle(double angle)
 
 void VisionApp::cameraAlignment()
 {
-	auto minDiameter = ui.lineEdit_CAminDiameter->text().toInt();
-	auto maxDiameter = ui.lineEdit_CAmaxDiameter->text().toInt();
+	bool ok = false;
+	auto featureParams = buildAlignFeatureParams(ok);
+	if (!ok) return;
 
 	auto step_mm = ui.lineEdit_step_mm->text().toDouble();
-
-	auto foregroundType = mtrx::ForegoundType::FOREGROUND_WHITE;
-	if (ui.comboBox_circleColor->currentText() == "Black Circle") foregroundType = mtrx::ForegoundType::FOREGROUND_BLACK;
 
 	_prevCamAlignedAngle = SystemData::instance()._camAngles[_camID];
 	setCameraAngle(0.0);
 
-	emit performCameraAlignment(SystemData::instance().currentCoordinate(), step_mm, minDiameter, maxDiameter, foregroundType);
+	emit performCameraAlignment(SystemData::instance().currentCoordinate(), step_mm, featureParams);
 }
 
 void VisionApp::performScaling()
@@ -12457,15 +12471,13 @@ void VisionApp::performScaling()
 	if (!ret) return;
 
 	if (passwordPromptCorrect()) {
-		auto minDiameter = ui.lineEdit_CAminDiameter->text().toInt();
-		auto maxDiameter = ui.lineEdit_CAmaxDiameter->text().toInt();
+		bool ok = false;
+		auto featureParams = buildAlignFeatureParams(ok);
+		if (!ok) return;
 
 		auto step_mm = ui.lineEdit_step_mm->text().toDouble();
 
-		auto foregroundType = mtrx::ForegoundType::FOREGROUND_WHITE;
-		if (ui.comboBox_circleColor->currentText() == "Black Circle") foregroundType = mtrx::ForegoundType::FOREGROUND_BLACK;
-
-		emit performCameraScaling(SystemData::instance().currentCoordinate(), step_mm, minDiameter, maxDiameter, foregroundType);
+		emit performCameraScaling(SystemData::instance().currentCoordinate(), step_mm, featureParams);
 	}
 }
 

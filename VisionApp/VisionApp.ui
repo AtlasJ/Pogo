@@ -3342,6 +3342,42 @@ QToolButton:hover {
                       </property>
                      </spacer>
                     </item>
+                    <item row="5" column="0">
+                     <widget class="QTableWidget" name="tableWidget_prodStatus">
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>160</height>
+                       </size>
+                      </property>
+                      <property name="editTriggers">
+                       <set>QAbstractItemView::NoEditTriggers</set>
+                      </property>
+                      <property name="selectionBehavior">
+                       <enum>QAbstractItemView::SelectRows</enum>
+                      </property>
+                      <column>
+                       <property name="text">
+                        <string>Time</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Barcode</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>OCR</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Pass/Fail</string>
+                       </property>
+                      </column>
+                     </widget>
+                    </item>
                     <item row="3" column="0">
                      <widget class="QFrame" name="frame_analytics">
                       <property name="sizePolicy">
@@ -17967,7 +18003,7 @@ QToolButton:hover {
                   <item>
                    <widget class="QGroupBox" name="groupBox_srx1Reader">
                     <property name="title">
-                      <string>Reader 1  (SRX1)</string>
+                      <string>Reader 1</string>
                     </property>
                     <layout class="QVBoxLayout" name="verticalLayout_srx1Reader">
                      <item>
@@ -18122,7 +18158,7 @@ QToolButton:hover {
                   <item>
                    <widget class="QGroupBox" name="groupBox_srx2Reader">
                     <property name="title">
-                      <string>Reader 2  (SRX2)</string>
+                      <string>Reader 2</string>
                     </property>
                     <layout class="QVBoxLayout" name="verticalLayout_srx2Reader">
                      <item>
@@ -18270,6 +18306,255 @@ QToolButton:hover {
                        </widget>
                      </item>
                     </layout>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupBox_brRecipe">
+                    <property name="title">
+                      <string>Recipe Settings</string>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">QRadioButton { color: #F0F0F0; }</string>
+                    </property>
+                    <layout class="QHBoxLayout" name="horizontalLayout_brRecipe">
+                     <item>
+                      <widget class="QLabel" name="label_brFirstRead">
+                       <property name="text">
+                        <string>First Read:</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QRadioButton" name="radioButton_brFirstR1">
+                       <property name="text">
+                        <string>Reader 1</string>
+                       </property>
+                       <property name="checked">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QRadioButton" name="radioButton_brFirstR2">
+                       <property name="text">
+                        <string>Reader 2</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="label_brR1Duration">
+                       <property name="text">
+                        <string>Reader 1 Duration (s):</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_brR1Duration">
+                       <property name="maximumSize">
+                        <size>
+                         <width>60</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                       <property name="text">
+                        <string>2</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="label_brR2Duration">
+                       <property name="text">
+                        <string>Reader 2 Duration (s):</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="lineEdit_brR2Duration">
+                       <property name="maximumSize">
+                        <size>
+                         <width>60</width>
+                         <height>16777215</height>
+                        </size>
+                       </property>
+                       <property name="text">
+                        <string>2</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <spacer name="horizontalSpacer_brRecipe">
+                       <property name="orientation">
+                        <enum>Qt::Horizontal</enum>
+                       </property>
+                       <property name="sizeHint" stdset="0">
+                        <size>
+                         <width>40</width>
+                         <height>20</height>
+                        </size>
+                       </property>
+                      </spacer>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QGroupBox" name="groupBox_brAlign">
+                    <property name="title">
+                      <string>Reader Alignment</string>
+                    </property>
+                    <layout class="QGridLayout" name="gridLayout_brAlign">
+                     <item row="0" column="0">
+                       <widget class="QToolButton" name="toolButton_brSetCamCenter">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Set Camera Center</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="3" column="0">
+                       <widget class="QToolButton" name="toolButton_brSetR1Center">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Set Reader 1 Center</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="6" column="0">
+                       <widget class="QToolButton" name="toolButton_brSetR2Center">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Set Reader 2 Center</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="2" rowspan="9">
+                       <spacer name="horizontalSpacer_brAlign">
+                        <property name="orientation">
+                         <enum>Qt::Horizontal</enum>
+                        </property>
+                        <property name="sizeHint" stdset="0">
+                         <size>
+                          <width>40</width>
+                          <height>20</height>
+                         </size>
+                        </property>
+                       </spacer>
+                     </item>
+                     <item row="2" column="0" colspan="2">
+                       <widget class="QLabel" name="label_brCamCenter">
+                        <property name="text">
+                         <string>Camera center: not set</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="5" column="0" colspan="2">
+                       <widget class="QLabel" name="label_brR1Offset">
+                        <property name="text">
+                         <string>Offset: 0.000, 0.000 (NOT TAUGHT)</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="8" column="0" colspan="2">
+                       <widget class="QLabel" name="label_brR2Offset">
+                        <property name="text">
+                         <string>Offset: 0.000, 0.000 (NOT TAUGHT)</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="0" column="1">
+                       <widget class="QToolButton" name="toolButton_brJogCam">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Jog to Camera Center</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="3" column="1">
+                       <widget class="QToolButton" name="toolButton_brJogR1">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Jog to Reader 1 Center</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="6" column="1">
+                       <widget class="QToolButton" name="toolButton_brJogR2">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Jog to Reader 2 Center</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="1" column="0">
+                       <widget class="QToolButton" name="toolButton_brGoCam">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Offset to Camera</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="4" column="0">
+                       <widget class="QToolButton" name="toolButton_brGoR1">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Offset to Reader 1</string>
+                        </property>
+                       </widget>
+                     </item>
+                     <item row="7" column="0">
+                       <widget class="QToolButton" name="toolButton_brGoR2">
+                        <property name="minimumSize">
+                         <size>
+                          <width>130</width>
+                          <height>26</height>
+                         </size>
+                        </property>
+                        <property name="text">
+                         <string>Offset to Reader 2</string>
+                        </property>
+                       </widget>
                      </item>
                     </layout>
                    </widget>

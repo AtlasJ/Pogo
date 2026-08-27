@@ -3,6 +3,7 @@
 #include <QPainter>
 #include "CAMManager.h"
 #include "SRXManager.h"
+#include "MotionController.h"
 #include "AuditLog.h"
 
 bool VisionApp::barcodeExistTest(int index)
@@ -214,6 +215,9 @@ bool VisionApp::saveBarcode()
 
 	//need to add enable barcode UI
 	j_root.insert(QStringLiteral("enable_barcode"), _enableBarcode);
+	j_root.insert(QStringLiteral("first_reader"), (int)SystemData::instance()._brFirstReader);
+	j_root.insert(QStringLiteral("r1_duration_ms"), (int)SystemData::instance()._brR1Duration_ms);
+	j_root.insert(QStringLiteral("r2_duration_ms"), (int)SystemData::instance()._brR2Duration_ms);
 	j_root.insert(QStringLiteral("barcodes"), j_array);
 
 	auto ret = saveJson(jsonPath, QJsonDocument(j_root));
@@ -251,6 +255,21 @@ bool VisionApp::loadBarcode()
 		}
 		return false;
 	}
+	//recipe settings: reader scan order + per-reader read duration
+	SystemData::instance()._brFirstReader = jsonHelper::getInteger(root, QStringLiteral("first_reader"), 1);
+	SystemData::instance()._brR1Duration_ms = jsonHelper::getInteger(root, QStringLiteral("r1_duration_ms"), 2000);
+	SystemData::instance()._brR2Duration_ms = jsonHelper::getInteger(root, QStringLiteral("r2_duration_ms"), 2000);
+	{
+		QSignalBlocker b1(ui.radioButton_brFirstR1);
+		QSignalBlocker b2(ui.radioButton_brFirstR2);
+		QSignalBlocker b3(ui.lineEdit_brR1Duration);
+		QSignalBlocker b4(ui.lineEdit_brR2Duration);
+		if (SystemData::instance()._brFirstReader == 2) ui.radioButton_brFirstR2->setChecked(true);
+		else ui.radioButton_brFirstR1->setChecked(true);
+		ui.lineEdit_brR1Duration->setText(QString::number(SystemData::instance()._brR1Duration_ms / 1000.0));
+		ui.lineEdit_brR2Duration->setText(QString::number(SystemData::instance()._brR2Duration_ms / 1000.0));
+	}
+
 	int rootFallbackMethod = jsonHelper::getInteger(root, QStringLiteral("registration_method"), 1);
 
 	if (!root.contains("barcodes")) return false;
@@ -503,6 +522,32 @@ void VisionApp::initBarcodeReaderPage()
 		});
 	}
 
+	initBarcodeReaderAlignment();
+
+	//recipe settings: scan order + read durations (persisted in barcode.json)
+	connect(ui.radioButton_brFirstR1, &QRadioButton::toggled, this, [=](bool checked) {
+		if (!checked) return;
+		SystemData::instance()._brFirstReader = 1;
+		saveBarcode();
+	});
+	connect(ui.radioButton_brFirstR2, &QRadioButton::toggled, this, [=](bool checked) {
+		if (!checked) return;
+		SystemData::instance()._brFirstReader = 2;
+		saveBarcode();
+	});
+	connect(ui.lineEdit_brR1Duration, &QLineEdit::editingFinished, this, [=]() {
+		auto s = ui.lineEdit_brR1Duration->text().toDouble();
+		if (s <= 0) { s = 2.0; ui.lineEdit_brR1Duration->setText("2"); }
+		SystemData::instance()._brR1Duration_ms = (int)(s * 1000);
+		saveBarcode();
+	});
+	connect(ui.lineEdit_brR2Duration, &QLineEdit::editingFinished, this, [=]() {
+		auto s = ui.lineEdit_brR2Duration->text().toDouble();
+		if (s <= 0) { s = 2.0; ui.lineEdit_brR2Duration->setText("2"); }
+		SystemData::instance()._brR2Duration_ms = (int)(s * 1000);
+		saveBarcode();
+	});
+
 	connect(ui.toolButton_srxFtpRestart, &QToolButton::clicked, this, [=]() {
 		SRXManager::FtpConfig cfg = SRXManager::instance().ftpConfig();
 		cfg.port = ui.lineEdit_srxFtpPort->text().toInt();
@@ -611,6 +656,200 @@ void VisionApp::updateSRXImagePreview(const QString& readerID)
 		for (const auto& quad : result.corners) painter.drawPolygon(quad);
 	}
 
+	//center crosshair, follows the main FOV crosshair toggle
+	if (ui.toolButton_showCrossHair->isChecked()) {
+		QPainter painter(&image);
+		painter.setPen(QPen(QColor(0, 255, 127), qMax(1, image.width() / 800)));
+		painter.drawLine(0, image.height() / 2, image.width(), image.height() / 2);
+		painter.drawLine(image.width() / 2, 0, image.width() / 2, image.height());
+	}
+
 	target->setPixmap(QPixmap::fromImage(image).scaled(
 		target->width(), target->height(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+
+// ── reader alignment: camera-to-reader offsets (XYZ) ─────────────────────────
+
+namespace {
+	struct BrPoint {
+		bool set = false;
+		double x = 0, y = 0, z = 0;
+	};
+	struct BrAlign {
+		BrPoint cam, r1, r2;
+		int lastOffsetReader = 0; //last reader offset applied, for "Offset to Camera"
+	};
+	BrAlign g_brAlign;
+}
+
+void VisionApp::initBarcodeReaderAlignment()
+{
+	const QString alignPath = QStringLiteral("%1/barcodeAlign.json").arg(Common::Directory::ConfigPath());
+
+	//offsets are derived from the taught absolute centers: reader - camera
+	auto offsetOf = [](const BrPoint& reader) {
+		return BrPoint{ reader.set && g_brAlign.cam.set,
+			reader.x - g_brAlign.cam.x, reader.y - g_brAlign.cam.y, reader.z - g_brAlign.cam.z };
+	};
+
+	//keep the job-thread copy in SystemData up to date
+	auto syncToSystemData = [=]() {
+		auto o1 = offsetOf(g_brAlign.r1);
+		auto o2 = offsetOf(g_brAlign.r2);
+		SystemData::instance()._brR1Taught = o1.set;
+		SystemData::instance()._brR1dx = o1.x;
+		SystemData::instance()._brR1dy = o1.y;
+		SystemData::instance()._brR1dz = o1.z;
+		SystemData::instance()._brR2Taught = o2.set;
+		SystemData::instance()._brR2dx = o2.x;
+		SystemData::instance()._brR2dy = o2.y;
+		SystemData::instance()._brR2dz = o2.z;
+	};
+
+	auto refreshLabels = [=]() {
+		ui.label_brCamCenter->setText(g_brAlign.cam.set
+			? QString("Camera center: %1, %2, %3").arg(g_brAlign.cam.x, 0, 'f', 3).arg(g_brAlign.cam.y, 0, 'f', 3).arg(g_brAlign.cam.z, 0, 'f', 3)
+			: QStringLiteral("Camera center: not set"));
+
+		auto offsetText = [&](const BrPoint& reader) {
+			auto o = offsetOf(reader);
+			return o.set
+				? QString("Offset: %1, %2, %3").arg(o.x, 0, 'f', 3).arg(o.y, 0, 'f', 3).arg(o.z, 0, 'f', 3)
+				: QStringLiteral("Offset: 0.000, 0.000, 0.000 (NOT TAUGHT)");
+		};
+		ui.label_brR1Offset->setText(offsetText(g_brAlign.r1));
+		ui.label_brR2Offset->setText(offsetText(g_brAlign.r2));
+		ui.label_brR1Offset->setStyleSheet(offsetOf(g_brAlign.r1).set ? "" : "color: orange;");
+		ui.label_brR2Offset->setStyleSheet(offsetOf(g_brAlign.r2).set ? "" : "color: orange;");
+	};
+
+	auto pointToJson = [](const BrPoint& p) {
+		QJsonObject o;
+		o.insert("set", p.set);
+		o.insert("x", p.x);
+		o.insert("y", p.y);
+		o.insert("z", p.z);
+		return o;
+	};
+	auto pointFromJson = [](const QJsonObject& o) {
+		BrPoint p;
+		p.set = jsonHelper::getBool(o, "set", false);
+		p.x = jsonHelper::getDouble(o, "x", 0.0);
+		p.y = jsonHelper::getDouble(o, "y", 0.0);
+		p.z = jsonHelper::getDouble(o, "z", 0.0);
+		return p;
+	};
+
+	auto save = [=]() {
+		QJsonObject obj;
+		obj.insert("camera", pointToJson(g_brAlign.cam));
+		obj.insert("reader1", pointToJson(g_brAlign.r1));
+		obj.insert("reader2", pointToJson(g_brAlign.r2));
+		saveJson(alignPath, QJsonDocument(obj));
+		syncToSystemData();
+	};
+
+	auto currentXYZ = [=](double& x, double& y, double& z) -> bool {
+		auto ox = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::X);
+		auto oy = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Y);
+		auto oz = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
+		if (!ox.has_value() || !oy.has_value() || !oz.has_value()) {
+			showMsg("Failed to read the current position. Is motion connected?");
+			return false;
+		}
+		x = ox.value();
+		y = oy.value();
+		z = oz.value();
+		return true;
+	};
+
+	//load taught centers
+	{
+		QJsonObject root;
+		if (loadJson(alignPath, root)) {
+			g_brAlign.cam = pointFromJson(root.value("camera").toObject());
+			g_brAlign.r1 = pointFromJson(root.value("reader1").toObject());
+			g_brAlign.r2 = pointFromJson(root.value("reader2").toObject());
+		}
+	}
+	syncToSystemData();
+	refreshLabels();
+
+	//── teach ──
+	auto setCenter = [=](BrPoint& p, const QString& what) {
+		double x = 0, y = 0, z = 0;
+		if (!currentXYZ(x, y, z)) return;
+		p.set = true;
+		p.x = x;
+		p.y = y;
+		p.z = z;
+		AuditLog::instance().log(QStringLiteral("BR_ALIGN_SET"), what);
+		save();
+		refreshLabels();
+	};
+
+	connect(ui.toolButton_brSetCamCenter, &QToolButton::clicked, this, [=]() { setCenter(g_brAlign.cam, "CAMERA"); });
+	connect(ui.toolButton_brSetR1Center, &QToolButton::clicked, this, [=]() {
+		if (!g_brAlign.cam.set) { showMsg("Set the camera center first."); return; }
+		setCenter(g_brAlign.r1, "READER1");
+	});
+	connect(ui.toolButton_brSetR2Center, &QToolButton::clicked, this, [=]() {
+		if (!g_brAlign.cam.set) { showMsg("Set the camera center first."); return; }
+		setCenter(g_brAlign.r2, "READER2");
+	});
+
+	//── jog to a taught center (absolute) ──
+	auto jogToCenter = [=](const BrPoint& p, const QString& what) {
+		if (!p.set) {
+			showMsg(QString("%1 center has not been taught.").arg(what));
+			return;
+		}
+		AuditLog::instance().log(QStringLiteral("BR_ALIGN_JOG"), what);
+		emit jogTo(p.x, p.y, p.z);
+	};
+
+	connect(ui.toolButton_brJogCam, &QToolButton::clicked, this, [=]() { jogToCenter(g_brAlign.cam, "Camera"); });
+	connect(ui.toolButton_brJogR1, &QToolButton::clicked, this, [=]() { jogToCenter(g_brAlign.r1, "Reader 1"); });
+	connect(ui.toolButton_brJogR2, &QToolButton::clicked, this, [=]() { jogToCenter(g_brAlign.r2, "Reader 2"); });
+
+	//── move by the taught offset: the point under the camera goes under the reader ──
+	auto offsetToReader = [=](int reader) {
+		auto o = offsetOf(reader == 1 ? g_brAlign.r1 : g_brAlign.r2);
+		if (!o.set) {
+			showMsg(QString("Reader %1 offset has not been taught.").arg(reader));
+			return;
+		}
+
+		double x = 0, y = 0, z = 0;
+		if (!currentXYZ(x, y, z)) return;
+
+		g_brAlign.lastOffsetReader = reader;
+		AuditLog::instance().log(QStringLiteral("BR_ALIGN_GOTO_READER"), QString::number(reader));
+		emit jogTo(x + o.x, y + o.y, z + o.z);
+	};
+
+	connect(ui.toolButton_brGoR1, &QToolButton::clicked, this, [=]() { offsetToReader(1); });
+	connect(ui.toolButton_brGoR2, &QToolButton::clicked, this, [=]() { offsetToReader(2); });
+
+	//reverse of the last applied reader offset: back from the reader to the camera
+	connect(ui.toolButton_brGoCam, &QToolButton::clicked, this, [=]() {
+		if (g_brAlign.lastOffsetReader == 0) {
+			showMsg("Offset to a reader first - Offset to Camera reverses that move.");
+			return;
+		}
+
+		auto o = offsetOf(g_brAlign.lastOffsetReader == 1 ? g_brAlign.r1 : g_brAlign.r2);
+		if (!o.set) {
+			showMsg("The reader offset is no longer taught.");
+			return;
+		}
+
+		double x = 0, y = 0, z = 0;
+		if (!currentXYZ(x, y, z)) return;
+
+		AuditLog::instance().log(QStringLiteral("BR_ALIGN_GOTO_CAMERA"), QString::number(g_brAlign.lastOffsetReader));
+		g_brAlign.lastOffsetReader = 0;
+		emit jogTo(x - o.x, y - o.y, z - o.z);
+	});
 }

@@ -1,5 +1,6 @@
 #include "JobThread.h"
 #include "SRXManager.h"
+#include "InspectionThread.h"
 #include "TimeLogger.h"
 #include "ScopedTimeLogger.h"
 #include "Utilities.h"
@@ -3140,6 +3141,153 @@ void JobThread::acquire2DImages()
 	ct::logger::info("[Acq] Done acquiring 2D images");
 }
 
+bool JobThread::acquireBarcodeAndOcr()
+{
+	if (m_stopRun) return false;
+	if (!safeGuardLineScan()) return false;
+
+	ScopedTimeLogger stl("[Acq] Barcode + OCR acquisition");
+	auto& srx = SRXManager::instance();
+
+	//jog to the middle of the 3D scan area so both readers see the part
+	double sumX = 0, sumY = 0, z = 0;
+	int n = 0;
+	for (const auto& l : *m_linescans) {
+		if (l.type == ct::s_stitch_linescan || l.id.isEmpty()) continue;
+		sumX += (l.start_point.wx + l.end_point.wx) / 2.0;
+		sumY += (l.start_point.wy + l.end_point.wy) / 2.0;
+		z = l.start_point.wz;
+		n++;
+	}
+
+	if (n == 0) {
+		ct::logger::error("[Acq] No line scans assigned - cannot locate the barcode read position");
+		return false;
+	}
+
+	const double midX = sumX / n, midY = sumY / n;
+	auto& sd = SystemData::instance();
+
+	//jog the base camera position, then apply the taught camera-to-reader offset (XYZ)
+	auto jogToReader = [&](int reader) {
+		const bool taught = (reader == 1) ? (bool)sd._brR1Taught : (bool)sd._brR2Taught;
+		const double dx = (reader == 1) ? sd._brR1dx.load() : sd._brR2dx.load();
+		const double dy = (reader == 1) ? sd._brR1dy.load() : sd._brR2dy.load();
+		const double dz = (reader == 1) ? sd._brR1dz.load() : sd._brR2dz.load();
+		if (!taught) ct::logger::warn("[Acq] Reader %d offset not taught - scanning at the 3D mid point", reader);
+		jog(midX + (taught ? dx : 0), midY + (taught ? dy : 0), z + (taught ? dz : 0), "2D", true);
+	};
+
+	auto readerID = [](int reader) { return reader == 1 ? SRXManager::SRX1 : SRXManager::SRX2; };
+	auto readerDuration = [&](int reader) { return (reader == 1) ? (int)sd._brR1Duration_ms : (int)sd._brR2Duration_ms; };
+
+	//scan sequentially: first reader from recipe settings, fall back to the other
+	const int first = (sd._brFirstReader == 2) ? 2 : 1;
+	const int second = (first == 1) ? 2 : 1;
+
+	const QString prevImg1 = srx.lastImagePath(SRXManager::SRX1);
+	const QString prevImg2 = srx.lastImagePath(SRXManager::SRX2);
+
+	int winner = 0;
+	QString barcode;
+	bool loserTriggered = false; //true when the non-barcode reader already ran a cycle
+
+	for (int reader : { first, second }) {
+		if (m_stopRun) return false;
+
+		jogToReader(reader);
+		if (m_stopRun) return false;
+
+		const QString id = readerID(reader);
+		const QDateTime t0 = QDateTime::currentDateTime();
+		srx.trigger(id);
+
+		const int durationMs = readerDuration(reader);
+		QElapsedTimer timer;
+		timer.start();
+		bool decoded = false;
+
+		while (timer.elapsed() < durationMs && !m_stopRun) {
+			auto r = srx.lastResult(id);
+			if (r.ok && r.timestamp >= t0) {
+				barcode = r.code;
+				decoded = true;
+				break;
+			}
+			os_tool::goSleep(20);
+		}
+
+		if (decoded) {
+			winner = reader;
+			ct::logger::info("[Acq] Barcode read by reader %d: %s", reader, barcode.toStdString().c_str());
+			break;
+		}
+
+		//close the cycle - the reader then reports and pushes its capture,
+		//which doubles as the OCR image if the other reader finds the barcode
+		ct::logger::warn("[Acq] Reader %d: no barcode within %dms", reader, durationMs);
+		srx.stopReader(id);
+		if (reader == first) loserTriggered = true;
+	}
+
+	if (winner == 0) {
+		ct::logger::error("[Acq] No barcode found on either reader - saving as No_Barcode");
+		emit barcodeDecoded("No_Barcode");
+		return true; //run continues, no OCR image for this board
+	}
+
+	emit barcodeDecoded(barcode);
+
+	//the non-barcode side faces the label text: get its capture for OCR
+	const int loser = (winner == 1) ? 2 : 1;
+	const QString loserID = readerID(loser);
+	const QString prevLoserImg = (loser == 1) ? prevImg1 : prevImg2;
+
+	if (!loserTriggered) {
+		//winner decoded on the first try - the other side has not run a cycle yet
+		if (m_stopRun) return true;
+		jogToReader(loser);
+		if (m_stopRun) return true;
+
+		srx.trigger(loserID);
+		os_tool::doNothing(500); //let it capture
+		srx.stopReader(loserID); //close the cycle so the image pushes
+	}
+
+	QImage ocrImg;
+	QElapsedTimer imgTimer;
+	imgTimer.start();
+	constexpr int imageTimeoutMs = 5000;
+
+	while (imgTimer.elapsed() < imageTimeoutMs && !m_stopRun) {
+		if (srx.lastImagePath(loserID) != prevLoserImg) {
+			ocrImg = srx.lastImage(loserID);
+			break;
+		}
+		os_tool::goSleep(20);
+	}
+
+	if (ocrImg.isNull()) {
+		ct::logger::error("[Acq] No OCR image received from reader %d within %dms - OCR skipped for this board",
+			loser, imageTimeoutMs);
+	}
+	else if (InspectionThread::instance().isActive()) {
+		FrameInfo info;
+		info.type = "srx_ocr";
+		info.viewID = "OCR";
+		info.opticID = loserID;
+		info.cameraID = loserID;
+		info.width = ocrImg.width();
+		info.height = ocrImg.height();
+		InspectionThread::instance().enqueue(info, ocrImg);
+	}
+	else {
+		ct::logger::info("[Acq] OCR image from reader %d captured (inspection inactive, image saved only)", loser);
+	}
+
+	return true;
+}
+
 void JobThread::acquire3DImages()
 {
 	ScopedTimeLogger Stimer("[Acq] Total 3D Acquisition Time");
@@ -4721,8 +4869,14 @@ void JobThread::run2D3D() {
 
 	m_stopRun = false;
 	preAcquisition();
-	acquire2DImages();
-	acquire3DImages();
+
+	//2D camera acquisition replaced for Pogo: read the barcode with the SR-X
+	//readers at the middle of the 3D scan area and capture the OCR-side image
+	const bool barcodeOk = acquireBarcodeAndOcr();
+
+	//only proceed to the 3D scan when the barcode was read
+	if (barcodeOk) acquire3DImages();
+
 	postAcquisition();
 	if (!m_stopRun) emit acquisitionDone();
 }

@@ -282,6 +282,7 @@ private:
 	void continuousSnap();
 	void savePostResult();
 	void acquire2DImages();
+	bool acquireBarcodeAndOcr(); //SR-X barcode read + OCR-side capture at the 3D mid point
 	void acquire3DImages();
 	void collectPlane();
 

@@ -131,6 +131,14 @@ public:
 
 	std::atomic<bool> _homeOnStartup = true; //auto home the machine after login
 
+	//barcode reader production flow (recipe settings + taught camera-to-reader offsets)
+	std::atomic<int> _brFirstReader = 1;        //which reader scans first: 1 or 2
+	std::atomic<int> _brR1Duration_ms = 2000;   //read duration per reader
+	std::atomic<int> _brR2Duration_ms = 2000;
+	std::atomic<bool> _brR1Taught = false;
+	std::atomic<bool> _brR2Taught = false;
+	std::atomic<double> _brR1dx = 0.0, _brR1dy = 0.0, _brR1dz = 0.0; //camera-to-reader offsets (mm)
+	std::atomic<double> _brR2dx = 0.0, _brR2dy = 0.0, _brR2dz = 0.0;
 
 	std::atomic<bool> _bypassInspection = false;
 

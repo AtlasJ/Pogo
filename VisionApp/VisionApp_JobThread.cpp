@@ -471,6 +471,7 @@ void VisionApp::connectJobThread() {
 	QObject::connect(this, &VisionApp::readBarcode, &_jobThread, &JobThread::readBarcode, Qt::QueuedConnection);
 
 	// Camera alignment
+	qRegisterMetaType<AlignFeatureParams>("AlignFeatureParams");
 	QObject::connect(this, &VisionApp::performCameraAlignment, &_jobThread, &JobThread::performCameraAlignment, Qt::QueuedConnection);
 
 	QObject::connect(this, &VisionApp::performCameraScaling, &_jobThread, &JobThread::performCameraScaling, Qt::QueuedConnection);
@@ -574,6 +575,13 @@ void VisionApp::connectJobThread() {
 
 	_jobThread.moveToThread(&_jobThread);
 	_jobThread.start(QThread::HighPriority);
+
+	//production inspection worker (OCR + 3D height); idle until production starts
+	QObject::connect(&InspectionThread::instance(), &InspectionThread::inspectionResult, this,
+		[=](QString algo, bool pass, QString detail) {
+			addLogLine(QString("[Inspection] %1: %2 (%3)").arg(algo, pass ? "PASS" : "FAIL", detail));
+		}, Qt::QueuedConnection);
+	InspectionThread::instance().start();
 }
 
 void VisionApp::simulateImageSaving()
