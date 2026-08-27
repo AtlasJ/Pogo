@@ -37,6 +37,22 @@
 
 #define PROFILER_TIMEOUT 60000
 
+//feature-finding setup for camera alignment/scaling: circle or learned pattern
+struct AlignFeatureParams {
+	bool usePattern = false;
+
+	//circle: expected diameter comes from the on-screen ROI +- tolerance
+	int minDiameter = 0;
+	int maxDiameter = 0;
+	mtrx::ForegoundType foreground = mtrx::ForegoundType::FOREGROUND_WHITE;
+
+	//pattern
+	QString modelPath;      //learned .mpat
+	QRectF searchRoi;       //px, empty = whole FOV
+	double minScore = 70.0;
+};
+Q_DECLARE_METATYPE(AlignFeatureParams)
+
 Q_DECLARE_METATYPE(InspStatus::FiducialDetail)
 Q_DECLARE_METATYPE(MIL_ID)
 Q_DECLARE_METATYPE(LaserAlignmentImage)
@@ -353,8 +369,9 @@ public slots:
 	QString readBarcode(int index, bool online = true);
 
 	//calibration
-	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
-	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type);
+	void performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams);
+	void performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams);
+	bool findAlignFeature(MIL_ID mMono, const AlignFeatureParams& p, mtrx::PatternOutput& out);
 
 	void performLaserAlignment(dat::WorldCoordinate currentPoint, QRectF roi, int camThreshold, int laserThreshold);
 	void captureAlignmentImages(dat::WorldCoordinate currentPoint, int camThreshold, int laserThreshold);

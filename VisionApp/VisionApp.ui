@@ -14284,30 +14284,58 @@ QToolButton:hover {
                      <item>
                       <layout class="QHBoxLayout" name="horizontalLayout_49">
                        <item>
-                        <widget class="QLabel" name="label_128">
+                        <widget class="QLabel" name="label_alignMethod">
                          <property name="text">
-                          <string>Min Diameter</string>
+                          <string>Method</string>
                          </property>
                         </widget>
                        </item>
                        <item>
-                        <widget class="QLineEdit" name="lineEdit_CAminDiameter">
+                        <widget class="QComboBox" name="comboBox_alignMethod">
+                         <item>
+                          <property name="text">
+                           <string>Circle</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>Pattern</string>
+                          </property>
+                         </item>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="label_alignTolerance">
                          <property name="text">
-                          <string>280</string>
+                          <string>Tolerance (px)</string>
                          </property>
                         </widget>
                        </item>
                        <item>
-                        <widget class="QLabel" name="label_129">
+                        <widget class="QLineEdit" name="lineEdit_alignTolerance">
                          <property name="text">
-                          <string>Max Diameter</string>
+                          <string>30</string>
                          </property>
                         </widget>
                        </item>
                        <item>
-                        <widget class="QLineEdit" name="lineEdit_CAmaxDiameter">
+                        <widget class="QLabel" name="label_alignScore">
                          <property name="text">
-                          <string>320</string>
+                          <string>Min Score</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLineEdit" name="lineEdit_alignPatternScore">
+                         <property name="text">
+                          <string>70</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QToolButton" name="toolButton_alignLearnPattern">
+                         <property name="text">
+                          <string>Learn Pattern</string>
                          </property>
                         </widget>
                        </item>

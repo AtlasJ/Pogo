@@ -546,7 +546,68 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 	return info;
 }
 
-void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type)
+bool JobThread::findAlignFeature(MIL_ID mMono, const AlignFeatureParams& p, mtrx::PatternOutput& out)
+{
+	if (p.usePattern) {
+		if (p.modelPath.isEmpty() || !QFile::exists(p.modelPath)) {
+			ct::logger::error("[Align] Pattern model not learned: %s", p.modelPath.toStdString().c_str());
+			return false;
+		}
+
+		//constrain to the search ROI when one is drawn
+		MIL_ID mSearch = mMono;
+		double offX = 0, offY = 0;
+		bool cropped = false;
+
+		if (!p.searchRoi.isEmpty()) {
+			const MIL_INT w = MbufInquire(mMono, M_SIZE_X, M_NULL);
+			const MIL_INT h = MbufInquire(mMono, M_SIZE_Y, M_NULL);
+			QRectF sr = p.searchRoi.intersected(QRectF(0, 0, (double)w, (double)h));
+			if (sr.width() > 10 && sr.height() > 10) {
+				mSearch = mtrx::crop(mMono, sr.x(), sr.y(), sr.width(), sr.height());
+				offX = sr.x();
+				offY = sr.y();
+				cropped = true;
+			}
+		}
+
+		mtrx::PatternOutput patOut;
+		patOut.acceptance_min_score = p.minScore;
+		const bool found = mtrx::find_pattern(mSearch, p.modelPath.toStdString(), patOut);
+		if (cropped) MbufFree(mSearch);
+
+		if (!found || patOut.score < p.minScore) {
+			ct::logger::warn("[Align] Pattern not found (best %.1f, min %.1f)", patOut.score, p.minScore);
+			return false;
+		}
+
+		out = patOut;
+		out.x += offX;
+		out.y += offY;
+		out.cx += offX;
+		out.cy += offY;
+		ct::logger::info("[Align] Pattern found at (%.1f, %.1f), score %.1f", out.cx, out.cy, out.score);
+		return true;
+	}
+
+	mtrx::Circle circle;
+	if (!mtrx::find_circle(circle, mMono, (double)p.minDiameter / 2.0, (double)p.maxDiameter / 2.0,
+		mtrx::CircleType::LARGEST_RADIUS, p.foreground)) {
+		ct::logger::warn("[Align] Circle not found (diameter %d-%d px)", p.minDiameter, p.maxDiameter);
+		return false;
+	}
+
+	out.x = circle.cx - circle.radius;
+	out.y = circle.cy - circle.radius;
+	out.w = circle.radius * 2;
+	out.h = circle.radius * 2;
+	out.cx = circle.cx;
+	out.cy = circle.cy;
+	ct::logger::info("[Align] Circle found at (%.1f, %.1f), diameter %.1f px", out.cx, out.cy, out.w);
+	return true;
+}
+
+void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams)
 {
 	//NOTE: Inconsistency is usually due to gantry error and not the algorithm itself. Can easily be proven by loading the same image to test if the circle found is different. 
 	auto origin = currentPoint;
@@ -565,13 +626,8 @@ void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double
 	mtrx::BufferCollector bc2(mMono);
 
 	mtrx::PatternOutput output;
-	mtrx::Circle circle;
 
-	if (mtrx::find_circle(circle, mMono, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-		output.x = circle.cx - circle.radius;
-		output.y = circle.cy - circle.radius;
-		output.w = circle.radius * 2;
-		output.h = circle.radius * 2;
+	if (findAlignFeature(mMono, featureParams, output)) {
 		emit drawRectFOV("cam_align", QRectF(output.x, output.y, output.w, output.h), Qt::yellow);
 	}else {
 		emit cameraAlignmentFailed("Camera Alignment Failed: Origin feature not found!");
@@ -595,12 +651,7 @@ void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double
 
 
 	mtrx::PatternOutput outputH;
-	mtrx::Circle circleH;
-	if (mtrx::find_circle(circleH, mMonoH, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-		outputH.x = circleH.cx - circleH.radius;
-		outputH.y = circleH.cy - circleH.radius;
-		outputH.w = circleH.radius * 2;
-		outputH.h = circleH.radius * 2;
+	if (findAlignFeature(mMonoH, featureParams, outputH)) {
 		emit drawRectFOV("cam_align", QRectF(outputH.x, outputH.y, outputH.w, outputH.h), Qt::yellow);
 	}else {
 		emit cameraAlignmentFailed("Camera Alignment Failed: Horizontal feature not found!");
@@ -626,7 +677,7 @@ void JobThread::performCameraAlignment(dat::WorldCoordinate currentPoint, double
 	snapOptic(mainOptic, "H", "", true);
 }
 
-void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, int minDiameter, int maxDiameter, mtrx::ForegoundType type)
+void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double step_mm, AlignFeatureParams featureParams)
 {
 	auto origin = currentPoint;
 	auto horizontal_step = origin;
@@ -653,12 +704,7 @@ void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double s
 	bool ret1 = false, retH = false, retV = false;
 
 	mtrx::PatternOutput output;
-	mtrx::Circle circle;
-	if (mtrx::find_circle(circle, mMono, (double)minDiameter / 2.0, (double)maxDiameter / 2.0, mtrx::CircleType::LARGEST_RADIUS, type)) {
-		output.x = circle.cx - circle.radius;
-		output.y = circle.cy - circle.radius;
-		output.w = circle.radius * 2;
-		output.h = circle.radius * 2;
+	if (findAlignFeature(mMono, featureParams, output)) {
 		emit drawRectFOV("cam_scaling", QRectF(output.x, output.y, output.w, output.h), Qt::yellow);
 	}
 	else {
@@ -683,13 +729,7 @@ void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double s
 
 
 	mtrx::PatternOutput outputH;
-	mtrx::Circle circleH;
-	if (mtrx::find_circle(circleH, mMonoH, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-
-		outputH.x = circleH.cx - circleH.radius;
-		outputH.y = circleH.cy - circleH.radius;
-		outputH.w = circleH.radius * 2;
-		outputH.h = circleH.radius * 2;
+	if (findAlignFeature(mMonoH, featureParams, outputH)) {
 		emit drawRectFOV("cam_scaling", QRectF(outputH.x, outputH.y, outputH.w, outputH.h), Qt::yellow);
 	}
 	else {
@@ -717,13 +757,7 @@ void JobThread::performCameraScaling(dat::WorldCoordinate currentPoint, double s
 	mtrx::BufferCollector bc6(mMonoV);
 
 	mtrx::PatternOutput outputV;
-	mtrx::Circle circleV;
-	if (mtrx::find_circle(circleV, mMonoV, (double)minDiameter / 2, (double)maxDiameter / 2, mtrx::CircleType::LARGEST_RADIUS, type)) {
-
-		outputV.x = circleV.cx - circleV.radius;
-		outputV.y = circleV.cy - circleV.radius;
-		outputV.w = circleV.radius * 2;
-		outputV.h = circleV.radius * 2;
+	if (findAlignFeature(mMonoV, featureParams, outputV)) {
 		emit drawRectFOV("cam_scaling", QRectF(outputV.x, outputV.y, outputV.w, outputV.h), Qt::yellow);
 	}
 	else {
