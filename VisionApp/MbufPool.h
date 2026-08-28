@@ -60,10 +60,29 @@ namespace mtrx {
         int m_channel = 0;
         long long m_type = 0;
 
-        std::mutex m_mutex;
+        //Mutable so the public is_idle() can lock: the buffer wrappers' deleters run on
+        //whatever thread drops the last reference - the profiler callback, ImageManager or
+        //JobThread - so set_idle() and free_buffer() mutate this pool from arbitrary threads.
+        mutable std::mutex m_mutex;
         std::queue<MIL_ID> m_idle;
         std::set<MIL_ID> m_buffers;
+
+        /*
+        * Ids attached with FREE_BUFFER, tracked ONLY so attach() can reject a duplicate.
+        * m_buffers cannot do that job: alloc() and attach() add to it for POOL_IDLE only, so
+        * attach()'s "already attached" check never fires for a FREE_BUFFER id. Attach the same
+        * MIL_ID twice and you get two wrappers, each carrying a MbufPoolReleaser, and MbufFree
+        * runs twice on one buffer - reachable in a long session because MIL recycles ids after
+        * a free. Deliberately a separate set: putting these into m_buffers would also make the
+        * destructor free buffers a live shared_ptr still points at.
+        */
+        std::set<MIL_ID> m_attachedFree;
+
         std::unordered_map<MIL_ID, PoolDestructorType> m_dtypeMap;
+
+        //Callers that already hold m_mutex must use this one. m_mutex is not recursive, so
+        //calling the public is_idle() from acquire() would self-deadlock.
+        bool is_idle_unlocked() const { return !m_idle.empty(); }
 
         void alloc(int width, int height, int channel, long long type, PoolDestructorType destructorType);
     };
