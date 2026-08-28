@@ -1845,6 +1845,40 @@ QLineEdit:focus {
                      </property>
                     </widget>
                    </item>
+                   <item row="9" column="0">
+                    <widget class="QLabel" name="label_EMXA_DI8_w">
+                     <property name="text">
+                      <string>X108</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="9" column="1">
+                    <widget class="QLabel" name="label_EMXA_DI8_a">
+                     <property name="text">
+                      <string>DI9</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="9" column="2">
+                    <widget class="QLabel" name="label_EMXA_DI8_d">
+                     <property name="text">
+                      <string>Production Mode</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="9" column="3">
+                    <widget class="QToolButton" name="toolButton_EMXA_DI8">
+                     <property name="minimumSize">
+                      <size>
+                       <width>24</width>
+                       <height>0</height>
+                      </size>
+                     </property>
+                     <property name="text">
+                      <string/>
+                     </property>
+                    </widget>
+                   </item>
                   </layout>
                  </item>
                  <item>

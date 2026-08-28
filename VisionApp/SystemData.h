@@ -40,6 +40,7 @@ enum class DIA {
 	TROLLEY_LOCK_GUARD = 5,  //X105 trolley lock guard switch on
 	ESTOP_SAFETY_RELAY = 6,  //X106 e-stop safety relay OK
 	CURTAIN_SAFETY_RELAY = 7,//X107 curtain sensor safety relay OK
+	PRODUCTION_MODE = 8,     //X108 production mode selector on
 	LAST_INDEX
 };
 
