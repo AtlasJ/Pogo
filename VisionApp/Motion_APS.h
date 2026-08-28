@@ -13,7 +13,11 @@ namespace nvs {
 			std::chrono::steady_clock::time_point m_lastCloseTime{};
 
 			const int MAX_DI = 32;
-			const int MAX_DO = 14;
+			//16, not 14: get_all_DO() reads 2 groups of 8 and writes result[0..15], and
+			//set_DO() reads DOs[base..base+7] with base = 8 for the second group. At 14 both
+			//ran past the end of the vector - benign with MSVC's whole-word std::vector<bool>
+			//allocation, but undefined, and a trap for anyone changing either loop.
+			const int MAX_DO = 16;
 
 			int get_group(int bit) const;
 			const char* get_code(int ret) const;
