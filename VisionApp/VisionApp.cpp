@@ -1138,6 +1138,7 @@ void VisionApp::initStartupState()
 	ui.comboBox_zstack_acqType->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_stitchingMethod ->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_lineScanAxis->installEventFilter(new util::ComboScrollBlocker());
+	ui.comboBox_lineScanDirection->installEventFilter(new util::ComboScrollBlocker());
 }
 
 QDragBox* VisionApp::addDragBoxToScene(QMainGraphicsScene* scene, QRect rect, const QColor& color, const QString& name, const QString& id)
@@ -1859,6 +1860,27 @@ void VisionApp::connectSignalAndSlot()
 		saveRecipeConfig();
 		AuditLog::instance().log(QStringLiteral("LINESCAN_AXIS_CHANGED"));
 		showMsg(tr("Line scan axis changed. Please reassign line scans for the new axis to take effect."));
+	});
+
+	connect(ui.comboBox_lineScanDirection, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
+		SystemData::instance()._lineScanDirection = index;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("LINESCAN_DIRECTION_CHANGED"));
+		//No re-teach needed, unlike the axis: the line scans keep their taught span, the gantry
+		//just traverses it the other way and the height map is flipped back to match.
+		showMsg(tr("Scan direction changed. Line scans keep their taught positions - only the "
+			"direction of travel changes, from the next scan onwards."));
+	});
+
+	connect(ui.checkBox_heightMapNativeScale, &QCheckBox::toggled, this, [=](bool on) {
+		SystemData::instance()._heightMapNativeScale = on;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("HEIGHTMAP_SCALE_CHANGED"));
+		showMsg(on
+			? tr("Height maps will now be built at the sensor's own resolution. They no longer "
+				"match 2D views, so any 3D ROI taught at the old scale must be re-taught, and "
+				"the images are considerably larger.")
+			: tr("Height maps will be built at the shared world scale again, matching 2D views."));
 	});
 
 	connect(ui.comboBox_camRotation, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
@@ -3975,6 +3997,11 @@ void VisionApp::testRun()
 		return;
 	}
 
+	if (runType == QStringLiteral("Production Scan Check")) {
+		runProductionScanTest();
+		return;
+	}
+
 	bool online = ui.toolButton_toggleOnlineRun->isChecked();
 	auto run1stFOVOnly = ui.checkBox_runOneFOVonly->isChecked();
 	bool disable2DInspection = ui.checkBox_disable2D->isChecked();
@@ -5730,6 +5757,23 @@ VisionApp::~VisionApp()
 	_imageManager.release();
 	_jobThread.release();
 	InspectionThread::instance().release();
+
+	/*
+	* AlgoManager keeps the last scanned height map alive on purpose, so the Algo Setup page
+	* can offer "Use Last Scan". It is a singleton and nothing else ever drops that reference,
+	* so after any 3D scan exactly one MIL buffer outlives everything above - which is all it
+	* takes for MappFreeDefault() below to report
+	*   "MsysFree(): System still has buffer(s) associated with it"
+	* and then
+	*   "MappFree(): Application still has system(s) associated with it. Application was not freed."
+	*
+	* It has to be released HERE, before release_pools(): MbufPool::release() only frees the ids
+	* in m_buffers, and alloc()/attach() add ids there only for POOL_IDLE. An attached
+	* FREE_BUFFER buffer - which is exactly what the rotated height map is - is invisible to it,
+	* so the pool teardown cannot clean up after this reference no matter when it runs.
+	*/
+	AlgoManager::instance().setHeightMap(nullptr);
+
 	mtrx::MPM::instance().release_pools();
 	_databaseThread.terminate(); 
 	_networkPathChecker.terminate(); 
@@ -7899,7 +7943,10 @@ void VisionApp::toggleOnlineRun()
 		"Full Stationary",
 		//Profiler bring-up only: a bare 3D acquisition with no views, no 2D and no
 		//production error handling. Handled by an exact-match branch in testRun().
-		"Profiler Scan Test"
+		"Profiler Scan Test",
+		//Same acquisition production uses, via JobThread::scan(). Exact-match branch too -
+		//no "2D"/"3D"/"Full"/"Inspection" substring, or the contains() chain would claim it.
+		"Production Scan Check"
 	};
 	ui.comboBox_runType->addItems(runType);
 	ui.comboBox_runType->setCurrentText("Full Inspection");

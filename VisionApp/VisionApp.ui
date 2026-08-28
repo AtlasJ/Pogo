@@ -12240,6 +12240,36 @@ border: none;
                             </item>
                            </widget>
                           </item>
+                          <item>
+                           <widget class="QLabel" name="label_lineScanDirection">
+                            <property name="text">
+                             <string>Scan Direction:</string>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QComboBox" name="comboBox_lineScanDirection">
+                            <property name="sizePolicy">
+                             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                              <horstretch>0</horstretch>
+                              <verstretch>0</verstretch>
+                             </sizepolicy>
+                            </property>
+                            <property name="toolTip">
+                             <string>Which way along the scan axis the gantry travels. The line scan itself only says where; this says which end it starts from.</string>
+                            </property>
+                            <item>
+                             <property name="text">
+                              <string>Positive</string>
+                             </property>
+                            </item>
+                            <item>
+                             <property name="text">
+                              <string>Negative</string>
+                             </property>
+                            </item>
+                           </widget>
+                          </item>
                          </layout>
                         </item>
                         <item row="12" column="0">
@@ -12258,6 +12288,16 @@ border: none;
                             </property>
                             <property name="checked">
                              <bool>true</bool>
+                            </property>
+                           </widget>
+                          </item>
+                          <item>
+                           <widget class="QCheckBox" name="checkBox_heightMapNativeScale">
+                            <property name="text">
+                             <string>3D Native Resolution</string>
+                            </property>
+                            <property name="toolTip">
+                             <string>Build the height map at the sensor's own pixel pitch instead of the shared world scale. Keeps all the resolution the profiler delivered, but the image no longer lines up with 2D views - so only use it when 3D is not stitched and has no ROIs taught at world scale. Images become much larger.</string>
                             </property>
                            </widget>
                           </item>

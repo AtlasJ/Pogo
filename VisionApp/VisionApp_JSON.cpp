@@ -1380,6 +1380,8 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("_warpageMethod"), _warpageMethod);
 	obj.insert(QStringLiteral("stitchingMethod"), SystemData::instance()._stitchingMethod);
 	obj.insert(QStringLiteral("lineScanAxis"), (int)SystemData::instance()._lineScanAxis);
+	obj.insert(QStringLiteral("lineScanDirection"), (int)SystemData::instance()._lineScanDirection);
+	obj.insert(QStringLiteral("heightMapNativeScale"), (bool)SystemData::instance()._heightMapNativeScale);
 	obj.insert(QStringLiteral("lscStrobeMode"), (bool)SystemData::instance()._lscStrobeMode);
 	obj.insert(QStringLiteral("camImageRotation"), (int)SystemData::instance()._camImageRotation);
 	obj.insert(QStringLiteral("homeOnStartup"), (bool)SystemData::instance()._homeOnStartup);
@@ -1943,6 +1945,20 @@ bool VisionApp::loadRecipeConfig()
 		{
 			QSignalBlocker blocker(ui.comboBox_lineScanAxis);
 			ui.comboBox_lineScanAxis->setCurrentIndex(SystemData::instance()._lineScanAxis);
+		}
+
+		//Default 0 (positive) so a recipe saved before this existed keeps its old behaviour.
+		SystemData::instance()._lineScanDirection = jsonHelper::getInteger(root, QStringLiteral("lineScanDirection"), 0);
+		{
+			QSignalBlocker blocker(ui.comboBox_lineScanDirection);
+			ui.comboBox_lineScanDirection->setCurrentIndex(SystemData::instance()._lineScanDirection);
+		}
+
+		//Default false = world scale, so an existing recipe's taught geometry does not move.
+		SystemData::instance()._heightMapNativeScale = jsonHelper::getBool(root, QStringLiteral("heightMapNativeScale"), false);
+		{
+			QSignalBlocker blocker(ui.checkBox_heightMapNativeScale);
+			ui.checkBox_heightMapNativeScale->setChecked(SystemData::instance()._heightMapNativeScale);
 		}
 
 		SystemData::instance()._lscStrobeMode = jsonHelper::getBool(root, QStringLiteral("lscStrobeMode"), false);

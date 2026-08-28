@@ -505,6 +505,7 @@ void VisionApp::connectJobThread() {
 	QObject::connect(this, &VisionApp::signalVerifyLaserAlignment, &_jobThread, &JobThread::verifyLaserAlignment, Qt::QueuedConnection);
 
 	QObject::connect(this, &VisionApp::signalProfilerScanTest, &_jobThread, &JobThread::profilerScanTest, Qt::QueuedConnection);
+	QObject::connect(this, &VisionApp::signalProductionScanTest, &_jobThread, &JobThread::productionScanTest, Qt::QueuedConnection);
 
 	// Intensity and lighting calibration
 	QObject::connect(this, &VisionApp::signalGetAllIntensityFromExpectedGV, &_jobThread, &JobThread::getAllIntensityFromExpectedGV, Qt::QueuedConnection);

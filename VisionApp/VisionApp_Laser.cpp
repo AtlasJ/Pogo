@@ -323,6 +323,81 @@ void VisionApp::runProfilerScanTest()
 		checkSave->isChecked(), checkReturn->isChecked());
 }
 
+
+/* --------------------------------------------------- Production Scan Check */
+
+/*
+* Test Run page -> Online -> "Production Scan Check" -> Run.
+*
+* Only the distance is asked for. Direction now has a home on the Config page (Scan Direction)
+* and the optic is whatever getMainOptics3D() picks, so asking again here would let this test
+* run with settings production would not use - which is the opposite of the point.
+*/
+void VisionApp::runProductionScanTest()
+{
+	if (_recipeOptics3D.isEmpty()) {
+		showMsg(QStringLiteral("This recipe has no 3D optics entries. Create one on the 3D Optics page first."));
+		return;
+	}
+	if (!ProfilerManager::instance().keys().contains(_profilerID)) {
+		showMsg(QStringLiteral("No profiler is configured under ID '%1'.").arg(_profilerID));
+		return;
+	}
+
+	QDialog dlg(this);
+	dlg.setWindowTitle(QStringLiteral("Production Scan Check"));
+
+	auto* spinDistance = new QDoubleSpinBox(&dlg);
+	spinDistance->setRange(0.1, 1000.0);
+	spinDistance->setDecimals(2);
+	spinDistance->setSingleStep(1.0);
+	spinDistance->setValue(50.0);
+	spinDistance->setSuffix(QStringLiteral(" mm"));
+
+	QString opticID = QStringLiteral("(none with intensity)");
+	for (const auto& o : _recipeOptics3D) {
+		if (o.intensity) { opticID = o.id; break; }
+	}
+
+	const auto here = SystemData::instance().currentCoordinate();
+	int speed2d = 0, speed3d = 0;
+	_jobThread.getXSpeed(speed2d, speed3d);
+
+	auto* info = new QLabel(QStringLiteral(
+		"Runs the REAL production scan path - the same JobThread::scan() a production run\n"
+		"uses, with the laser offset applied. Use this to confirm production works, and the\n"
+		"Profiler Scan Test to diagnose the sensor.\n\n"
+		"  Axis      : %1        (Config page -> Line Scan Axis)\n"
+		"  Direction : %2   (Config page -> Scan Direction)\n"
+		"  Optic     : %3        (first entry with intensity)\n"
+		"  Speed     : %4 mm/s   (Config page -> X 3D velocity)\n"
+		"  Starts at : X = %5 mm\n\n"
+		"A report is written to the recipe's Images\\ProductionScan folder.")
+		.arg(SystemData::instance().isLineScanAxisY() ? "Y" : "X")
+		.arg(SystemData::instance().isLineScanDirectionNegative() ? "negative" : "positive")
+		.arg(opticID).arg(speed3d).arg(here.wx, 0, 'f', 3), &dlg);
+	info->setWordWrap(true);
+	info->setStyleSheet(QStringLiteral("color: #929aaa;"));
+
+	auto* form = new QFormLayout();
+	form->addRow(QStringLiteral("Scan distance"), spinDistance);
+
+	auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+	buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Run"));
+	connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+	auto* layout = new QVBoxLayout(&dlg);
+	layout->addWidget(info);
+	layout->addLayout(form);
+	layout->addWidget(buttons);
+
+	if (dlg.exec() != QDialog::Accepted) return;
+
+	ui.textEdit_loopStatus->append(QStringLiteral("Production Scan Check: %1 mm").arg(spinDistance->value()));
+	emit signalProductionScanTest(spinDistance->value());
+}
+
 void VisionApp::terminated(int signum)
 {
 	MachineController::instance().turnOnBrake();
