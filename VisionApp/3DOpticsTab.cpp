@@ -837,6 +837,41 @@ void Optics3DTab::initProfilerHwUi()
                 item->setToolTip(tr("Not available on the LJ-X8000A (single head)."));
             }
         }
+
+        /*
+        * Line Threshold used to be mapped onto the LJ-X's Peak Sensitivity, because
+        * setLaserLineThreshold was the only generic seam on IProfiler. That left the page with
+        * two controls for one setting - a Peak Sensitivity combo that went nowhere, and this,
+        * which quietly drove it. Peak Sensitivity is wired properly now, so this is a no-op
+        * here. Disabled rather than hidden: it is still a real threshold on Gocator, SmartRay
+        * and SSZN, so it cannot be removed, and an existing recipe value should still display.
+        */
+        ui.lineEdit_lineThreshold->setEnabled(false);
+        ui.lineEdit_lineThreshold->setToolTip(
+            tr("Not used by the LJ-X8000A. Use Peak Sensitivity instead - this field used to "
+               "drive it, and no longer does. Still active on the other profiler backends."));
+    }
+
+    /*
+    * The Profiler Hardware section is LJ-X shaped: trigger mode, encoder input mode, encoder
+    * minimum input time and the two ports are all LJ-X concepts. On another backend Save would
+    * write those keys into THAT sensor's driver config, and Connect would cycle a working
+    * sensor for no reason. Neither is destructive, but neither is meaningful either.
+    *
+    * Hidden only when a different sensor is actually configured. An empty API means no profiler
+    * has been created - preparing a machine offline, or a recipe opened before the hardware is
+    * up - and the fields are backed by JSON files rather than by the sensor, so that case must
+    * keep working.
+    */
+    {
+        const QString api = ProfilerManager::instance().getAPI();
+        const bool otherSensor = !api.isEmpty()
+            && api.compare(QStringLiteral("KeyenceLJ"), Qt::CaseInsensitive) != 0;
+        if (otherSensor) {
+            ui.frame_profilerHw->setVisible(false);
+            ct::logger::info("[Optics3DTab] Profiler Hardware section hidden - API is '%s', "
+                "and these settings are LJ-X only", qPrintable(api));
+        }
     }
 
     //Dirty tracking exists only to sequence Save before Connect. textEdited rather than
