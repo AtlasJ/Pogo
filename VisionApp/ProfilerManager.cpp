@@ -116,6 +116,12 @@ bool ProfilerManager::connect(QString id, QString ip)
 		ct::logger::info("[Profiler] Connected to: %s", ip.toStdString().c_str());
 		m_connectionStatus = true;
 	}
+
+	//Whatever the controller holds now, this cache no longer describes it. A successful connect
+	//is followed by the backend's loadConfig pushing the driver config's own defaults, and a
+	//failed one leaves the state unknown. Either way the next scan must re-push everything.
+	invalidateSettings(id);
+
 	return ret;
 }
 
@@ -123,6 +129,7 @@ bool ProfilerManager::disconnect(QString id)
 {
 	if (!valid(id)) return false;
 	auto ret = m_profilers[id]->disconnect();
+	invalidateSettings(id);   //nothing survives a disconnect; do not let the cache claim otherwise
 	if (!ret) ct::logger::error("[Profiler] Failed to disconnect profiler: %s", id.toStdString().c_str());
 	ct::logger::info("[Profiler] Disconnected from: %s", id.toStdString().c_str());
 	return ret;
@@ -353,6 +360,30 @@ bool ProfilerManager::setLaserLineThreshold(QString id, double threshold)
 	return ret;
 }
 
+bool ProfilerManager::setPeakSensitivity(QString id, int level)
+{
+	if (!valid(id)) return false;
+	auto ret = m_profilers[id]->setPeakSensitivity(level);
+	if (!ret) ct::logger::error("[Profiler] Failed to set peak sensitivity: %s, %d", id.toStdString().c_str(), level);
+	return ret;
+}
+
+bool ProfilerManager::setPeakSelection(QString id, int mode)
+{
+	if (!valid(id)) return false;
+	auto ret = m_profilers[id]->setPeakSelection(mode);
+	if (!ret) ct::logger::error("[Profiler] Failed to set peak selection: %s, %d", id.toStdString().c_str(), mode);
+	return ret;
+}
+
+bool ProfilerManager::setLightLimits(QString id, int lower, int upper)
+{
+	if (!valid(id)) return false;
+	auto ret = m_profilers[id]->setLightLimits(lower, upper);
+	if (!ret) ct::logger::error("[Profiler] Failed to set light limits: %s, %d..%d", id.toStdString().c_str(), lower, upper);
+	return ret;
+}
+
 bool ProfilerManager::waitAcquisition(QString id, int ms)
 {
 	if (!valid(id)) return false;
@@ -465,9 +496,31 @@ bool ProfilerManager::create(QString id, QString api)
 		return false;
 	}
 
-	m_currentSettings.insert(id, OpticsInfo3D());
+	invalidateSettings(id);   //NOT a default OpticsInfo3D - see the note on invalidateSettings
 	ct::logger::info("[Profiler] Created profiler: %s", api.toStdString().c_str());
 	return true;
+}
+
+void ProfilerManager::invalidateSettings(QString id)
+{
+	/*
+	* Far enough out that util::is_equal() can never call it a match: that helper is
+	* "abs(a - b) > tolerance -> not equal", so a NaN sentinel would be reported as EQUAL
+	* (NaN > tol is false) and skip the push - the exact opposite of what is wanted here.
+	*/
+	constexpr double kUnset = -1.0e9;
+
+	OpticsInfo3D& s = m_currentSettings[id];
+	s.exposure = kUnset;
+	s.exposure2 = kUnset;
+	s.gain = kUnset;
+	s.gain2 = kUnset;
+	s.lineThreshold = kUnset;
+	s.divider = -1;                 //a real divider is always >= 1
+	s.exposureMode = QString();     //never equals "single" / "multi" / "dynamic" / "parallel"
+
+	ct::logger::trace("[Profiler] Cached settings invalidated for %s - the next scan re-pushes them",
+		id.toStdString().c_str());
 }
 
 bool ProfilerManager::valid(QString id) const

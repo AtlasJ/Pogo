@@ -68,6 +68,13 @@ public:
 	bool setLaserLineThreshold(QString id, double threshold);
 	bool setDivider(QString id, int divider);
 
+	//Per-optic peak and light controls. Plain pass-throughs on purpose - the backend does its
+	//own change detection, because unlike m_currentSettings here it can reset that cache when
+	//the controller is reconnected and its Running area has been re-pushed.
+	bool setPeakSensitivity(QString id, int level);
+	bool setPeakSelection(QString id, int mode);
+	bool setLightLimits(QString id, int lower, int upper);
+
 	//Data
 	const FrameInfo* getFrame(QString id) const;
 	FrameInfo* getFrame(QString id);
@@ -99,6 +106,23 @@ private:
 
 	bool create(QString id, QString api);
 	bool valid(QString id) const;
+
+	/*
+	* Mark every cached setting as "not applied", so the next scan re-pushes all of them.
+	*
+	* m_currentSettings exists to skip a driver call when the value has not changed, but nothing
+	* used to reset it. A reconnect re-runs the backend's loadConfig, which pushes the driver
+	* config's own defaults into the controller - while this cache still believed the recipe's
+	* values were in force, so the following scan skipped re-sending them and the controller
+	* quietly ran on the config defaults.
+	*
+	* Clearing the hash is NOT enough, which is the subtle part: the cache is an OpticsInfo3D,
+	* whose defaults are gain 0.0, lineThreshold 0.0, divider 1 and exposure 0.0 - all of them
+	* perfectly ordinary recipe values. A default-constructed entry therefore MATCHES such a
+	* recipe and skips the very first push. Hence sentinels no real setting can equal, rather
+	* than a reset to defaults.
+	*/
+	void invalidateSettings(QString id);
 
 	//Error msg
 	const QString error_invalid_id = "INVALID_ID";

@@ -78,6 +78,9 @@ public:
 	bool waitAcquisition(int ms);
 	bool setMSR(bool enable);
 	bool setLaserLineThreshold(double threshold);
+	bool setPeakSensitivity(int level) override;
+	bool setPeakSelection(int mode) override;
+	bool setLightLimits(int lower, int upper) override;
 
 	//Data
 	const FrameInfo& getFrame() const;
@@ -151,6 +154,31 @@ private:
 	QVector<AppliedSetting> m_appliedSettings;
 	QString  m_configPath = "";
 
+	/*
+	* Last values pushed for the per-optic peak/light settings, so an unchanged setting costs
+	* nothing. Each setSetting is a separate apply cycle on the controller and these four would
+	* otherwise add roughly half a second to EVERY scan, for values that almost never change
+	* between line scans. -1 means "not pushed yet", so the first scan after a connect always
+	* writes. loadConfig() seeds them with what it pushed from keyence.json, which is what makes
+	* the cache safe across a controller power cycle: connect re-pushes and re-seeds.
+	*/
+	/*
+	* The controller's own sampling cycle, read back at connect. Pogo does not set this when
+	* keyence.json says -1, so the controller keeps whatever Navigator last saved - and that
+	* value caps the trigger rate, and therefore the maximum scan speed. Read so the report can
+	* state it instead of printing the -1 that only means "we did not send one".
+	* -1 here means the read-back itself failed or has not run.
+	*
+	* Stored RAW. The encoding of item 0x02 is not confirmed on this machine - the name says
+	* cycle, which would be a period, but Navigator presents kHz - so nothing converts it.
+	*/
+	int      m_samplingCycleRunning = -1;
+
+	int      m_appliedPeakSensitivity = -1;
+	int      m_appliedPeakSelection = -1;
+	int      m_appliedLightLower = -1;
+	int      m_appliedLightUpper = -1;
+
 	//--- settings mirrored for the getters
 	double   m_exposure = 0.0;
 	QString  m_headModel = "";
@@ -179,6 +207,11 @@ private:
 	bool safeGuard() const;
 	bool setSetting(unsigned char type, unsigned char category, unsigned char item,
 		const void* data, unsigned int size, const char* what,
+		unsigned char target1 = 0);
+	//Read one setting back out of the controller's Running area. Read-only and never fatal:
+	//a failure logs and returns false, leaving the caller's buffer untouched.
+	bool getSetting(unsigned char type, unsigned char category, unsigned char item,
+		void* data, unsigned int size, const char* what,
 		unsigned char target1 = 0);
 	bool parseIp(const QString& ip, unsigned char out[4]) const;
 	bool initHighSpeed();                 // Finalize -> Close -> Open -> Initialize

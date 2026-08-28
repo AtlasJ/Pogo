@@ -193,6 +193,40 @@ bool Profiler_Keyence::setSetting(unsigned char type, unsigned char category, un
 }
 
 /*
+* Read-back counterpart of setSetting. Same 4-byte block and the same Running depth, so what
+* it returns is the value actually in force, not what we believe we sent.
+*
+* Deliberately non-fatal: nothing in the connect path depends on it, so a failure logs and
+* returns false rather than failing the connect. It does not touch m_errorMsg either - that
+* string is used to explain why the sensor is unusable, and a failed diagnostic read is not
+* that.
+*/
+bool Profiler_Keyence::getSetting(unsigned char type, unsigned char category, unsigned char item,
+	void* data, unsigned int size, const char* what,
+	unsigned char target1)
+{
+	LJX8IF_TARGET_SETTING ts{};
+	ts.byType = type;
+	ts.byCategory = category;
+	ts.byItem = item;
+	ts.byTarget1 = target1;
+
+	const LONG rc = LJX8IF_GetSetting(m_deviceId,
+		LJX8IF_SETTING_DEPTH_RUNNING,
+		ts,
+		data,
+		size);
+
+	if (rc != LJX8IF_RC_OK) {
+		ct::logger::warn("[Profiler_Keyence] GetSetting(%s) failed rc=0x%X "
+			"(type=0x%02X cat=0x%02X item=0x%02X)", what, rc, type, category, item);
+		return false;
+	}
+
+	return true;
+}
+
+/*
 * LJ-X exposure is a discrete index, and the table is NOT monotonic - indices 10..15
 * interleave with 0..9 (manual p.74). Scan the whole table; do not binary search.
 */
@@ -598,6 +632,29 @@ bool Profiler_Keyence::disconnect()
 
 	finalizeHighSpeed();
 
+	/*
+	* Let go of the last batch's raw buffers. They are pool memory, and only two things
+	* released them before: start(), on the NEXT scan, and takeLastRawFrame(), which only the
+	* Profiler Scan Test calls. Any other path - a production scan, the Production Scan Check -
+	* left both pinned for the rest of the process.
+	*
+	* At shutdown that is not merely wasteful: MappFreeDefault() reports
+	*   "MsysFree(): System still has buffer(s) associated with it"
+	* if even one MIL buffer is alive, and these are two. Disconnect is the right place because
+	* nothing reads them afterwards, and it runs on the shutdown path before the pools are
+	* released. Not stop(), because the scan test deliberately calls takeLastRawFrame() after
+	* stopping and would lose its raw export.
+	*/
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_lastRawHeight || m_lastRawIntensity) {
+			ct::logger::info("[Profiler_Keyence] Releasing the last raw batch held for diagnostics");
+		}
+		m_lastRawHeight.reset();
+		m_lastRawIntensity.reset();
+	}
+	resetFrame();
+
 	const LONG rc = LJX8IF_CommunicationClose(m_deviceId);
 	if (rc != LJX8IF_RC_OK) {
 		ct::logger::error("[Profiler_Keyence] CommunicationClose failed rc=0x%X", rc);
@@ -997,18 +1054,102 @@ bool Profiler_Keyence::setMSR(bool enable)
 * No binarisation threshold on the LJ-X. Peak detection sensitivity (1..5) is the nearest
 * control over which reflections become a profile point. Same class of decision as setGain.
 */
+/*
+* Superseded, deliberately a no-op. This used to map onto Peak Sensitivity because
+* setLaserLineThreshold was the only generic seam available - which left the 3D Optics page
+* carrying TWO fields for one controller setting: a "Peak Sensitivity" combo that went
+* nowhere, and "Line Threshold", which quietly drove it. setPeakSensitivity() now carries it
+* from the honestly-named field, so writing it here as well would just mean last-caller-wins.
+*
+* Kept rather than deleted because setLaserLineThreshold is pure virtual on IProfiler and the
+* other three backends still use it as a real threshold.
+*/
 bool Profiler_Keyence::setLaserLineThreshold(double threshold)
 {
 	if (!safeGuard()) return false;
 
-	int level = static_cast<int>(std::lround(threshold));
-	level = std::max(1, std::min(5, level));
+	ct::logger::info("[Profiler_Keyence] setLaserLineThreshold %.2f ignored - the LJ-X takes peak "
+		"sensitivity from the 3D Optics 'Peak Sensitivity' field, not 'Line Threshold'", threshold);
+	return true;
+}
 
-	ct::logger::info("[Profiler_Keyence] setLaserLineThreshold %.2f -> peak sensitivity %d",
-		threshold, level);
+bool Profiler_Keyence::setPeakSensitivity(int level)
+{
+	if (!safeGuard()) return false;
 
-	int32_t v = level;
-	return setSetting(0x10 + m_programNo, KY_CAT_IMAGING, KY_IT_PEAK_SENSITIVITY, &v, 4, "peakSensitivity");
+	const int v = std::max(1, std::min(5, level));
+	if (v != level) {
+		ct::logger::warn("[Profiler_Keyence] peak sensitivity %d is outside 1-5, using %d", level, v);
+	}
+
+	//Logged every scan even when the write is skipped, so the log always states the value in
+	//effect - a cache that makes a setting invisible is exactly the bug this project keeps hitting.
+	ct::logger::info("[Profiler_Keyence] peak sensitivity = %d%s", v,
+		(v == m_appliedPeakSensitivity) ? " (unchanged)" : "");
+
+	if (v == m_appliedPeakSensitivity) return true;
+
+	int32_t val = v;
+	if (!setSetting(0x10 + m_programNo, KY_CAT_IMAGING, KY_IT_PEAK_SENSITIVITY, &val, 4, "peakSensitivity"))
+		return false;
+
+	m_appliedPeakSensitivity = v;
+	return true;
+}
+
+bool Profiler_Keyence::setPeakSelection(int mode)
+{
+	if (!safeGuard()) return false;
+
+	int v = mode;
+	if (v < 0 || v > 2) {
+		//The 3D Optics combo offers a fourth entry, "Invalid", that has no LJ-X counterpart.
+		ct::logger::warn("[Profiler_Keyence] peak selection %d is not 0 standard / 1 near / "
+			"2 far - using 0", mode);
+		v = 0;
+	}
+
+	ct::logger::info("[Profiler_Keyence] peak selection = %d%s", v,
+		(v == m_appliedPeakSelection) ? " (unchanged)" : "");
+
+	if (v == m_appliedPeakSelection) return true;
+
+	int32_t val = v;
+	if (!setSetting(0x10 + m_programNo, KY_CAT_IMAGING, KY_IT_PEAK_SELECTION, &val, 4, "peakSelection"))
+		return false;
+
+	m_appliedPeakSelection = v;
+	return true;
+}
+
+bool Profiler_Keyence::setLightLimits(int lower, int upper)
+{
+	if (!safeGuard()) return false;
+
+	const int lo = std::max(1, std::min(99, lower));
+	const int hi = std::max(1, std::min(99, upper));
+	if (lo != lower || hi != upper) {
+		ct::logger::warn("[Profiler_Keyence] light limits %d/%d are outside 1-99, using %d/%d",
+			lower, upper, lo, hi);
+	}
+
+	const bool unchanged = (lo == m_appliedLightLower && hi == m_appliedLightUpper);
+	ct::logger::info("[Profiler_Keyence] light limits = %d..%d%s", lo, hi,
+		unchanged ? " (unchanged)" : "");
+
+	if (unchanged) return true;
+
+	int32_t v = hi;
+	if (!setSetting(0x10 + m_programNo, KY_CAT_IMAGING, KY_IT_LIGHT_UPPER, &v, 4, "lightUpperLimit"))
+		return false;
+
+	v = lo;
+	if (!setSetting(0x10 + m_programNo, KY_CAT_IMAGING, KY_IT_LIGHT_LOWER, &v, 4, "lightLowerLimit"))
+		return false;
+
+	m_appliedLightUpper = hi;
+	m_appliedLightLower = lo;
+	return true;
 }
 
 
@@ -1173,7 +1314,23 @@ bool Profiler_Keyence::loadConfig(QString path)
 		// Skipped on purpose: a negative value means "leave the controller's own setting
 		// alone", so Pogo inherits whatever Navigator last set. Recorded because that
 		// frequency caps jog speed and is easy to forget.
-		m_appliedSettings.push_back({ QStringLiteral("samplingCycle (not sent - inherited from controller)"), samplingCycle, true });
+		//
+		// Read it back so the record is the controller's ACTUAL value rather than the -1,
+		// which only ever meant "we did not send one" and said nothing about the machine.
+		// The Running area is volatile, so this can differ from run to run with nobody
+		// touching Navigator - which is exactly why it is worth printing.
+		int32_t running = 0;
+		if (getSetting(prog, KY_CAT_TRIGGER, KY_IT_SAMPLING_CYCLE, &running, 4, "samplingCycle")) {
+			m_samplingCycleRunning = static_cast<int>(running);
+			m_appliedSettings.push_back({ QStringLiteral("samplingCycle (not sent - controller is running)"),
+				m_samplingCycleRunning, true });
+			ct::logger::info("[Profiler_Keyence] Inherited samplingCycle from the controller: %d (raw)",
+				m_samplingCycleRunning);
+		}
+		else {
+			m_samplingCycleRunning = -1;
+			m_appliedSettings.push_back({ QStringLiteral("samplingCycle (not sent - read-back failed)"), samplingCycle, true });
+		}
 	}
 
 	apply(prog, KY_CAT_IMAGING, KY_IT_DYNAMIC_RANGE, dynamicRange, "dynamicRange");
@@ -1183,6 +1340,17 @@ bool Profiler_Keyence::loadConfig(QString path)
 	apply(prog, KY_CAT_IMAGING, KY_IT_PEAK_SENSITIVITY, std::max(1, std::min(5, peakSensitivity)), "peakSensitivity");
 	apply(prog, KY_CAT_IMAGING, KY_IT_PEAK_SELECTION, peakSelection, "peakSelection");
 	apply(prog, KY_CAT_IMAGING, KY_IT_INVALID_INTERP, std::max(0, std::min(255, invalidInterp)), "invalidInterpolation");
+
+	/*
+	* Forget what the per-scan setters last pushed, so the next scan re-applies all four from
+	* the recipe. Reset rather than seeded with the values just applied: apply() can fail, and
+	* seeding a value the controller rejected would suppress the very write that would fix it.
+	* The cost is one extra apply cycle on the first scan after a connect.
+	*/
+	m_appliedPeakSensitivity = -1;
+	m_appliedPeakSelection = -1;
+	m_appliedLightLower = -1;
+	m_appliedLightUpper = -1;
 
 	//--- common settings
 	apply(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_ENCODER_MIN_TIME, encoderMinTime, "encoderMinInputTime");
@@ -1351,6 +1519,15 @@ QString Profiler_Keyence::diagnostics() const
 		}
 		else if (a.name == QLatin1String("batchMeasurement") && a.value != 1) {
 			note = "must be 1 or the batch callback never fires";
+		}
+		else if (a.name.startsWith(QLatin1String("samplingCycle"))) {
+			//Raw controller value. The encoding of trigger item 0x02 is not confirmed on this
+			//machine, so it is printed as-is rather than converted to a frequency that might
+			//be wrong by a factor of the period. It still caps the trigger rate, and therefore
+			//the maximum scan speed, whatever the units turn out to be.
+			note = a.name.contains(QLatin1String("read-back failed"))
+				? "could not read the controller - max scan speed is UNKNOWN"
+				: "raw value, units unconfirmed - this caps the trigger rate and so the scan speed";
 		}
 
 		o << QString("    %1 %2 = %3%4\n")

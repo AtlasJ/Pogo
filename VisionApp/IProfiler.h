@@ -48,6 +48,31 @@ public:
 	virtual bool setMSR(bool enable) = 0;
 	virtual bool setLaserLineThreshold(double threshold) = 0;
 
+	/*
+	* Peak and light-intensity controls, taken from the optic being scanned. NOT pure, so a
+	* backend without these needs no code at all.
+	*
+	* The 3D Optics page has carried Peak Sensitivity, Peak Selection and the two laser limits
+	* since the SSZN work, but nothing consumed them through this interface: Profiler_SSZN
+	* reads them by re-opening optics.json itself and taking the FIRST optics3D entry, which is
+	* not necessarily the optic being scanned. Routing them through here lets JobThread::scan()
+	* pass the optic it already holds, and lets any backend implement them.
+	*/
+
+	//Peak detection sensitivity. Higher accepts weaker returns - fewer dropouts on dark or
+	//steep surfaces, more risk of locking onto noise or a secondary reflection.
+	virtual bool setPeakSensitivity(int level) { Q_UNUSED(level); return false; }
+
+	//Which return to trust when the laser gets more than one: 0 standard, 1 near, 2 far.
+	virtual bool setPeakSelection(int mode) { Q_UNUSED(mode); return false; }
+
+	//Emitted light intensity band. Equal values pin the intensity; a range only means
+	//anything when the controller is in automatic light control.
+	virtual bool setLightLimits(int lower, int upper) {
+		Q_UNUSED(lower); Q_UNUSED(upper);
+		return false;
+	}
+
 	//Data
 	virtual const FrameInfo& getFrame() const = 0;
 	virtual FrameInfo& getFrame() = 0;
