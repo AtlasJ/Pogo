@@ -234,15 +234,43 @@ void MachineController::assessError(bool good, MachineError e)
     else {
         if (!good) {
             m_errorStatuses.insert(s);
-            setMachineState(MachineState::S_ERROR);
-            emit signalMachineError(e);
 
-            //Specific status handling
+            /*
+            * Brake BEFORE setMachineState, not after. S_ERROR calls enable_motion(false), so
+            * the old order dropped the servo first and applied the brake afterwards - leaving
+            * the Z axis, which carries the head, with neither holding torque nor brake for the
+            * gap between them. Milliseconds, but gravity does not wait, and the correct order
+            * for anything vertical is always: engage the holding device, then remove power.
+            *
+            * On a real e-stop the safety relay normally kills the drives in hardware before any
+            * of this runs, which is why it has never bitten. That makes this cheap insurance
+            * for the paths where software raises the error, not a substitute for the wiring.
+            *
+            * Retried, because turnOnBrake()'s return used to be discarded: assessError only
+            * acts on the TRANSITION into an error, so once ESTOP_PRESSED is in m_errorStatuses
+            * every later poll skips this block and a failed DO write would never be sent again.
+            * An e-stop is exactly when the motion card might not answer first time.
+            */
             if (e == MachineError::ESTOP_PRESSED ||
                 e == MachineError::ESTOP_RELAY_FAULT)
             {
-                turnOnBrake();
+                bool braked = false;
+                for (int attempt = 1; attempt <= 3 && !braked; ++attempt) {
+                    braked = turnOnBrake();
+                    if (!braked) {
+                        ct::logger::error("[MachineController] Z brake command failed (attempt %d of 3)", attempt);
+                        os_tool::goSleep(20);
+                    }
+                }
+                if (!braked) {
+                    ct::logger::error("[MachineController] Could NOT apply the Z brake after an e-stop "
+                        "- the axis may be unheld. Check DO %d (Y108) and the motion card.",
+                        (int)DOA::BRAKE_RELEASE);
+                }
             }
+
+            setMachineState(MachineState::S_ERROR);
+            emit signalMachineError(e);
         }
     }
 }
