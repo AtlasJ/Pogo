@@ -185,6 +185,12 @@ private:
     bool m_startBtnPressed = false;
     bool m_stopBtnPressed = false;
     bool m_resetBtnPressed = false;
+
+    //Both e-stop buttons (X103/X104), NC so high = not pressed. Read in handleDIA but
+    //assessed in handleAxisState together with the drive EMG input, because all three
+    //feed the one ESTOP_PRESSED code and separate assessError() calls would cancel
+    //each other out. Defaults true so a DI read failure cannot invent an e-stop.
+    bool m_estopButtonsOk = true;
     QTimer* m_redTowerTimer = nullptr;
 
     //Time

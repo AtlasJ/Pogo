@@ -27,8 +27,10 @@ MachineController::MachineController(QObject* parent)
     }
     //m_bypassErrors[(int)MachineError::ESTOP_PRESSED] = true;
 
-    //TODO: temporary bypass until safety relay wiring is confirmed
-    m_bypassErrors[(int)MachineError::ESTOP_RELAY_FAULT] = true;
+    //E-stop safety relay wiring confirmed on the machine 2026-08-28 (X106), so it is no
+    //longer bypassed - a relay fault now raises ESTOP_RELAY_FAULT and applies the Z brake.
+    //The curtain relay (X107) has NOT been confirmed yet and stays bypassed.
+    //TODO: temporary bypass until curtain safety relay wiring is confirmed
     m_bypassErrors[(int)MachineError::CURTAIN_RELAY_FAULT] = true;
 
 }
@@ -288,9 +290,11 @@ void MachineController::handleDIA()
         m_resetBtnPressed = false;
     }
 
-    //Check estop triggers, NC: high = good (actual e-stop state is also assessed per-axis via the motion EMG input)
-    //assessError(io[(int)DIA::ESTOP_1], MachineError::ESTOP_PRESSED);
-    //assessError(io[(int)DIA::ESTOP_2], MachineError::ESTOP_PRESSED);
+    //Check estop triggers, NC: high = good. Both buttons are combined into one flag here and
+    //assessed in handleAxisState alongside the drive EMG input - see m_estopButtonsOk. Calling
+    //assessError() once per button would let a released button clear the error raised by a
+    //pressed one, because both map to the single ESTOP_PRESSED code and the last call wins.
+    m_estopButtonsOk = io[(int)DIA::ESTOP_1] && io[(int)DIA::ESTOP_2];
 
     //Check safety relays, high = OK
     assessError(io[(int)DIA::ESTOP_SAFETY_RELAY], MachineError::ESTOP_RELAY_FAULT);
@@ -344,7 +348,11 @@ void MachineController::handleAxisState()
 
         if (motion_io.size() != 9) ct::logger::error("[Motion_APS] Invalid size for motion io");
 
-        assessError(!motion_io[Motion_APS::EMG], MachineError::ESTOP_PRESSED);
+        //One assessment for all three e-stop sources - the two buttons (X103/X104, read in
+        //handleDIA) and this axis's drive EMG input. They share the ESTOP_PRESSED code, so
+        //assessing them separately would make them cancel each other out and, if the drive
+        //latches EMG after the buttons are released, oscillate the error at the poll rate.
+        assessError(m_estopButtonsOk && !motion_io[Motion_APS::EMG], MachineError::ESTOP_PRESSED);
         m_x.alarm = motion_io[Motion_APS::ALM];
         limit |= m_x.positive_limit = motion_io[Motion_APS::PEL];
         limit |= m_x.negative_limit = motion_io[Motion_APS::NEL];
