@@ -393,6 +393,29 @@ public slots:
 	* which leaves m_stopRun set and aborts the NEXT run's axis wait. A diagnostic must leave
 	* the machine exactly as it found it. Any failure aborts the scan, never the report.
 	*/
+	/*
+	* Production Scan Check - Test Run page, online run type "Production Scan Check".
+	*
+	* Unlike profilerScanTest, this drives the REAL production path: JobThread::scan(), with
+	* jogLaser and the laser offset, the recipe's scan direction, and the same configuration
+	* calls a production run makes. It exists because the two paths configure the profiler
+	* separately, and a setting wired into one and not the other looks fine until something
+	* measures it - which is exactly how peak sensitivity went a day without being sent.
+	*
+	* Only the distance is asked for. Direction comes from the recipe's Scan Direction, and the
+	* optic from getMainOptics3D(), so the test uses what production would use.
+	*/
+	void productionScanTest(double distance_mm);
+
+	/*
+	* Position readback that has stopped moving. SystemData::currentCoordinate() is polled, so
+	* reading it straight after a jog can return a sample from mid-move - measured at 5 to 30 mm
+	* out on 2026-08-28, because a stale reading at the 300 mm/s jog speed is metres per second
+	* of error. Samples until two consecutive reads agree, so the caller gets a position the
+	* gantry is actually at.
+	*/
+	dat::WorldCoordinate settledCoordinate(int timeoutMs = 3000, double tol_mm = 0.002);
+
 	void profilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
 		bool saveImages, bool returnToStart);
 
@@ -476,6 +499,7 @@ signals:
 	//Profiler Scan Test: a running commentary, then the verdict plus the report path
 	void profilerScanTestProgress(QString line);
 	void profilerScanTestDone(bool scanRan, QString reportPath, QString summary);
+	void productionScanTestDone(bool scanRan, QString reportPath, QString summary);
 	void captureAlignmentDone();
 	void laserAlignmentDone();
 	void guidedLaserAlignmentDone();

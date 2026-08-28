@@ -126,6 +126,24 @@ public:
 	std::atomic<int> _lineScanAxis = 0;
 	bool isLineScanAxisY() const { return _lineScanAxis == 1; }
 
+	/*
+	* Build the 3D height map at the SENSOR's own pixel pitch instead of ScaleManager's shared
+	* world scale (recipeConfig.json, default false = world scale, i.e. unchanged behaviour).
+	*
+	* World scale exists so a height map lines up with 2D views. On this machine the profiler
+	* delivers 5 um pixels and the world scale is ~27.5 um, so that alignment costs a 5.5x
+	* resample. Turning this on keeps the full resolution - at roughly 32x the pixels, and at the
+	* price of the alignment: stitching maths and any ROI taught in world pixels both assume the
+	* old scale. Off by default for exactly that reason.
+	*/
+	std::atomic<bool> _heightMapNativeScale = false;
+
+	//which way along that axis the gantry travels: 0 = positive, 1 = negative (recipeConfig.json).
+	//Defaults to positive, which is what every recipe taught before scan() supported the other
+	//direction did - a missing key therefore keeps existing recipes behaving exactly as before.
+	std::atomic<int> _lineScanDirection = 0;
+	bool isLineScanDirectionNegative() const { return _lineScanDirection == 1; }
+
 	std::atomic<bool> _lscStrobeMode = false; //light controller default mode: strobe (trigger) vs continuous
 
 	std::atomic<int> _camImageRotation = 0; //camera alignment rotation option: 0/90/180/270, applied in ImageManager preprocessing

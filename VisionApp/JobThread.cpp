@@ -476,6 +476,46 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 	}
 	ProfilerManager::instance().setDivider(m_profilerID, optic.divider);
 	ProfilerManager::instance().setLaserLineThreshold(m_profilerID, optic.lineThreshold);
+
+	/*
+	* Peak and light controls, from the optic actually being scanned. These four fields have
+	* been on the 3D Optics page since the SSZN work but were never passed here - only
+	* Profiler_SSZN consumed them, and it does so by re-opening optics.json and taking the
+	* FIRST optics3D entry, which is not necessarily this one. Backends that do not implement
+	* them return false from the IProfiler default and nothing happens, so this is safe for all.
+	*
+	* The combos store display text, so parse rather than cast. An unparseable peak sensitivity
+	* keeps the controller's current value instead of guessing a number that changes the image.
+	*/
+	bool okSens = false;
+	const int peakSens = optic.peakSensitivity.trimmed().toInt(&okSens);
+	if (okSens) {
+		ProfilerManager::instance().setPeakSensitivity(m_profilerID, peakSens);
+	}
+	else if (!optic.peakSensitivity.trimmed().isEmpty()) {
+		ct::logger::warn("[Acq] Optic %s: peak sensitivity '%s' is not a number - leaving it unchanged",
+			qPrintable(optic.id), qPrintable(optic.peakSensitivity));
+	}
+
+	//Standard/Near/Far map to 0/1/2. The combo also offers "Invalid", which has no counterpart
+	//on any controller - treated as unset here rather than silently sent as a 3.
+	const QString sel = optic.peakSelection.trimmed();
+	if (sel.compare(QStringLiteral("Standard"), Qt::CaseInsensitive) == 0) {
+		ProfilerManager::instance().setPeakSelection(m_profilerID, 0);
+	}
+	else if (sel.compare(QStringLiteral("Near"), Qt::CaseInsensitive) == 0) {
+		ProfilerManager::instance().setPeakSelection(m_profilerID, 1);
+	}
+	else if (sel.compare(QStringLiteral("Far"), Qt::CaseInsensitive) == 0) {
+		ProfilerManager::instance().setPeakSelection(m_profilerID, 2);
+	}
+	else if (!sel.isEmpty()) {
+		ct::logger::warn("[Acq] Optic %s: peak selection '%s' is not Standard/Near/Far - leaving it unchanged",
+			qPrintable(optic.id), qPrintable(sel));
+	}
+
+	ProfilerManager::instance().setLightLimits(m_profilerID, optic.lowerLaserLimit, optic.upperLaserLimit);
+
 	ct::logger::trace("Done set laser config");
 
 	ProfilerManager::instance().getFrame(m_profilerID)->type = ct::s_height_map;
@@ -488,10 +528,111 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 
 	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
 
+	/*
+	* The recipe decides which way along the axis the gantry travels; the taught line scan only
+	* decides WHERE. If the two disagree, swap the endpoints - the direction is then a property
+	* of the machine setup rather than of the order the two points happened to be taught in, and
+	* it can be changed without re-teaching anything.
+	*
+	* Positive is the default, and it is also what every recipe taught before scan() could travel
+	* the other way did, so a recipe with no lineScanDirection key behaves exactly as it always
+	* has. The height map is flipped back to a canonical orientation further down, so a negative
+	* scan produces the same image as a positive one rather than a mirrored one.
+	*/
+	{
+		const double from = scanAlongY ? start.wy : start.wx;
+		const double to = scanAlongY ? end.wy : end.wx;
+		if ((to < from) != SystemData::instance().isLineScanDirectionNegative()) {
+			std::swap(start, end);
+			ct::logger::info("[Acq] Line scan %s: endpoints swapped to travel %s along %s",
+				qPrintable(id),
+				SystemData::instance().isLineScanDirectionNegative() ? "negative" : "positive",
+				scanAlongY ? "Y" : "X");
+		}
+	}
+
+	/*
+	* Refuse a start the gantry cannot reach, rather than compensating for it.
+	*
+	* jogLaser clamps such a start to the soft limit and records the shortfall in
+	* m_extraMoveFor3DLaser; scan() then lengthens the end move by the same amount and
+	* rotate_heightMap translates the image to put the content back where the recipe expects it.
+	* The intent is sound - the unreachable strip comes out blank and the rest lines up - but the
+	* implementation cannot be trusted:
+	*
+	*   - the shortfall is a MAGNITUDE (std::abs on both sides in jogLaser), so it cannot say
+	*     which way the clamp went, and the translate always subtracts. It can therefore only be
+	*     correct at one end of travel, and doubles the error at the other.
+	*   - the X-scan branch of rotate_heightMap translates along image X, which is the laser
+	*     line, not the scan axis. The Y branch gets this right and says so in a comment.
+	*
+	* A scan that cannot start where the recipe says is not a scan of that region. Saying so is
+	* better than returning a plausible image that is silently shifted - this measures pin
+	* heights. Refusing here also makes the broken translate path unreachable.
+	*
+	* This only triggers when the taught start PLUS the laser offset falls outside the soft
+	* limit. A line scan comfortably inside travel never sees it, and neither does a machine
+	* whose laser offset is still zero.
+	*/
+	{
+		const double offX = m_laserOffset ? m_laserOffset->wx : 0.0;
+		const double offY = m_laserOffset ? m_laserOffset->wy : 0.0;
+		const double taught = scanAlongY ? start.wy : start.wx;
+		const double target = scanAlongY ? (start.wy + offY) : (start.wx + offX);
+
+		double softLimit = 0.0;
+		if (!MotionController::instance().get_soft_limit(
+			m_motionID, scanAlongY ? (int)Axis::Y : (int)Axis::X, target, softLimit)) {
+
+			const double over = std::abs(target) - std::abs(softLimit);
+			ct::logger::error("[Acq] Line scan %s refused: start %.3f mm (taught %.3f + laser "
+				"offset %.3f) is outside the %s soft limit %.3f by %.3f mm",
+				qPrintable(id), target, taught, scanAlongY ? offY : offX,
+				scanAlongY ? "Y" : "X", softLimit, over);
+
+			emit promptMsg(QStringLiteral(
+				"Line scan '%1' cannot be reached.\n\n"
+				"Its start is %2 mm outside the %3 travel limit once the laser offset is "
+				"applied, so the scan would cover a shifted region instead of the taught one.\n\n"
+				"Move the line scan further inside travel, or check the laser offset.")
+				.arg(id).arg(over, 0, 'f', 3).arg(scanAlongY ? "Y" : "X"));
+
+			stopRun();
+			return info;
+		}
+	}
+
 	ct::logger::trace("Start set scan info");
 	auto fixedLength = scanAlongY ? abs(start.wy - end.wy) : abs(start.wx - end.wx);
 	ProfilerManager::instance().setScanLength(m_profilerID, fixedLength);
 	ct::logger::trace("Done set scan info");
+
+	/*
+	* A line scan may be taught in either direction. setScanLength already takes the absolute
+	* distance, but the end-of-scan move must finish PAST the end point or the batch cannot
+	* fill - and the overshoot used to be a hardcoded +6. On a reverse scan that pulled the
+	* target 6 mm BACK towards the start, so the move delivered 6 mm less than the batch was
+	* sized for. It could never complete, at any distance or speed, and the run died on a 60 s
+	* timeout whose message blamed the sensor.
+	*
+	* m_extraMoveFor3DLaser is the shortfall left when jogLaser clamped the start point to a
+	* soft limit. jogLaser builds it from abs(), so it is a magnitude, and it is added back
+	* here to keep the travel long enough - which is why it follows the direction too.
+	*/
+	const double scanFrom = scanAlongY ? start.wy : start.wx;
+	const double scanTo = scanAlongY ? end.wy : end.wx;
+	const bool scanReversed = scanTo < scanFrom;
+	const double scanDir = scanReversed ? -1.0 : 1.0;
+
+	//Carried per frame, not in a global: ImageManager preprocesses one scan while this thread
+	//is already setting up the next, so a shared flag could be read for the wrong frame - and
+	//the failure would be a silently mirrored height map, not an error.
+	ProfilerManager::instance().getFrame(m_profilerID)->postTask.scanReversed = scanReversed;
+
+	if (scanReversed) {
+		ct::logger::info("[Acq] Reverse scan along %s: %.3f -> %.3f mm (%.3f mm)",
+			scanAlongY ? "Y" : "X", scanFrom, scanTo, fixedLength);
+	}
 
 	SystemData::instance().m_extraMoveFor3DLaser = 0.0;
 	jogLaser(start.wx, start.wy, start.wz, "2D");
@@ -515,8 +656,10 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 		return info;
 	}
 
-	if (scanAlongY) jogLaser(end.wx, end.wy + 6 + SystemData::instance().m_extraMoveFor3DLaser, start.wz, "3D");
-	else jogLaser(end.wx + 6 + SystemData::instance().m_extraMoveFor3DLaser, end.wy, start.wz, "3D");
+	//overshoot follows the direction of travel - see the note above setScanLength
+	const double overshoot = (6.0 + SystemData::instance().m_extraMoveFor3DLaser) * scanDir;
+	if (scanAlongY) jogLaser(end.wx, end.wy + overshoot, start.wz, "3D");
+	else jogLaser(end.wx + overshoot, end.wy, start.wz, "3D");
 	//jogLaser(end.wx + 10 + SystemData::instance().m_extraMoveFor3DLaser, end.wy, start.wz, "3D");
 
 	if (!ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT)) {
@@ -3096,6 +3239,227 @@ namespace {
 
 } // namespace
 
+/*
+* SystemData::currentCoordinate() is a polled value, so a read taken straight after a jog can
+* still be reporting where the gantry was DURING the move. Measured on 2026-08-28: a 13-run
+* sweep walked 203 mm in X because each run captured its origin that way, scanned relative to
+* it, and returned to it - every step compounding the last. The individual errors were 5 to
+* 30 mm, which is what a few tens of milliseconds of staleness looks like at the 300 mm/s jog
+* speed.
+*
+* Waiting a fixed delay would be a guess. Sampling until two consecutive reads agree asks the
+* real question - "has the number stopped changing?" - and costs nothing once it has.
+*/
+dat::WorldCoordinate JobThread::settledCoordinate(int timeoutMs, double tol_mm)
+{
+	/*
+	* "Two equal reads" is not enough, and the first attempt at this proved it: the coordinate is
+	* only refreshed when an encoder message arrives (setCurrentCoordinate, JobThread.cpp), so two
+	* reads 30 ms apart return the same number simply because nothing updated in between. Unchanged
+	* is not the same as settled, and runs still reported start positions 20-30 mm out.
+	*
+	* So the value must hold steady for a WINDOW comfortably longer than the encoder update
+	* interval, not merely match its predecessor. That guarantees at least one fresh message has
+	* landed since the axis stopped, at any plausible update rate.
+	*/
+	constexpr int holdMs = 500;
+
+	QElapsedTimer timer;
+	timer.start();
+
+	QElapsedTimer stable;
+	stable.start();
+
+	dat::WorldCoordinate prev = SystemData::instance().currentCoordinate();
+	while (timer.elapsed() < timeoutMs) {
+		os_tool::goSleep(30);
+		const dat::WorldCoordinate now = SystemData::instance().currentCoordinate();
+
+		const bool same = std::abs(now.wx - prev.wx) <= tol_mm &&
+			std::abs(now.wy - prev.wy) <= tol_mm &&
+			std::abs(now.wz - prev.wz) <= tol_mm;
+
+		if (!same) stable.restart();
+		else if (stable.elapsed() >= holdMs) return now;
+
+		prev = now;
+	}
+
+	ct::logger::warn("[Motion] settledCoordinate: position still changing after %d ms "
+		"(X=%.3f) - using it anyway", timeoutMs, prev.wx);
+	return prev;
+}
+
+
+/*
+* Production Scan Check - see the note on the declaration. Deliberately thin: it sets up the two
+* endpoints and then hands over to scan(), so whatever production does, this does. Anything it
+* did for itself would be another copy of the configuration that could drift, which is the very
+* problem it exists to catch.
+*/
+void JobThread::productionScanTest(double distance_mm)
+{
+	QString report;
+	QTextStream out(&report);
+
+	auto say = [&](const QString& line) {
+		ct::logger::info("[ProdScanCheck] %s", line.toUtf8().constData());
+		emit profilerScanTestProgress(line);
+	};
+
+	const QDateTime now = QDateTime::currentDateTime();
+	const QString dir = Common::Directory::getRecipeImagesPath()
+		+ QStringLiteral("ProductionScan/") + now.toString(QStringLiteral("yyyyMMdd_HHmmss")) + "/";
+	const QString reportPath = dir + QStringLiteral("report.txt");
+	QDir().mkpath(dir);
+
+	auto finish = [&](bool ran, const QString& summary) {
+		out << "\n" << QString(78, QLatin1Char('=')) << "\n";
+		out << "VERDICT: " << summary << "\n";
+		QFile f(reportPath);
+		if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+			QTextStream ts(&f); ts << report; f.close();
+		}
+		emit productionScanTestDone(ran, reportPath, summary);
+	};
+
+	out << QString(78, QLatin1Char('=')) << "\n";
+	out << "PRODUCTION SCAN CHECK\n";
+	out << QString(78, QLatin1Char('=')) << "\n";
+	out << "  When            : " << now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")) << "\n";
+	out << "  Recipe          : " << Common::Directory::CurrentRecipe << "\n";
+	out << "  Output folder   : " << dir << "\n";
+	out << "\n  This drives JobThread::scan() - the same function a production run uses,\n";
+	out << "  including jogLaser and the laser offset. It is NOT the Profiler Scan Test,\n";
+	out << "  which has its own configuration path.\n";
+
+	if (!m_optics3D || m_optics3D->isEmpty()) {
+		finish(false, QStringLiteral("NOT RUN - the recipe has no 3D optics entry"));
+		return;
+	}
+
+	const OpticsInfo3D* optic = nullptr;
+	for (const auto& o : *m_optics3D) {
+		if (o.intensity) { optic = &o; break; }
+	}
+	if (!optic) {
+		//getMainOptics3D() has no return path in this case, so refuse before reaching it.
+		finish(false, QStringLiteral("NOT RUN - no optics3D entry has intensity enabled"));
+		return;
+	}
+
+	if (distance_mm <= 0.0) {
+		finish(false, QStringLiteral("NOT RUN - distance must be greater than zero"));
+		return;
+	}
+
+	const bool scanAlongY = SystemData::instance().isLineScanAxisY();
+	const bool negative = SystemData::instance().isLineScanDirectionNegative();
+
+	m_stopRun = false; //explicit new intent, same as the other manual entry points
+	const dat::WorldCoordinate origin = settledCoordinate();
+
+	/*
+	* Build the span so travel BEGINS where the gantry is parked, whichever way the recipe says
+	* to go. scan() compares the endpoints against the same setting and only swaps when they
+	* disagree, so constructing them this way means it will not swap - the direction is applied
+	* once, not twice.
+	*/
+	dat::WorldCoordinate start = origin;
+	dat::WorldCoordinate end = origin;
+	if (scanAlongY) end.wy += negative ? -distance_mm : distance_mm;
+	else            end.wx += negative ? -distance_mm : distance_mm;
+
+	out << "\nWHAT WILL RUN\n-------------\n";
+	out << "  Scan distance   : " << QString::number(distance_mm, 'f', 3) << " mm\n";
+	out << "  Scan axis       : " << (scanAlongY ? "Y" : "X") << "   (recipe: Line Scan Axis)\n";
+	out << "  Direction       : " << (negative ? "negative" : "positive") << "   (recipe: Scan Direction)\n";
+	out << "  Optic           : " << optic->id << "   (getMainOptics3D - first with intensity)\n";
+	out << "  Start           : X=" << QString::number(start.wx, 'f', 3)
+		<< "  Y=" << QString::number(start.wy, 'f', 3)
+		<< "  Z=" << QString::number(start.wz, 'f', 3) << "\n";
+	out << "  End             : X=" << QString::number(end.wx, 'f', 3)
+		<< "  Y=" << QString::number(end.wy, 'f', 3) << "\n";
+	out << "  Laser offset    : APPLIED - scan() uses jogLaser, unlike the Profiler Scan Test\n";
+
+	say(QStringLiteral("Production scan check: %1 mm %2 along %3, optic %4")
+		.arg(distance_mm).arg(negative ? "negative" : "positive")
+		.arg(scanAlongY ? "Y" : "X").arg(optic->id));
+
+	/*
+	* scan() sets type / viewID / opticID / baseOpticID on the driver's PERSISTENT frame, but
+	* not stitchID - production sets that from the line scan's map_to_slinescan before calling.
+	* Nothing sets it here, so without this the check inherits the last production scan's stitch
+	* group and the frame goes down ImageManager's stitching path instead of straight out: no
+	* image reaches waitForImagePreprocessed, and the m_infosMap entry is never released.
+	*/
+	if (FrameInfo* pending = ProfilerManager::instance().getFrame(m_profilerID)) {
+		pending->stitchID = QString();
+	}
+
+	QElapsedTimer timer; timer.start();
+	FrameInfo info = scan(QStringLiteral("psc"), start, end, *optic, true);
+	const qint64 elapsed = timer.elapsed();
+
+	const dat::WorldCoordinate landed = settledCoordinate();
+
+	out << "\nRESULTS\n-------\n";
+	out << "  Elapsed         : " << elapsed << " ms\n";
+	out << "  Landed at       : X=" << QString::number(landed.wx, 'f', 3)
+		<< "  Y=" << QString::number(landed.wy, 'f', 3) << "\n";
+	out << "  Gantry travel   : " << QString::number(
+		scanAlongY ? std::abs(landed.wy - origin.wy) : std::abs(landed.wx - origin.wx), 'f', 3) << " mm\n";
+
+	if (!info.pHeightMap) {
+		out << "\n  NO HEIGHT MAP. scan() returned an empty frame.\n";
+		out << "  The batch either never filled or the image was never built - check the log for\n";
+		out << "  the ImageManager thread and for a waitAcquisition timeout.\n";
+		say(QStringLiteral("No height map. Report: %1").arg(reportPath));
+		finish(true, QStringLiteral("FAILED - scan() produced no height map"));
+		return;
+	}
+
+	const MIL_ID mH = info.pHeightMap->id();
+	out << "\n  Height map      : " << mtrx::get_width(mH) << " x " << mtrx::get_height(mH) << " px\n";
+	out << "                    (this is the PROCESSED image - resized by the pitch constants\n";
+	out << "                    and the output scale, so its size is not the profile count)\n";
+	if (info.pImage) {
+		out << "  Intensity map   : " << mtrx::get_width(info.pImage->id())
+			<< " x " << mtrx::get_height(info.pImage->id()) << " px\n";
+	}
+
+	const HeightStats hs = rawHeightStats(mH);
+	double zPitch = 0.0;
+	if (ProfilerManager::instance().keys().contains(m_profilerID)) {
+		if (IProfiler* p = ProfilerManager::instance().profiler(m_profilerID)) zPitch = p->getZPitchUm();
+	}
+
+	if (hs.ok && hs.valid > 0 && zPitch > 0.0) {
+		auto um = [&](int grey) { return (double(grey) - 32768.0) * zPitch; };
+		out << "\n  Valid points    : " << hs.valid << " of " << hs.total << "   ("
+			<< QString::number(100.0 * double(hs.valid) / double(hs.total), 'f', 1) << "%)\n";
+		out << "  Height spread (um, 0 excluded):\n";
+		out << "    1st pct       : " << QString::number(um(hs.p01), 'f', 1) << "\n";
+		out << "    median        : " << QString::number(um(hs.p50), 'f', 1) << "\n";
+		out << "    99th pct      : " << QString::number(um(hs.p99), 'f', 1) << "\n";
+		out << "\n  NOTE: these come from the PROCESSED map, which rotate_heightMap resamples with\n";
+		out << "  M_BICUBIC. Interpolating across the 0 that means 'no measurement' rings past the\n";
+		out << "  real range, so treat the extremes as indicative. The Profiler Scan Test reads the\n";
+		out << "  raw buffer instead and its percentiles are the trustworthy ones.\n";
+	}
+
+	MbufSaveA((dir + QStringLiteral("heightmap.tiff")).toUtf8().constData(), mH);
+	mtrx::to_qimg(mH).save(dir + QStringLiteral("heightmap.png"));
+	if (info.pImage) {
+		MbufSaveA((dir + QStringLiteral("intensity.tiff")).toUtf8().constData(), info.pImage->id());
+		mtrx::to_qimg(info.pImage->id()).save(dir + QStringLiteral("intensity.png"));
+	}
+	out << "\n  Images saved    : yes\n";
+
+	say(QStringLiteral("Production scan check done. Report: %1").arg(reportPath));
+	finish(true, QStringLiteral("OK - scan() produced a height map"));
+}
+
 void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
 	bool saveImages, bool returnToStart)
 {
@@ -3136,24 +3500,38 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 			<< "                         ('x_3d_velocity'). No restart needed.\n"
 			<< "  Scan axis              Config page -> Recipe Configuration -> Line Scan Axis.\n"
 			<< "                         Must be saved with the recipe or it reverts.\n"
-			<< "  Exposure, gain,        3D Optics page, per optics ID. Applied on every scan.\n"
-			<< "  divider, threshold\n"
+			<< "  Exposure, gain,        3D Optics page, per optics ID. Applied on every scan,\n"
+			<< "  divider, peak          taken from the optic the scan actually uses.\n"
+			<< "  sensitivity, peak      Note gain is sent as Dynamic Range 1-9 and peak\n"
+			<< "  selection, laser       sensitivity as 1-5, both CLAMPED - a 0 in either box\n"
+			<< "  upper/lower limits     reaches the controller as 1, the bottom of the scale.\n"
 			<< "  IP, ports, encoder     3D Optics page -> Profiler Hardware. Applied on connect.\n"
 			<< "  mode, min input time\n"
 			<< "  Trigger mode           Read-only by design. Exactly one correct value (2 =\n"
 			<< "                         encoder) for this machine. Edit keyence.json only if\n"
 			<< "                         you mean it, then reconnect.\n"
-			<< "  Sampling frequency,    Navigator only. Persists into every later Pogo run and\n"
-			<< "  profile data interval  nothing here detects a change. The interval changes the\n"
-			<< "                         point count, which invalidates X pitch and laser FOV.\n"
+			<< "  Sampling frequency,    Navigator only. Pogo inherits it whenever keyence.json\n"
+			<< "  profile data interval  says samplingCycle -1, and now reads the controller's\n"
+			<< "                         own value back - see the profiler block above. It caps\n"
+			<< "                         the trigger rate and so the maximum scan speed, and it\n"
+			<< "                         also caps exposure: one exposure must fit inside one\n"
+			<< "                         sampling period, so a long exposure is silently\n"
+			<< "                         truncated. The interval changes the point count, which\n"
+			<< "                         invalidates X pitch and laser FOV - nothing detects it.\n"
 			<< "  Y pitch (um/trigger)   3D Optics page -> Profiler Hardware -> Y Pitch. Applies\n"
 			<< "                         on connect, and the image maths reads the same value.\n"
 			<< "  X pitch, laser FOV,    Code constants - ImageManager.cpp and the two copies of\n"
 			<< "  batch max              laser_fov_mm. Need a rebuild.\n"
-			<< "  lightSensitivity,      On the 3D Optics page and saved to the recipe, but DEAD\n"
-			<< "  peakSensitivity,       on the Keyence path - they reach Profiler_SSZN only.\n"
-			<< "  peakSelection,         Tuning them here has no effect on this sensor.\n"
-			<< "  upper/lowerLaserLimit\n";
+			<< "  Line threshold         DEAD on the Keyence path. It used to be mapped onto\n"
+			<< "                         peak sensitivity, back when that was the only generic\n"
+			<< "                         seam available - use the Peak Sensitivity field now.\n"
+			<< "                         Still a real threshold on Gocator/SmartRay/SSZN, which\n"
+			<< "                         is why the box is not greyed out.\n"
+			<< "  lightSensitivity       On the 3D Optics page and saved to the recipe, but DEAD\n"
+			<< "                         here - it reaches Profiler_SSZN only, and the LJ-X has\n"
+			<< "                         no equivalent control to point it at.\n"
+			<< "  Exposure 2 / Gain 2    DEAD - both feed dual-head and multi-emission setters\n"
+			<< "                         that refuse on a single-head LJ-X8000A.\n";
 
 		out << "\n" << QString(78, QLatin1Char('=')) << "\n";
 		out << "VERDICT: " << summary << "\n";
@@ -3373,7 +3751,9 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 	}
 	m_stopRun = false;
 
-	const dat::WorldCoordinate origin = SystemData::instance().currentCoordinate();
+	//Settled, not instantaneous: everything below is measured against this, and a mid-move
+	//sample here puts the scan window - and every distance in the report - in the wrong place.
+	const dat::WorldCoordinate origin = settledCoordinate();
 	const double sign = positiveDir ? 1.0 : -1.0;
 
 	// scan() hardcodes a POSITIVE 6 mm overshoot, so a -X scan there stops 6 mm short and the
@@ -3402,6 +3782,31 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 	const bool okGain = ProfilerManager::instance().setGain(m_profilerID, optic->gain);
 	const bool okDivider = ProfilerManager::instance().setDivider(m_profilerID, optic->divider);
 	const bool okThreshold = ProfilerManager::instance().setLaserLineThreshold(m_profilerID, optic->lineThreshold);
+
+	/*
+	* Peak and light controls. These were wired into JobThread::scan() when the 3D Optics fields
+	* were connected up, but NOT here - this tool has its own configuration block. The result was
+	* silent and convincing: a sweep varying peak sensitivity produced byte-identical valid-point
+	* percentages across every value, because the number changed in the recipe and never reached
+	* the controller. A diagnostic that reports settings it did not apply is worse than no
+	* diagnostic, which is why each one is echoed in the report below.
+	*/
+	bool parsedSens = false;
+	const int peakSensVal = optic->peakSensitivity.trimmed().toInt(&parsedSens);
+	const bool okPeakSens = parsedSens
+		&& ProfilerManager::instance().setPeakSensitivity(m_profilerID, peakSensVal);
+
+	const QString selText = optic->peakSelection.trimmed();
+	int peakSelVal = -1;
+	if (selText.compare(QStringLiteral("Standard"), Qt::CaseInsensitive) == 0)   peakSelVal = 0;
+	else if (selText.compare(QStringLiteral("Near"), Qt::CaseInsensitive) == 0)  peakSelVal = 1;
+	else if (selText.compare(QStringLiteral("Far"), Qt::CaseInsensitive) == 0)   peakSelVal = 2;
+	const bool okPeakSel = (peakSelVal >= 0)
+		&& ProfilerManager::instance().setPeakSelection(m_profilerID, peakSelVal);
+
+	const bool okLimits = ProfilerManager::instance().setLightLimits(
+		m_profilerID, optic->lowerLaserLimit, optic->upperLaserLimit);
+
 	const bool okLength = ProfilerManager::instance().setScanLength(m_profilerID, distance_mm);
 	const qint64 configMs = step.elapsed();
 
@@ -3411,7 +3816,15 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 	out << "    setExposure           : " << yesNo(okExposure) << "\n";
 	out << "    setGain               : " << yesNo(okGain) << "\n";
 	out << "    setDivider            : " << yesNo(okDivider) << "\n";
-	out << "    setLaserLineThreshold : " << yesNo(okThreshold) << "\n";
+	out << "    setLaserLineThreshold : " << yesNo(okThreshold) << "   (ignored by the LJ-X - see Peak Sensitivity)\n";
+	out << "    setPeakSensitivity    : " << yesNo(okPeakSens)
+		<< (parsedSens ? QStringLiteral("   (%1 of 1-5)").arg(peakSensVal)
+			: QStringLiteral("   ('%1' is not a number - NOT SENT)").arg(optic->peakSensitivity)) << "\n";
+	out << "    setPeakSelection      : " << yesNo(okPeakSel)
+		<< (peakSelVal >= 0 ? QStringLiteral("   (%1 = %2)").arg(peakSelVal).arg(selText)
+			: QStringLiteral("   ('%1' is not Standard/Near/Far - NOT SENT)").arg(selText)) << "\n";
+	out << "    setLightLimits        : " << yesNo(okLimits)
+		<< "   (" << optic->lowerLaserLimit << ".." << optic->upperLaserLimit << " of 1-99)\n";
 	out << "    setScanLength         : " << yesNo(okLength) << "\n";
 	out << "    took                  : " << configMs << " ms\n";
 
@@ -3422,6 +3835,30 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 		pending->viewID = QStringLiteral("pst");
 		pending->opticID = optic->id;
 		pending->baseOpticID = QString();
+
+		/*
+		* getFrame() hands back the driver's PERSISTENT FrameInfo, so anything not set here
+		* survives from the previous acquisition. scan() assigns stitchID on every call
+		* (the line scan's map_to_slinescan, or ""); this did not, so a test run after a
+		* production scan inherited that scan's stitchID.
+		*
+		* The consequence is not cosmetic. A non-empty stitchID sends the frame down the
+		* stitching branch of ImageManager::process_final_image instead of the pass-out
+		* branch, so m_infosMap.remove() never runs and the entry keeps both large pooled
+		* buffers alive; the image never reaches waitForImagePreprocessed either. Worse,
+		* mechanical_stitching() indexes m_stitchMap[sID].imageStatus.keys()[0] without
+		* checking the list is non-empty, and "pst" is not a stitch group.
+		*/
+		pending->stitchID = QString();
+
+		/*
+		* Same trap, same field set. scan() sets this from the recipe's Scan Direction so a
+		* negative scan is flipped back to a canonical orientation; this tool takes its
+		* direction from the dialog instead, and never set it - so its -X images came out
+		* mirrored against production's for the same physical scan, and it inherited whatever
+		* the last production scan left behind.
+		*/
+		pending->postTask.scanReversed = !positiveDir;
 	}
 
 	quint32 trig0 = 0, trig1 = 0;
@@ -3462,7 +3899,9 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 		out << "  Compare 'Implied pitch' below against the Y pitch in the profiler block.\n";
 	}
 
-	const dat::WorldCoordinate landed = SystemData::instance().currentCoordinate();
+	//Settled as well - "Gantry travel" read 57.697 mm against a requested 56.000 while this was
+	//an instantaneous sample, which is the readback lagging, not the axis overshooting.
+	const dat::WorldCoordinate landed = settledCoordinate();
 	if (haveCounters) profiler->getCounters(trig1, enc1);
 
 	say(QStringLiteral("Waiting for the height map..."));

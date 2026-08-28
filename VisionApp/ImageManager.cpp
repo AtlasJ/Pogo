@@ -467,11 +467,11 @@ void ImageManager::preprocess_info(FrameInfo& info)
 		ct::logger::debug("[IM] Preprocess 5: Heightmap");
 
 		MIL_ID rotatedHM = M_NULL, rotatedIM = M_NULL;
-		rotate_heightMap(info.pHeightMap->id(), rotatedHM, rotationAgle);
+		rotate_heightMap(info.pHeightMap->id(), rotatedHM, rotationAgle, info.postTask.scanReversed);
 		preprocessedInfo.pHeightMap = mtrx::MbufPoolManager::instance().attach(rotatedHM, mtrx::PoolDestructorType::FREE_BUFFER);
-		
+
 		if (info.pImage) {
-			rotate_heightMap(info.pImage->id(), rotatedIM, rotationAgle);
+			rotate_heightMap(info.pImage->id(), rotatedIM, rotationAgle, info.postTask.scanReversed);
 			preprocessedInfo.pImage = mtrx::MbufPoolManager::instance().attach(rotatedIM, mtrx::PoolDestructorType::FREE_BUFFER);
 		}
 
@@ -887,9 +887,37 @@ void ImageManager::printOptic3D()
 	}
 }
 
-void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle)
+void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle, bool scanReversed)
 {
 	if (mSrc == M_NULL) return;
+
+	/*
+	* A scan taught in the negative direction along the scan axis delivers its profiles in
+	* reverse order, so the raw frame arrives mirrored along that axis. Normalise it HERE,
+	* before anything else, and every branch below then behaves exactly as it does for a
+	* forward scan. Flipping at the end instead would not be equivalent: a flip and a rotation
+	* conjugate rather than commute, so the fine skew rotation would come out with the wrong
+	* sense, and the invertX/invertY flags would apply to the wrong edges.
+	*
+	* One vertical flip covers every backend and both scan axes, because rows are profiles in
+	* the raw frame regardless of API - each branch below asserts exactly that by computing its
+	* scan extent from the buffer height. Copied rather than flipped in place: mSrc belongs to
+	* the caller and returns to the buffer pool.
+	*/
+	MIL_ID mFlipped = M_NULL;
+	if (scanReversed) {
+		mFlipped = MbufAlloc2d(M_DEFAULT, mtrx::get_width(mSrc), mtrx::get_height(mSrc),
+			mtrx::get_type(mSrc) + M_UNSIGNED, M_IMAGE + M_PROC, M_NULL);
+		if (mFlipped != M_NULL) {
+			MimFlip(mSrc, mFlipped, M_FLIP_VERTICAL, M_DEFAULT);
+			mSrc = mFlipped;
+		}
+		else {
+			ct::logger::error("[ImageManager] Reverse scan: could not allocate the flip buffer. "
+				"The height map will come out mirrored along the scan axis.");
+		}
+	}
+	mtrx::BufferCollector bcFlipped(mFlipped); //frees on return; safe with M_NULL
 
 	bool onTranslate = true;
 
@@ -1195,8 +1223,76 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 				linePitchUm, KEYENCE_Y_PITCH_FALLBACK_UM, divider);
 		}
 
-		MIL_INT sw = w * KEYENCE_X_PITCH_UM / scale;
-		MIL_INT sh = h * linePitchUm / scale;
+		/*
+		* Output pixel pitch. Both axes are divided by the SAME number, which is what keeps the
+		* aspect ratio right - that was never the question. The question is what that number is.
+		*
+		*   world scale (default) - ScaleManager's um_per_px, shared with the 2D camera, so the
+		*       height map lines up with 2D views and with anything taught against them. On this
+		*       machine that is ~27.5 um against the sensor's 5 um, so it costs a 5.5x resample.
+		*
+		*   native (recipe flag) - the sensor's X pitch, fixed. At the machine's 5 um across and
+		*       5 um along that is 1:1 and nothing is resampled at all; a coarser line pitch is
+		*       upsampled along the scan axis instead. The image no longer matches 2D views,
+		*       which is why it is opt-in per recipe. See the note below for why it is pinned to
+		*       the X pitch rather than derived from the two.
+		*/
+		double outPitchUm = scale;
+		if (SystemData::instance()._heightMapNativeScale) {
+			/*
+			* Pinned to the X pitch, NOT derived from the line pitch - and that is the whole
+			* point. Substituting the batch count, sh = profiles x linePitch / outPitch =
+			* (distance / linePitch) x linePitch / outPitch = distance / outPitch: the line
+			* pitch cancels, so the output size depends only on the scan distance. Change the
+			* divider to buy speed and every image keeps its dimensions, which means ROIs and
+			* algorithms taught against them keep working.
+			*
+			* Deriving it from the line pitch instead - min() or max() - would resize every
+			* image the moment the divider moved, and silently invalidate everything taught.
+			* max() also loses real X detail; min() is stable only while the line pitch stays
+			* coarser than 5 um, and collapses at divider 1.
+			*
+			* The cost is that a coarse line pitch is UPSAMPLED along the scan axis: real data
+			* is never discarded, but the extra rows are interpolated and carry no new
+			* information. Memory is then set by the X pitch regardless of the divider.
+			*/
+			outPitchUm = KEYENCE_X_PITCH_UM;
+
+			/*
+			* Native resolution is roughly 32x the pixels here, and it grows with scan length: a
+			* 50 mm scan is 32 Mpx, a 150 mm one is 96 Mpx, and each of those needs a second
+			* buffer of the same size for the rotate. Rather than let a long scan quietly try to
+			* allocate a gigabyte and fail somewhere unhelpful, back the pitch off and say so.
+			*
+			* This is the ONE case where the output size is not simply distance / X pitch, so it
+			* breaks the size invariance above - but it only triggers past ~155 mm of scan, it
+			* depends on the DISTANCE rather than on the divider, and it says so loudly. A recipe
+			* whose scans are all the same length still gets identical dimensions every run.
+			*/
+			constexpr double MAX_OUTPUT_MPX = 100.0;
+			const double mpx = (w * KEYENCE_X_PITCH_UM / outPitchUm)
+				* (h * linePitchUm / outPitchUm) / 1.0e6;
+			if (mpx > MAX_OUTPUT_MPX) {
+				const double grow = std::sqrt(mpx / MAX_OUTPUT_MPX);
+				ct::logger::warn("[ImageManager] Native 3D scale would be %.0f Mpx - coarsening the "
+					"output pitch from %.2f to %.2f um to stay under %.0f Mpx",
+					mpx, outPitchUm, outPitchUm * grow, MAX_OUTPUT_MPX);
+				outPitchUm *= grow;
+			}
+
+			//extraPx was converted with the world scale at the top of this function, so it is in
+			//the wrong units for a natively-scaled image. Redo it against the pitch in use.
+			extraPx = SystemData::instance().m_extraMoveFor3DLaser * 1000.0 / outPitchUm;
+		}
+
+		MIL_INT sw = w * KEYENCE_X_PITCH_UM / outPitchUm;
+		MIL_INT sh = h * linePitchUm / outPitchUm;
+
+		ct::logger::info("[ImageManager] Keyence height map: %lld x %lld px at %.3f um/px (%s), "
+			"from %lld x %lld raw at %.2f um across x %.3f um along",
+			sw, sh, outPitchUm,
+			SystemData::instance()._heightMapNativeScale ? "native" : "world scale",
+			w, h, KEYENCE_X_PITCH_UM, linePitchUm);
 
 		auto type = mtrx::get_type(mSrc);
 

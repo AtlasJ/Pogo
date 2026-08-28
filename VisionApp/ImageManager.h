@@ -106,7 +106,7 @@ private:
 	void rotate_image(FrameInfo& info);
 	void rotate_image(MIL_ID mSrc, MIL_ID mDst, double rotateAngle);
 	void rotate_image_discrete(FrameInfo& info); //camera alignment 90/180/270 option
-	void rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle);
+	void rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle, bool scanReversed);
 
 	bool readyToStitch(const QHash<QString, bool>& status);
 
