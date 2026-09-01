@@ -278,6 +278,9 @@ private:
 	bool acquireBarcodeAndOcr(); //SR-X barcode read + OCR-side capture (pitch unit grid, or 3D mid point in plane mode)
 	bool acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ, const QString& unitID = QStringLiteral("board")); //one read cycle at a base camera position
 	void acquire3DImagesPitch(); //pitch mode: one scan of the recipe scan length centered on each unit
+	void acquire2D3DAlternatePitch(); //pitch mode, Alternate sequence: barcode/OCR then 3D per unit
+	std::deque<QString> build3DOpticsSeq(); //intensity-carrying optic first, same rule everywhere
+	void scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq); //one unit's centered scan
 	void acquire3DImages();
 	void collectPlane();
 

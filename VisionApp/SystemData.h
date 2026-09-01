@@ -169,6 +169,7 @@ public:
 	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow
 	std::atomic<bool> _pitchEnable3D = true;      //production runs the 3D scan
 	std::atomic<double> _pitchScanLen_mm = 10.0;  //3D scan length, centered on each unit's mid point
+	std::atomic<int> _prodSequence = 0;           //production order: 0 = all 2D (barcode/OCR) then all 3D, 1 = alternate 2D+3D per unit
 
 	std::atomic<bool> _bypassInspection = false;
 

@@ -176,6 +176,13 @@ void VisionApp::initProductionUI() {
 		enableSaveInspectionImage(!ui.checkBox_EnableSaveInspectionImage->isChecked());
 	});
 
+	//production sequence: 0 = all barcode/OCR then all 3D, 1 = alternate per unit
+	connect(ui.comboBox_prodSequence, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
+		SystemData::instance()._prodSequence = index;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("PROD_SEQUENCE"), index == 1 ? QStringLiteral("Alternate") : QStringLiteral("2D to 3D"));
+	});
+
 	connect(ui.toolButton_startProduction, &QToolButton::clicked, this, [=]() {
 		startProduction();
 	});

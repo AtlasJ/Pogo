@@ -4440,22 +4440,8 @@ void JobThread::acquire3DImages()
 	MachineController::instance().logTime("3D Acquisition");
 }
 
-void JobThread::acquire3DImagesPitch()
+std::deque<QString> JobThread::build3DOpticsSeq()
 {
-	ScopedTimeLogger Stimer("[Acq] Total 3D Acquisition Time (pitch)");
-	MachineController::instance().trackTime("3D Acquisition");
-
-	auto& sd = SystemData::instance();
-	if (!sd._pitchP1Set) {
-		ct::logger::error("[Acq] Pitch mode: point 1 not taught - 3D scan skipped");
-		return;
-	}
-
-	const bool scanAlongY = sd.isLineScanAxisY();
-	const double halfLen = std::max(0.1, sd._pitchScanLen_mm.load()) / 2.0;
-	const int unitsX = std::max(1, (int)sd._unitsX);
-	const int unitsY = std::max(1, (int)sd._unitsY);
-
 	//scan the intensity-carrying optic first, same rule as acquire3DImages
 	std::deque<QString> opticsSeq;
 	int smallestExposure = 999999999;
@@ -4477,51 +4463,115 @@ void JobThread::acquire3DImagesPitch()
 		}
 	}
 
+	return opticsSeq;
+}
+
+//one unit's 3D scan: recipe scan length centered on the unit, along the linescan axis
+void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
+{
+	auto& sd = SystemData::instance();
+	const bool scanAlongY = sd.isLineScanAxisY();
+	const double halfLen = std::max(0.1, sd._pitchScanLen_mm.load()) / 2.0;
+
+	const double baseX = sd._pitchP1x + ix * sd._pitchX;
+	const double baseY = sd._pitchP1y + iy * sd._pitchY;
+
+	dat::WorldCoordinate start, end;
+	start.wx = end.wx = baseX;
+	start.wy = end.wy = baseY;
+	start.wz = end.wz = sd._pitchP1z;
+
+	if (scanAlongY) {
+		start.wy = baseY - halfLen;
+		end.wy = baseY + halfLen;
+	}
+	else {
+		start.wx = baseX - halfLen;
+		end.wx = baseX + halfLen;
+	}
+
+	const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+	ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
+		scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
+
+	bool firstRun = true;
+	for (auto o : opticsSeq) {
+		if (m_stopRun) break;
+
+		ProfilerManager::instance().getFrame(m_profilerID)->stitchID = "";
+		ProfilerManager::instance().getFrame(m_profilerID)->postTask.rotationalAngle = 0.0;
+
+		auto optic = (*m_optics3D)[o];
+		if (!firstRun) optic.intensity = false;
+
+		bool waitImage = (SystemData::instance().getLaserType() != "SmartRay");
+		scan(unitID, start, end, optic, waitImage);
+		firstRun = false;
+	}
+
+	if (!m_stopRun) emit incrementProgress(); //3D scan step done for this unit
+}
+
+void JobThread::acquire3DImagesPitch()
+{
+	ScopedTimeLogger Stimer("[Acq] Total 3D Acquisition Time (pitch)");
+	MachineController::instance().trackTime("3D Acquisition");
+
+	auto& sd = SystemData::instance();
+	if (!sd._pitchP1Set) {
+		ct::logger::error("[Acq] Pitch mode: point 1 not taught - 3D scan skipped");
+		return;
+	}
+
+	const int unitsX = std::max(1, (int)sd._unitsX);
+	const int unitsY = std::max(1, (int)sd._unitsY);
+	const auto opticsSeq = build3DOpticsSeq();
+
 	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
 		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
-
-			const double baseX = sd._pitchP1x + ix * sd._pitchX;
-			const double baseY = sd._pitchP1y + iy * sd._pitchY;
-
-			dat::WorldCoordinate start, end;
-			start.wx = end.wx = baseX;
-			start.wy = end.wy = baseY;
-			start.wz = end.wz = sd._pitchP1z;
-
-			//scan of the recipe length, centered on the unit
-			if (scanAlongY) {
-				start.wy = baseY - halfLen;
-				end.wy = baseY + halfLen;
-			}
-			else {
-				start.wx = baseX - halfLen;
-				end.wx = baseX + halfLen;
-			}
-
-			const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
-			ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
-				scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
-
-			bool firstRun = true;
-			for (auto o : opticsSeq) {
-				if (m_stopRun) break;
-
-				ProfilerManager::instance().getFrame(m_profilerID)->stitchID = "";
-				ProfilerManager::instance().getFrame(m_profilerID)->postTask.rotationalAngle = 0.0;
-
-				auto optic = (*m_optics3D)[o];
-				if (!firstRun) optic.intensity = false;
-
-				bool waitImage = (SystemData::instance().getLaserType() != "SmartRay");
-				scan(unitID, start, end, optic, waitImage);
-				firstRun = false;
-			}
-
-			if (!m_stopRun) emit incrementProgress(); //3D scan step done for this unit
+			scan3DUnit(ix, iy, opticsSeq);
 		}
 	}
 
 	MachineController::instance().logTime("3D Acquisition");
+}
+
+//Alternate sequence: per unit, barcode/OCR first and the 3D scan right after,
+//before moving to the next unit (instead of two full passes over the grid)
+void JobThread::acquire2D3DAlternatePitch()
+{
+	ScopedTimeLogger Stimer("[Acq] Total 2D+3D Acquisition Time (alternate)");
+
+	auto& sd = SystemData::instance();
+	if (!sd._pitchP1Set) {
+		ct::logger::error("[Acq] Pitch mode: point 1 not taught - run skipped");
+		return;
+	}
+
+	const int unitsX = std::max(1, (int)sd._unitsX);
+	const int unitsY = std::max(1, (int)sd._unitsY);
+	const auto opticsSeq = sd._pitchEnable3D ? build3DOpticsSeq() : std::deque<QString>();
+
+	ct::logger::info("[Acq] Alternate sequence: %dx%d units (barcode %s, 3D %s)",
+		unitsX, unitsY, sd._pitchEnableBarcode ? "on" : "off", sd._pitchEnable3D ? "on" : "off");
+
+	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
+		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+			const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+
+			if (sd._pitchEnableBarcode) {
+				ct::logger::info("[Acq] Unit (%d, %d): barcode/OCR", ix + 1, iy + 1);
+				acquireBarcodeAndOcrAt(
+					sd._pitchP1x + ix * sd._pitchX,
+					sd._pitchP1y + iy * sd._pitchY,
+					sd._pitchP1z,
+					unitID);
+			}
+
+			if (m_stopRun) break;
+			if (sd._pitchEnable3D) scan3DUnit(ix, iy, opticsSeq);
+		}
+	}
 }
 
 void JobThread::collectPlane()
@@ -5983,6 +6033,14 @@ void JobThread::run2D3D() {
 	preAcquisition();
 
 	auto& sd = SystemData::instance();
+
+	//Alternate sequence (pitch mode): per unit, 2D then 3D, instead of two grid passes
+	if (sd._setupRegionPitchMode && sd._prodSequence == 1 && (sd._pitchEnableBarcode || sd._pitchEnable3D)) {
+		acquire2D3DAlternatePitch();
+		postAcquisition();
+		if (!m_stopRun) emit acquisitionDone();
+		return;
+	}
 
 	//2D camera acquisition replaced for Pogo: barcode via the SR-X readers,
 	//then the 3D scan - each gated by its recipe checkbox

@@ -1395,6 +1395,7 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("pitchEnableBarcode"), (bool)SystemData::instance()._pitchEnableBarcode);
 	obj.insert(QStringLiteral("pitchEnable3D"), (bool)SystemData::instance()._pitchEnable3D);
 	obj.insert(QStringLiteral("pitchScanLen_mm"), SystemData::instance()._pitchScanLen_mm.load());
+	obj.insert(QStringLiteral("prodSequence"), (int)SystemData::instance()._prodSequence);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1993,6 +1994,11 @@ bool VisionApp::loadRecipeConfig()
 		SystemData::instance()._pitchEnableBarcode = jsonHelper::getBool(root, QStringLiteral("pitchEnableBarcode"), true);
 		SystemData::instance()._pitchEnable3D = jsonHelper::getBool(root, QStringLiteral("pitchEnable3D"), true);
 		SystemData::instance()._pitchScanLen_mm = jsonHelper::getDouble(root, QStringLiteral("pitchScanLen_mm"), 10.0);
+		SystemData::instance()._prodSequence = jsonHelper::getInteger(root, QStringLiteral("prodSequence"), 0);
+		{
+			QSignalBlocker b(ui.comboBox_prodSequence);
+			ui.comboBox_prodSequence->setCurrentIndex(SystemData::instance()._prodSequence == 1 ? 1 : 0);
+		}
 		{
 			QSignalBlocker b0(ui.comboBox_setupRegionMode);
 			QSignalBlocker b1(ui.lineEdit_pitchX);
