@@ -3045,8 +3045,8 @@ QLineEdit:focus {
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>2305</width>
-                   <height>1467</height>
+                   <width>1988</width>
+                   <height>1165</height>
                   </rect>
                  </property>
                  <property name="styleSheet">
@@ -5324,8 +5324,8 @@ color: #F0F0F0;
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>136</width>
-               <height>1173</height>
+               <width>105</width>
+               <height>1190</height>
               </rect>
              </property>
              <layout class="QGridLayout" name="gridLayout_113">
@@ -5567,10 +5567,10 @@ color: #F0F0F0;
             <widget class="QWidget" name="scrollAreaWidgetContents">
              <property name="geometry">
               <rect>
-               <x>-35</x>
-               <y>-725</y>
-               <width>907</width>
-               <height>3177</height>
+               <x>-8</x>
+               <y>0</y>
+               <width>666</width>
+               <height>2451</height>
               </rect>
              </property>
              <property name="layoutDirection">
@@ -5659,7 +5659,7 @@ QFrame#tableWidget_TemplateProperties{
 }</string>
                 </property>
                 <property name="currentIndex">
-                 <number>19</number>
+                 <number>20</number>
                 </property>
                 <widget class="QWidget" name="PropertyPage">
                  <layout class="QGridLayout" name="gridLayout_8" rowstretch="0,0,0,0">
@@ -12106,11 +12106,11 @@ border: none;
                           </item>
                           <item>
                            <widget class="QCheckBox" name="checkBox_heightMapNativeScale">
-                            <property name="text">
-                             <string>3D Native Resolution</string>
-                            </property>
                             <property name="toolTip">
                              <string>Build the height map at the sensor's own pixel pitch instead of the shared world scale. Keeps all the resolution the profiler delivered, but the image no longer lines up with 2D views - so only use it when 3D is not stitched and has no ROIs taught at world scale. Images become much larger.</string>
+                            </property>
+                            <property name="text">
+                             <string>3D Native Resolution</string>
                             </property>
                            </widget>
                           </item>
@@ -13057,8 +13057,8 @@ QToolButton:hover {
                          <rect>
                           <x>0</x>
                           <y>0</y>
-                          <width>835</width>
-                          <height>1397</height>
+                          <width>131</width>
+                          <height>131</height>
                          </rect>
                         </property>
                         <layout class="QGridLayout" name="gridLayout_69">
@@ -13072,8 +13072,8 @@ color: white</string>
                             <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
 &lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
 p, li { white-space: pre-wrap; }
-&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:7.875pt; font-weight:400; font-style:normal;&quot;&gt;
-&lt;p style=&quot;-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:8pt;&quot;&gt;&lt;br /&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;
+&lt;p style=&quot;-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;br /&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                            </property>
                           </widget>
                          </item>
@@ -17299,8 +17299,8 @@ QToolButton:hover {
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>871</width>
-                       <height>3141</height>
+                       <width>577</width>
+                       <height>1463</height>
                       </rect>
                      </property>
                      <layout class="QVBoxLayout" name="verticalLayout_srxPageInner">
@@ -18097,8 +18097,8 @@ Stop SR Management Tool services to free port 21.</string>
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>1036</width>
-                       <height>1322</height>
+                       <width>792</width>
+                       <height>2399</height>
                       </rect>
                      </property>
                      <layout class="QVBoxLayout" name="vl_algoPageInner">
@@ -18598,15 +18598,42 @@ Stop SR Management Tool services to free port 21.</string>
                             </widget>
                            </item>
                            <item>
+                            <widget class="QToolButton" name="toolButton_algoSave">
+                             <property name="minimumSize">
+                              <size>
+                               <width>0</width>
+                               <height>0</height>
+                              </size>
+                             </property>
+                             <property name="text">
+                              <string>Save Settings</string>
+                             </property>
+                             <property name="icon">
+                              <iconset resource="VisionApp.qrc">
+                               <normaloff>:/24x24/Icon/24x24/cil-save.png</normaloff>:/24x24/Icon/24x24/cil-save.png</iconset>
+                             </property>
+                             <property name="toolButtonStyle">
+                              <enum>Qt::ToolButtonTextBesideIcon</enum>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
                             <widget class="QToolButton" name="toolButton_algoRun">
                              <property name="minimumSize">
                               <size>
-                               <width>90</width>
-                               <height>26</height>
+                               <width>0</width>
+                               <height>0</height>
                               </size>
                              </property>
                              <property name="text">
                               <string>Run</string>
+                             </property>
+                             <property name="icon">
+                              <iconset resource="VisionApp.qrc">
+                               <normaloff>:/24x24/Icon/24x24/cil-media-play.png</normaloff>:/24x24/Icon/24x24/cil-media-play.png</iconset>
+                             </property>
+                             <property name="toolButtonStyle">
+                              <enum>Qt::ToolButtonTextBesideIcon</enum>
                              </property>
                             </widget>
                            </item>
@@ -19600,39 +19627,22 @@ each Height ROI is measured against it.</string>
                                </layout>
                               </widget>
                              </item>
+                             <item>
+                              <spacer name="vs_algoHeightPage">
+                               <property name="orientation">
+                                <enum>Qt::Vertical</enum>
+                               </property>
+                               <property name="sizeHint" stdset="0">
+                                <size>
+                                 <width>20</width>
+                                 <height>0</height>
+                                </size>
+                               </property>
+                              </spacer>
+                             </item>
                             </layout>
                            </widget>
                           </widget>
-                         </item>
-                         <item>
-                          <layout class="QHBoxLayout" name="hl_algoSave">
-                           <item>
-                            <widget class="QToolButton" name="toolButton_algoSave">
-                             <property name="minimumSize">
-                              <size>
-                               <width>120</width>
-                               <height>26</height>
-                              </size>
-                             </property>
-                             <property name="text">
-                              <string>Save Settings</string>
-                             </property>
-                            </widget>
-                           </item>
-                           <item>
-                            <spacer name="hs_algoSave">
-                             <property name="orientation">
-                              <enum>Qt::Horizontal</enum>
-                             </property>
-                             <property name="sizeHint" stdset="0">
-                              <size>
-                               <width>40</width>
-                               <height>20</height>
-                              </size>
-                             </property>
-                            </spacer>
-                           </item>
-                          </layout>
                          </item>
                          <item>
                           <spacer name="verticalSpacer_algoPage">
