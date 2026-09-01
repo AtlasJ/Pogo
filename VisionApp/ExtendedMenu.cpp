@@ -47,7 +47,9 @@ ExtendedMenu::ExtendedMenu(int index,int width, int height, QWidget *parent)
 
 	// hide ui
 	ui.toolButtonScaling->hide();
-	/*ui.toolButtonAnalysis->hide();*/
+	ui.toolButtonAnalysis->hide();
+	ui.toolButtonPortability->hide();
+	ui.toolButtonAIModel->hide();
 	ui.toolButtonDuplicateRecipe->hide();
 	ui.toolButtonArchiveRecipe->hide();
 	ui.toolButtonRestoreRecipe->hide();
@@ -55,7 +57,6 @@ ExtendedMenu::ExtendedMenu(int index,int width, int height, QWidget *parent)
 	ui.toolButtonPathEditor->hide();
 	ui.toolButtonUnitConfig->hide();
 
-	//ui.toolButtonPortability->hide();
 	//ui.toolButtonLaser->hide();
 	//ui.toolButtonTestRun->hide();
 	//ui.toolButtonLogTab->hide();

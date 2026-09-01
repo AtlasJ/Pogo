@@ -382,8 +382,8 @@ border-radius: 8px;</string>
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>113</width>
-               <height>801</height>
+               <width>131</width>
+               <height>1015</height>
               </rect>
              </property>
              <property name="styleSheet">
@@ -688,33 +688,7 @@ Tab</string>
           <property name="verticalSpacing">
            <number>6</number>
           </property>
-          <item row="3" column="2">
-           <widget class="QToolButton" name="toolButtonAnalysis">
-            <property name="minimumSize">
-             <size>
-              <width>90</width>
-              <height>90</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>Analysis</string>
-            </property>
-            <property name="icon">
-             <iconset resource="VisionApp.qrc">
-              <normaloff>:/8Icon/Icon/icon8/icons8-analysis-50.png</normaloff>:/8Icon/Icon/icon8/icons8-analysis-50.png</iconset>
-            </property>
-            <property name="iconSize">
-             <size>
-              <width>60</width>
-              <height>60</height>
-             </size>
-            </property>
-            <property name="toolButtonStyle">
-             <enum>Qt::ToolButtonTextUnderIcon</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
+          <item row="3" column="0">
            <widget class="QToolButton" name="toolButtonPortability">
             <property name="minimumSize">
              <size>
@@ -766,8 +740,8 @@ Tab</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="1">
-           <widget class="QToolButton" name="toolButtonZStack">
+          <item row="0" column="1">
+           <widget class="QToolButton" name="toolButtonLighting">
             <property name="minimumSize">
              <size>
               <width>90</width>
@@ -775,11 +749,11 @@ Tab</string>
              </size>
             </property>
             <property name="text">
-             <string>View Editor</string>
+             <string>Lighting</string>
             </property>
             <property name="icon">
              <iconset resource="VisionApp.qrc">
-              <normaloff>:/8Icon/Icon/icon8/icons8-copy-50.png</normaloff>:/8Icon/Icon/icon8/icons8-copy-50.png</iconset>
+              <normaloff>:/VisionApp/Icon/icon8/icons8-desk-lamp-64.png</normaloff>:/VisionApp/Icon/icon8/icons8-desk-lamp-64.png</iconset>
             </property>
             <property name="iconSize">
              <size>
@@ -818,85 +792,7 @@ Tab</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
-           <widget class="QToolButton" name="toolButtonTestRun">
-            <property name="minimumSize">
-             <size>
-              <width>90</width>
-              <height>90</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>Test Run</string>
-            </property>
-            <property name="icon">
-             <iconset resource="VisionApp.qrc">
-              <normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</iconset>
-            </property>
-            <property name="iconSize">
-             <size>
-              <width>60</width>
-              <height>60</height>
-             </size>
-            </property>
-            <property name="toolButtonStyle">
-             <enum>Qt::ToolButtonTextUnderIcon</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QToolButton" name="toolButtonLighting">
-            <property name="minimumSize">
-             <size>
-              <width>90</width>
-              <height>90</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>Lighting</string>
-            </property>
-            <property name="icon">
-             <iconset resource="VisionApp.qrc">
-              <normaloff>:/VisionApp/Icon/icon8/icons8-desk-lamp-64.png</normaloff>:/VisionApp/Icon/icon8/icons8-desk-lamp-64.png</iconset>
-            </property>
-            <property name="iconSize">
-             <size>
-              <width>60</width>
-              <height>60</height>
-             </size>
-            </property>
-            <property name="toolButtonStyle">
-             <enum>Qt::ToolButtonTextUnderIcon</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="2">
-           <widget class="QToolButton" name="toolButtonLaser">
-            <property name="minimumSize">
-             <size>
-              <width>90</width>
-              <height>90</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>Alignment</string>
-            </property>
-            <property name="icon">
-             <iconset resource="VisionApp.qrc">
-              <normaloff>:/8Icon/Icon/icon8/icon-Make3d-04.png</normaloff>:/8Icon/Icon/icon8/icon-Make3d-04.png</iconset>
-            </property>
-            <property name="iconSize">
-             <size>
-              <width>60</width>
-              <height>60</height>
-             </size>
-            </property>
-            <property name="toolButtonStyle">
-             <enum>Qt::ToolButtonTextUnderIcon</enum>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
+          <item row="4" column="0">
            <widget class="QToolButton" name="toolButtonAIModel">
             <property name="minimumSize">
              <size>
@@ -922,7 +818,33 @@ Tab</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="1">
+          <item row="1" column="0">
+           <widget class="QToolButton" name="toolButtonBarcodeReader">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Barcode</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icons8-barcode-reader-50.png</normaloff>:/8Icon/Icon/icon8/icons8-barcode-reader-50.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
            <widget class="QToolButton" name="toolButtonAlgoSetup">
             <property name="minimumSize">
              <size>
@@ -948,8 +870,8 @@ Tab</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
-           <widget class="QToolButton" name="toolButtonBarcodeReader">
+          <item row="2" column="1">
+           <widget class="QToolButton" name="toolButtonDryRun">
             <property name="minimumSize">
              <size>
               <width>90</width>
@@ -957,11 +879,11 @@ Tab</string>
              </size>
             </property>
             <property name="text">
-             <string>Barcode Reader</string>
+             <string>Dry Run</string>
             </property>
             <property name="icon">
              <iconset resource="VisionApp.qrc">
-              <normaloff>:/8Icon/Icon/icon8/icons8-barcode-reader-50.png</normaloff>:/8Icon/Icon/icon8/icons8-barcode-reader-50.png</iconset>
+              <normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</iconset>
             </property>
             <property name="iconSize">
              <size>
@@ -974,7 +896,59 @@ Tab</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="2">
+          <item row="2" column="0">
+           <widget class="QToolButton" name="toolButtonTestRun">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Test Run</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QToolButton" name="toolButtonLaser">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Alignment</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icon-Make3d-04.png</normaloff>:/8Icon/Icon/icon8/icon-Make3d-04.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
            <widget class="QToolButton" name="toolButtonScaling">
             <property name="minimumSize">
              <size>
@@ -1000,8 +974,8 @@ Tab</string>
             </property>
            </widget>
           </item>
-          <item row="5" column="0">
-           <widget class="QToolButton" name="toolButtonDryRun">
+          <item row="2" column="2">
+           <widget class="QToolButton" name="toolButtonZStack">
             <property name="minimumSize">
              <size>
               <width>90</width>
@@ -1009,11 +983,37 @@ Tab</string>
              </size>
             </property>
             <property name="text">
-             <string>Dry Run</string>
+             <string>View Editor</string>
             </property>
             <property name="icon">
              <iconset resource="VisionApp.qrc">
-              <normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</normaloff>:/8Icon/Icon/icon8/icons8-play-button-circled-100-right.png</iconset>
+              <normaloff>:/8Icon/Icon/icon8/icons8-copy-50.png</normaloff>:/8Icon/Icon/icon8/icons8-copy-50.png</iconset>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>60</width>
+              <height>60</height>
+             </size>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonTextUnderIcon</enum>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QToolButton" name="toolButtonAnalysis">
+            <property name="minimumSize">
+             <size>
+              <width>90</width>
+              <height>90</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Analysis</string>
+            </property>
+            <property name="icon">
+             <iconset resource="VisionApp.qrc">
+              <normaloff>:/8Icon/Icon/icon8/icons8-analysis-50.png</normaloff>:/8Icon/Icon/icon8/icons8-analysis-50.png</iconset>
             </property>
             <property name="iconSize">
              <size>
