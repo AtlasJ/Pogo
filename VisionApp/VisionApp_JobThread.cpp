@@ -24,17 +24,11 @@ void VisionApp::connectJobThread() {
 		boardInPosition(pos);
 	});
 
-	QObject::connect(&_jobThread, &JobThread::clearSubRecipe, this, [=]() {
-		clearSubRecipe();
-	});
-
 	QObject::connect(&_jobThread, &JobThread::signalBoardUnloaded, this, [=]() {
 
 		vs_stopElapseTimer();
 
 		emit signalStopSRX();
-
-		switchToMainRecipe();
 		//runLooping(); //only run if there's loop
 	});
 
@@ -129,32 +123,23 @@ void VisionApp::connectJobThread() {
 			bool barcodePass = true;
 
 			if (code == "Fail_to_read_barcode") {
-				ct::logger::error("[Barcode] Production read FAILED - no barcode decoded for this board (subRecipe %d)",
-					SystemData::instance()._subRecipeIndex);
+				ct::logger::error("[Barcode] Production read FAILED - no barcode decoded for this board");
 				setupProductionDir();
 				if (_progressDialog) _progressDialog->close();
 				barcodePass = false;
 			}
 			else if (code == "External_Barcode") {
-				QString externalCode;
-				if (SystemData::instance()._subRecipeIndex == 0) {
-					externalCode = ui.lineEdit_barcodeID->text();
-				}
-				else if (SystemData::instance()._subRecipeIndex == 1) {
-					externalCode = ui.lineEdit_barcodeID2->text();
-				}
+				QString externalCode = ui.lineEdit_barcodeID->text();
 
 				// Empty (reader too slow/never answered) or ERROR must never become the
 				// barcode - it is used as the emap filename key downstream.
 				if (externalCode.isEmpty() || externalCode == "ERROR") {
-					ct::logger::warn("[Barcode] External barcode %d empty/ERROR at consume time, fallback to No_Barcode",
-						SystemData::instance()._subRecipeIndex + 1);
+					ct::logger::warn("[Barcode] External barcode empty/ERROR at consume time, fallback to No_Barcode");
 					externalCode = "No_Barcode";
 				}
 
 				SystemData::instance()._currentBarcode = externalCode.toStdString();
-				ct::logger::info("[Barcode] Production barcode = %s (subRecipe %d)",
-					externalCode.toStdString().c_str(), SystemData::instance()._subRecipeIndex);
+				ct::logger::info("[Barcode] Production barcode = %s", externalCode.toStdString().c_str());
 				setupProductionDir();
 			}
 			else {
@@ -438,13 +423,7 @@ void VisionApp::connectJobThread() {
 		setCameraAngle(_prevCamAlignedAngle);
 
 		if (_processType == ProcessType::IMAGE_COLLECTION) {
-			if (!_subrecipesToRun.isEmpty()) {
-				_subrecipesToRun.clear();
-				SystemData::instance()._subRecipeIndex = 1;
-				switchToSubRecipe();
-				emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
-			}
-			else if (_loop > 0) {
+			if (_loop > 0) {
 				recordMemory(QString("Start #%1").arg(_loop));
 				_loop--;
 				startAcquisition();

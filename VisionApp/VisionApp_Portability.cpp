@@ -268,10 +268,6 @@ bool VisionApp::savePositionPortabilityInfo(PositionPortabilityType type)
 	else
 	{
 		auto jsonPath = Common::Directory::PortabilityPath() + "CurPositionPortability.json";
-		if (Common::Directory::CurrentRecipe.contains("subrecipe1"))
-		{
-			jsonPath = Common::Directory::PortabilityPath() + "CurPositionPortability-subRecipe.json";
-		}
 
 		QJsonObject j_root;
 		QJsonArray j_array;
@@ -419,12 +415,7 @@ bool VisionApp::loadCurPositionPortabilityInfo(QString curPortabilityPath)
 	auto jsonPath = portabilityPath + "CurPositionPortability.json";
 	qDebug() << "loadCurPositionPortabilityInfo:" << jsonPath;
 
-	ui.label_105->setText("Current Portability Point - Main Recipe");
-	if (Common::Directory::CurrentRecipe.contains("subrecipe1"))
-	{
-		jsonPath = portabilityPath + "CurPositionPortability-subRecipe.json";
-		ui.label_105->setText("Current Portability Point - Sub Recipe 1");
-	}
+	ui.label_105->setText("Current Portability Point");
 
 	auto& currentInfo = SystemData::instance()._portability.current_info;
 

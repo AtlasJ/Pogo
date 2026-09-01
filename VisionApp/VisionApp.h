@@ -234,8 +234,6 @@ private:
 	void testcase_fiducialLogic(); 
 	void testcase_mbufpool();
 	
-	bool _switchingSubRecipe = false;
-
 	AccountInfo _curUserAccInfo;
 
 	int _loop = 0;
@@ -255,9 +253,7 @@ private:
 	QString _motionID = "motion1";
 	//QString _motion2ID = "motion2";
 	std::thread _ioThread;
-	QSet<int> _subrecipesToRun;
 	QString _currentProductionID;
-	bool hasSubrecipe();
 
 	QTimer* _motionTimer = nullptr;
 
@@ -1290,7 +1286,6 @@ public slots:
 	void rowsRemovedSlot(const QModelIndex &parent, int first, int last);
 	void newRecipe();
 	void createRecipe(const QString& recipeName);
-	void createSubRecipe();
 	void addObject();
 	void addObjectFromView();
 	QString addVisionObject(QRectF rect, bool setSelected = true); //return vision object's key
@@ -1314,9 +1309,6 @@ public slots:
 	bool openRecipe(const QString& recipeName = QString(""), bool autoLoad=false);
 	void openAutoCalibrationRecipe();
 	void generateAutoCalReport();
-	void switchSubRecipe(const QString& subrecipe);
-	void switchToMainRecipe();
-	void switchToSubRecipe();
 	void archiveRecipe();
 	void restoreRecipe();
 	void recipeChanged();
@@ -1635,8 +1627,6 @@ public slots:
 	void runProdS();
 	void unloadBoard();
 
-	void clearSubRecipe();
-
 	void vs_updateUptimer();
 	void vs_startElapseTimer();
 	void vs_stopElapseTimer();
@@ -1729,11 +1719,7 @@ signals:
 * Handles barcode logic, trigger load recipe and load pallet to inspection position.
 * Jobthread::loadToPositionSensor() will trigger signalBoardInPosition() to VisionApp_Production::boardInPosition() if successful
 * Loading position will timeout after 15s and stop production
-* 
-* 2. Subrecipe
-* When trying to trace how subrecipe works, you can trace with _subrecipesToRun variable.
-* During start production, it will be insert with 1, which tells the system, after VisionApp::inspectionDone(), it needs to trigger another subrecipe run
-* 
+*
 * => Possible issues
 * 1. Jog transition from 2d to 3d have possibility of having motion error. Reason unknown, could be due to speed profile being changed and need to wait around 100ms
 * 2. Move log: unknown error, mostly due to speed profile being set with invalid parameters. (Ex. Acceleration = 0, Max speed over limit)

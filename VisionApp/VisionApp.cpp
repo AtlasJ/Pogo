@@ -1605,8 +1605,6 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.toolButton_close, SIGNAL(clicked()), this, SLOT(closeWindow()));
 	connect(ui.toolButton_exit, SIGNAL(clicked()), this, SLOT(closeWindow()));
 
-	connect(ui.toolButton_switchToMainRecipe, &QToolButton::clicked, this, [&]() { switchToMainRecipe(); });
-	connect(ui.toolButton_switchToSubRecipe, &QToolButton::clicked, this, [&]() { switchToSubRecipe(); });
 	connect(ui.toolButton_runOffline, &QToolButton::clicked, this, [&]() {_datasetIndexIds.clear(); resetLoopFlags(); promptInspSelection(); });
 	connect(ui.toolButton_stopRun, &QToolButton::clicked, this, [&]() { userClickStopRun(); });
 	connect(ui.toolButton_testRun, &QToolButton::clicked, this, [&]() { testRun(); });
@@ -1955,23 +1953,20 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.tb_assignView, &QToolButton::clicked, [=]() { assignViews(ui.lineEdit_viewPadding->text().toDouble(), ui.lineEdit_viewOverlapPercentage->text().toInt()); AuditLog::instance().log(QStringLiteral("VIEWS_ASSIGN")); }); //button that appears when new vo is added
 	connect(ui.toolButton_assignView, &QToolButton::clicked, [=]() { assignViews(ui.lineEdit_viewPaddingMM->text().toDouble(), ui.lineEdit_viewOverlapPercentage->text().toInt()); AuditLog::instance().log(QStringLiteral("VIEWS_ASSIGN")); }); //fixed button at assignment tab
 	connect(ui.toolButton_assignLineScan, &QToolButton::clicked, [=]() { assignLineScans(); AuditLog::instance().log(QStringLiteral("LINESCANS_ASSIGN")); });
-	connect(ui.toolButton_collect2DView, &QToolButton::clicked, this, [=]() { 
+	connect(ui.toolButton_collect2DView, &QToolButton::clicked, this, [=]() {
 		ui.toolButton_collect2DView->setEnabled(false);  // Prevent further clicks
-		_subrecipesToRun.clear();
 		_loop = 0;
 		collect2DView(getViewCollectionPath()); 
 		QTimer::singleShot(1000, this, [=]() { ui.toolButton_collect2DView->setEnabled(true); });
 	});
-	connect(ui.toolButton_collect3DView, &QToolButton::clicked, this, [=]() { 
+	connect(ui.toolButton_collect3DView, &QToolButton::clicked, this, [=]() {
 		ui.toolButton_collect3DView->setEnabled(false);  // Prevent further clicks
-		_subrecipesToRun.clear();
 		_loop = 0;
 		collect3DView(getViewCollectionPath()); 
 		QTimer::singleShot(1000, this, [=]() { ui.toolButton_collect3DView->setEnabled(true); });
 	});
-	connect(ui.toolButton_collect2D3DView, &QToolButton::clicked, this, [=]() { 
+	connect(ui.toolButton_collect2D3DView, &QToolButton::clicked, this, [=]() {
 		ui.toolButton_collect2D3DView->setEnabled(false);  // Prevent further clicks
-		_subrecipesToRun.clear();
 		_loop = 0;
 		collect2D3DView(getViewCollectionPath()); 
 		QTimer::singleShot(1000, this, [=]() { ui.toolButton_collect2D3DView->setEnabled(true); });
@@ -4094,7 +4089,6 @@ void VisionApp::userClickStopRun()
 {
 	_loop = 0;
 	_testRunLoopingNoUnload = false;
-	_subrecipesToRun.clear();
 	_autoCalPending = false; // operator aborted: do not generate the auto-cal report
 	stopRun();
 	vs_stopElapseTimer();
@@ -4113,12 +4107,8 @@ void VisionApp::runOffline()
 	SystemData::instance()._offlineRun = true;
 	SystemData::instance().StartInspectionTimer = QDateTime::currentDateTime();
 
-	// if running main, create the package uuid
-	if (!Common::Directory::CurrentRecipe.contains("subrecipe1"))
-	{
-		uidGenerator uidGen;
-		_currentProductionID = uidGen.id().c_str();
-	}
+	uidGenerator uidGen;
+	_currentProductionID = uidGen.id().c_str();
 
 	//g_prevEmaVolumeByGroup.clear();
 	//Set machine mode
@@ -4144,7 +4134,6 @@ void VisionApp::runOffline()
 	clearAllDrawings();
 	QPointF wpx = ScaleManager::instance().to_world_px(QPointF(_plane.corner_points[(int)Corner::FRONTLEFT].wx, _plane.corner_points[(int)Corner::FRONTLEFT].wy));
 	g_time.reset_timer();
-	uidGenerator uidGen;
 	//run Offline Test
 
 	InspStatus inspStatus;
@@ -6244,46 +6233,6 @@ void VisionApp::testcase_mbufpool()
 
 	ct::logger::info("[Test] Releasing all pools");
 	mtrx::MPM::instance().release_pools();
-}
-
-bool VisionApp::hasSubrecipe()
-{
-	QString val;
-	QFile file;
-	QJsonObject root;
-	QJsonDocument doc;
-
-	//load VisionObject
-	auto jsonPath = QStringLiteral("%1recipe/%2/visionObject.json").arg(Common::Directory::LocalPath).arg(Common::Directory::CurrentRecipe + "/subrecipe1");
-	ct::logger::info("Load vision object: %s", jsonPath.toStdString().c_str());
-
-	if (QFile::exists(jsonPath))
-	{
-		file.setFileName(jsonPath);
-		if (file.open(QIODevice::ReadOnly | QIODevice::Text))
-		{
-			val = file.readAll();
-			file.close();
-
-			doc = QJsonDocument::fromJson(val.toUtf8());
-			root = doc.object();
-
-			QJsonObject recipeObj = root[QStringLiteral("Recipe")].toObject();
-			QJsonArray objectArray = recipeObj[QStringLiteral("Object")].toArray();
-			if (objectArray.count()) return true;
-			else return false;
-		}
-		else
-		{
-			return false;
-		}
-	}
-	else
-	{
-		return false;
-	}
-
-	return false;
 }
 
 void VisionApp::progressBarSetup(QString displayText, int maxValue, bool enableCancel)
@@ -12982,13 +12931,9 @@ void VisionApp::insertProductionToDataBase(QVector<ct::DefectResult>& defectResu
 
 
 	PackageInfo packageInfo;
-	bool readyToPackage = false;
-	if (Common::Directory::CurrentRecipe.contains("subrecipe1") || !hasSubrecipe())
-	{
-		packageInfo.timeStamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
-		packageInfo.packageUuid = _currentProductionID;
-		readyToPackage = true;
-	}
+	packageInfo.timeStamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+	packageInfo.packageUuid = _currentProductionID;
+	bool readyToPackage = true;
 
 
 
@@ -13156,15 +13101,7 @@ void VisionApp::outputBoardInfo()
 
 void VisionApp::outputRecipeSettings()
 {
-	QString recipeMode;
-	if (hasSubrecipe())
-	{
-		recipeMode = "Double";
-	}
-	else
-	{
-		recipeMode = "Single";
-	}
+	QString recipeMode = "Single";
 
 	QJsonObject recipeInfo;
 	recipeInfo.insert("RecipeMode", recipeMode);
@@ -13653,10 +13590,7 @@ void VisionApp::inspectionDone(QVector<ct::DefectResult>& defectResults, QVector
 	int cycleTime_ms = startMS.msecsTo(endMS);
 	double cycleTime_sec = cycleTime_ms / 1000.0;
 
-	QString currentRecipe = Common::Directory::CurrentRecipe;
-
-	if (currentRecipe.contains("/subrecipe1")) ui.lineEdit_inspectionTimeSub->setText(QString::number(cycleTime_sec, 'f', 2));
-	else ui.lineEdit_inspectionTimeMain->setText(QString::number(cycleTime_sec, 'f', 2));
+	ui.lineEdit_inspectionTimeMain->setText(QString::number(cycleTime_sec, 'f', 2));
 
 
 	TimeLogger time;
@@ -13803,35 +13737,19 @@ void VisionApp::inspectionDone(QVector<ct::DefectResult>& defectResults, QVector
 		generateAutoCalReport();
 	}
 
-	if (SystemData::instance()._offlineRun) _subrecipesToRun.clear();
-
-	if (!_subrecipesToRun.isEmpty()) {
-		_subrecipesToRun.clear();
-		SystemData::instance()._subRecipeIndex = 1;
-		if (!SystemData::instance()._offlineRun) {
-			emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
-			switchToSubRecipe();
-		}
-		else {
-			switchToSubRecipe();
+	if (!SystemData::instance()._offlineRun) {
+		if (_testRunLoopingNoUnload && ui.checkBox_runLooping->isChecked()) {
+			ct::logger::info("[InspectionDone] Test-run loop enabled; skip unload and load next loop position.");
 			runLooping();
 		}
-	}
-	else {
-		if (!SystemData::instance()._offlineRun) {
-			if (_testRunLoopingNoUnload && ui.checkBox_runLooping->isChecked()) {
-				ct::logger::info("[InspectionDone] Test-run loop enabled; skip unload and load next loop position.");
-				runLooping();
-			}
-			else {
-				unloadBoard();
+		else {
+			unloadBoard();
 
-				auto& sys = SystemData::instance();
-				if (sys._InspectionCompleted) sys._BoardEntryQty = sys._BoardEntryQty + 2;
-			}
+			auto& sys = SystemData::instance();
+			if (sys._InspectionCompleted) sys._BoardEntryQty = sys._BoardEntryQty + 2;
 		}
-		else runLooping();
 	}
+	else runLooping();
 }
 
 
@@ -17415,6 +17333,7 @@ void VisionApp::enableSaveInspectionImage(bool enable)
 	nvs::set_background_color(ui.toolButton_enableSaveInspImages, enable ? Qt::green : Qt::red);
 
 	_saveInspImg = enable;
+	SystemData::instance()._saveInspImages = enable;
 	jsonHelper::setJsonValue(_systemObj, "Save_Inspection_Image", _saveInspImg);
 	updateSystemInfo(_systemObj);
 }

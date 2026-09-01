@@ -260,16 +260,8 @@ void VisionApp::startAcquisition()
 {
 	_processType = ProcessType::IMAGE_COLLECTION;
 
-	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
-	switchToMainRecipe();
-	emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
-
-	if (hasSubrecipe()) {
-		_subrecipesToRun.clear();
-		_subrecipesToRun.insert(1);
-	}
-
+	emit signalLoadToPosition(0);
 }
 
 void VisionApp::startProduction()
@@ -293,7 +285,6 @@ void VisionApp::startProduction()
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
 
 	ui.lineEdit_inspectionTimeMain->clear();
-	ui.lineEdit_inspectionTimeSub->clear();
 
 	_processType = ProcessType::PRODUCTION;
 
@@ -340,17 +331,8 @@ void VisionApp::startProduction()
 		}
 	}
 
-	switchToMainRecipe();
-
-	if (hasSubrecipe()) {
-		_subrecipesToRun.clear();
-		_subrecipesToRun.insert(1);
-	}
-
-
-	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
-	emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
+	emit signalLoadToPosition(0);
 
 	vs_startElapseTimer();
 }
@@ -454,11 +436,6 @@ void VisionApp::runProdS()
 void VisionApp::unloadBoard()
 {
 	emit signalUnloadBoard();
-}
-
-void VisionApp::clearSubRecipe()
-{
-	_subrecipesToRun.clear();
 }
 
 void VisionApp::addLogLine(const QString& line)

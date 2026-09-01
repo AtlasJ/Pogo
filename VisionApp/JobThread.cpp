@@ -7139,11 +7139,6 @@ void JobThread::loadToPositionSensor(int index) {
 	//NOTE: no board transport on this machine, the part is already in position
 	m_stopRun = false;
 
-	while (SystemData::instance()._switchingRecipe) {
-		if (m_stopRun) return;
-		os_tool::doNothing(100);
-	}
-
 	emit signalBoardInPosition(index);
 }
 // The SR-X reader sockets are owned by SRXManager. These wrappers keep the

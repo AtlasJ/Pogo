@@ -531,9 +531,6 @@ signals:
 	void signalBoardInPosition(int index);
 	void signalBoardUnloaded();
 
-	//sensorNotFound
-	void clearSubRecipe();
-
 	//gvTable
 	void calibrationFinished(QString summaryMsg, QHash<QString, double> proposedLimits);
 };

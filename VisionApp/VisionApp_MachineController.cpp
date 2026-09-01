@@ -66,7 +66,6 @@ void VisionApp::connectMachineController()
 			startProduction();
 			break;
 		case MachineEvent::STOP_BTN:
-			_subrecipesToRun.clear();
 			stopRun();
 			break;
 		case MachineEvent::RESET_BTN:

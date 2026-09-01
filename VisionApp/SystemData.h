@@ -83,7 +83,6 @@ public:
 	std::atomic<bool> _saveUnstackedImages = false;
 	std::atomic<bool> _saveUnstitchedImages = false;
 	QString _workingPath = "";
-	int _subRecipeIndex = 0;
 
 	int _stitchingMethod = 3;
 	std::atomic<bool> _controlMotion = false;
@@ -182,7 +181,6 @@ public:
 	std::atomic<int> _BoardEntryQty = 0;
 
 	std::atomic<bool> _useRecipeScale = false;
-	std::atomic<bool> _switchingRecipe = false;
 
 	std::atomic<bool> _MotoIsMoving = false;
 	std::atomic<bool> _enableFiducialRotate = true;
