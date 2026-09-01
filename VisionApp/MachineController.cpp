@@ -297,7 +297,7 @@ void MachineController::handleDIA()
     if (start_btn && !m_startBtnPressed) {
         m_startBtnPressed = true;
         MotionController::instance().set_DO(m_motionID, 0, (int)DOA::START_BTN_LED, true);
-        //emit signalMachineEvent(MachineEvent::START_BTN); //TODO: temporarily disabled, re-enable to start production from the physical button
+        emit signalMachineEvent(MachineEvent::START_BTN);
     }
     else if (!start_btn && m_startBtnPressed) {
         m_startBtnPressed = false;
@@ -308,7 +308,7 @@ void MachineController::handleDIA()
     if (stop_btn && !m_stopBtnPressed) {
         m_stopBtnPressed = true;
         MotionController::instance().set_DO(m_motionID, 0, (int)DOA::STOP_BTN_LED, true);
-        //emit signalMachineEvent(MachineEvent::STOP_BTN);
+        emit signalMachineEvent(MachineEvent::STOP_BTN);
     }
     else if (!stop_btn && m_stopBtnPressed) {
         m_stopBtnPressed = false;
