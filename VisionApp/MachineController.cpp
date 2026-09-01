@@ -54,9 +54,12 @@ void MachineController::run()
         QObject::connect(m_redTowerTimer, &QTimer::timeout, [&]() {
             int bit = (int)DOA::RED_TOWER_LIGHT;
             if (SystemData::instance()._machineDebugMode) bit = (int)DOA::AMBER_TOWER_LIGHT;
+            //error state: blink the reset button LED together with the red tower light
             MotionController::instance().set_DO(m_motionID, 0, bit, true);
+            MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, true);
             os_tool::doNothing(500);
             MotionController::instance().set_DO(m_motionID, 0, bit, false);
+            MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, false);
             os_tool::doNothing(500);
         });
     }
@@ -289,33 +292,39 @@ void MachineController::handleDIA()
         return;
     }
 
-    //Check button triggers
+    //Check button triggers - each button lights its LED while held
     auto start_btn = io[(int)DIA::START_BTN];
     if (start_btn && !m_startBtnPressed) {
         m_startBtnPressed = true;
-        //emit signalMachineEvent(MachineEvent::START_BTN); //TODO: temporarily disabled, re-enable to start production from the physical button
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::START_BTN_LED, true);
+        emit signalMachineEvent(MachineEvent::START_BTN);
     }
-    else if (!start_btn) {
+    else if (!start_btn && m_startBtnPressed) {
         m_startBtnPressed = false;
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::START_BTN_LED, false);
     }
 
     auto stop_btn = !io[(int)DIA::STOP_BTN]; //stop button is NC: pressed = input low
     if (stop_btn && !m_stopBtnPressed) {
         m_stopBtnPressed = true;
-        //emit signalMachineEvent(MachineEvent::STOP_BTN);
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::STOP_BTN_LED, true);
+        emit signalMachineEvent(MachineEvent::STOP_BTN);
     }
-    else if (!stop_btn) {
+    else if (!stop_btn && m_stopBtnPressed) {
         m_stopBtnPressed = false;
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::STOP_BTN_LED, false);
     }
 
     auto reset_btn = io[(int)DIA::RESET_BTN];
     if (reset_btn && !m_resetBtnPressed) {
         m_resetBtnPressed = true;
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, true);
         resetAlarm();
         emit signalMachineEvent(MachineEvent::RESET_BTN);
     }
-    else if (!reset_btn) {
+    else if (!reset_btn && m_resetBtnPressed) {
         m_resetBtnPressed = false;
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, false);
     }
 
     //Check estop triggers, NC: high = good. Both buttons are combined into one flag here and
@@ -584,6 +593,9 @@ void MachineController::stopRedTowerLight()
 {
     if (m_redTowerTimer == nullptr) return;
     m_redTowerTimer->stop();
+
+    //the blink may stop mid-phase - make sure the reset LED is not left lit
+    MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, false);
 }
 
 bool MachineController::isServoOn(Axis axis)

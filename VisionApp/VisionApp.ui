@@ -3856,7 +3856,7 @@ QToolButton:hover {
                                  <string notr="true">color:white</string>
                                 </property>
                                 <property name="text">
-                                 <string>Main: </string>
+                                 <string>Time (s): </string>
                                 </property>
                                 <property name="alignment">
                                  <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -3896,44 +3896,6 @@ QToolButton:hover {
                                  </size>
                                 </property>
                                </spacer>
-                              </item>
-                              <item>
-                               <widget class="QLabel" name="label_335">
-                                <property name="font">
-                                 <font>
-                                  <pointsize>11</pointsize>
-                                  <weight>50</weight>
-                                  <bold>false</bold>
-                                 </font>
-                                </property>
-                                <property name="styleSheet">
-                                 <string notr="true">color:white</string>
-                                </property>
-                                <property name="text">
-                                 <string>Sub: </string>
-                                </property>
-                                <property name="alignment">
-                                 <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-                                </property>
-                               </widget>
-                              </item>
-                              <item>
-                               <widget class="QLineEdit" name="lineEdit_inspectionTimeSub">
-                                <property name="sizePolicy">
-                                 <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                                  <horstretch>0</horstretch>
-                                  <verstretch>0</verstretch>
-                                 </sizepolicy>
-                                </property>
-                                <property name="font">
-                                 <font>
-                                  <pointsize>11</pointsize>
-                                 </font>
-                                </property>
-                                <property name="readOnly">
-                                 <bool>true</bool>
-                                </property>
-                               </widget>
                               </item>
                              </layout>
                             </widget>
@@ -18222,7 +18184,7 @@ QToolButton:hover {
                          <item>
                           <widget class="QGroupBox" name="groupBox_srx1Reader">
                            <property name="title">
-                            <string>Reader 1</string>
+                            <string>Reader 1 (Right)</string>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_srx1Reader">
                             <item>
@@ -18377,7 +18339,7 @@ QToolButton:hover {
                          <item>
                           <widget class="QGroupBox" name="groupBox_srx2Reader">
                            <property name="title">
-                            <string>Reader 2</string>
+                            <string>Reader 2 (Left)</string>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_srx2Reader">
                             <item>
@@ -18541,7 +18503,7 @@ QToolButton:hover {
                             <item row="0" column="2">
                              <widget class="QRadioButton" name="radioButton_brFirstR2">
                               <property name="text">
-                               <string>Reader 2</string>
+                               <string>Reader 2 (Left)</string>
                               </property>
                              </widget>
                             </item>
@@ -18568,7 +18530,7 @@ QToolButton:hover {
                             <item row="0" column="1">
                              <widget class="QRadioButton" name="radioButton_brFirstR1">
                               <property name="text">
-                               <string>Reader 1</string>
+                               <string>Reader 1 (Right)</string>
                               </property>
                               <property name="checked">
                                <bool>true</bool>
@@ -18653,7 +18615,7 @@ QToolButton:hover {
                                </size>
                               </property>
                               <property name="text">
-                               <string>Set Reader 1 Center</string>
+                               <string>Set Reader 1 (Right) Center</string>
                               </property>
                              </widget>
                             </item>
@@ -18719,7 +18681,7 @@ QToolButton:hover {
                                </size>
                               </property>
                               <property name="text">
-                               <string>Set Reader 2 Center</string>
+                               <string>Set Reader 2 (Left) Center</string>
                               </property>
                              </widget>
                             </item>
@@ -21572,24 +21534,6 @@ color: rgb(255,255,255);
                </layout>
               </widget>
              </item>
-             <item row="0" column="5">
-              <widget class="QToolButton" name="toolButton_switchToSubRecipe">
-               <property name="font">
-                <font>
-                 <pointsize>9</pointsize>
-                </font>
-               </property>
-               <property name="text">
-                <string>Sub</string>
-               </property>
-               <property name="checkable">
-                <bool>true</bool>
-               </property>
-               <property name="checked">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
              <item row="0" column="2">
               <widget class="QLabel" name="label_recipeName">
                <property name="font">
@@ -21966,24 +21910,6 @@ color: rgb(255,255,255);
                 </size>
                </property>
                <property name="checkable">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="4">
-              <widget class="QToolButton" name="toolButton_switchToMainRecipe">
-               <property name="font">
-                <font>
-                 <pointsize>9</pointsize>
-                </font>
-               </property>
-               <property name="text">
-                <string>Main</string>
-               </property>
-               <property name="checkable">
-                <bool>true</bool>
-               </property>
-               <property name="checked">
                 <bool>true</bool>
                </property>
               </widget>

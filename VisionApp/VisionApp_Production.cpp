@@ -218,20 +218,50 @@ void VisionApp::initProductionUI() {
 	});
 }
 
+//Production-mode selector (DI X108), same behaviour as 6DF:
+// ON  -> jump to the production page and enable only its controls
+// OFF -> restore the full UI so the user can navigate anywhere
+void VisionApp::applyProductionModeDI()
+{
+	if (_diProductionMode) {
+		ct::logger::info("[Mode] Production mode ON - locking UI to the production page");
+		showProductionPage();
+		setUiLockedToProduction(true);
+	}
+	else {
+		ct::logger::info("[Mode] Production mode OFF - full UI restored");
+		setUiLockedToProduction(false);
+	}
+}
+
+//Production-mode lock: disable every button that is NOT on the production page, so only
+//the production controls remain clickable. Remembers what it disabled so exiting the mode
+//restores exactly those (won't re-enable things disabled for other reasons).
+void VisionApp::setUiLockedToProduction(bool lock)
+{
+	if (lock) {
+		if (!_prodLockedWidgets.isEmpty()) return; //already locked
+
+		QWidget* prodPage = ui.page_23; //the production page (just shown)
+		for (QAbstractButton* b : findChildren<QAbstractButton*>()) {
+			if (prodPage->isAncestorOf(b)) continue;       //keep production-page controls
+			if (b == ui.toolButton_machineState) continue; //keep the state button (home / reset alarm)
+			if (b->isEnabled()) { _prodLockedWidgets.append(b); b->setEnabled(false); }
+		}
+	}
+	else {
+		for (const QPointer<QWidget>& w : _prodLockedWidgets)
+			if (w) w->setEnabled(true);
+		_prodLockedWidgets.clear();
+	}
+}
+
 void VisionApp::startAcquisition()
 {
 	_processType = ProcessType::IMAGE_COLLECTION;
 
-	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
-	switchToMainRecipe();
-	emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
-
-	if (hasSubrecipe()) {
-		_subrecipesToRun.clear();
-		_subrecipesToRun.insert(1);
-	}
-
+	emit signalLoadToPosition(0);
 }
 
 void VisionApp::startProduction()
@@ -246,10 +276,15 @@ void VisionApp::startProduction()
 		return;
 	}
 
+	//outside debug mode, production only starts with the production mode selector ON
+	if (!SystemData::instance()._machineDebugMode && !_diProductionMode) {
+		showMsg("Turn the production mode selector ON to start production!");
+		return;
+	}
+
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
 
 	ui.lineEdit_inspectionTimeMain->clear();
-	ui.lineEdit_inspectionTimeSub->clear();
 
 	_processType = ProcessType::PRODUCTION;
 
@@ -262,6 +297,10 @@ void VisionApp::startProduction()
 
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
+
+	//create the production dir now so JobThread's root path is valid before any
+	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
+	setupProductionDir();
 
 	if (_enableBarcode)
 	{
@@ -292,17 +331,8 @@ void VisionApp::startProduction()
 		}
 	}
 
-	switchToMainRecipe();
-
-	if (hasSubrecipe()) {
-		_subrecipesToRun.clear();
-		_subrecipesToRun.insert(1);
-	}
-
-
-	SystemData::instance()._subRecipeIndex = 0;
 	SystemData::instance()._offlineRun = false;
-	emit signalLoadToPosition(SystemData::instance()._subRecipeIndex);
+	emit signalLoadToPosition(0);
 
 	vs_startElapseTimer();
 }
@@ -316,6 +346,12 @@ void VisionApp::startProductionS()
 	}
 	else if (state == MachineState::S_ERROR) {
 		showMsg("Unable to start production when machine is in ERROR state!");
+		return;
+	}
+
+	//outside debug mode, production only starts with the production mode selector ON
+	if (!SystemData::instance()._machineDebugMode && !_diProductionMode) {
+		showMsg("Turn the production mode selector ON to start production!");
 		return;
 	}
 
@@ -333,6 +369,10 @@ void VisionApp::startProductionS()
 
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
+
+	//create the production dir now so JobThread's root path is valid before any
+	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
+	setupProductionDir();
 
 	//if (_enableBarcode)
 	//{
@@ -396,11 +436,6 @@ void VisionApp::runProdS()
 void VisionApp::unloadBoard()
 {
 	emit signalUnloadBoard();
-}
-
-void VisionApp::clearSubRecipe()
-{
-	_subrecipesToRun.clear();
 }
 
 void VisionApp::addLogLine(const QString& line)

@@ -602,7 +602,8 @@ void VisionApp::initBarcodeReaderPage()
 		updateSRXImagePreview(id);
 
 		//production: show the reader capture on the main FOV so the operator
-		//sees what each unit snap looks like
+		//sees what each unit snap looks like (saving happens in the job thread,
+		//named per unit beside the fiducial images)
 		if (_processType == ProcessType::PRODUCTION) {
 			QImage img = SRXManager::instance().lastImage(id);
 			if (!img.isNull()) displayFOV(img);

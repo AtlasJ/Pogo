@@ -83,7 +83,6 @@ public:
 	std::atomic<bool> _saveUnstackedImages = false;
 	std::atomic<bool> _saveUnstitchedImages = false;
 	QString _workingPath = "";
-	int _subRecipeIndex = 0;
 
 	int _stitchingMethod = 3;
 	std::atomic<bool> _controlMotion = false;
@@ -166,6 +165,8 @@ public:
 	std::atomic<double> _pitchP1x = 0.0, _pitchP1y = 0.0, _pitchP1z = 0.0;
 	std::atomic<double> _pitchX = 0.0, _pitchY = 0.0; //signed, direction from point 1 to point 2
 	std::atomic<int> _unitsX = 1, _unitsY = 1;
+	std::string _currentUnitID = "board"; //unit currently in the barcode/OCR flow (written by JobThread)
+	std::atomic<bool> _saveInspImages = false; //mirror of the Save Inspection Images toggle for worker threads
 	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow
 	std::atomic<bool> _pitchEnable3D = true;      //production runs the 3D scan
 	std::atomic<double> _pitchScanLen_mm = 10.0;  //3D scan length, centered on each unit's mid point
@@ -180,7 +181,6 @@ public:
 	std::atomic<int> _BoardEntryQty = 0;
 
 	std::atomic<bool> _useRecipeScale = false;
-	std::atomic<bool> _switchingRecipe = false;
 
 	std::atomic<bool> _MotoIsMoving = false;
 	std::atomic<bool> _enableFiducialRotate = true;
