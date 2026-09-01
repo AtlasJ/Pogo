@@ -154,6 +154,16 @@ void VisionApp::initMotion() {
 
 				nvs::set_background_color(button, state ? Qt::green : Qt::red);
 			}
+
+			//production mode selector (X108): ON locks the UI to the production page,
+			//OFF frees the user to navigate anywhere
+			if ((int)DIA::PRODUCTION_MODE < (int)EMXA_DIs.size()) {
+				const bool prodMode = EMXA_DIs[(int)DIA::PRODUCTION_MODE];
+				if (prodMode != _diProductionMode) {
+					_diProductionMode = prodMode;
+					applyProductionModeDI();
+				}
+			}
 		}
 
 		auto optional_EMXA_DOs = MotionController::instance().get_all_DO(_motionID, 0);

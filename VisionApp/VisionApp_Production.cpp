@@ -218,6 +218,44 @@ void VisionApp::initProductionUI() {
 	});
 }
 
+//Production-mode selector (DI X108), same behaviour as 6DF:
+// ON  -> jump to the production page and enable only its controls
+// OFF -> restore the full UI so the user can navigate anywhere
+void VisionApp::applyProductionModeDI()
+{
+	if (_diProductionMode) {
+		ct::logger::info("[Mode] Production mode ON - locking UI to the production page");
+		showProductionPage();
+		setUiLockedToProduction(true);
+	}
+	else {
+		ct::logger::info("[Mode] Production mode OFF - full UI restored");
+		setUiLockedToProduction(false);
+	}
+}
+
+//Production-mode lock: disable every button that is NOT on the production page, so only
+//the production controls remain clickable. Remembers what it disabled so exiting the mode
+//restores exactly those (won't re-enable things disabled for other reasons).
+void VisionApp::setUiLockedToProduction(bool lock)
+{
+	if (lock) {
+		if (!_prodLockedWidgets.isEmpty()) return; //already locked
+
+		QWidget* prodPage = ui.page_23; //the production page (just shown)
+		for (QAbstractButton* b : findChildren<QAbstractButton*>()) {
+			if (prodPage->isAncestorOf(b)) continue;       //keep production-page controls
+			if (b == ui.toolButton_machineState) continue; //keep the state button (home / reset alarm)
+			if (b->isEnabled()) { _prodLockedWidgets.append(b); b->setEnabled(false); }
+		}
+	}
+	else {
+		for (const QPointer<QWidget>& w : _prodLockedWidgets)
+			if (w) w->setEnabled(true);
+		_prodLockedWidgets.clear();
+	}
+}
+
 void VisionApp::startAcquisition()
 {
 	_processType = ProcessType::IMAGE_COLLECTION;

@@ -919,6 +919,12 @@ private:
 	void startProduction();
 	void startProductionS();
 
+	//production mode selector (DI X108): ON locks the UI to the production page
+	bool _diProductionMode = false;
+	QList<QPointer<QWidget>> _prodLockedWidgets;
+	void applyProductionModeDI();
+	void setUiLockedToProduction(bool lock);
+
 	//helper
 	TimeLogger _timer;
 	bool _dryRun = false;
