@@ -284,6 +284,12 @@ void VisionApp::startProduction()
 		return;
 	}
 
+	//outside debug mode, production only starts with the production mode selector ON
+	if (!SystemData::instance()._machineDebugMode && !_diProductionMode) {
+		showMsg("Turn the production mode selector ON to start production!");
+		return;
+	}
+
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
 
 	ui.lineEdit_inspectionTimeMain->clear();
@@ -358,6 +364,12 @@ void VisionApp::startProductionS()
 	}
 	else if (state == MachineState::S_ERROR) {
 		showMsg("Unable to start production when machine is in ERROR state!");
+		return;
+	}
+
+	//outside debug mode, production only starts with the production mode selector ON
+	if (!SystemData::instance()._machineDebugMode && !_diProductionMode) {
+		showMsg("Turn the production mode selector ON to start production!");
 		return;
 	}
 
