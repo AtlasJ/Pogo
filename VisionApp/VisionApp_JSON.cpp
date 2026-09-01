@@ -1933,7 +1933,12 @@ bool VisionApp::loadRecipeConfig()
 
 		// for laser API
 		SystemData::instance()._stitchingMethod = jsonHelper::getInteger(root, QStringLiteral("stitchingMethod"), 2);
-		ui.comboBox_stitchingMethod ->setCurrentIndex(SystemData::instance()._stitchingMethod-1);
+		{
+			//blocked: an unblocked index change fires saveStitchingMethod -> saveRecipeConfig
+			//MID-LOAD, clobbering the file with defaults for everything not yet read
+			QSignalBlocker blocker(ui.comboBox_stitchingMethod);
+			ui.comboBox_stitchingMethod->setCurrentIndex(SystemData::instance()._stitchingMethod - 1);
+		}
 
 		SystemData::instance()._lineScanAxis = jsonHelper::getInteger(root, QStringLiteral("lineScanAxis"), 0);
 		{
@@ -2062,8 +2067,13 @@ bool VisionApp::loadRecipeConfig()
 			laserApi = jsonHelper::getString(root, QStringLiteral("laserApi"));
 		}
 		
-		ui.checkBox_doubleFiducialChecking->setChecked(SystemData::instance()._doubleFiducialChecking);
-		ui.doubleSpinBox_passYieldPerc->setValue(_passYieldPerc);
+		{
+			//blocked for the same reason as the stitching combo above
+			QSignalBlocker b1(ui.checkBox_doubleFiducialChecking);
+			QSignalBlocker b2(ui.doubleSpinBox_passYieldPerc);
+			ui.checkBox_doubleFiducialChecking->setChecked(SystemData::instance()._doubleFiducialChecking);
+			ui.doubleSpinBox_passYieldPerc->setValue(_passYieldPerc);
+		}
 	
 
 		//ui.lineEdit_assemblyNumber->setText(_assemblyNumber); //TODO: WC
