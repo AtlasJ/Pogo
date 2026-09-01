@@ -156,9 +156,11 @@ void VisionApp::initMotion() {
 			}
 
 			//production mode selector (X108): ON locks the UI to the production page,
-			//OFF frees the user to navigate anywhere
+			//OFF frees the user to navigate anywhere. Ignored until someone logs in -
+			//it then takes effect on the first poll after login (and releases on logout)
 			if ((int)DIA::PRODUCTION_MODE < (int)EMXA_DIs.size()) {
-				const bool prodMode = EMXA_DIs[(int)DIA::PRODUCTION_MODE];
+				const bool loggedIn = !_curUserAccInfo.userName.isEmpty();
+				const bool prodMode = loggedIn && EMXA_DIs[(int)DIA::PRODUCTION_MODE];
 				if (prodMode != _diProductionMode) {
 					_diProductionMode = prodMode;
 					applyProductionModeDI();
