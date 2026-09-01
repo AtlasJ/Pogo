@@ -5497,16 +5497,8 @@ QString VisionApp::createTemplateImagesDirectory()
 
 void VisionApp::setupProductionDir()
 {
-	QString recipeFolder = Common::Directory::CurrentRecipe;
-
-	if (recipeFolder.contains("/")) {
-		recipeFolder.replace("/", "[#]");
-	}
-	else {
-		recipeFolder += "[#]main";
-	}
-
-	_productionID = recipeFolder + "[@]" + _currentProductionID;
+	//production folder: <recipe>[@]<uid>
+	_productionID = Common::Directory::CurrentRecipe + "[@]" + _currentProductionID;
 	Common::Directory::setupProductionDir(_productionID);
 
 	qDebug() << "[@@@@] _productionID: " << _productionID;
