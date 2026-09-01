@@ -94,6 +94,12 @@ public:
 	//Diagnostics (IProfiler optional overrides) - see the Profiler Scan Test report
 	QString diagnostics() const override;
 	bool getCounters(quint32& triggerCount, qint32& encoderCount) override;
+
+	//live single-profile mode: continuous trigger + batch off, restored on stop
+	bool startLive() override;
+	bool stopLive() override;
+	double liveXFovMm() const override { return m_measuredFovMm; }
+	double liveZRangeMm() const override { return m_zRangeMm; }
 	bool isSafeToScan(QString& reason) const override;
 	bool takeLastRawFrame(mtrx::SharedMilID& height, mtrx::SharedMilID& intensity) override;
 	bool getLastBatchSize(int& profiles, int& pointsPerProfile) const override {
@@ -132,9 +138,11 @@ private:
 
 	//--- program / geometry
 	unsigned char m_programNo = 0;        // Type byte is 0x10 + programNo
+	bool     m_liveMode = false;          // live view: continuous trigger, batch off
 	int      m_divider = 1;               // encoder sub-sampling count
 	double   m_yPitchUm = 10.0;           // per-trigger Y pitch BEFORE sub-sampling
 	double   m_zPitchUm = 1.6;            // grey-level -> micron factor, from head model
+	double   m_zRangeMm = 0.0;            // head Z measurement span (full range), from head model
 	double   m_measuredFovMm = 0.0;       // lXPitch * wProfileDataCount, logged at PreStart
 	int      m_batchCount = 1000;         // profiles per batch == image height
 	int      m_xPoints = 0;               // profile data count reported by the controller
@@ -219,4 +227,5 @@ private:
 	void readHeadIdentity();              // model / serial, and the Z factor that follows
 	static int  nearestExposureIndex(int us);
 	static double zPitchForHead(const QString& model);
+	static double zRangeForHead(const QString& model);
 };

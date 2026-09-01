@@ -159,6 +159,32 @@ bool ProfilerManager::snapShot(QString id)
 	return ret;
 }
 
+bool ProfilerManager::startLive(QString id)
+{
+	if (!m_profilers.contains(id)) return false;
+	return m_profilers[id]->startLive();
+}
+
+bool ProfilerManager::stopLive(QString id)
+{
+	if (!m_profilers.contains(id)) return false;
+	return m_profilers[id]->stopLive();
+}
+
+double ProfilerManager::liveXFovMm(QString id) const
+{
+	if (!m_profilers.contains(id)) return 0.0;
+	return m_profilers[id]->liveXFovMm();
+}
+
+double ProfilerManager::liveZRangeMm(QString id) const
+{
+	if (!m_profilers.contains(id)) return 0.0;
+	return m_profilers[id]->liveZRangeMm();
+}
+
+
+
 bool ProfilerManager::enableIntensityMap(QString id, bool enable)
 {
 	if (!valid(id)) return false;

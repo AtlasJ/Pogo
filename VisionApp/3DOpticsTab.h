@@ -34,6 +34,16 @@ public:
     void attachRecipeOptics3D(QHash<QString, OpticsInfo3D>* recipeOptics3D);
     bool syncToRecipeOptics3D();
 
+    //Camera -> profiler alignment (Set / Jog To / Offset To + live profile view).
+    //The taught offset feeds the same laser offset production uses for offset-to-3D.
+    void updateLiveProfile(QVector<double> profile, double xFovMm, double zRangeMm);
+
+signals:
+    void alignJogTo(double x, double y, double z);
+    void alignLaserOffset(double dx, double dy, double dz);
+    void alignLiveProfile(bool enable);
+
+public:
     //Profiler hardware section. MACHINE level (config\profiler.json + the driver config it
     //names), NOT part of the recipe. Deliberately kept out of Optics3DParams, _cacheById and
     //saveAllOptics3DByIdToJson() - anything in those is per-optics-ID and would silently change
@@ -73,6 +83,15 @@ private:
     void runProfilerConnect(bool wantConnected); //blocking; wait cursor + section disabled
     bool readProfilerEntry(QJsonObject& entry) const; //this profiler's entry in profiler.json
     void markProfilerHwDirty();                 //an edit is pending a Save
+
+    //--- Camera -> profiler alignment section ---
+    void initAlign3DUi();
+    void refreshAlignLabels();
+    bool loadAlign3D();
+    bool saveAlign3D() const;
+    bool _alignCamSet = false, _alignProfSet = false;
+    double _alignCamX = 0, _alignCamY = 0, _alignCamZ = 0;
+    double _alignProfX = 0, _alignProfY = 0, _alignProfZ = 0;
 
     QTimer* _profStatusTimer = nullptr;
     QString _profilerConfigFile;                //Config_File value as written in profiler.json

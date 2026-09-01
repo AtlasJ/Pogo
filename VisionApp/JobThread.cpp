@@ -7153,6 +7153,58 @@ void JobThread::stopSRX()
 	SRXManager::instance().stopAll();
 }
 
+//3D Optics alignment live view: poll one stationary profile at a time. The timer
+//lives in this thread, so jog commands queued from the UI run between ticks.
+void JobThread::liveProfile(bool enable)
+{
+	if (!m_liveProfileTimer) {
+		m_liveProfileTimer = new QTimer(this);
+		m_liveProfileTimer->setInterval(200);
+		connect(m_liveProfileTimer, &QTimer::timeout, this, &JobThread::liveProfileTick);
+	}
+
+	if (enable) {
+		if (!ProfilerManager::instance().isConnected(m_profilerID)) {
+			ct::logger::error("[3DAlign] Live profile: profiler not connected");
+			emit liveProfileData({}, 0.0, 0.0); //draws the "no valid profile points" hint
+			return;
+		}
+		ProfilerManager::instance().stop(m_profilerID); //snapshots need scan acquisition stopped
+
+		//encoder batch mode cannot snapshot a stationary gantry: switch the controller
+		//to its live mode (continuous trigger); stop switches it back
+		if (!ProfilerManager::instance().startLive(m_profilerID)) {
+			ct::logger::error("[3DAlign] Live profile: failed to enter live mode");
+			emit liveProfileData({}, 0.0, 0.0);
+			return;
+		}
+		m_liveProfileTimer->start();
+		ct::logger::info("[3DAlign] Live profile started");
+	}
+	else {
+		m_liveProfileTimer->stop();
+		if (!ProfilerManager::instance().stopLive(m_profilerID)) {
+			ct::logger::error("[3DAlign] Live profile: FAILED to restore encoder batch mode - press Start/Stop Live again before scanning");
+		}
+		ct::logger::info("[3DAlign] Live profile stopped");
+	}
+}
+
+void JobThread::liveProfileTick()
+{
+	if (m_stopRun) return;
+
+	//live-mode snapShot fills the frame synchronously over the command channel
+	if (!ProfilerManager::instance().snapShot(m_profilerID)) return;
+
+	auto* frame = ProfilerManager::instance().getFrame(m_profilerID);
+	if (!frame || frame->profiles.empty()) return;
+
+	emit liveProfileData(QVector<double>::fromStdVector(frame->profiles),
+		ProfilerManager::instance().liveXFovMm(m_profilerID),
+		ProfilerManager::instance().liveZRangeMm(m_profilerID));
+}
+
 void JobThread::unloadBoard()
 {
 	//NOTE: no board transport on this machine, just complete the run

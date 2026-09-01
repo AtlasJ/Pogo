@@ -32,6 +32,19 @@ public:
 	virtual bool stop() = 0;
 	virtual bool snapShot() = 0;
 
+	/*
+	* Live single-profile mode (3D Optics alignment view). A backend whose trigger
+	* source cannot fire on a stationary gantry (Keyence: encoder batch mode) switches
+	* to a snapshot-capable mode here and back in stopLive(). Default: nothing to do.
+	*/
+	virtual bool startLive() { return true; }
+	virtual bool stopLive() { return true; }
+
+	//sensor extents for the live view axes: laser-line X field of view and the
+	//head's Z measurement span (full range, centered on 0). 0 = unknown.
+	virtual double liveXFovMm() const { return 0.0; }
+	virtual double liveZRangeMm() const { return 0.0; }
+
 
 	//Control
 	virtual bool enableIntensityMap(bool enable) = 0;

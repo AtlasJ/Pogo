@@ -114,6 +114,10 @@ public:
 	// existing queued signal connections working
 	void triggerSRX();
 	void stopSRX();
+
+	//3D Optics alignment: continuous single-profile polling for the live graph.
+	//Runs on a timer in this thread's event loop so jogs interleave between ticks.
+	void liveProfile(bool enable);
 private:
 	TimeLogger m_timeLogger;
 
@@ -148,6 +152,9 @@ private:
 	int m_camTriggerIO = 2;
 	int m_camResetIO = 1;
 	bool m_lscFastMode = false;
+
+	QTimer* m_liveProfileTimer = nullptr; //created lazily in the job thread
+	void liveProfileTick();
 
 	QListWidget* m_viewSequence = nullptr;
 	Fiducial* m_fiducialAlgo = nullptr;
@@ -530,6 +537,8 @@ signals:
 
 	void signalBoardInPosition(int index);
 	void signalBoardUnloaded();
+
+	void liveProfileData(QVector<double> profile, double xFovMm, double zRangeMm);
 
 	//gvTable
 	void calibrationFinished(QString summaryMsg, QHash<QString, double> proposedLimits);

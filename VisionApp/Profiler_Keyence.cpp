@@ -1,5 +1,6 @@
 #pragma once
 #include "Profiler_Keyence.h"
+#include <limits>
 #include "Logger.h"
 #include "mtrx.h"
 #include "MessageQue.h"
@@ -268,6 +269,25 @@ double Profiler_Keyence::zPitchForHead(const QString& model)
 	return 1.6;
 }
 
+/*
+* Head Z measurement span in mm (full range, centered on the reference distance).
+* From the LJ-X8000 catalog for the heads we know; anything else falls back to the
+* span the 16-bit height encoding can represent, which is wider than the optics -
+* the live view then under-fills, which is harmless.
+*/
+double Profiler_Keyence::zRangeForHead(const QString& model)
+{
+	const QString m = model.toUpper();
+	if (m.contains("8020")) return 5.2;   // 20  +/- 2.6 mm
+	if (m.contains("8060")) return 16.0;  // 60  +/- 8 mm
+	if (m.contains("8080")) return 46.0;  // 73  +/- 23 mm
+
+	const double encodable = 65536.0 * zPitchForHead(model) / 1000.0;
+	ct::logger::warn("[Profiler_Keyence] No Z-range spec for head '%s' - live view uses the encodable span %.1f mm",
+		model.toUtf8().constData(), encodable);
+	return encodable;
+}
+
 void Profiler_Keyence::readHeadIdentity()
 {
 	CHAR headModel[32] = { 0 };
@@ -296,6 +316,7 @@ void Profiler_Keyence::readHeadIdentity()
 		.arg(v.nRevisionNumber).arg(v.nBuildNumber);
 
 	m_zPitchUm = zPitchForHead(m_headModel);
+	m_zRangeMm = zRangeForHead(m_headModel);
 
 	ct::logger::info("[Profiler_Keyence] Head model  : %s", m_headModel.toUtf8().constData());
 	ct::logger::info("[Profiler_Keyence] Serial      : %s", m_serialNumber.toUtf8().constData());
@@ -794,41 +815,114 @@ bool Profiler_Keyence::stop()
 
 bool Profiler_Keyence::snapShot()
 {
-	// NOT a hardware limitation. The controller and the SDK both support single-shot
-	// capture: LJX8IF_Trigger() fires a software trigger (LJX8_IF.h:356) and
-	// LJX8IF_GetProfile() fetches one profile over the command channel, no batch and no
-	// high-speed stream. Neither is called anywhere in this tree. The manual (p.5-4) lists
-	// "communication command" as a documented input for External trigger.
-	//
-	// The blocker is the mode WE impose: loadConfig writes triggerMode = 2 (encoder) on
-	// connect and nothing ever changes it, so the trigger source is the encoder terminal
-	// and a stationary gantry generates no profile to fetch. Implementing this means
-	// switching mode (continuous for a live preview, external for a true one-shot),
-	// capturing, and switching back - where the hard part is not the API calls but state
-	// restoration: a failed switch-back leaves the controller free-running at the sampling
-	// clock, and the next production scan is silently wrong.
-	//
-	// Returning false rather than faking success the way Profiler_SSZN does: a fake would
-	// feed a stale or empty frame into warpage compensation and corrupt the height map.
-	//
-	// But be aware what false actually buys, because it is less than it looks. EVERY caller
-	// ignores this return value (JobThread.cpp:1753, 1800, 1845, 1913) and then calls
-	// waitAcquisition(id, PROFILER_TIMEOUT) unconditionally - 60 s (JobThread.h:38) - before
-	// carrying on with whatever frame was already in the buffer. In fullWarpageCompensation
-	// that pair sits inside a per-view loop, so it is 60 s PER VIEW.
-	//
-	// Harmless today only because nothing live calls it: centerLaserZ has no caller at all,
-	// and warpageCompensation is reached from preAcquisition() but only when _warpageMethod
-	// is "Subsampling" or "Fullsampling" - it is "None" or absent in every recipe. Note the
-	// Guided 2D/3D Alignment tab does NOT go through here, so laserConfig.json's offset is
-	// not blocked by this.
-	//
-	// REVISIT WHEN: someone sets _warpageMethod to Subsampling or Fullsampling on a Keyence
-	// recipe. That needs both the capture above and a fast-fail in waitAcquisition, or
-	// production stalls a minute per view and then measures against a stale frame.
-	ct::logger::error("[Profiler_Keyence] snapShot not available in encoder batch mode");
-	m_errorMsg = QStringLiteral("snapShot not supported in encoder batch mode");
-	return false;
+	/*
+	* Single-profile capture over the command channel (LJX8IF_GetProfile). Only valid
+	* in live mode: startLive() switches the trigger source to continuous and batch
+	* measurement off, because in encoder batch mode a stationary gantry generates no
+	* profile to fetch. stopLive() restores the production settings - a failed
+	* restore is loud, since the next scan would otherwise be silently wrong (the
+	* pre-scan sanity check also flags triggerMode != encoder).
+	*/
+	if (!safeGuard()) return false;
+
+	if (!m_liveMode) {
+		ct::logger::error("[Profiler_Keyence] snapShot requires live mode (controller is in encoder batch mode)");
+		m_errorMsg = QStringLiteral("snapShot requires live mode");
+		return false;
+	}
+
+	LJX8IF_GET_PROFILE_REQUEST req{};
+	req.byTargetBank = LJX8IF_PROFILE_BANK_ACTIVE;
+	req.byPositionMode = LJX8IF_PROFILE_POSITION_CURRENT;
+	req.byGetProfileCount = 1;
+	req.byErase = 0;
+
+	LJX8IF_GET_PROFILE_RESPONSE rsp{};
+	LJX8IF_PROFILE_INFO info{};
+
+	//header (6 DWORDs) + height points + luminance points (worst case) + footer
+	const int maxPoints = (m_xPoints > 0) ? m_xPoints : 3200;
+	std::vector<DWORD> buf(6 + static_cast<size_t>(maxPoints) * 2 + 2, 0);
+
+	const LONG rc = LJX8IF_GetProfile(m_deviceId, &req, &rsp, &info,
+		buf.data(), static_cast<DWORD>(buf.size() * sizeof(DWORD)));
+	if (rc != LJX8IF_RC_OK) {
+		ct::logger::error("[Profiler_Keyence] GetProfile failed rc=0x%X", rc);
+		m_errorMsg = QStringLiteral("GetProfile rc=0x%1").arg(rc, 0, 16);
+		return false;
+	}
+
+	const int count = static_cast<int>(info.wProfileDataCount);
+	if (count <= 0 || rsp.byGetProfileCount < 1) {
+		ct::logger::warn("[Profiler_Keyence] GetProfile returned no data (count=%d, got=%d)",
+			count, (int)rsp.byGetProfileCount);
+		return false;
+	}
+
+	//the live view sizes its X axis from the real line width: pitch x point count
+	m_measuredFovMm = (info.lXPitch / 100.0) * count / 1000.0;
+
+	//heights start after the 6-DWORD profile header; values are signed, 0.01 um units.
+	//The large-negative band (0x80000000..) marks invalid points -> NAN.
+	const LONG* h = reinterpret_cast<const LONG*>(buf.data() + 6);
+	auto& profiles = m_frameInfo.profiles;
+	profiles.clear();
+	profiles.reserve(count);
+	for (int i = 0; i < count && i < maxPoints; i++) {
+		const LONG raw = h[i];
+		if (raw <= static_cast<LONG>(0x80000000) + 0x10) profiles.push_back(std::numeric_limits<double>::quiet_NaN());
+		else profiles.push_back(raw / 100000.0); //0.01 um -> mm
+	}
+
+	return true;
+}
+
+bool Profiler_Keyence::startLive()
+{
+	if (!safeGuard()) return false;
+	if (m_liveMode) return true;
+
+	//continuous trigger: the head free-runs at the sampling cycle, so a stationary
+	//gantry still produces profiles. Batch off so LJX8IF_GetProfile (non-batch) works.
+	int32_t trig = 0, batch = 0;
+	const unsigned char prog = 0x10 + m_programNo;
+	bool ok = setSetting(prog, KY_CAT_TRIGGER, KY_IT_TRIGGER_MODE, &trig, 4, "triggerMode(live)");
+	ok &= setSetting(prog, KY_CAT_TRIGGER, KY_IT_BATCH_ENABLE, &batch, 4, "batchMeasurement(live)");
+
+	if (!ok) {
+		//half-applied is worse than not applied: put production settings back now
+		int32_t trigR = 2, batchR = 1;
+		setSetting(prog, KY_CAT_TRIGGER, KY_IT_TRIGGER_MODE, &trigR, 4, "triggerMode(restore)");
+		setSetting(prog, KY_CAT_TRIGGER, KY_IT_BATCH_ENABLE, &batchR, 4, "batchMeasurement(restore)");
+		return false;
+	}
+
+	m_liveMode = true;
+	ct::logger::info("[Profiler_Keyence] Live mode ON (continuous trigger, batch off)");
+	return true;
+}
+
+bool Profiler_Keyence::stopLive()
+{
+	if (!m_liveMode) return true;
+	if (!safeGuard()) return false;
+
+	//restore what production scans require: encoder trigger, batch measurement on
+	int32_t trig = 2, batch = 1;
+	const unsigned char prog = 0x10 + m_programNo;
+	bool ok = setSetting(prog, KY_CAT_TRIGGER, KY_IT_BATCH_ENABLE, &batch, 4, "batchMeasurement(restore)");
+	ok &= setSetting(prog, KY_CAT_TRIGGER, KY_IT_TRIGGER_MODE, &trig, 4, "triggerMode(restore)");
+
+	if (!ok) {
+		//stay flagged live so the operator retries; a scan in this state is caught by
+		//the pre-scan sanity check (triggerMode != 2 refuses to run)
+		ct::logger::error("[Profiler_Keyence] FAILED to restore encoder batch mode - retry Stop Live before scanning");
+		return false;
+	}
+
+	m_liveMode = false;
+	ct::logger::info("[Profiler_Keyence] Live mode OFF (encoder batch mode restored)");
+	return true;
 }
 
 

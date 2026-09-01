@@ -51,6 +51,10 @@ public:
 	bool start(QString id);
 	bool stop(QString id);
 	bool snapShot(QString id);
+	bool startLive(QString id);
+	bool stopLive(QString id);
+	double liveXFovMm(QString id) const;
+	double liveZRangeMm(QString id) const;
 
 
 	//Control

@@ -14,6 +14,7 @@ void VisionApp::connectJobThread() {
 	qRegisterMetaType<OpticsInfo>("OpticsInfo");
 	qRegisterMetaType<dat::WorldCoordinate>("dat::WorldCoordinate");
 	qRegisterMetaType<mtrx::ForegoundType>("mtrx::ForegoundType");
+	qRegisterMetaType<QVector<double>>("QVector<double>");
 	qRegisterMetaType<PositionPortabilityType>("PositionPortabilityType");
 
 	QObject::connect(&_jobThread, &JobThread::promptMsg, this, [=](QString msg) {

@@ -9,6 +9,9 @@
 #include <QPushButton>
 #include <QRegExp>
 #include <QRegExpValidator>
+#include <QPainter>
+#include <QJsonDocument>
+#include <cmath>
 
 
 
@@ -38,6 +41,7 @@ Optics3DTab::Optics3DTab(QWidget* parent)
         this, [=]() { deleteCurrentOptics3D(); });
 
     initProfilerHwUi();
+    initAlign3DUi();
 }
 
 Optics3DTab::~Optics3DTab()
@@ -1371,3 +1375,201 @@ void Optics3DTab::runProfilerConnect(bool wantConnected)
             .arg(id));
     }
 }
+
+//--------------------------------------------------------------------------------
+// Camera -> profiler alignment
+//
+// Teach flow: center a feature in the camera FOV -> Set (camera). Jog until the
+// laser line sits on the same feature -> Set (profiler). The camera-to-profiler
+// XYZ offset is profiler - camera; it is persisted here (config/align3D.json) and
+// pushed to the laser offset production uses when it offsets to 3D.
+//--------------------------------------------------------------------------------
+void Optics3DTab::initAlign3DUi()
+{
+    loadAlign3D();
+    refreshAlignLabels();
+
+    auto current = [](double& x, double& y, double& z) {
+        const auto& c = SystemData::instance().currentCoordinate();
+        x = c.wx; y = c.wy; z = c.wz;
+    };
+
+    connect(ui.toolButton_alignSetCam, &QToolButton::clicked, this, [=]() {
+        current(_alignCamX, _alignCamY, _alignCamZ);
+        _alignCamSet = true;
+        AuditLog::instance().log(QStringLiteral("ALIGN3D_SET_CAMERA"));
+        saveAlign3D();
+        refreshAlignLabels();
+    });
+
+    connect(ui.toolButton_alignSetProf, &QToolButton::clicked, this, [=]() {
+        current(_alignProfX, _alignProfY, _alignProfZ);
+        _alignProfSet = true;
+        AuditLog::instance().log(QStringLiteral("ALIGN3D_SET_PROFILER"));
+        saveAlign3D();
+        refreshAlignLabels();
+    });
+
+    connect(ui.toolButton_alignJogCam, &QToolButton::clicked, this, [=]() {
+        if (!_alignCamSet) { QMessageBox::information(this, "Alignment", "Camera position is not taught yet."); return; }
+        emit alignJogTo(_alignCamX, _alignCamY, _alignCamZ);
+    });
+
+    connect(ui.toolButton_alignJogProf, &QToolButton::clicked, this, [=]() {
+        if (!_alignProfSet) { QMessageBox::information(this, "Alignment", "Profiler position is not taught yet."); return; }
+        emit alignJogTo(_alignProfX, _alignProfY, _alignProfZ);
+    });
+
+    //offset-to: apply the taught camera-to-profiler offset from wherever the gantry is now
+    auto offsetJog = [=](double sign) {
+        if (!_alignCamSet || !_alignProfSet) {
+            QMessageBox::information(this, "Alignment", "Teach both the camera and profiler positions first.");
+            return;
+        }
+        const auto& c = SystemData::instance().currentCoordinate();
+        emit alignJogTo(c.wx + sign * (_alignProfX - _alignCamX),
+                        c.wy + sign * (_alignProfY - _alignCamY),
+                        c.wz + sign * (_alignProfZ - _alignCamZ));
+    };
+    connect(ui.toolButton_alignOffsetToProf, &QToolButton::clicked, this, [=]() { offsetJog(+1.0); });
+    connect(ui.toolButton_alignOffsetToCam, &QToolButton::clicked, this, [=]() { offsetJog(-1.0); });
+
+    //live profile: checkable toggle - checked starts the continuous scan, unchecked stops it
+    connect(ui.toolButton_alignLive, &QToolButton::toggled, this, [=](bool on) {
+        ui.toolButton_alignLive->setText(on ? QStringLiteral("Stop Live") : QStringLiteral("Start Live"));
+        if (!on) ui.label_alignProfileView->setText(QStringLiteral("live profile off"));
+        emit alignLiveProfile(on);
+    });
+}
+
+void Optics3DTab::refreshAlignLabels()
+{
+    auto posText = [](bool set, double x, double y, double z) {
+        return set ? QStringLiteral("X %1  Y %2  Z %3").arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(z, 0, 'f', 3)
+                   : QStringLiteral("not taught");
+    };
+    ui.label_alignCamPos->setText(posText(_alignCamSet, _alignCamX, _alignCamY, _alignCamZ));
+    ui.label_alignProfPos->setText(posText(_alignProfSet, _alignProfX, _alignProfY, _alignProfZ));
+
+    if (_alignCamSet && _alignProfSet) {
+        const double dx = _alignProfX - _alignCamX;
+        const double dy = _alignProfY - _alignCamY;
+        const double dz = _alignProfZ - _alignCamZ;
+        ui.label_alignOffset->setText(QStringLiteral("X %1  Y %2  Z %3").arg(dx, 0, 'f', 3).arg(dy, 0, 'f', 3).arg(dz, 0, 'f', 3));
+
+        //production offset-to-3D reads the laser offset: keep it in sync with the teach
+        emit alignLaserOffset(dx, dy, dz);
+    }
+    else {
+        ui.label_alignOffset->setText(QStringLiteral("not taught"));
+    }
+}
+
+bool Optics3DTab::loadAlign3D()
+{
+    QFile f(QStringLiteral("%1/align3D.json").arg(Common::Directory::ConfigPath()));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+    const auto root = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+
+    _alignCamSet = root.value(QStringLiteral("camera_set")).toBool(false);
+    _alignCamX = root.value(QStringLiteral("camera_x")).toDouble();
+    _alignCamY = root.value(QStringLiteral("camera_y")).toDouble();
+    _alignCamZ = root.value(QStringLiteral("camera_z")).toDouble();
+    _alignProfSet = root.value(QStringLiteral("profiler_set")).toBool(false);
+    _alignProfX = root.value(QStringLiteral("profiler_x")).toDouble();
+    _alignProfY = root.value(QStringLiteral("profiler_y")).toDouble();
+    _alignProfZ = root.value(QStringLiteral("profiler_z")).toDouble();
+    return true;
+}
+
+bool Optics3DTab::saveAlign3D() const
+{
+    QJsonObject root;
+    root.insert(QStringLiteral("camera_set"), _alignCamSet);
+    root.insert(QStringLiteral("camera_x"), _alignCamX);
+    root.insert(QStringLiteral("camera_y"), _alignCamY);
+    root.insert(QStringLiteral("camera_z"), _alignCamZ);
+    root.insert(QStringLiteral("profiler_set"), _alignProfSet);
+    root.insert(QStringLiteral("profiler_x"), _alignProfX);
+    root.insert(QStringLiteral("profiler_y"), _alignProfY);
+    root.insert(QStringLiteral("profiler_z"), _alignProfZ);
+
+    QFile f(QStringLiteral("%1/align3D.json").arg(Common::Directory::ConfigPath()));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    f.close();
+    return true;
+}
+
+//draw one live-scanned profile against the SENSOR's fixed extents:
+//X axis = the laser line field of view, Y axis = the head's Z measurement range.
+//A crosshair marks the center, so the user sees where the data sits in XYZ.
+void Optics3DTab::updateLiveProfile(QVector<double> profile, double xFovMm, double zRangeMm)
+{
+    if (!ui.toolButton_alignLive->isChecked()) return; //stopped while data was in flight
+
+    auto* view = ui.label_alignProfileView;
+    const int w = qMax(220, view->width());
+    const int h = qMax(140, view->height());
+
+    QImage img(w, h, QImage::Format_RGB32);
+    img.fill(QColor(16, 16, 16));
+    QPainter p(&img);
+
+    const double margin = 16.0;
+    const QRectF plot(margin, margin, w - 2 * margin, h - 2 * margin);
+
+    //fixed Z scale from the sensor; fall back to a symmetric 10 mm if unknown
+    const double zHalf = (zRangeMm > 0.0) ? zRangeMm / 2.0 : 5.0;
+
+    //crosshair: X center of the laser line, Z = 0 (the head's reference distance)
+    p.setPen(QPen(QColor(90, 90, 90), 1, Qt::DashLine));
+    p.drawLine(QPointF(plot.center().x(), plot.top()), QPointF(plot.center().x(), plot.bottom()));
+    p.drawLine(QPointF(plot.left(), plot.center().y()), QPointF(plot.right(), plot.center().y()));
+    p.setPen(QPen(QColor(60, 60, 60), 1));
+    p.drawRect(plot);
+
+    double mn = 1e18, mx = -1e18;
+    int valid = 0;
+
+    if (!profile.isEmpty()) {
+        p.setPen(QColor(0, 220, 120));
+        QPointF prev; bool has = false;
+        const int n = profile.size();
+        for (int i = 0; i < n; i++) {
+            const double v = profile[i];
+            if (std::isnan(v)) { has = false; continue; }
+            mn = qMin(mn, v); mx = qMax(mx, v); valid++;
+
+            const double x = plot.left() + plot.width() * (double)i / qMax(1, n - 1);
+            double y = plot.center().y() - plot.height() * (v / (2.0 * zHalf));
+            y = qBound(plot.top(), y, plot.bottom());
+            const QPointF pt(x, y);
+            if (has) p.drawLine(prev, pt);
+            prev = pt; has = true;
+        }
+    }
+
+    p.setPen(QColor(240, 240, 240));
+    if (!valid) {
+        p.drawText(img.rect(), Qt::AlignCenter, QStringLiteral("no valid profile points"));
+    }
+    else {
+        //live data readout: where the surface actually sits inside the range
+        p.drawText((int)plot.left() + 4, (int)plot.bottom() - 6,
+            QStringLiteral("data %1 .. %2 mm").arg(mn, 0, 'f', 3).arg(mx, 0, 'f', 3));
+    }
+
+    //sensor extents on the axes
+    p.setPen(QColor(180, 180, 180));
+    p.drawText(2, (int)plot.top() + 4, QStringLiteral("+%1").arg(zHalf, 0, 'f', 1));
+    p.drawText(2, (int)plot.center().y() + 4, QStringLiteral("Z0"));
+    p.drawText(2, (int)plot.bottom() + 4, QStringLiteral("-%1").arg(zHalf, 0, 'f', 1));
+    if (xFovMm > 0.0)
+        p.drawText((int)plot.right() - 90, h - 3, QStringLiteral("X FOV %1 mm").arg(xFovMm, 0, 'f', 1));
+
+    p.end();
+    view->setPixmap(QPixmap::fromImage(img));
+}
+

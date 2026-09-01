@@ -204,6 +204,21 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	ui.gridLayout_3DOpticsTab->addWidget(_optics3DTab);
 	_optics3DTab->attachRecipeOptics3D(&_recipeOptics3D);
 
+	//camera -> profiler alignment on the 3D optics page
+	connect(_optics3DTab, &Optics3DTab::alignJogTo, this, [=](double x, double y, double z) {
+		emit jogTo(x, y, z, "2D", true);
+	});
+	connect(_optics3DTab, &Optics3DTab::alignLaserOffset, this, [=](double dx, double dy, double dz) {
+		//the taught camera-to-profiler offset IS the laser offset production applies on offset-to-3D
+		_laserConfig.offset.wx = dx;
+		_laserConfig.offset.wy = dy;
+		_laserConfig.offset.wz = dz;
+		updateLaserOffsetUI(_laserConfig.offset);
+		saveLaserConfig();
+	});
+	connect(_optics3DTab, &Optics3DTab::alignLiveProfile, &_jobThread, &JobThread::liveProfile, Qt::QueuedConnection);
+	connect(&_jobThread, &JobThread::liveProfileData, _optics3DTab, &Optics3DTab::updateLiveProfile, Qt::QueuedConnection);
+
 	//recipeSettingsMenu
 	_recipeSettingsMenu = new ExtendedMenu(0, 300, 300);
 	_recipeSettingsMenu->setParent(this);

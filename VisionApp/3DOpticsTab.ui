@@ -29,6 +29,11 @@ QFrame#frame_profilerHw{
 	border-radius: 12px;
 }
 
+QFrame#frame_align3D{
+	background-color: rgb(39, 44, 54);
+	border-radius: 12px;
+}
+
 QToolButton {
   background-color: transparent;
   color: #F0F0F0;
@@ -220,6 +225,210 @@ background-color: transparent</string>
     </widget>
    </item>
    <item row="6" column="0">
+    <widget class="QLabel" name="label_capAlignTitle">
+     <property name="font">
+      <font>
+       <pointsize>16</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color:white;
+background-color: transparent</string>
+     </property>
+     <property name="text">
+      <string>Camera - Profiler Alignment</string>
+     </property>
+    </widget>
+   </item>
+   <item row="7" column="0">
+    <widget class="QFrame" name="frame_align3D">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_align3D">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_capAlignCam">
+        <property name="styleSheet">
+         <string notr="true">color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>Camera:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="label_alignCamPos">
+        <property name="styleSheet">
+         <string notr="true">color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>not taught</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QToolButton" name="toolButton_alignSetCam">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Store the current XYZ as the camera position (feature centered in the camera FOV)</string>
+        </property>
+        <property name="text">
+         <string>Set</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QToolButton" name="toolButton_alignJogCam">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Jog to the stored camera position</string>
+        </property>
+        <property name="text">
+         <string>Jog To</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="4">
+       <widget class="QToolButton" name="toolButton_alignOffsetToCam">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Jog from the current position back to the camera (reverse of the camera-to-profiler offset)</string>
+        </property>
+        <property name="text">
+         <string>Offset To</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_capAlignProf">
+        <property name="styleSheet">
+         <string notr="true">color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>Profiler:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="label_alignProfPos">
+        <property name="styleSheet">
+         <string notr="true">color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>not taught</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QToolButton" name="toolButton_alignSetProf">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Store the current XYZ as the profiler position (laser line centered on the same feature)</string>
+        </property>
+        <property name="text">
+         <string>Set</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="3">
+       <widget class="QToolButton" name="toolButton_alignJogProf">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Jog to the stored profiler position</string>
+        </property>
+        <property name="text">
+         <string>Jog To</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="4">
+       <widget class="QToolButton" name="toolButton_alignOffsetToProf">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Jog from the current position by the camera-to-profiler offset (what production uses)</string>
+        </property>
+        <property name="text">
+         <string>Offset To</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_capAlignOffset">
+        <property name="styleSheet">
+         <string notr="true">color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>Offset (mm):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1" colspan="3">
+       <widget class="QLabel" name="label_alignOffset">
+        <property name="styleSheet">
+         <string notr="true">color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>not taught</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="4">
+       <widget class="QToolButton" name="toolButton_alignLive">
+        <property name="styleSheet">
+         <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 4px 10px;</string>
+        </property>
+        <property name="toolTip">
+         <string>Toggle: start/stop continuous single-profile scanning drawn below</string>
+        </property>
+        <property name="text">
+         <string>Start Live</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="5">
+       <widget class="QLabel" name="label_alignProfileView">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>220</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">background-color:#101010; color:#F0F0F0;</string>
+        </property>
+        <property name="text">
+         <string>live profile off</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+
+   <item row="8" column="0">
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
