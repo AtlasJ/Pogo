@@ -5593,6 +5593,12 @@ void VisionApp::resizeWidgetAnimation(QWidget * widget, int minValue, int maxVal
 				stackWidget->setCurrentIndex(rightTabIndex);
 				resizeWidgetAnimation(widget, minValue, maxValue, false, rightTabIndex, stackWidget);
 			}
+			else if (widget == ui.frame_rightTab)
+			{
+				//tab fully closed: give the workspace the whole width back - the
+				//cap only exists so the page and the OPEN tab fit the screen together
+				ui.frame_workSpace->setMaximumWidth(QWIDGETSIZE_MAX);
+			}
 		}
 		else
 		{
