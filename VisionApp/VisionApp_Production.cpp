@@ -12,28 +12,7 @@ void VisionApp::initProductionUI() {
 	//NOTE: for hardware side, user can only turn on in this production page
 	// Only config can be toggle on off
 
-	//── page layout: Production Info + status table on the left, the production
-	//buttons and Production Config one column to the right ──
-	if (auto* page = qobject_cast<QGridLayout*>(ui.scrollAreaWidgetContents_4->layout())) {
-		//drop the old spacer between the first two columns
-		if (auto* sp = page->itemAtPosition(0, 1)) {
-			page->removeItem(sp);
-			delete sp;
-		}
-
-		//pull Production Info out of the left stack, move the rest (buttons + config) right
-		ui.gridLayout_160->removeWidget(ui.frame_analytics);
-		page->removeItem(ui.gridLayout_160);
-		ui.gridLayout_160->setParent(nullptr);
-
-		page->addWidget(ui.frame_analytics, 0, 0, Qt::AlignTop);
-		page->addLayout(ui.gridLayout_160, 0, 1, Qt::AlignTop);
-
-		//status table below Production Info; fixed height so only the table scrolls
-		page->addWidget(ui.tableWidget_prodStatus, 1, 0, 1, 2);
-	}
-	ui.tableWidget_prodStatus->setMinimumHeight(260);
-	ui.tableWidget_prodStatus->setMaximumHeight(420);
+	//table sizing comes from the .ui form; only the column behaviour is set here
 	ui.tableWidget_prodStatus->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
 	//pitch runs: algo results can finish after acquisition; close the progress

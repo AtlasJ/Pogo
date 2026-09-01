@@ -918,13 +918,6 @@ void VisionApp::initWidget()
 	ui.lineEdit_currentImageIndex->hide();
 	ui.toolButton_nextImage->hide();
 
-	//ui.frame_machineStatus->hide();
-	//ui.frame_timeLog->hide();
-	//ui.frame_hardwareStatus->hide();
-
-	ui.frame_mainDefects->hide();
-	ui.frame_subDefects->hide();
-
 	ui.frame_leftMenuBar->setMinimumWidth(0);
 	ui.frame_leftMenuBar->setMaximumWidth(0);
 	ui.frame_top->hide();
@@ -7115,8 +7108,6 @@ void VisionApp::showProductionPage()
 	ui.stackedWidget->setCurrentIndex(0);
 	if (!ui.frame_rightTab->isHidden()) showRightTab((int)UIPage::RECIPE, "");
 	
-	ui.frame_workSpace->setMaximumWidth(1820);
-
 	showProductionFOV(720);
 	ui.stackedWidgetViewSelection->setCurrentIndex(6);
 	ui.page_23->show();
@@ -7818,9 +7809,11 @@ void VisionApp::showRightTabFOV()
 
 void VisionApp::showProductionFOV(const int& viewSize)
 {
-	//int viewSize = 700;
-	ui.graphicsViewFOV->setMinimumSize(QSize(viewSize, viewSize));
-	ui.graphicsViewFOV->setMaximumSize(QSize(viewSize, viewSize));
+	//the FOV view is shared between pages, so it must be re-added here; sizing
+	//is left to the .ui layout (no fixed size), only a sane minimum is kept
+	Q_UNUSED(viewSize);
+	ui.graphicsViewFOV->setMinimumSize(QSize(400, 300));
+	ui.graphicsViewFOV->setMaximumSize(QSize(16777215, 16777215));
 	ui.graphicsViewFOV->show();
 	ui.gridLayout_ProductionFOV->addWidget(ui.graphicsViewFOV);
 }
