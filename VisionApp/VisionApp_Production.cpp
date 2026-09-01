@@ -263,6 +263,10 @@ void VisionApp::startProduction()
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
 
+	//create the production dir now so JobThread's root path is valid before any
+	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
+	setupProductionDir();
+
 	if (_enableBarcode)
 	{
 		bool needExternal = false;
@@ -333,6 +337,10 @@ void VisionApp::startProductionS()
 
 	uidGenerator uidGen;
 	_currentProductionID = uidGen.id().c_str();
+
+	//create the production dir now so JobThread's root path is valid before any
+	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
+	setupProductionDir();
 
 	//if (_enableBarcode)
 	//{

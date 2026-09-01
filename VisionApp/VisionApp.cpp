@@ -4220,6 +4220,7 @@ void VisionApp::runOffline()
 	_templateLibraryTab->loadAlgoTemplateListMask();
 	_templateLibraryTab->reloadAlgoTemplateListMetaData();
 	_pInspectionInfo->_isCollectImage = jsonHelper::getBool(_systemObj, QStringLiteral("Save_Inspection_Image"));
+	SystemData::instance()._saveInspImages = _saveInspImg; //worker-thread mirror (reader image saving)
 
 	qDebug() << "total Num of Views:" << getNumOfViewToProcess(_datasetIndexIds);
 	qDebug() << "total Num of LineScans:" << getNumOfLineScanToProcess(_datasetIndexIds);
@@ -9144,6 +9145,7 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			_saveInspImg = jsonHelper::getBool(_systemObj, "Save_Inspection_Image", true);
 			ui.checkBox_EnableSaveInspectionImage->setChecked(_saveInspImg);
 		}
+		SystemData::instance()._saveInspImages = _saveInspImg; //worker-thread mirror (reader image saving)
 		nvs::set_background_color(ui.toolButton_enableSaveInspImages, _saveInspImg ? Qt::green : Qt::red);
 
 

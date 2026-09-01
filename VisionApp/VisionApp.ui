@@ -18222,7 +18222,7 @@ QToolButton:hover {
                          <item>
                           <widget class="QGroupBox" name="groupBox_srx1Reader">
                            <property name="title">
-                            <string>Reader 1</string>
+                            <string>Reader 1 (Right)</string>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_srx1Reader">
                             <item>
@@ -18377,7 +18377,7 @@ QToolButton:hover {
                          <item>
                           <widget class="QGroupBox" name="groupBox_srx2Reader">
                            <property name="title">
-                            <string>Reader 2</string>
+                            <string>Reader 2 (Left)</string>
                            </property>
                            <layout class="QVBoxLayout" name="verticalLayout_srx2Reader">
                             <item>
@@ -18541,7 +18541,7 @@ QToolButton:hover {
                             <item row="0" column="2">
                              <widget class="QRadioButton" name="radioButton_brFirstR2">
                               <property name="text">
-                               <string>Reader 2</string>
+                               <string>Reader 2 (Left)</string>
                               </property>
                              </widget>
                             </item>
@@ -18568,7 +18568,7 @@ QToolButton:hover {
                             <item row="0" column="1">
                              <widget class="QRadioButton" name="radioButton_brFirstR1">
                               <property name="text">
-                               <string>Reader 1</string>
+                               <string>Reader 1 (Right)</string>
                               </property>
                               <property name="checked">
                                <bool>true</bool>
@@ -18653,7 +18653,7 @@ QToolButton:hover {
                                </size>
                               </property>
                               <property name="text">
-                               <string>Set Reader 1 Center</string>
+                               <string>Set Reader 1 (Right) Center</string>
                               </property>
                              </widget>
                             </item>
@@ -18719,7 +18719,7 @@ QToolButton:hover {
                                </size>
                               </property>
                               <property name="text">
-                               <string>Set Reader 2 Center</string>
+                               <string>Set Reader 2 (Left) Center</string>
                               </property>
                              </widget>
                             </item>

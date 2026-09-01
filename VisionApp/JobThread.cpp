@@ -4410,6 +4410,8 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 	auto& srx = SRXManager::instance();
 	auto& sd = SystemData::instance();
 
+	sd._currentUnitID = unitID.toStdString(); //tags saved reader images to this unit
+
 	//jog the base camera position, then apply the taught camera-to-reader offset (XYZ)
 	auto jogToReader = [&](int reader) {
 		const bool taught = (reader == 1) ? (bool)sd._brR1Taught : (bool)sd._brR2Taught;
@@ -4487,6 +4489,44 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 	emit barcodeDecoded(barcode);
 	emit unitBarcode(unitID, barcode);
 
+	//saved reader images live beside the fiducial images: <root>/X1Y2_reader1.jpg
+	QString saveName = unitID;
+	if (unitID.startsWith("unit_")) {
+		auto parts = unitID.mid(5).split('_');
+		if (parts.size() == 2) saveName = QString("X%1Y%2").arg(parts[0], parts[1]);
+	}
+
+	auto saveReaderImage = [&](int reader) {
+		if (!sd._saveInspImages) {
+			ct::logger::info("[Acq] Reader %d image not saved (Save Inspection Images is off)", reader);
+			return;
+		}
+
+		const QString id = readerID(reader);
+		QImage img = srx.lastImage(id);
+		if (img.isNull()) {
+			ct::logger::warn("[Acq] No image to save for reader %d (%s)", reader, saveName.toStdString().c_str());
+			return;
+		}
+
+		const QString path = m_rootPath + QString("%1_reader%2.jpg").arg(saveName).arg(reader);
+		if (img.save(path)) ct::logger::info("[Acq] Saved reader image: %s", path.toStdString().c_str());
+		else ct::logger::error("[Acq] Failed to save reader image: %s", path.toStdString().c_str());
+	};
+
+	//the winner pushes its decode capture right after the reply - wait briefly, then save
+	if (sd._saveInspImages) {
+		const QString winnerID = readerID(winner);
+		const QString prevWinnerImg = (winner == 1) ? prevImg1 : prevImg2;
+		QElapsedTimer wTimer;
+		wTimer.start();
+		while (wTimer.elapsed() < 3000 && !m_stopRun) {
+			if (srx.lastImagePath(winnerID) != prevWinnerImg) break;
+			os_tool::goSleep(20);
+		}
+		saveReaderImage(winner);
+	}
+
 	//the non-barcode side faces the label text: get its capture for OCR
 	const int loser = (winner == 1) ? 2 : 1;
 	const QString loserID = readerID(loser);
@@ -4515,6 +4555,8 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 		}
 		os_tool::goSleep(20);
 	}
+
+	saveReaderImage(loser); //OCR-side capture, archived beside the fiducial images
 
 	bool ocrEnqueued = false;
 
