@@ -2236,6 +2236,12 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 				ct::logger::info("[ImageReady] Saving 3D scan: %s_height.tiff", (root + saveName).toStdString().c_str());
 			}
 
+			//production: show the finished height scan so the operator sees each unit
+			if (_processType == ProcessType::PRODUCTION) {
+				const QImage hmImg = AlgoManager::instance().heightMapImage(true);
+				if (!hmImg.isNull()) displayFOV(hmImg);
+			}
+
 			//production: hand the scan to the inspection thread for the 3D algo
 			InspectionThread::instance().enqueue(info);
 		}
