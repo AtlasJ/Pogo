@@ -267,8 +267,8 @@ void VisionApp::startAcquisition()
 void VisionApp::startProduction()
 {
 	auto state = MachineController::instance().getMachineState();
-	if (state == MachineState::NOT_READY) {
-		showMsg("Please initialize machine to proceed!");
+	if (state == MachineState::NOT_READY && !SystemData::instance()._machineDebugMode) {
+		showMsg("Please initialize machine to proceed!"); //debug mode: allowed without init/home
 		return;
 	}
 	else if (state == MachineState::S_ERROR) {
@@ -340,8 +340,8 @@ void VisionApp::startProduction()
 void VisionApp::startProductionS()
 {
 	auto state = MachineController::instance().getMachineState();
-	if (state == MachineState::NOT_READY) {
-		showMsg("Please initialize machine to proceed!");
+	if (state == MachineState::NOT_READY && !SystemData::instance()._machineDebugMode) {
+		showMsg("Please initialize machine to proceed!"); //debug mode: allowed without init/home
 		return;
 	}
 	else if (state == MachineState::S_ERROR) {
