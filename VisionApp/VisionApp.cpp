@@ -56,6 +56,7 @@
 #include "MbufPoolManager.h"
 #include "MotionController.h"
 #include "MachineController.h"
+#include "ImageSavingThread.h"
 #include "AuditLog.h"
 
 #include <QGuiApplication>
@@ -2687,25 +2688,34 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 		if (info.type == ct::s_height_map && info.pHeightMap) {
 			AlgoManager::instance().setHeightMap(info.pHeightMap);
 
+			//production: archive the scan beside the fiducial/reader images as
+			//<X#Y#>_height.tiff + <X#Y#>_intensity.jpg (worker thread, non-blocking)
+			if (_processType == ProcessType::PRODUCTION && SystemData::instance()._saveInspImages) {
+				QString saveName = info.viewID;
+				if (saveName.startsWith("unit_")) {
+					auto parts = saveName.mid(5).split('_');
+					if (parts.size() == 2) saveName = QString("X%1Y%2").arg(parts[0], parts[1]);
+				}
+
+				const QString root = Common::Directory::getProductionImageSetPath();
+				ImageSaveInfo task;
+				task.heightBuf = info.pHeightMap;
+				task.heightPath = (root + saveName + "_height.tiff").toStdString();
+				if (info.pImage) {
+					task.imgBuf = info.pImage;
+					task.imgPath = (root + saveName + "_intensity.jpg").toStdString();
+				}
+				ImageSavingThread::instance().enqueue(task);
+				ct::logger::info("[ImageReady] Saving 3D scan: %s_height.tiff", (root + saveName).toStdString().c_str());
+			}
+
 			//production: hand the scan to the inspection thread for the 3D algo
 			InspectionThread::instance().enqueue(info);
 		}
 
-		if (SystemData::instance()._psp) {
-			_processType = ProcessType::IMAGE_COLLECTION;
-			int viewIndex = info.viewID.toInt();
-			int projectorIndex = viewIndex / 8;
-			auto z = ui.lineEdit_z->text().toDouble();
-			int index = viewIndex - (projectorIndex * 8);
-			QString name = SystemData::instance()._projectNames[index];
-			auto rootpath = QString("data/psp/_Calibration/%1/%2").arg(z).arg(projectorIndex);
-			nvs::create_folders(rootpath.toStdString());
-			SystemData::instance()._workingPath = QString("%1/%2.bmp").arg(rootpath).arg(name);
-			ImageSavingThread::instance().enqueue(SystemData::instance()._workingPath.toStdString(), info.pImage);
-			return;
-		}
-		else {
+		{
 			if (!_views.contains(info.viewID) && !_lineScans.contains(info.viewID)) return;
+		
 		}
 	}
 
