@@ -7311,15 +7311,10 @@ bool VisionApp::showRightTab(int index, QString status)
 	}
 
 	int rightTabsize = 660; //must be 660 so user dont have to scroll horizontally for right tab
-	int resoWidth = 2560; //default resolution
 
-	//get current resolution
-	QScreen* screen = QGuiApplication::primaryScreen();
-	if (screen) {
-		QSize size = screen->size();   // in pixels (logical)
-		qDebug() << "Resolution:" << size.width() << "x" << size.height();
-		resoWidth = size.width();
-	}
+	//size against the screen THIS window is on (the app may run on the second monitor)
+	const int screenIndex = QApplication::desktop()->screenNumber(this);
+	const int resoWidth = QApplication::desktop()->screenGeometry(screenIndex).width();
 
 	const int leftMenuWidth = 67;
 	int workspaceMaxWidth = resoWidth - rightTabsize - leftMenuWidth;
@@ -7328,8 +7323,6 @@ bool VisionApp::showRightTab(int index, QString status)
 	ct::logger::trace("Workspace max width: %d, reso: %d, righttab: %d, leftWidth: %d", workspaceMaxWidth, resoWidth, rightTabsize, leftMenuWidth);
 
 	ui.frame_workSpace->setMaximumWidth(workspaceMaxWidth);
-
-	if (ui.stackedWidgetViewSelection->currentIndex() == 6) ui.frame_workSpace->setMaximumWidth(1800);
 
 	if (g_viewMode == (int)ViewMode::SINGLE) rightTabsize = 480;
 	for (int i = 0; i < _dragROI.size(); i++) _dragROI[i]->setFrozen(true);

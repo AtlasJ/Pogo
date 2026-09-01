@@ -106,6 +106,13 @@ int main(int argc, char *argv[])
 
 		HWND hWndConsole = GetConsoleWindow();
 		MoveWindow(hWndConsole, screenGeometry.x(), screenGeometry.y(), 1000, 1000, TRUE);
+
+		//cap the window to its screen: a page whose layout demands more width must
+		//scroll/clip inside, never push the app partially off the screen
+		w.setMaximumSize(screenGeometry.size());
+	}
+	else if (QScreen* s = QGuiApplication::primaryScreen()) {
+		w.setMaximumSize(s->geometry().size());
 	}
 
 
