@@ -305,14 +305,6 @@ void ImageManager::stackImage(QString id)
 		util::Mil_to_cv(frame.pImage->id(), cvImg);
 		input_images.push_back(cvImg);
 
-		if (SystemData::instance()._saveUnstackedImages) {
-			auto root = SystemData::instance()._workingPath + "Unstacked/";
-			Common::Directory::createDir(root);
-			QString filename = root + frame.viewID + "_" + frame.opticID + "_" + QString::number(index) + ".jpg";
-			ct::logger::info("Saving unstacked image: %s", filename.toStdString().c_str());
-			ImageSavingThread::instance().enqueue(filename.toStdString(), frame.pImage);
-		}
-
 		if (index == 0) {
 			stackedFrame = frame;
 		}
@@ -393,7 +385,6 @@ void ImageManager::preprocess_info(FrameInfo& info)
 		info.pixelFormat == ICAM_pixelFormat::Mono8 && info.type == ct::s_color || 
 		info.pixelFormat == ICAM_pixelFormat::Mono12) && !formRGB;
 
-	if (SystemData::instance()._psp) isMono = true;
 
 	if (isMono) {
 		ct::logger::debug("[IM] Preprocess 1: Mono");

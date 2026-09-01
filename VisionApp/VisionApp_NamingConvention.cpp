@@ -135,8 +135,6 @@ void VisionApp::allowOnlyIslandNamingConvention()
 	ui.toolButton_convertToIndexing->hide();
 	ui.label_recipeFacing->hide();
 	ui.label_159->hide();
-	ui.label_testEmapStatus->hide();
-	ui.toolButton_testEmapID->hide();
 
 }
 
@@ -206,7 +204,6 @@ void VisionApp::initNamingConvention()
 		});
 
 	connect(ui.toolButton_applyNamingConvention, &QToolButton::clicked, this, [=]() {
-		ui.label_testEmapStatus->clear();
 		AuditLog::instance().log(QStringLiteral("NAMING_CONVENTION_APPLY"), ui.comboBox_namingMethod->currentText());
 
 		auto method = ui.comboBox_namingMethod->currentText();
@@ -551,12 +548,6 @@ void VisionApp::initNamingConvention()
 			"Indexing Applied!");
 		});
 
-
-	connect(ui.toolButton_testEmapID, &QToolButton::clicked, [=]() {
-		testEmapID();
-		QMessageBox::information(this, ("Success"),
-			"Emap ID Done Test!");
-		});
 
 	//ui.comboBox_namingMethod->setCurrentText("Island Unit");
 	//ui.stackedWidget_namingConvention->setCurrentIndex(2);

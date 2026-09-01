@@ -39,13 +39,6 @@ void __stdcall CAM_HIK_FG::FrameCallback(
     frame.timeStamp = pFrameInfo->nDevTimeStamp; // or combine high+low
     frame.pixelFormat = ICAM_pixelFormat::Unknown;
 
-    if (SystemData::instance()._psp) {
-        frame.viewID = QString("%1").arg(SystemData::instance()._index); 
-        frame.type = ct::s_mono; 
-        SystemData::instance()._index++;
-    }
-
-
     int bit = 8;
     int channel = 1;
 
@@ -290,12 +283,9 @@ bool CAM_HIK_FG::connect(QString sn)
                     ret = mvfg::MV_FG_SetEnumValueByString(m_handle, "TriggerMode", "On");
                     if (logErrorCode("Failed to set trigger mode on", ret)) return false;
 
-                    if (SystemData::instance()._psp) {
-                        ret = mvfg::MV_FG_SetEnumValueByString(m_handle, "TriggerSource", "Line2"); 
-                    }
-                    else {
                         ret = mvfg::MV_FG_SetEnumValueByString(m_handle, "TriggerSource", "Software"); 
-                    }
+                    
+
                     if (logErrorCode("Failed to set trigger source to software", ret)) return false;
 
                     setExposure(6666);

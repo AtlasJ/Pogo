@@ -80,7 +80,6 @@ public:
 	bool load(Type type);
 
 	//flow
-	std::atomic<bool> _saveUnstackedImages = false;
 	std::atomic<bool> _saveUnstitchedImages = false;
 	QString _workingPath = "";
 
@@ -193,11 +192,7 @@ public:
 	void setCurrentCoordinate(double x, double y, double z);
 	const dat::WorldCoordinate& currentCoordinate() const;
 
-	//PSP
-	bool _psp = false;
 	bool _machineDebugMode = false;
-	void triggerPSP();
-	const std::array<QString, 8> _projectNames = { "s0", "s90", "s180", "s270", "l0", "l90", "l180", "l270"};
 
 	//3D jog
 	double m_extraMoveFor3DLaser = 0.00;

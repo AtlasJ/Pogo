@@ -252,12 +252,6 @@ void VisionApp::connectJobThread() {
 		progressBarRelease();
 	});
 
-	connect(ui.comboBox_warpageMethod, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
-		_jobThread.setWarpageMethod(ui.comboBox_warpageMethod->currentText());
-		_warpageMethod = ui.comboBox_warpageMethod->currentText();
-		saveRecipeConfig();
-	});
-
 	QObject::connect(&_jobThread, &JobThread::startLot, this, [=]() {
 		ct::logger::info("Start Lot");
 		// delete lot info file
@@ -267,57 +261,11 @@ void VisionApp::connectJobThread() {
 
 		ui.label_status->hide();
 	
-		//EMAP WARNING 
 		bool stopRun = false;
-		bool runGoldenRecipeFlag = false;
 		QString response = QStringLiteral("R\r");
 
-		if (!_enableEmap)
-		{
-			QMessageBox messageBox;
-			messageBox.setWindowTitle("EMAP DISABLED!");
-			messageBox.setText("<font color=\"red\"><b>!!INCOMING EMAP DISABLED WARNING!!</b></font><br>Yes to continue process<br>No to stop the lot inspection");
-			messageBox.setIcon(QMessageBox::Warning);
-
-			// Set a bigger font size for the message text
-			QFont font = messageBox.font();
-			font.setPointSize(24); // Adjust the font size as needed
-			messageBox.setFont(font);
-
-			// Adjust the size of the message box
-			messageBox.setMinimumWidth(1600); // Adjust the width as needed
-			messageBox.setMinimumHeight(1600); // Adjust the height as needed
-			messageBox.setWindowFlag(Qt::WindowStaysOnTopHint);
-
-			// Add Yes and No buttons
-			messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-
-			// Execute and get the user's response
-			int result = messageBox.exec();
-
-			if (result == QMessageBox::Yes) {
-				stopRun = false;
-			}
-			else if (result == QMessageBox::No) {
-
-				stopRun = true;
-				response = QStringLiteral("F\r");
-			}
-		}
-
-		if (_enableGoldenRecipeChecking && !stopRun)
-		{
-			// 1. check whether current recipe has run Golden
-			bool hasRunGolden = checkGoldenRecipeRunStatus(Common::Directory::CurrentRecipe);
-			if (!hasRunGolden)
-			{
-				runGoldenRecipeFlag = true;
-				// 2. If no, Run golden recipe
-				runGoldenRecipe();
-			}
-		}
-
-		if (!runGoldenRecipeFlag) sendToClient(response);
+		if (!stopRun) sendToClient(response);
+		else sendToClient(QStringLiteral("F\r"));
 
 	}, Qt::BlockingQueuedConnection);
 
@@ -346,24 +294,15 @@ void VisionApp::connectJobThread() {
 	});
 
 	QObject::connect(&_jobThread, &JobThread::uploadRecipe, this, [=](QString recipeName) {
-		bool suc = pushToRmsRecipe(recipeName);
-		if (!suc) sendToClient(QStringLiteral("F\r"));
-		else
-		{
-			QString response = QStringLiteral("R\r");
-			sendToClient(response);
-		}
+		//RMS recipe sync removed
+		Q_UNUSED(recipeName);
+		sendToClient(QStringLiteral("F\r"));
 	});
 
 	QObject::connect(&_jobThread, &JobThread::downloadRecipe, this, [=](QString recipeName) {
-		bool suc = pullFromRmsRecipe(recipeName);
-		if (!suc) sendToClient(QStringLiteral("F\r"));
-		else
-		{
-			QString response = QStringLiteral("R\r");
-			sendToClient(response);
-			openRecipe(recipeName);
-		}
+		//RMS recipe sync removed
+		Q_UNUSED(recipeName);
+		sendToClient(QStringLiteral("F\r"));
 	});
 
 	QObject::connect(&_jobThread, &JobThread::frameReady, this, [=]() {
@@ -372,15 +311,6 @@ void VisionApp::connectJobThread() {
 		if (_inspectionThreadBusy) sendToClient(QStringLiteral("F\r"));
 		else
 		{
-			if (_dryRun && !_saveInspImg)
-			{
-				sendToClient(QStringLiteral("R\r"));
-
-				sendToClient("01END\r");
-
-				return;
-			}
-
 			resetLoopFlags();
 
 			InspStatus inspStatus;

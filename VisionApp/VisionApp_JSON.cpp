@@ -1371,13 +1371,10 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("camera_angle"), SystemData::instance()._camAngles[_camID]);
 	obj.insert(QStringLiteral("_enable3D"), _enable3D);
 	obj.insert(QStringLiteral("_disable2D"), !_enable2D);
-	obj.insert(QStringLiteral("_enablePreProcessImg"), _enablePreProcessImg);
-	obj.insert(QStringLiteral("_enableVisionObjectSampling"), _enableVisionObjectSampling);
 	obj.insert(QStringLiteral("_enableSingleViewRecipe"), _enableSingleViewRecipe);
 	obj.insert(QStringLiteral("_passYieldPercentage"), _passYieldPerc);
 	obj.insert(QStringLiteral("worldScale"), ScaleManager::instance().world_scale());
 	obj.insert(QStringLiteral("laserApi"), laserApi);
-	obj.insert(QStringLiteral("_warpageMethod"), _warpageMethod);
 	obj.insert(QStringLiteral("stitchingMethod"), SystemData::instance()._stitchingMethod);
 	obj.insert(QStringLiteral("lineScanAxis"), (int)SystemData::instance()._lineScanAxis);
 	obj.insert(QStringLiteral("lineScanDirection"), (int)SystemData::instance()._lineScanDirection);
@@ -1912,11 +1909,8 @@ bool VisionApp::loadRecipeConfig()
 	if (loadJson(jsonPath, root)) {
 		_enable3D = jsonHelper::getBool(root, QStringLiteral("_enable3D"), false);
 		_enable2D = !jsonHelper::getBool(root, QStringLiteral("_disable2D"), false);
-		_enablePreProcessImg = jsonHelper::getBool(root, QStringLiteral("_enablePreProcessImg"), true);
-		_enableVisionObjectSampling = jsonHelper::getBool(root, QStringLiteral("_enableVisionObjectSampling"), false);
 		_enableSingleViewRecipe = jsonHelper::getBool(root, QStringLiteral("_enableSingleViewRecipe"), false);
 		_passYieldPerc = jsonHelper::getDouble(root, QStringLiteral("_passYieldPercentage"), 100.00);
-		_warpageMethod = jsonHelper::getString(root, QStringLiteral("_warpageMethod"), "None");
 		SystemData::instance()._doubleFiducialChecking = jsonHelper::getBool(root, QStringLiteral("_doubleFiducialChecking"), false);
 
 		double defaultSpeed = 0;
@@ -2068,15 +2062,10 @@ bool VisionApp::loadRecipeConfig()
 			laserApi = jsonHelper::getString(root, QStringLiteral("laserApi"));
 		}
 		
-		ui.checkBox_enable3D->setChecked(_enable3D);
-		ui.checkBox_disable2D->setChecked(!_enable2D);
-		ui.checkBox_enableVisionObjectSampling->setChecked(_enableVisionObjectSampling);
 		ui.checkBox_doubleFiducialChecking->setChecked(SystemData::instance()._doubleFiducialChecking);
 		ui.doubleSpinBox_passYieldPerc->setValue(_passYieldPerc);
 	
 
-		ui.comboBox_warpageMethod->setCurrentIndex(ui.comboBox_warpageMethod->findText(_warpageMethod));
-		_jobThread.setWarpageMethod(ui.comboBox_warpageMethod->currentText());
 		//ui.lineEdit_assemblyNumber->setText(_assemblyNumber); //TODO: WC
 
 	}

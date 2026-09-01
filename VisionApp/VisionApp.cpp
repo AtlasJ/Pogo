@@ -293,28 +293,12 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	ct::logger::info("Initializing Algorithms...");
 	_algo.createBuffer(_bufferInfoObj);
 
-	_emapReEnableTimer.setInterval(1000);
-	_emapReEnableTimerSeconds = 60;
-	connect(&_emapReEnableTimer, &QTimer::timeout, this, [=]() {
-		_emapReEnableTimerSeconds--;
-		ui.label_emapTimer->setStyleSheet("color: red");
-		ui.label_emapTimer->setText("Emap Re-enable in: " + QString::number(_emapReEnableTimerSeconds));
-		if (_emapReEnableTimerSeconds == 0)
-		{
-			ui.checkBox_enableEmap->setChecked(true);
-			_emapReEnableTimerSeconds = 60;
-			_emapReEnableTimer.stop();
-			ui.label_emapTimer->clear();
-		}
-	});
-	
 	ct::logger::info("Initializing UI Widgets..."); initWidget();
 	ct::logger::info("Initializing Display size..."); initDisplaySize();
 	ct::logger::info("Initializing Image Display widget..."); initImageDisplayWidget();
 	ct::logger::info("Initializing signal slot..."); connectSignalAndSlot();
 	ct::logger::info("Initializing TCPIP..."); initTCPIP();
 	ct::logger::info("Initializing CT client..."); initCT_Client();
-	ct::logger::info("Initializing Emap Setting..."); loadEmapSetting();
 	ct::logger::info("Initializing LSC..."); initLSC(); 
 	ct::logger::info("Initializing Motion..."); initMotion();
 
@@ -348,7 +332,6 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 
 	//UI 
 	// tempo hide
-	ui.radioButton_useLocalEmapSetting->hide();
 	ui.label_26->hide();
 	ui.lineEdit_namingPrefix->hide();
 	ui.label_27->hide();
@@ -386,7 +369,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 
 	//Note: load recipe stuff after this line
 	ct::logger::info("Loading Recipe...");
-	openRecipe(jsonHelper::getString(_systemObj, QStringLiteral("Recent_Open_Recipe")), false);
+	openRecipe(jsonHelper::getString(_systemObj, QStringLiteral("Recent_Open_Recipe")));
 	//load configs
 	loadLaserConfig();
 	initViewEditor();
@@ -721,51 +704,6 @@ QStringList VisionApp::get3DLightingUsed()
 	return QStringList();
 }
 
-void VisionApp::loadEmapSetting()
-{
-	if (g_viewMode == (int)ViewMode::SINGLE) return;
-
-	QString station = jsonHelper::getString(_systemObj, QStringLiteral("Verification_Station_Ip_Address"));
-	if (!NetworkPathChecker::isReachable(station))
-	{
-		ct::logger::warn("Verification station unreachable, skip loading Emap template");
-		return;
-	}
-
-	QString path = station + "/Advanced/Data/config/EmapTemplate.json";
-	_emapTemplateList.clear();
-	QJsonFile jsonFile;
-	if (!jsonFile.load(path))
-	{
-		ct::logger::warn("Emap template json not exist!");
-		return;
-	}
-	QJsonArray emapTemplateArray;
-	emapTemplateArray = jsonFile.getArray("Emap_Template_List");
-
-	for (auto emapTemplate : emapTemplateArray)
-	{
-		QJsonObject eObject = emapTemplate.toObject();
-		EmapInfo eInfo;
-		eInfo.templateName = eObject["Template_Name"].toString();
-
-		// incoming emap
-		eInfo.mode = static_cast<EmapMode>(eObject["Incoming_Mode"].toInt());
-		eInfo.topInspEmap = static_cast<EmapType>(eObject["Incoming_Top_Insp"].toInt());
-		eInfo.botInspEmap = static_cast<EmapType>(eObject["Incoming_Bot_Insp"].toInt());
-		QJsonArray arrTxt = eObject["Incoming_Text_file_Dir"].toArray();
-		QJsonArray arrCsv = eObject["Incoming_Csv_file_Dir"].toArray();
-		for (auto t : arrTxt)eInfo.textFileEmapDir.append(t.toString());
-		for (auto c : arrCsv)eInfo.csvEmapDir.append(c.toString());
-
-		_emapTemplateList.insert(eInfo.templateName, eInfo);
-	}
-
-	if (_emapTemplateList.contains(_emapTemplate))_emapInfo = _emapTemplateList[_emapTemplate];
-	refreshEmapSettingUi();
-
-}
-
 bool VisionApp::readDefectPriorityList()
 {
 	//QString filePath = Common::Directory::ConfigPath() + "GlobalTagName.json";
@@ -962,24 +900,6 @@ void VisionApp::initWidget()
 		w->setMouseTracking(true);
 	}
 
-	// Emap Config 
-	QStringList inspType = {
-		"CSV 01 EMAP",
-		"CSV 34 EMAP",
-		"TEXT FILE EMAP"
-	};
-	ui.comboBox_emapTopInsp->addItems(inspType);
-	if (_emapInfo.topInspEmap == EmapType::CSV01_EMAP) ui.comboBox_emapTopInsp->setCurrentIndex(ui.comboBox_emapTopInsp->findText("CSV 01 EMAP"));
-	else if (_emapInfo.topInspEmap == EmapType::CSV34_EMAP)ui.comboBox_emapTopInsp->setCurrentIndex(ui.comboBox_emapTopInsp->findText("CSV 34 EMAP"));
-	else if (_emapInfo.topInspEmap == EmapType::TEXT_FILE_EMAP)ui.comboBox_emapTopInsp->setCurrentIndex(ui.comboBox_emapTopInsp->findText("TEXT FILE EMAP"));
-	
-	ui.comboBox_emapBotInsp->addItems(inspType);
-	if (_emapInfo.botInspEmap == EmapType::CSV01_EMAP) ui.comboBox_emapBotInsp->setCurrentIndex(ui.comboBox_emapBotInsp->findText("CSV 01 EMAP"));
-	else if (_emapInfo.botInspEmap == EmapType::CSV34_EMAP)ui.comboBox_emapBotInsp->setCurrentIndex(ui.comboBox_emapBotInsp->findText("CSV 34 EMAP"));
-	else if (_emapInfo.botInspEmap == EmapType::TEXT_FILE_EMAP)ui.comboBox_emapBotInsp->setCurrentIndex(ui.comboBox_emapBotInsp->findText("TEXT FILE EMAP"));
-	
-	if (_enableEmap) ui.frame_emapSetting->show();
-	else ui.frame_emapSetting->hide();
 
 	qApp->installEventFilter(this);
 
@@ -1084,9 +1004,6 @@ void VisionApp::initStartupState()
 
 	////config ui
 	//ui.checkBox_enableFiducial->setVisible(false);
-	//ui.checkBox_enableRmsRecipe->setVisible(false);
-	//ui.checkBox_enableMounterChecking->setVisible(false);
-	//ui.checkBox_enableGoldenRecipeChecking->setVisible(false);
 	//ui.groupBox_eMap->setVisible(false);
 	//ui.groupBox_2->setVisible(false);
 
@@ -1138,12 +1055,8 @@ void VisionApp::initStartupState()
 	ui.comboBox_barcodeType->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_circleColor->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_CSALocatorOptic->installEventFilter(new util::ComboScrollBlocker());
-	ui.comboBox_emapBotInsp->installEventFilter(new util::ComboScrollBlocker());
-	ui.comboBox_emapTemplate->installEventFilter(new util::ComboScrollBlocker());
-	ui.comboBox_emapTopInsp->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_FeatureLearning->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_fiducialMethod->installEventFilter(new util::ComboScrollBlocker());
-	ui.comboBox_warpageMethod->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_zstack_acqType->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_stitchingMethod ->installEventFilter(new util::ComboScrollBlocker());
 	ui.comboBox_lineScanAxis->installEventFilter(new util::ComboScrollBlocker());
@@ -1419,18 +1332,6 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.checkBox_enableFiducial, &QCheckBox::stateChanged, this, [=](int state) {
 		enableFiducial((bool)state);
 	});
-	connect(ui.checkBox_enable3D, &QCheckBox::stateChanged, this, [=](int state) {
-		_enable3D = (bool)state;
-		saveRecipeConfig();
-	});
-	connect(ui.checkBox_disable2D, &QCheckBox::stateChanged, this, [=](int state) {
-		_enable2D = state != Qt::Checked;
-		saveRecipeConfig();
-	});
-	connect(ui.checkBox_enableVisionObjectSampling, &QCheckBox::stateChanged, this, [=](int state) {
-		_enableVisionObjectSampling = (bool)state;
-		saveRecipeConfig();
-	});
 	
 	connect(ui.doubleSpinBox_passYieldPerc, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [&](double value) {
 		_passYieldPerc = value;
@@ -1443,65 +1344,8 @@ void VisionApp::connectSignalAndSlot()
 		AuditLog::instance().log(QStringLiteral("VIEW_ADD"));
 	});
 
-	connect(ui.checkBox_saveDefectVoImg, &QCheckBox::stateChanged, this, [=](int state) {
-		_saveDefectVoImg = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Save_Defect_Vo_Image", _saveDefectVoImg);
-		updateSystemInfo(_systemObj);
-	});
-
-	connect(ui.checkBox_saveDefectRectVoImg, &QCheckBox::stateChanged, this, [=](int state) {
-		_saveDefectRectVoImg = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Save_Defect_Rect_Vo_Image", _saveDefectRectVoImg);
-		updateSystemInfo(_systemObj);
-	});
-
-
 	connect(ui.checkBox_EnableSaveInspectionImage, &QCheckBox::stateChanged, this, [=](int state) {
 		enableSaveInspectionImage((bool)state);
-	});
-
-	connect(ui.checkBox_enableEmap, &QCheckBox::stateChanged, this, [=](int state) {
-		_enableEmap = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Enable_Emap", _enableEmap);
-		updateSystemInfo(_systemObj);
-
-		if (_enableEmap) ui.frame_emapSetting->show();
-		else ui.frame_emapSetting->hide();
-
-		if (!_enableEmap)
-		{
-			//_emapReEnableTimer.start();
-		}
-		else
-		{
-			/*_emapReEnableTimerSeconds = 60;
-			_emapReEnableTimer.stop();
-			ui.label_emapTimer->clear();*/
-		}
-	});
-
-	connect(ui.checkBox_enableRmsRecipe, &QCheckBox::stateChanged, this, [=](int state) {
-		_enableRmsRecipe = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Enable_RMS_Recipe", _enableRmsRecipe);
-		updateSystemInfo(_systemObj);
-	});
-
-	connect(ui.checkBox_enableMounterChecking, &QCheckBox::stateChanged, this, [=](int state) {
-		_enableMounterChecking = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Enable_Mounter_Checking", _enableMounterChecking);
-		updateSystemInfo(_systemObj);
-	});
-
-	connect(ui.checkBox_enableGoldenRecipeChecking, &QCheckBox::stateChanged, this, [=](int state) {
-		_enableGoldenRecipeChecking = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Enable_Golden_Recipe_Checking", _enableGoldenRecipeChecking);
-		updateSystemInfo(_systemObj);
-	});
-
-	connect(ui.checkBox_saveUnstackedImages, &QCheckBox::stateChanged, this, [=](int state) {
-		SystemData::instance()._saveUnstackedImages = (bool)state;
-		jsonHelper::setJsonValue(_systemObj, "Save_Unstacked_Images", (bool)SystemData::instance()._saveUnstackedImages);
-		updateSystemInfo(_systemObj);
 	});
 
 	connect(ui.checkBox_saveUnstitchedImages, &QCheckBox::stateChanged, this, [=](int state) {
@@ -1516,43 +1360,6 @@ void VisionApp::connectSignalAndSlot()
 		updateSystemInfo(_systemObj);
 	});
 
-	connect(ui.checkBox_usedAsRecipe1, &QCheckBox::stateChanged, this, [=](int state) {
-		if (state == Qt::Checked) {
-			QSignalBlocker blocker(ui.checkBox_usedAsRecipe2);
-			ui.checkBox_usedAsRecipe2->setChecked(false);
-		}
-		jsonHelper::setJsonValue(_systemObj, "Used_As_Recipe1", ui.checkBox_usedAsRecipe1->isChecked());
-		jsonHelper::setJsonValue(_systemObj, "Used_As_Recipe2", ui.checkBox_usedAsRecipe2->isChecked());
-		updateSystemInfo(_systemObj);
-	});
-
-	connect(ui.checkBox_usedAsRecipe2, &QCheckBox::stateChanged, this, [=](int state) {
-		if (state == Qt::Checked) {
-			QSignalBlocker blocker(ui.checkBox_usedAsRecipe1);
-			ui.checkBox_usedAsRecipe1->setChecked(false);
-		}
-		jsonHelper::setJsonValue(_systemObj, "Used_As_Recipe1", ui.checkBox_usedAsRecipe1->isChecked());
-		jsonHelper::setJsonValue(_systemObj, "Used_As_Recipe2", ui.checkBox_usedAsRecipe2->isChecked());
-		updateSystemInfo(_systemObj);
-	});
-
-	if (ui.checkBox_usedAsRecipe1->isChecked() && ui.checkBox_usedAsRecipe2->isChecked()) {
-		QSignalBlocker blocker(ui.checkBox_usedAsRecipe2);
-		ui.checkBox_usedAsRecipe2->setChecked(false);
-	}
-
-	connect(ui.checkBox_psp, &QCheckBox::stateChanged, this, [=](int state) {
-		SystemData::instance()._psp = state;
-		jsonHelper::setJsonValue(_systemObj, "PSP", (bool)SystemData::instance()._psp);
-		updateSystemInfo(_systemObj);
-
-		if (SystemData::instance()._psp) {
-			CAMManager::instance().setTriggerOutput(_camID, "", "Line2");
-		}
-		else {
-			CAMManager::instance().setTriggerOutput(_camID, "", "Software");
-		}
-	});
 
 	connect(ui.checkBox_machineDebugMode, &QCheckBox::stateChanged, this, [=](int state) {
 		SystemData::instance()._machineDebugMode = state;
@@ -1567,10 +1374,6 @@ void VisionApp::connectSignalAndSlot()
 				MotionController::instance().enable_motion(false);
 			}
 		}
-	});
-
-	connect(ui.checkBox_recipeDryRun, &QCheckBox::stateChanged, this, [=](int state) {
-		_dryRun = state;
 	});
 
 	connect(ui.checkBox_bypassInspectionMode, &QCheckBox::stateChanged, this, [=](int state) {
@@ -1684,181 +1487,7 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.lineEditUserName, SIGNAL(returnPressed()), this, SLOT(verifyLogin()));
 	connect(ui.lineEditPassword, SIGNAL(returnPressed()), this, SLOT(verifyLogin()));
 
-	// emap config
-	connect(ui.radioButton_emapAuto, &QRadioButton::toggled, this, [=](bool checked) {
-		if (checked) {
-			_emapInfo.mode = EmapMode::AUTO;
-
-			if (!_isUseEmapTemplate) {
-				jsonHelper::setJsonValue(_systemObj, "Emap_Mode", _emapInfo.mode);
-				updateSystemInfo(_systemObj);
-			}
-		
-		
-		}
-		
-	});
-	connect(ui.radioButton_csv01Emap, &QRadioButton::toggled, this, [=](bool checked) {
-		if (checked) {
-			_emapInfo.mode = EmapMode::CSV01;
-			
-			if (!_isUseEmapTemplate)
-			{
-				jsonHelper::setJsonValue(_systemObj, "Emap_Mode", _emapInfo.mode);
-				updateSystemInfo(_systemObj);
-			}
-			
-		}	
-	});
-	connect(ui.radioButton_csv34Emap, &QRadioButton::toggled, this, [=](bool checked) {
-		if (checked) {
-			_emapInfo.mode = EmapMode::CSV34;
-			
-			if (!_isUseEmapTemplate)
-			{
-				jsonHelper::setJsonValue(_systemObj, "Emap_Mode", _emapInfo.mode);
-				updateSystemInfo(_systemObj);
-			}
-
-		}
-	});
-	connect(ui.radioButton_textFileEmap, &QRadioButton::toggled, this, [=](bool checked) {
-		if (checked) {
-			_emapInfo.mode = EmapMode::TEXT_FILE;
-		
-			if (!_isUseEmapTemplate)
-			{
-				jsonHelper::setJsonValue(_systemObj, "Emap_Mode", _emapInfo.mode);
-				updateSystemInfo(_systemObj);
-			}
-			
-		}
-	
-	});
-	QObject::connect(ui.comboBox_emapTopInsp, QOverload<int>::of(&QComboBox::currentIndexChanged), [&](int index) {
-		if (ui.comboBox_emapTopInsp->currentText() == "CSV 01 EMAP") _emapInfo.topInspEmap = EmapType::CSV01_EMAP;
-		else if (ui.comboBox_emapTopInsp->currentText() == "CSV 34 EMAP")_emapInfo.topInspEmap = EmapType::CSV34_EMAP;
-		else if (ui.comboBox_emapTopInsp->currentText() == "TEXT FILE EMAP")_emapInfo.topInspEmap = EmapType::TEXT_FILE_EMAP;
-		
-		if (!_isUseEmapTemplate)
-		{
-			jsonHelper::setJsonValue(_systemObj, "Emap_Top_Insp", _emapInfo.topInspEmap);
-			updateSystemInfo(_systemObj);
-		}
-	});
-	QObject::connect(ui.comboBox_emapBotInsp, QOverload<int>::of(&QComboBox::currentIndexChanged), [&](int index) {
-		if (ui.comboBox_emapBotInsp->currentText() == "CSV 01 EMAP") _emapInfo.botInspEmap = EmapType::CSV01_EMAP;
-		else if (ui.comboBox_emapBotInsp->currentText() == "CSV 34 EMAP")_emapInfo.botInspEmap = EmapType::CSV34_EMAP;
-		else if (ui.comboBox_emapBotInsp->currentText() == "TEXT FILE EMAP")_emapInfo.botInspEmap = EmapType::TEXT_FILE_EMAP;
-	
-		if (!_isUseEmapTemplate)
-		{
-			jsonHelper::setJsonValue(_systemObj, "Emap_Bot_Insp", _emapInfo.botInspEmap);
-			updateSystemInfo(_systemObj);
-		}
-	});
-	connect(ui.toolButton_browseCsvEmap, &QToolButton::clicked, this, [&]() {
-
-		QFileDialog dialog;
-		dialog.setFileMode(QFileDialog::Directory);
-		dialog.setOption(QFileDialog::ShowDirsOnly);
-		QString csvPathDir = QFileDialog::getExistingDirectory(this, tr("Choose Directory"), Common::Directory::getRecipeCurrentPath());
-		if (!csvPathDir.isEmpty())
-		{
-			_emapInfo.csvEmapDir.append(csvPathDir);
-
-			ui.listWidget_csvEmapDir->clear();
-			ui.listWidget_csvEmapDir->addItems(_emapInfo.csvEmapDir);
-
-			QJsonArray arr;
-			for (auto d : _emapInfo.csvEmapDir) arr.append(d);
-			
-			if (!_isUseEmapTemplate)
-			{
-				jsonHelper::setJsonValue(_systemObj, "Emap_Csv_Dir", arr);
-				updateSystemInfo(_systemObj);
-			}
-		}
-	});
-
-	connect(ui.toolButton_browseTextFileEmap, &QToolButton::clicked, this, [&]() {
-		QString oriCadPath;
-		QFileDialog dialog;
-		dialog.setFileMode(QFileDialog::Directory);
-		dialog.setOption(QFileDialog::ShowDirsOnly);
-		QString textFileDir = QFileDialog::getExistingDirectory(this, tr("Choose Directory"), Common::Directory::getRecipeCurrentPath());
-		if (!textFileDir.isEmpty())
-		{
-			// --- 
-			_emapInfo.textFileEmapDir.append(textFileDir);
-
-			ui.listWidget_txtEmapDir->clear();
-			ui.listWidget_txtEmapDir->addItems(_emapInfo.textFileEmapDir);
-
-			QJsonArray arr;
-			for (auto d : _emapInfo.textFileEmapDir) arr.append(d);
-			
-			if (!_isUseEmapTemplate)
-			{
-				jsonHelper::setJsonValue(_systemObj, "Emap_Text_File_Dir", arr);
-				updateSystemInfo(_systemObj);
-			}
-		}
-		
-	});
-	connect(ui.toolButton_deleteCsvEmapPath, &QToolButton::clicked, this, [&]() {
-		QListWidgetItem* item = ui.listWidget_csvEmapDir->currentItem();
-		if (item == nullptr) return;
-		QString selectedDir = item->text();
-
-		_emapInfo.csvEmapDir.removeAt(_emapInfo.csvEmapDir.indexOf(selectedDir));
-
-		ui.listWidget_csvEmapDir->clear();
-		ui.listWidget_csvEmapDir->addItems(_emapInfo.csvEmapDir);
-
-		QJsonArray arr;
-		for (auto d : _emapInfo.csvEmapDir) arr.append(d);
-		
-		if (!_isUseEmapTemplate)
-		{
-			jsonHelper::setJsonValue(_systemObj, "Emap_Csv_Dir", arr);
-			updateSystemInfo(_systemObj);
-		}
-	});
-
-	connect(ui.toolButton_deleteTxtEmapPath, &QToolButton::clicked, this, [&]() {
-		QListWidgetItem* item = ui.listWidget_txtEmapDir->currentItem();
-		if (item == nullptr) return;
-		QString selectedDir = item->text();
-
-		_emapInfo.textFileEmapDir.removeAt(_emapInfo.textFileEmapDir.indexOf(selectedDir));
-
-		ui.listWidget_txtEmapDir->clear();
-		ui.listWidget_txtEmapDir->addItems(_emapInfo.textFileEmapDir);
-
-		QJsonArray arr;
-		for (auto d : _emapInfo.textFileEmapDir) arr.append(d);
-	
-		if (!_isUseEmapTemplate)
-		{
-			jsonHelper::setJsonValue(_systemObj, "Emap_Text_File_Dir", arr);
-			updateSystemInfo(_systemObj);
-		}
-	});
 	//BareBoardAnalysis
-	connect(ui.toolButton_runBBA, &QToolButton::clicked, this, [&]() {
-		_enable2D = true;
-		_enable3D = true;
-		const QString src = QDir::cleanPath(Common::Directory::getRecipeCurrentPath());
-		const QString dst = QDir::cleanPath(Common::Directory::RecipePath());
-		_inbbaInspection = true;
-		this->copyAndPatchRecipe(src, dst);
-		openRecipe("", true);
-
-		inspect2D3D();
-		setupProductionDir();
-		//run();
-		});
 	
 	connect(ui.comboBox_stitchingMethod, SIGNAL(currentIndexChanged(int)), this, SLOT(saveStitchingMethod()));
 
@@ -2473,61 +2102,6 @@ void VisionApp::connectSignalAndSlot()
 		_networkPathChecker.setIpAddress(jsonHelper::getString(_systemObj, QStringLiteral("Verification_Station_Ip_Address")));
 	});
 
-	connect(ui.pushButton_reloadEmapTemplate, &QPushButton::clicked, [=]() {
-		loadEmapSetting();
-		refreshEmapSettingUi();
-	});
-
-	connect(ui.radioButton_useLocalEmapSetting, &QRadioButton::toggled, this, [=](bool checked) {
-		if (checked) {
-			_isUseEmapTemplate = false;
-
-			ui.label_emapTemplate->hide();
-			ui.comboBox_emapTemplate->hide();
-			ui.frame_emapSetting->setEnabled(true);
-			_emapInfo = _emapLocalSetting;
-			refreshEmapSettingUi();
-			jsonHelper::setJsonValue(_systemObj, "Enable_Emap_Template", _isUseEmapTemplate);
-			updateSystemInfo(_systemObj);
-		}
-		
-	});
-	connect(ui.radioButton_useEmapTemplate, &QRadioButton::toggled, this, [=](bool checked) {
-		if (checked) {
-			_isUseEmapTemplate = true;
-
-			ui.comboBox_emapTemplate->setCurrentIndex(ui.comboBox_emapTemplate->findText(_emapTemplate));
-
-			ui.label_emapTemplate->show();
-			ui.comboBox_emapTemplate->show();
-			ui.frame_emapSetting->setEnabled(false);
-			if (_emapTemplateList.contains(ui.comboBox_emapTemplate->currentText()))
-			{
-				_emapInfo = _emapTemplateList[ui.comboBox_emapTemplate->currentText()];
-			}
-			refreshEmapSettingUi();
-			jsonHelper::setJsonValue(_systemObj, "Enable_Emap_Template", _isUseEmapTemplate);
-			updateSystemInfo(_systemObj);
-		}
-	});
-
-	QObject::connect(ui.comboBox_emapTemplate, QOverload<int>::of(&QComboBox::currentIndexChanged), [&](int index) {
-	
-		if (!_isUseEmapTemplate) return;
-		if (_emapTemplateList.contains(ui.comboBox_emapTemplate->currentText()))
-		{
-			_emapInfo = _emapTemplateList[ui.comboBox_emapTemplate->currentText()];
-			_emapTemplate = _emapInfo.templateName;
-			
-			jsonHelper::setJsonValue(_systemObj, "Emap_Template_Name", _emapTemplate);
-			updateSystemInfo(_systemObj);
-		}
-		
-		refreshEmapSettingUi();
-
-	});
-
-
 	connect(_grDialog, &GoldenRecipeDialog::signalRequestGoldenRecipeResult, this, [this]() {
 		/*bool exeEXist = true;
 		LPCWSTR a = L"Algo Editor";
@@ -2581,68 +2155,6 @@ void VisionApp::connectSignalAndSlot()
 
 	connectShortcuts();
 }
-
-void VisionApp::refreshEmapSettingUi()
-{
-	qDebug() << "Refresh Emap Setting UI";
-	if (_isUseEmapTemplate)
-	{
-		ui.label_emapDescription->setStyleSheet("color: red");
-		ui.label_emapDescription->setText("CHANGE TEMPLATE SETTING AT RESULT VIEWER!");
-	}
-	else
-	{
-		ui.label_emapDescription->setStyleSheet("color: white");
-		ui.label_emapDescription->setText("LOCAL EMAP SETTING");
-	}
-	// Emap Config 
-	QStringList inspType = {
-		"CSV 01 EMAP",
-		"CSV 34 EMAP",
-		"TEXT FILE EMAP"
-	};
-	
-
-	//incoming emap
-	ui.listWidget_csvEmapDir->clear();
-	ui.listWidget_txtEmapDir->clear();
-	if (_emapInfo.mode == EmapMode::AUTO)ui.radioButton_emapAuto->setChecked(true);
-	else if (_emapInfo.mode == EmapMode::CSV01)ui.radioButton_csv01Emap->setChecked(true);
-	else if (_emapInfo.mode == EmapMode::CSV34)ui.radioButton_csv34Emap->setChecked(true);
-	else if (_emapInfo.mode == EmapMode::TEXT_FILE)	ui.radioButton_textFileEmap->setChecked(true);
-
-	ui.comboBox_emapTopInsp->blockSignals(true);
-	ui.comboBox_emapBotInsp->blockSignals(true);
-	ui.comboBox_emapTopInsp->clear();
-	ui.comboBox_emapBotInsp->clear();
-	ui.comboBox_emapTopInsp->addItems(inspType);
-	ui.comboBox_emapBotInsp->addItems(inspType);
-	ui.comboBox_emapTopInsp->blockSignals(false);
-	ui.comboBox_emapBotInsp->blockSignals(false);
-
-	if (_emapInfo.topInspEmap == EmapType::CSV01_EMAP) ui.comboBox_emapTopInsp->setCurrentIndex(ui.comboBox_emapTopInsp->findText("CSV 01 EMAP"));
-	else if (_emapInfo.topInspEmap == EmapType::CSV34_EMAP) ui.comboBox_emapTopInsp->setCurrentIndex(ui.comboBox_emapTopInsp->findText("CSV 34 EMAP"));
-	else if (_emapInfo.topInspEmap == EmapType::TEXT_FILE_EMAP)ui.comboBox_emapTopInsp->setCurrentIndex(ui.comboBox_emapTopInsp->findText("TEXT FILE EMAP"));
-
-	if (_emapInfo.botInspEmap == EmapType::CSV01_EMAP) ui.comboBox_emapBotInsp->setCurrentIndex(ui.comboBox_emapBotInsp->findText("CSV 01 EMAP"));
-	else if (_emapInfo.botInspEmap == EmapType::CSV34_EMAP) ui.comboBox_emapBotInsp->setCurrentIndex(ui.comboBox_emapBotInsp->findText("CSV 34 EMAP"));
-	else if (_emapInfo.botInspEmap == EmapType::TEXT_FILE_EMAP)ui.comboBox_emapBotInsp->setCurrentIndex(ui.comboBox_emapBotInsp->findText("TEXT FILE EMAP"));
-	ui.listWidget_csvEmapDir->addItems(_emapInfo.csvEmapDir);
-	ui.listWidget_txtEmapDir->addItems(_emapInfo.textFileEmapDir);
-
-	// template
-	ui.comboBox_emapTemplate->blockSignals(true);
-	ui.comboBox_emapTemplate->clear();
-	for (auto a : _emapTemplateList)ui.comboBox_emapTemplate->addItem(a.templateName);
-	ui.comboBox_emapTemplate->setCurrentIndex(ui.comboBox_emapTemplate->findText(_emapInfo.templateName));
-	ui.comboBox_emapTemplate->blockSignals(false);
-
-	if (_isUseEmapTemplate) ui.radioButton_useEmapTemplate->setChecked(true);
-	else  ui.radioButton_useLocalEmapSetting->setChecked(true);
-	
-	
-}
-
 
 void VisionApp::executeUIFunc(std::function<void()> func) {
 	func();
@@ -4017,7 +3529,7 @@ void VisionApp::testRun()
 
 	bool online = ui.toolButton_toggleOnlineRun->isChecked();
 	auto run1stFOVOnly = ui.checkBox_runOneFOVonly->isChecked();
-	bool disable2DInspection = ui.checkBox_disable2D->isChecked();
+	bool disable2DInspection = false;
 
 	SystemData::instance()._offlineRun = !online;
 
@@ -4176,38 +3688,6 @@ void VisionApp::runOffline()
 	setupProductionDir();
 	
 
-	if (!_enableEmap)
-	{
-		QMessageBox messageBox;
-		messageBox.setWindowTitle("EMAP DISABLED!");
-		messageBox.setText("<font color=\"red\"><b>!!INCOMING EMAP DISABLED WARNING!!</b></font><br>Yes to continue process<br>No to stop the lot inspection");
-		messageBox.setIcon(QMessageBox::Warning);
-
-		// Set a bigger font size for the message text
-		QFont font = messageBox.font();
-		font.setPointSize(24); // Adjust the font size as needed
-		messageBox.setFont(font);
-
-		// Adjust the size of the message box
-		messageBox.setMinimumWidth(1600); // Adjust the width as needed
-		messageBox.setMinimumHeight(1600); // Adjust the height as needed
-		messageBox.setWindowFlag(Qt::WindowStaysOnTopHint);
-
-		// Add Yes and No buttons
-		messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-
-		// Execute and get the user's response
-		int result = messageBox.exec();
-
-		if (result == QMessageBox::Yes) {
-			// Handle Yes response
-		}
-		else if (result == QMessageBox::No) {
-			// Handle No response
-		}
-	}
-
-	//readEmap();
 	
 	// reset skip vo 
 	for (auto& vo : _visionObject)
@@ -4217,11 +3697,7 @@ void VisionApp::runOffline()
 		vo.voBarcodeName = "";
 		vo.localBarcode = "";
 	}
-	if (_enableVisionObjectSampling)
-	{
-		visionObjectSampling(); // !!will crash if thre is no unit inside existing view!!
-	}
-	
+
 
 	//setup InspectionThread
 	_templateLibraryTab->loadAlgoTemplateListMask();
@@ -8960,13 +8436,7 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 		if (!systemObj.contains("Machine_Share_Folder_Path")) {
 			systemObj.insert("Machine_Share_Folder_Path", "C:/Advanced/Data/");
 		}
-		if (!systemObj.contains("Emap_Fail_Alarm_Percentage")) {
-			systemObj.insert("Emap_Fail_Alarm_Percentage", 50);
-		}
 		// -- 
-		if (!systemObj.contains("Emap_Path")) {
-			systemObj.insert("Emap_Path", "C:/Advanced/Data/SampleEmap.dat");
-		}
 		if (!systemObj.contains("Verification_Station_Ip_Address")) {
 			systemObj.insert("Verification_Station_Ip_Address", "C:/");
 			ui.radioButton_rvLocalPC->setChecked(true);
@@ -8995,99 +8465,6 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			}
 		}
 		// -- 
-		if (!systemObj.contains("Emap_Mode")) {
-			systemObj.insert("Emap_Mode", EmapMode::AUTO);
-			ui.radioButton_emapAuto->setChecked(true);
-		}
-		else
-		{
-			_emapLocalSetting.mode = static_cast<EmapMode>(jsonHelper::getInteger(_systemObj, "Emap_Mode", EmapMode::AUTO));
-			if (_emapLocalSetting.mode == EmapMode::AUTO)
-			{
-				ui.radioButton_emapAuto->setChecked(true);
-			}
-			else if (_emapLocalSetting.mode == EmapMode::CSV01)
-			{
-				ui.radioButton_csv01Emap->setChecked(true);
-			}
-			else if (_emapLocalSetting.mode == EmapMode::CSV34)
-			{
-				ui.radioButton_csv34Emap->setChecked(true);
-			}
-			else if (_emapLocalSetting.mode == EmapMode::TEXT_FILE)
-			{
-				ui.radioButton_textFileEmap->setChecked(true);
-			}
-
-		}
-		if (!systemObj.contains("Emap_Top_Insp")) {
-			systemObj.insert("Emap_Top_Insp", EmapType::TEXT_FILE_EMAP);
-		}
-		else
-		{
-			_emapLocalSetting.topInspEmap = static_cast<EmapType>(jsonHelper::getInteger(_systemObj, "Emap_Top_Insp", EmapType::TEXT_FILE_EMAP));
-		}
-		if (!systemObj.contains("Emap_Bot_Insp")) {
-			systemObj.insert("Emap_Bot_Insp", EmapType::TEXT_FILE_EMAP);
-		}
-		else
-		{
-			_emapLocalSetting.botInspEmap = static_cast<EmapType>(jsonHelper::getInteger(_systemObj, "Emap_Bot_Insp", EmapType::TEXT_FILE_EMAP));
-		}
-
-
-		if (!systemObj.contains("Emap_Csv_Dir")) {
-			QJsonArray a;
-			systemObj.insert("Emap_Csv_Dir", a);
-		}
-		else
-		{
-			_emapLocalSetting.csvEmapDir.clear();
-			QJsonArray arrayDefault;
-			QJsonArray pathArray = jsonHelper::getArray(_systemObj, "Emap_Csv_Dir", arrayDefault);
-			for (auto p : pathArray)
-			{
-				_emapLocalSetting.csvEmapDir.append(p.toString());
-			}
-			ui.listWidget_csvEmapDir->clear();
-			ui.listWidget_csvEmapDir->addItems(_emapLocalSetting.csvEmapDir);
-
-		}
-		if (!systemObj.contains("Emap_Text_File_Dir")) {
-			QJsonArray a;
-			systemObj.insert("Emap_Text_File_Dir", a);
-		}
-		else
-		{
-			_emapLocalSetting.textFileEmapDir.clear();
-			QJsonArray arrayDefault;
-			QJsonArray pathArray = jsonHelper::getArray(_systemObj, "Emap_Text_File_Dir", arrayDefault);
-			for (auto p : pathArray)
-			{
-				_emapLocalSetting.textFileEmapDir.append(p.toString());
-			}
-			ui.listWidget_txtEmapDir->clear();
-			ui.listWidget_txtEmapDir->addItems(_emapLocalSetting.textFileEmapDir);
-		}
-
-		if (!systemObj.contains("Save_Defect_Vo_Image")) {
-			systemObj.insert("Save_Defect_Vo_Image", true);
-		}
-		else
-		{
-			_saveDefectVoImg = jsonHelper::getBool(_systemObj, "Save_Defect_Vo_Image", true);
-				ui.checkBox_saveDefectVoImg->setChecked(_saveDefectVoImg);
-		}
-
-		if (!systemObj.contains("Save_Defect_Rect_Vo_Image")) {
-			systemObj.insert("Save_Defect_Rect_Vo_Image", true);
-		}
-		else
-		{
-			_saveDefectRectVoImg = jsonHelper::getBool(_systemObj, "Save_Defect_Rect_Vo_Image", true);
-				ui.checkBox_saveDefectRectVoImg->setChecked(_saveDefectRectVoImg);
-		}
-
 		if (!systemObj.contains("Save_Inspection_Image")) {
 			systemObj.insert("Save_Inspection_Image", true);
 			_saveInspImg = true;
@@ -9101,33 +8478,6 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 		nvs::set_background_color(ui.toolButton_enableSaveInspImages, _saveInspImg ? Qt::green : Qt::red);
 
 
-		if (!systemObj.contains("Emap_Template_Name")) {
-			systemObj.insert("Emap_Template_Name", "");
-		}
-		else
-		{
-			_emapTemplate = jsonHelper::getString(_systemObj, "Emap_Template_Name", "");
-			ui.comboBox_emapTemplate->setCurrentIndex(ui.comboBox_emapTemplate->findText(_emapTemplate));
-		}
-
-		if (!systemObj.contains("Enable_Emap")) {
-			systemObj.insert("Enable_Emap", true);
-		}
-		else
-		{
-			_enableEmap = jsonHelper::getBool(_systemObj, "Enable_Emap", true);
-			ui.checkBox_enableEmap->setChecked(_enableEmap);
-		}
-
-		if (!systemObj.contains("Enable_Emap_Template")) {
-			systemObj.insert("Enable_Emap_Template", false);
-		}
-		else
-		{
-			_isUseEmapTemplate = jsonHelper::getBool(_systemObj, "Enable_Emap_Template", true);
-		/*	if (_isUseEmapTemplate) ui.radioButton_useEmapTemplate->setChecked(true);
-			else ui.radioButton_useLocalEmapSetting->setChecked(true);*/
-		}
 		
 		if (!systemObj.contains("Storage_Limit")) {
 			systemObj.insert("Storage_Limit", 90);
@@ -9158,31 +8508,6 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 				_clearingPathList.append(cp.toString());
 			}
 		}
-		if (!systemObj.contains("Enable_RMS_Recipe")) {
-			systemObj.insert("Enable_RMS_Recipe", false);
-		}
-		else
-		{
-			_enableRmsRecipe = jsonHelper::getBool(_systemObj, "Enable_RMS_Recipe", false);
-			ui.checkBox_enableRmsRecipe->setChecked(_enableRmsRecipe);
-		}
-		if (!systemObj.contains("Enable_Mounter_Checking")) {
-			systemObj.insert("Enable_Mounter_Checking", false);
-		}
-		else
-		{
-			_enableMounterChecking = jsonHelper::getBool(_systemObj, "Enable_Mounter_Checking", false);
-			ui.checkBox_enableMounterChecking->setChecked(_enableMounterChecking);
-		}
-		if (!systemObj.contains("Enable_Golden_Recipe_Checking")) {
-			systemObj.insert("Enable_Golden_Recipe_Checking", false);
-		}
-		else
-		{
-			_enableGoldenRecipeChecking = jsonHelper::getBool(_systemObj, "Enable_Golden_Recipe_Checking", false);
-			ui.checkBox_enableGoldenRecipeChecking->setChecked(_enableGoldenRecipeChecking);
-		}
-
 		if (systemObj.contains("Camera")) {
 			auto camObj = _systemObj["Camera"].toObject();
 			CAMManager::instance().setDefaultWidth(jsonHelper::getInteger(camObj, "Width", 5120));
@@ -9213,31 +8538,6 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			ui.checkBox_useRecipeScaling->setChecked(SystemData::instance()._useRecipeScale);
 		}
 
-		if (!systemObj.contains("Used_As_Recipe1")) {
-			systemObj.insert("Used_As_Recipe1", false);
-		}
-		if (!systemObj.contains("Used_As_Recipe2")) {
-			systemObj.insert("Used_As_Recipe2", false);
-		}
-
-		bool usedAsRecipe1 = jsonHelper::getBool(systemObj, "Used_As_Recipe1", false);
-		bool usedAsRecipe2 = jsonHelper::getBool(systemObj, "Used_As_Recipe2", false);
-		if (usedAsRecipe1 && usedAsRecipe2) {
-			usedAsRecipe2 = false;
-			systemObj.insert("Used_As_Recipe2", false);
-		}
-		ui.checkBox_usedAsRecipe1->setChecked(usedAsRecipe1);
-		ui.checkBox_usedAsRecipe2->setChecked(usedAsRecipe2);
-
-		if (!systemObj.contains("PSP")) {
-			systemObj.insert("PSP", false);
-		}
-		else
-		{
-			SystemData::instance()._psp = jsonHelper::getBool(_systemObj, "PSP", false);
-			ui.checkBox_psp->setChecked(SystemData::instance()._psp);
-		}
-
 		if (!systemObj.contains("Machine_Debug_Mode")) {
 			systemObj.insert("Machine_Debug_Mode", false);
 		}
@@ -9245,15 +8545,6 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 		{
 			SystemData::instance()._machineDebugMode = jsonHelper::getBool(_systemObj, "Machine_Debug_Mode", false);
 			ui.checkBox_machineDebugMode->setChecked(SystemData::instance()._machineDebugMode);
-		}
-
-		if (!systemObj.contains("Save_Unstacked_Images")) {
-			systemObj.insert("Save_Unstacked_Images", false);
-		}
-		else
-		{
-			SystemData::instance()._saveUnstackedImages = jsonHelper::getBool(_systemObj, "Save_Unstacked_Images", false);
-			ui.checkBox_saveUnstackedImages->setChecked(SystemData::instance()._saveUnstackedImages);
 		}
 
 		if (!systemObj.contains("Save_Unstitched_Images")) {
@@ -12152,9 +11443,8 @@ void VisionApp::resetLoopFlags()
 {
 	ui.checkBox_runLooping->setChecked(false);
 	ui.checkBox_runOneFOVonly->setChecked(false);
-	_enable2D = !ui.checkBox_disable2D->isChecked();
-	_enable3D = ui.checkBox_enable3D->isChecked();
-	_enableVisionObjectSampling = ui.checkBox_enableVisionObjectSampling->isChecked();
+	_enable2D = true;
+	_enable3D = true;
 }
 
 void VisionApp::initMovieIcons()
@@ -12871,8 +12161,8 @@ void VisionApp::insertProductionToDataBase(QVector<ct::DefectResult>& defectResu
 
 	p.inspectionType = facing; // top or bottom
 
-	p.isSampling = _enableVisionObjectSampling;
-	p.incomingEmapPath = _emapInfo.incomingEmapPath;
+	p.isSampling = false;
+	p.incomingEmapPath = "";
 
 	int defectUnits = 0;
 	int skipUnits = 0;
@@ -12929,7 +12219,7 @@ void VisionApp::insertProductionToDataBase(QVector<ct::DefectResult>& defectResu
 	}
 
 	// emap template
-	p.emapTemplate = _emapInfo.templateName;
+	p.emapTemplate = "";
 	p.productionMode = _inspStatus.productionMode;
 
 
@@ -12941,16 +12231,7 @@ void VisionApp::insertProductionToDataBase(QVector<ct::DefectResult>& defectResu
 
 
 
-	DataBaseThread::ProductionExportMode exportMode = DataBaseThread::ProductionExportMode::Normal;
-	if (ui.checkBox_usedAsRecipe1->isChecked())
-	{
-		exportMode = DataBaseThread::ProductionExportMode::Recipe1;
-	}
-	else if (ui.checkBox_usedAsRecipe2->isChecked())
-	{
-		exportMode = DataBaseThread::ProductionExportMode::Recipe2;
-	}
-	_databaseThread.setProductionExportMode(exportMode);
+	_databaseThread.setProductionExportMode(DataBaseThread::ProductionExportMode::Normal);
 
 	_databaseThread.setSetting(
 		_sqliteDatabase, 
@@ -13602,7 +12883,6 @@ void VisionApp::inspectionDone(QVector<ct::DefectResult>& defectResults, QVector
 	time.log_duration("[InspectionDone] Update VO Status");
 	
 
-	updateEmap();
 	time.log_duration("[InspectionDone] Update Emap");
 
 	
@@ -13714,13 +12994,6 @@ void VisionApp::inspectionDone(QVector<ct::DefectResult>& defectResults, QVector
 	time.log_duration("[InspectionDone] UI Update");
 
 
-	if (_inbbaInspection)
-	{
-		runBareBoardAnalysis();
-		openRecipe("", true);
-		_inbbaInspection = false;
-	}
-	time.log_duration("[InspectionDone] Bare board analysis");
 
 
 	/*Common::Directory::CurrentImageSetPath = SystemData::instance()._workingPath;
@@ -14199,941 +13472,6 @@ void VisionApp::pasteVisionObject()
 
 	refreshDragBoxSequence();
 	updateTreeViewExplorer(Common::Directory::CurrentRecipe, _views, _visionObject);
-}
-
-void VisionApp::updateEmap()
-{
-	// 0= fail, 1 = pass;
-	qDebug() << "update Emap";
-	// update emap hash first
-	for (auto& vo : _visionObject)
-	{
-		QString key = QString::number(vo.row_id) + "[@]" + QString::number(vo.col_id) + "[@]" + QString::number(vo.island_id);
-
-		if (!vo.isPass || vo.ignore)
-		{
-			// fail and incoming considered defect in emap
-			_eMapHash[key] = false;
-			if(vo.skip||vo.forcedSkip) _eMapHash[key] = true; // if skip vo consider pass
-		}
-		else
-		{
-			
-			_eMapHash[key] = true;
-		}
-	
-	}
-
-
-
-
-	// now write a new emap file 
-	QString stripeID = SystemData::instance()._currentBarcode.c_str();
-
-
-	QString updatedEmapFilePath = Common::Directory::getProductionResultPath() + "/" + stripeID + ".dat";
-	QFile file1(updatedEmapFilePath);
-	bool fileSuc = file1.open(QIODevice::WriteOnly | QIODevice::Text);
-	if (fileSuc)
-	{
-		QTextStream out(&file1);
-
-		out << "STRIP MAP = {" << "\n";
-		out << "STRIP_ID = \"" << stripeID << "\"\n";
-		out << "MAP = {" << "\n";
-
-		for (int i = 0; i < _islandInfo.totalRow; i++)
-		{
-			for (int j = 0; j < _islandInfo.totalIsland; j++)
-			{
-				for (int k = 0; k < _islandInfo.totalCol; k++)
-				{
-					QString key = QString::number(i) + "[@]" + QString::number(k) + "[@]" + QString::number(j);
-					QString value = _eMapHash[key] == true ? "1" : "0";
-					out << value;
-					if (k == _islandInfo.totalCol - 1 && j == _islandInfo.totalIsland - 1 && i == _islandInfo.totalRow - 1)
-					{
-						// last row
-						out << "}\n}";
-					}
-				}
-				out << " ";
-			}
-			out << "\n";
-		}
-
-	}
-	file1.close();
-
-}
-
-void VisionApp::readIVEmap(QString productionFolderPath)
-{
-	QString EmapPath = QString(Common::Directory::getRecipeCurrentPath());
-	qDebug() << "Emap Path:" << EmapPath;
-	QString filePath = QFileDialog::getOpenFileName(this, tr("Select Emap file  to compare"), EmapPath, "txt File (*.txt)");
-	QString IVfolderPath = QFileDialog::getExistingDirectory(nullptr, "Select Folder", Common::Directory::getRecipeCurrentPath());
-	//QString filePath = "C:/Advanced/Data/recipe/GRNL/resultsEmap/GRNLX2001_MGP830803900_3508.txt"; // Replace with the actual file path
-
-	QFile file(filePath);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		qDebug() << "Failed to open emap file.";
-		return;
-	}
-
-	// Read the file contents
-	QTextStream in(&file);
-
-	QVector<QVector<int>> matrix;
-	QVector<bool> resultsIsPass;
-	int count = 0;
-	while (!in.atEnd()) {
-		QString line = in.readLine();
-		QVector<int> row;
-		if (line.contains(";"))
-		{
-			for (int i = 0; i < line.length(); i++) {
-				if (line[i] == '0')
-				{
-					resultsIsPass.append(false);
-					row.append(0);
-					count++;
-				}
-				else if (line[i] == '1')
-				{
-					resultsIsPass.append(true);
-					row.append(1);
-					count++;
-				}
-
-			}
-		}
-
-		/*qDebug() << "colCount:" << row.count();
-		qDebug() << "rows:" << row;*/
-		matrix.append(row);
-	}
-
-	// Close the file
-	file.close();
-
-	QStringList viewIDs;
-	QHash<QString, QString> mismatchedVODefects;
-	if (resultsIsPass.size() == _dragROI.size())
-	{
-		int escapeeCount = 0;
-		int falseCallCount = 0;
-		for (int i = 0; i < _dragROI.size(); i++)
-		{
-			QString id = _dragROI[i]->getId();
-			auto vo = _visionObject.find(id);
-			vo.value().viewID;
-			if (resultsIsPass[i] != vo.value().isPass)
-			{
-				if (!viewIDs.contains(vo.value().viewID))
-				{
-					viewIDs.append(vo.value().viewID);
-				}
-				QString status;
-				if (resultsIsPass[i])
-				{
-					falseCallCount++;
-					status = "falseCall";
-					qDebug() << "index:" << _dragROI[i]->_index << " voName:" << vo.value().objectName << "  FalseCall" << " isPass:" << resultsIsPass[i];
-
-				}
-				else
-				{
-					escapeeCount++;
-					status = "escapee";
-					qDebug() << "index:" << _dragROI[i]->_index << " voName:" << vo.value().objectName << "  Escapee" << " isPass:" << resultsIsPass[i];
-				}
-				_dragROI[i]->_comparisonStatus = status;
-				mismatchedVODefects.insert(vo.value().objectName, status);
-			}
-			else
-			{
-				_dragROI[i]->_comparisonStatus.clear();
-			}
-		}
-		qDebug() << "escapeeCount:" << escapeeCount;
-		qDebug() << "falseCallCount:" << falseCallCount;
-	}
-
-	QString defectPath = Common::Directory::getProductionDefectPath();
-	if (!productionFolderPath.isEmpty()) defectPath = productionFolderPath + "/Defects/";
-	QDir directory(defectPath);
-
-	// Get a list of all image files in the directory
-	QStringList subDirectories = directory.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-	// Loop through each subdirectory and recursively search for image files
-	QStringList imageFiles;
-	QStringList imageFilePaths;
-	for (const QString& subDirName : subDirectories) {
-		QDir subDir(directory.absoluteFilePath(subDirName));
-		QStringList files = subDir.entryList(QStringList() << "*.png" << "*.jpg" << "*.jpeg" << "*.bmp" << "*.gif", QDir::Files);
-		imageFiles.append(files);
-
-		for (const QString& filename : files) {
-			imageFilePaths.append(subDir.absoluteFilePath(filename));
-		}
-	}
-
-	// Loop through each image file in the directory and print their names
-	/*for (const QString& filename : imageFilePaths) {
-		qDebug() << "Image file Path:" << filename;
-	}*/
-
-	QString falseCallPath = defectPath + QString("FalseCall/");
-	CreateDirectoryA(falseCallPath.toStdString().c_str(), NULL);
-	QString escapeePath = defectPath + QString("Escapee/");
-	CreateDirectoryA(escapeePath.toStdString().c_str(), NULL);
-	QHash<QString, QString>::const_iterator def = mismatchedVODefects.constBegin();
-
-	while (def != mismatchedVODefects.constEnd())
-	{
-		for (int i = 0; i < imageFiles.size(); i++)
-		{
-			auto optic = _recipeOptics.constBegin();
-			while (optic != _recipeOptics.constEnd())
-			{
-
-				QString voName = def.key() + "_" + optic.value().name;
-				//QString voName = def.key() + "_RB";
-				QFileInfo file(imageFiles[i]);
-				if (file.baseName() == voName || file.baseName() == QString(voName + "_def"))
-				{
-					QString destinationPath;
-					if (def.value() == "falseCall")
-					{
-						destinationPath = falseCallPath + imageFiles[i];
-					}
-					else if (def.value() == "escapee")
-					{
-						destinationPath = escapeePath + imageFiles[i];
-					}
-
-					QFile::copy(imageFilePaths[i], destinationPath);
-				}
-				optic++;
-			}
-		}
-		def++;
-	}
-
-	QStringList IVimageFiles;
-	QStringList IVimageFilePaths;
-
-	QDir IVsubDir(IVfolderPath);
-	QStringList IVfiles = IVsubDir.entryList(QStringList() << "*.png" << "*.jpg" << "*.jpeg" << "*.bmp" << "*.gif", QDir::Files);
-	IVimageFiles.append(IVfiles);
-
-	for (const QString& IVfilename : IVfiles) {
-		IVimageFilePaths.append(IVsubDir.absoluteFilePath(IVfilename));
-	}
-
-	QHash<QString, QString>::const_iterator def1 = mismatchedVODefects.constBegin();
-	while (def1 != mismatchedVODefects.constEnd())
-	{
-		for (int i = 0; i < IVimageFiles.size(); i++)
-		{
-			QString voName = def1.key();
-
-			QFileInfo file(IVimageFiles[i]);
-			QStringList splitName = file.baseName().split("_");
-			QString IVvoName;
-			QString IVdefName = "unknown";
-			if (splitName.size() > 4)
-			{
-				IVvoName = voName.left(2) + splitName[2] + splitName[3];
-				IVdefName = splitName[1];
-			}
-			if (IVvoName == voName)
-			{
-				QString destinationPath;
-				if (def1.value() == "falseCall")
-				{
-					destinationPath = falseCallPath + IVvoName + "_IV_" + IVdefName + "_" + splitName[4] + ".jpg";
-				}
-				else if (def1.value() == "escapee")
-				{
-					destinationPath = escapeePath + IVvoName + "_IV_" + IVdefName + "_" + splitName[4] + ".jpg";
-				}
-
-				QFile::copy(IVimageFilePaths[i], destinationPath);
-			}
-		}
-		def1++;
-	}
-
-	//for (int i = 0; i < viewIDs.size(); i++)
-	//{
-	//	auto v = _views.value(viewIDs[i]);
-	//	auto ipf = path::getViewPath(Common::Directory::CurrentImageSetPath.toStdString(), v);
-
-	//	QImage img;
-	//	img.load(ipf.GetPath().c_str());
-
-	//	for (auto& def : mismatchedVODefects)
-	//	{
-	//		auto vo = _visionObject.find(def);
-	//	/*	auto x = FOVrect.x() - v.px.xmin;
-	//		auto y = FOVrect.y() - v.px.ymin;
-	//		auto w = FOVrect.width();
-	//		auto h = FOVrect.height();*/
-	//	}
-	//}
-}
-
-void VisionApp::saveComparisonEmap()
-{
-	auto col = ui.lineEdit_column->text().toInt() * 2;
-	auto row = ui.lineEdit_row->text().toInt();
-
-	QString comparisonEmapPath = Common::Directory::CachePath + "comparisonEmap.txt";
-	std::ofstream outFile(comparisonEmapPath.toStdString().c_str());
-
-	if (outFile.is_open()) {
-		for (int i = 0; i < _dragROI.size(); i++) {
-			// Write the value to the file
-
-			int status = 0;
-			if (_dragROI[i]->_comparisonStatus == "falseCall") status = 1;
-			else if (_dragROI[i]->_comparisonStatus == "escapee") status = 2;
-			outFile << status << "";
-
-			// Check if it's time to start a new row
-			if ((i + 1) % col == 0) {
-				outFile << "\n"; // Move to the next line
-			}
-		}
-
-		// Close the file
-		outFile.close();
-		std::cout << "Data saved to output.txt." << std::endl;
-	}
-	else {
-		std::cout << "Unable to open the file." << std::endl;
-	}
-
-
-}
-
-void VisionApp::readEmap()
-{
-	qDebug() << "ReadEmap: "<< _enableEmap;
-	qDebug() << "Force Read Emap: " << _lotInfo.forceEmap;
-	Timer time;
-	// reset Emap;
-	_eMapHash.clear();
-	for (auto& vo : _visionObject)
-	{
-		vo.ignore = false;
-	}
-
-	
-	if (_enableEmap)
-	{
-		bool readEmapSuc;
-		// reset ignore vo 
-		for (auto& vo : _visionObject)
-		{
-			vo.ignore = false;
-		}
-
-		if (_emapInfo.mode == EmapMode::AUTO)
-		{
-			if (_lotInfo.isTop)
-			{
-				if (_emapInfo.topInspEmap == EmapType::CSV01_EMAP)readEmapSuc = readEmap_Csv01();
-				else if (_emapInfo.topInspEmap == EmapType::CSV34_EMAP)readEmapSuc = readEmap_Csv34();
-				else if (_emapInfo.topInspEmap == EmapType::TEXT_FILE_EMAP)readEmapSuc = readEmap_textFile();
-				
-			}
-			else
-			{
-				if (_emapInfo.botInspEmap == EmapType::CSV01_EMAP)	readEmapSuc = readEmap_Csv01();
-				else if (_emapInfo.botInspEmap == EmapType::CSV34_EMAP)	readEmapSuc = readEmap_Csv34();
-				else if (_emapInfo.botInspEmap == EmapType::TEXT_FILE_EMAP)readEmapSuc = readEmap_textFile();
-				
-			}
-		}
-		else if (_emapInfo.mode == EmapMode::CSV01)	readEmapSuc = readEmap_Csv01();
-		else if (_emapInfo.mode == EmapMode::CSV34)	readEmapSuc = readEmap_Csv34();
-		else if (_emapInfo.mode == EmapMode::TEXT_FILE)readEmapSuc = readEmap_textFile();
-	
-		if (!readEmapSuc && _inspStatus.productionMode == true) {
-			stopRun();
-			sendToClient("01VISIONEMAPFAIL\r");
-		}
-
-		if (readEmapSuc && !_eMapHash.isEmpty() && _inspStatus.productionMode == true)
-		{
-			// if incoming fails more than 50% prompt alarm
-			int failIncomingCount = 0;
-			for (auto i : _eMapHash)
-			{
-				if (i == false) failIncomingCount++;
-			}
-			double percentage = (double(failIncomingCount) / double(_eMapHash.size())) * 100;
-			if (percentage > jsonHelper::getInteger(_systemObj, QStringLiteral("Emap_Fail_Alarm_Percentage")))
-			{
-				stopRun();
-				sendToClient("01VISIONEMAP50FAIL\r");
-			}
-		}
-
-		qDebug() << "ReadEmapStatus: " << readEmapSuc;
-		qDebug() << "_inspStatus.productionMode " << _inspStatus.productionMode;
-	}
-
-	
-	qDebug() << "Emap Processing time: " << time.duration();
-}
-
-bool VisionApp::readEmap_Csv01()
-{
-	qDebug() << "readEmap_csv01";
-	QHash<QString, bool> emapHash;
-	QString emapPath;
-
-	//SystemData::instance()._currentBarcode = "GRNLX2001_MGP850505700_0402";
-	bool emapFound = false;
-	for (auto p : _emapInfo.csvEmapDir)
-	{
-
-		QDir directory(p);
-		emapPath = p + "/" + SystemData::instance()._currentBarcode.c_str() + ".csv";
-		qDebug() << "Emap Searching: " << emapPath;
-		if (QFileInfo::exists(emapPath))
-		{
-			qDebug() << "Emap found: " << emapPath;
-			_emapInfo.incomingEmapPath = emapPath;
-			emapFound = true;
-			break;
-		}
-
-	}
-	if (emapFound == false) return false;
-
-
-	if (emapPath.isEmpty())
-	{
-		qDebug() << "StripeID: " << SystemData::instance()._currentBarcode.c_str();
-		qDebug() << "Read CSV_Emap Failed";
-		return false;
-	}
-
-	QFile file(emapPath);
-
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		qDebug() << "Failed to open csv emap file.";
-		qDebug() << "Emap Path: " << emapPath;
-		return false;
-	}
-	else
-	{
-		qDebug() << "Reading csv Emap: " << emapPath;
-	}
-
-	QTextStream in(&file);
-	int readingLine = 0;
-
-	QStringList headers;
-
-	QStringList numberList;
-
-	while (!in.atEnd())
-	{
-		readingLine++;
-		QString line = in.readLine();
-		if (readingLine == 2)
-		{
-			numberList = line.split(",");
-		}
-		else
-		{
-			headers.append(line);
-		}
-	}
-
-	int tRow = _islandInfo.totalRow;
-	int tCol = _islandInfo.totalCol;
-	int tIsland = _islandInfo.totalIsland;
-
-	int row = 0;
-	int col = 0;
-	int island = 0;
-	for (int i = 0; i < numberList.size(); i++)
-	{
-		//bool isPass = numberList[i] == "4" ? true : false; // custom emap for declan
-		bool isPass = numberList[i] == "1" ? true : false;
-
-		if (col >= tCol)
-		{
-			island++;
-			if (island >= tIsland)
-			{
-				island = 0;
-				row++;
-			}
-
-			col = 0;
-		}
-		if (row >= tRow) break;
-		QString key = QString::number(row) + "[@]" + QString::number(col) + "[@]" + QString::number(island);
-
-		emapHash.insert(key, isPass);
-		col++;
-	}
-	file.close();
-
-
-	if (emapHash.isEmpty()) return false;
-	_eMapHash = emapHash;
-
-	for (auto& vo : _visionObject)
-	{
-		QString key = QString::number(vo.row_id) + "[@]" + QString::number(vo.col_id) + "[@]" + QString::number(vo.island_id);
-		if (_eMapHash.contains(key))
-		{
-			vo.ignore = !_eMapHash[key];
-		}
-
-	}
-
-	// copy emap to production
-	QString emapDestination = Common::Directory::getProductionResultPath() + "/IncomingMap[@]" + SystemData::instance()._currentBarcode.c_str() + ".csv";
-	bool emapCopy = QFile::copy(emapPath, emapDestination);
-
-	qDebug() << "Total Vo Unit: " << _visionObject.size();
-	qDebug() << "Emap Hash size: " << _eMapHash.size();
-
-	return true;
-
-}
-
-bool VisionApp::readEmap_Csv34()
-{
-	qDebug() << "readEmap_csv";
-	QHash<QString, bool> emapHash;
-	QString emapPath;
-
-	bool emapFound = false;
-	for (auto p : _emapInfo.csvEmapDir)
-	{
-
-		QDir directory(p);
-		emapPath = p + "/Badmark_Inf_" + SystemData::instance()._currentBarcode.c_str() + ".csv";
-		qDebug() << "Emap Searching: " << emapPath;
-		if (QFileInfo::exists(emapPath))
-		{
-			qDebug() << "Emap found: " << emapPath;
-			_emapInfo.incomingEmapPath = emapPath;
-			emapFound = true;
-			break;
-		}
-		
-	}
-	if (emapFound == false) return false;
-
-
-	if (emapPath.isEmpty())
-	{
-		qDebug() << "StripeID: " << SystemData::instance()._currentBarcode.c_str();
-		qDebug() << "Read CSV_Emap Failed";
-		return false;
-	}
-
-	QFile file(emapPath);
-
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		qDebug() << "Failed to open csv emap file.";
-		qDebug() << "Emap Path: " << emapPath;
-		return false;
-	}
-	else
-	{
-		qDebug() << "Reading csv Emap: " << emapPath;
-	}
-
-	QTextStream in(&file);
-	int readingLine = 0;
-
-	QStringList headers;
-
-	QStringList numberList;
-
-	while (!in.atEnd())
-	{
-		readingLine++;
-		QString line = in.readLine();
-		if (readingLine == 4) 
-		{
-			numberList = line.split(",");
-		}
-		else
-		{
-			headers.append(line);
-		}
-	}
-
-	int tRow = _islandInfo.totalRow;
-	int tCol = _islandInfo.totalCol;
-	int tIsland = _islandInfo.totalIsland;
-
-	int row = 0;
-	int col = 0;
-	int island = 0;
-	for (int i = 0; i < numberList.size(); i++)
-	{
-		bool isPass = numberList[i] == "4" ? true : false; // custom emap for declan
-		//bool isPass = numberList[i] == "1" ? true : false;
-		if (col >= tCol)
-		{
-			island++;
-			if (island >= tIsland)
-			{
-				island = 0;
-				row++;
-			}
-
-			col = 0;
-		}
-		if (row >= tRow) break;
-		QString key = QString::number(row) + "[@]" + QString::number(col) + "[@]" + QString::number(island);
-		emapHash.insert(key, isPass);
-		col++;
-	}
-	file.close();
-
-
-	if (emapHash.isEmpty()) return false;
-	_eMapHash = emapHash;
-
-	for (auto& vo : _visionObject)
-	{
-		QString key = QString::number(vo.row_id) + "[@]" + QString::number(vo.col_id) + "[@]" + QString::number(vo.island_id);
-		if (_eMapHash.contains(key))
-		{
-			vo.ignore = !_eMapHash[key];
-		}
-
-	}
-	
-
-	// copy emap to production
-	QString emapDestination = Common::Directory::getProductionResultPath() +"/IncomingMap[@]"+  SystemData::instance()._currentBarcode.c_str() + ".csv";
-	bool emapCopy = QFile::copy(emapPath, emapDestination);
-
-	qDebug() << "Total Vo Unit: " << _visionObject.size();
-	qDebug() << "Emap Hash size: " << _eMapHash.size();
-
-	return true;
-
-}
-
-
-bool VisionApp::readEmap_textFile()
-{
-	Timer time;
-	qDebug() << "readEmap_textFile";
-	QHash<QString, bool> emapHash;
-
-	QString emapPath;
-
-	bool emapFound = false;
-	for (auto p : _emapInfo.textFileEmapDir)
-	{
-		QDir directory(p);
-
-		emapPath = p + "/" + SystemData::instance()._currentBarcode.c_str() + ".txt";
-		qDebug() << "Emap Searching: " << emapPath;
-		if (QFileInfo::exists(emapPath))
-		{
-			qDebug() << "Emap found: " << emapPath;
-			_emapInfo.incomingEmapPath = emapPath;
-			emapFound = true;
-			break;
-		}
-	}
-	if (emapFound == false) return false;
-
-
-	//QString emapPath;
-	//emapPath = _emapInfo.csvEmapDir + "/" + SystemData::instance()._currentBarcode.c_str() + ".txt";
-	
-	if (emapPath.isEmpty())
-	{
-		qDebug() << "StripeID: " << SystemData::instance()._currentBarcode.c_str();
-		qDebug() << "Read TXT_Emap Failed";
-		return false;
-	}
-
-	QFile file(emapPath);
-
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		qDebug() << "Failed to open txt emap file.";
-		qDebug() << "Emap Path: " << emapPath;
-		return false;
-	}
-	else
-	{
-		qDebug() << "Reading txt Emap: " << emapPath;
-	}
-
-
-	QTextStream in(&file);
-	int readingLine = 0;
-
-
-	QStringList numberList;
-
-	while (!in.atEnd())
-	{
-		QString line = in.readLine();
-
-		if (line.isEmpty()) continue;
-		readingLine++;
-		if (readingLine > 3)
-		{
-			//qDebug() << line;
-			QStringList value = line.split(";", QString::SkipEmptyParts);
-			for (QString& v : value) 
-			{
-				v = v.trimmed();
-			}
-			if (!value.isEmpty())
-			{
-				numberList.append(value);
-			}
-		}
-
-
-	}
-
-	int tRow = _islandInfo.totalRow;
-	int tCol = _islandInfo.totalCol;
-	int tIsland = _islandInfo.totalIsland;
-
-	int row = 0;
-	int col = 0;
-	int island = 0;
-	for (int i = 0; i < numberList.size(); i++)
-	{
-		//bool isPass = numberList[i] == "1" ? true : false;
-		bool isPass = numberList[i] == "0" ? false : true;
-
-		if (col >= tCol)
-		{
-			island++;
-			if (island >= tIsland)
-			{
-				island = 0;
-				row++;
-			}
-
-			col = 0;
-		}
-		if (row >= tRow) break;
-		QString key = QString::number(row) + "[@]" + QString::number(col) + "[@]" + QString::number(island);
-		
-		emapHash.insert(key, isPass);
-		col++;
-	}
-
-	file.close();
-
-	if (emapHash.isEmpty()) return false;
-	_eMapHash = emapHash;
-	
-
-	for (auto& vo : _visionObject)
-	{
-		QString key = QString::number(vo.row_id) + "[@]" + QString::number(vo.col_id) + "[@]" + QString::number(vo.island_id);
-		if (_eMapHash.contains(key))
-		{
-			vo.ignore = !_eMapHash[key];
-		}
-
-	}
-
-	// copy emap to production
-	QString emapDestination = Common::Directory::getProductionResultPath() + "/IncomingMap[@]" + SystemData::instance()._currentBarcode.c_str() + ".txt";
-	bool emapCopy = QFile::copy(emapPath, emapDestination);
-
-	qDebug() << "Total Vo Unit: " << _visionObject.size();
-	qDebug() << "Emap Hash size: " << _eMapHash.size();
-
-	qDebug() << "txt Emap searching time: " << time.duration();
-
-	return true;
-}
-
-void VisionApp::visionObjectSampling()
-{
-	
-
-	auto col = ui.lineEdit_column->text().toInt() * _islandInfo.totalIsland;
-	auto row = ui.lineEdit_row->text().toInt();
-
-	qDebug() << "Sampling started....";
-	qDebug() << "Row: " << row;
-	qDebug() << "Column: " << col;
-	qDebug() << "Unit size: " << _dragROI.size();
-	if (row * col != _dragROI.size())
-	{
-		qDebug() << "Sampling failed, row col number not match to unit size!";
-		return;
-	}
-
-	int inspectRow = 3;
-	// reset skip vo 
-	for (auto& vo : _visionObject)
-	{
-		vo.skip = true;
-	}
-
-
-	std::sort(_dragROI.begin(), _dragROI.end(), compareRectanglesByY_ascending);
-	for (int i = 0; i < row; i++)
-	{
-		std::sort(_dragROI.begin() + i*col,
-			_dragROI.begin() + ((i + 1)*col),
-			compareRectanglesByX_ascending
-		);
-	}
-	for (int i = 0; i < _dragROI.size(); i++)
-	{
-		_dragROI[i]->_index = i + 1;
-		//qDebug() << "index" << i << " voWidth:" << _dragROI[i]->getGeometry().x() << " voHeight:" << _dragROI[i]->getGeometry().y();
-	}
-	int split = (row / 5) + 1;
-	for (int a = 0; a < 5; a++)
-	{
-		if ((a + 1) % 2 != 0) 
-		{
-			for (int i = 0; i < split; i++)
-			{
-				if (i < inspectRow)
-				{
-					int curRow = a*split + i;
-					for (int j = 0; j < col; j++)
-					{
-					
-						int dragROIIndex = curRow*col + j;
-						if (curRow > row) continue;
-						if (_dragROI.size() <= dragROIIndex) continue;
-					
-						auto v = _visionObject.find(_dragROI[dragROIIndex]->getId());
-						if (v != _visionObject.end())
-						{
-							v.value().skip = false;
-							
-						}
-						
-					}
-				}
-					
-			}	
-		}
-	}
-
-
-
-	qDebug() << "doneVisionObjectSampling";
-}
-
-bool VisionApp::testEmapID()
-{
-	int tIsland = _islandInfo.totalIsland;
-	auto col = ui.lineEdit_column->text().toInt() * tIsland;
-	auto row = ui.lineEdit_row->text().toInt();
-
-	
-
-	if ((col * row) != _dragROI.size())
-	{
-		qDebug() << "rowColumnCount:" << (col * row) << " voSize:" << _dragROI.size();
-		QMessageBox::warning(this, ("Invalid Row Column!"),
-			"Invalid Row Column with number of vision object!!!! Please recheck!!!");
-
-		return false;
-	}
-
-	clearAllDefectRectShape();
-
-	bool isTop = true;
-	checkRecipeFacing(Common::Directory::CurrentRecipe, isTop);
-	//top
-	if (isTop)
-	{
-		//qDebug() << "isTOP";
-		std::sort(_dragROI.begin(), _dragROI.end(), compareRectanglesByY_ascending);
-		for (int i = 0; i < row; i++)
-		{
-			//qDebug() << "begin:" << i*col << " end:" << ((i + 1)*col - 1);
-			std::sort(_dragROI.begin() + i*col, _dragROI.begin() + ((i + 1)*col), compareRectanglesByX_ascending);
-		}
-		for (int i = 0; i < _dragROI.size(); i++)
-		{
-			_dragROI[i]->_index = i + 1;
-		}
-	}
-	else //btm
-	{
-		//qDebug() << "isBtm";
-		std::sort(_dragROI.begin(), _dragROI.end(), compareRectanglesByY_descending);
-
-		for (int i = 0; i < row; i++)
-		{
-			//qDebug() << "begin:" << i*col << " end:" << ((i + 1)*col - 1);
-			std::sort(_dragROI.begin() + i*col, _dragROI.begin() + ((i + 1)*col), compareRectanglesByX_ascending);
-		}
-		for (int i = 0; i < _dragROI.size(); i++)
-		{
-			_dragROI[i]->_index = i + 1;
-		}
-		
-	}
-	
-	bool isPass = true;
-	for (int i = 0; i < _dragROI.size(); i++)
-	{
-		int rowID = _visionObject[_dragROI[i]->getId()].row_id;
-		int colID = _visionObject[_dragROI[i]->getId()].col_id;
-		int islandID = _visionObject[_dragROI[i]->getId()].island_id;
-
-		int rowSize = ui.lineEdit_row->text().toInt();
-		int colSize = ui.lineEdit_column->text().toInt();
-
-		int index = _dragROI[i]->_index;
-
-		int voID = rowID*(colSize * tIsland) + (colID + 1) + (colSize*islandID);
-		if (voID != index)
-		{
-			isPass = false;
-			QString invalid_voID = QString("INVALID voID:") + QString::number(voID) + "index:" + QString::number(index);
-			qDebug() << "INVALID voID:" << voID << " index:" << index;
-			auto rectItem = drawDefectRect(_dragROI[i]->getGeometry(), invalid_voID, invalid_voID,QString(), QString(),QString(), Qt::magenta);
-		}
-	}
-	if (isPass)
-	{
-		ui.label_testEmapStatus->setText("Success");
-		ui.label_testEmapStatus->setStyleSheet("color: green;");
-	}
-	else
-	{
-		ui.label_testEmapStatus->setText("Failed");
-		ui.label_testEmapStatus->setStyleSheet("color: red;");
-	}
-
-	return true;
 }
 
 void VisionApp::clearDirectory(const QString& path)
@@ -15860,99 +14198,6 @@ void VisionApp::updateDriveSpace()
 
 // --- RMS ---
 
-bool VisionApp::pullFromRmsRecipe(QString recipeName)
-{
-	qDebug() << "pullFromRmsRecipe: "<< _enableRmsRecipe;
-	if (!_enableRmsRecipe) return false;
-	
-	QString sourcePath;
-	QString destinationPath;
-
-	QString rmsDir = jsonHelper::getString(_systemObj, QStringLiteral("Machine_Share_Folder_Path"))  + "/RMS Recipe/"+ recipeName;
-	QString recipeDir = Common::Directory::RecipePath() + "/" + recipeName;
-
-	sourcePath = rmsDir;
-	destinationPath = recipeDir;
-
-	if (!QFileInfo::exists(sourcePath))
-	{
-		return false;
-	}
-
-	qDebug() << "sourcePath: " << sourcePath;
-	qDebug() << "destinationPath: " << destinationPath;
-
-	rmsRecipeUpdate(sourcePath, destinationPath);
-	return true;
-}
-
-bool VisionApp::pushToRmsRecipe(QString recipeName)
-{
-	qDebug() << "pushToRmsRecipe: " << _enableRmsRecipe;
-	if (!_enableRmsRecipe) return false;
-
-	QString sourcePath;
-	QString destinationPath;
-
-	QString rmsDir = jsonHelper::getString(_systemObj, QStringLiteral("Machine_Share_Folder_Path")) + "RMS Recipe/" + recipeName;
-	QString recipeDir = Common::Directory::RecipePath() + "/" + recipeName;
-	
-	sourcePath = recipeDir;
-	destinationPath = rmsDir;
-
-	if (!QFileInfo::exists(sourcePath))
-	{
-		return false;
-	}
-
-	qDebug() << "sourcePath: " << sourcePath;
-	qDebug() << "destinationPath: " << destinationPath;
-
-	rmsRecipeUpdate(sourcePath, destinationPath);
-	return true;
-}
-
-void VisionApp::rmsRecipeUpdate(const QString& sourceFolder, const QString& destFolder) {
-
-	qDebug() << "rmsRecipeUpdate";
-	
-	QDir sourceDir(sourceFolder);
-	QDir destDir(destFolder);
-
-	// Create the destination directory if it doesn't exist
-	if (!destDir.exists())
-		destDir.mkpath(".");
-
-	// Copy files from source to destination
-	QStringList files = sourceDir.entryList(QDir::Files);
-	
-	for (const QString& file : files) {
-		if (file != "SetupImages"&& file != "PlaneImages" && file!= "SampleImages" && file != "RefImages" && file != "ProcessedImages") {
-			QString sourceFilePath = sourceDir.filePath(file);
-			QString destFilePath = destDir.filePath(file);		
-
-			if (QFileInfo::exists(destFilePath))
-			{
-				bool removeSuc = QFile::remove(destFilePath);
-			
-			}
-			bool copyStatus = QFile::copy(sourceFilePath, destFilePath);
-			
-		}
-	}
-
-	// Recursively copy subdirectories
-	QStringList subDirs = sourceDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-	for (const QString& subDir : subDirs) {
-		if (subDir != "SetupImages" && subDir != "PlaneImages"&& subDir != "SampleImages" && subDir != "RefImages" && subDir != "ProcessedImages") {
-			QString sourceSubDir = sourceFolder + QDir::separator() + subDir;
-			QString destSubDir = destFolder + QDir::separator() + subDir;
-			rmsRecipeUpdate(sourceSubDir, destSubDir);
-		}
-	}
-
-}
-
 // --- RMS ---
 
 
@@ -16009,186 +14254,6 @@ void VisionApp::udpateRecipeVersion(const QString& folderPath)
 	}
 }
 
-
-bool VisionApp::csv_readCircuitIdMapping(QString &csvPath)
-{
-	qDebug() << "csv_readCircuitIdMapping";
-
-	QFile file(csvPath);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		qDebug() << "Failed to open circuitId emap file.";
-		qDebug() << "circuitId Path: " << csvPath;
-		return false;
-	}
-	else
-	{
-		qDebug() << "Reading circuitId: " << csvPath;
-	}
-
-	QTextStream in(&file);
-	int readingLine = 0;
-
-
-	QStringList numberList;
-
-	while (!in.atEnd())
-	{
-		QString line = in.readLine();
-
-		if (line.isEmpty()) continue;
-		readingLine++;
-		if (readingLine > 6)
-		{
-			//qDebug() << line;
-			QStringList value = line.split(",", QString::SkipEmptyParts);
-			if (!value.isEmpty())
-			{
-				numberList.append(value);
-			}
-		}
-	}
-
-	int tRow = _islandInfo.totalRow;
-	int tCol = _islandInfo.totalCol;
-	int tIsland = _islandInfo.totalIsland;
-
-	qDebug() << "numberList size: " << numberList.size();
-	qDebug() << "vo size: " << _visionObject.size();
-
-	if (numberList.size() != _visionObject.size()) return false;
-
-	int row = 0;
-	int col = 0;
-	int island = 0;
-	for (int i = 0; i < numberList.size(); i++)
-	{
-		QString circuitID = numberList[i];
-
-		if (col >= tCol)
-		{
-			island++;
-			if (island >= tIsland)
-			{
-				island = 0;
-				row++;
-			}
-
-			col = 0;
-		}
-		if (row >= tRow) break;
-		QString key = QString::number(row) + "[@]" + QString::number(col) + "[@]" + QString::number(island);
-
-		for (auto& vo : _visionObject)
-		{
-			if (vo.row_id == row && vo.col_id == col && vo.island_id == island)
-			{
-				vo.circuitID = circuitID;
-				_visionObjectCircuitId.insert(circuitID, vo.objectID);
-				
-			}
-		}
-
-		col++;
-	}
-	file.close();
-	return true;
-}
-
-bool VisionApp::csv_readMounterIdMapping(QString& csvPath)
-{
-	qDebug() << "csv_readMounterIdMapping";
-
-
-	QFile file(csvPath);
-	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-	{
-		qDebug() << "Failed to open mounterId file.";
-		qDebug() << "mounterId Path: " << csvPath;
-		return false;
-	}
-	else
-	{
-		qDebug() << "Reading mounterId: " << csvPath;
-	}
-
-	QTextStream in(&file);
-	int readingLine = 0;
-
-	QHash<QString, QHash<QString, QString>> circuit_cadMounterId; // First layer key: circuitId, second layer key: cadName, value: mounterId
-
-	while (!in.atEnd())
-	{
-		QString line = in.readLine();
-
-		if (line.isEmpty()) continue;
-		readingLine++;
-		if (readingLine == 1) // for checking valid csv
-		{
-			QStringList value = line.split(",", QString::SkipEmptyParts);
-			if (!value.isEmpty())
-			{
-				if (value[0] != "Reference Discreption")
-					return false;
-			}
-			else
-			{
-				return false;
-			}
-		}
-
-		if (readingLine > 1)
-		{
-			//qDebug() << line;
-			QStringList value= line.split(",", QString::SkipEmptyParts);
-
-			if (value.size() > 3)
-			{
-				if (!value[0].isEmpty() && !value[1].isEmpty() && !value[2].isEmpty())
-				{
-					QString cadName = value[0];
-					QString circuitId = value[1];
-					QString mounterId = value[2];
-
-
-					if (circuit_cadMounterId.contains(circuitId)) circuit_cadMounterId[circuitId].insert(cadName, mounterId);
-					else
-					{
-						QHash<QString, QString> cadMounterId;
-						cadMounterId.insert(cadName, mounterId);
-						circuit_cadMounterId.insert(circuitId, cadMounterId);
-					}
-				}
-			}	
-		}
-	}
-
-
-	for (int i = 0; i < circuit_cadMounterId.size(); i++)
-	{
-		QString thisCircuitId = circuit_cadMounterId.keys()[i];
-	
-
-		QString relativeVoId;
-		if (_visionObjectCircuitId.contains(thisCircuitId))
-		{
-			relativeVoId = _visionObjectCircuitId[thisCircuitId];
-			if (_visionObject.contains(relativeVoId))
-			{
-				_visionObject[relativeVoId].cadMounterId = circuit_cadMounterId[thisCircuitId];
-			}
-			else
-			{
-				qDebug() << "Could not find vision object Id: " << relativeVoId;
-			}
-		}
-		else
-		{
-			qDebug() << "Could not find circuit Id: " << thisCircuitId;
-		}
-	}
-	return true;
-}
 
 void VisionApp::arrangeTagNameBasedOnPriority(QStringList& tagNames)
 {
@@ -16316,49 +14381,6 @@ void VisionApp::triggerOnNewDay()
 
 	// After the initial trigger, set the timer to trigger every 24 hours
 	QTimer::singleShot(24 * 60 * 60 * 1000, this, &VisionApp::triggerOnNewDay);
-}
-
-bool VisionApp::checkGoldenRecipeRunStatus(QString recipeName)
-{
-	QHash<QString, bool> goldenRecipeRunStatusHash;
-
-	// read first 
-	QJsonFile goldenRecipeFile;
-	if (goldenRecipeFile.load(_goldenRecipeCheckListPath))
-	{
-		auto recipeList = goldenRecipeFile.getArray("goldenRecipeList");
-		for (int i = 0; i < recipeList.size(); i++)
-		{
-			auto recipe = recipeList[i].toObject();
-			QString tRecipeName = recipe["recipeName"].toString();
-			bool tRunStatus = recipe["runStatus"].toBool();
-			goldenRecipeRunStatusHash.insert(tRecipeName, tRunStatus);
-
-		}
-	}
-
-	bool runStatus = false;
-	if (goldenRecipeRunStatusHash.contains(recipeName))
-	{
-		runStatus = goldenRecipeRunStatusHash[recipeName];
-	}
-
-	return runStatus;
-
-}
-
-void VisionApp::runGoldenRecipe()
-{
-
-	ui.label_status->show();
-
-
-	QString text = "RUNNING GOLDEN RECIPE! Please do not interrupt this process";
-	ui.label_status->setStyleSheet("QLabel { color : yellow; font-size: 24px; }");
-	ui.label_status->setText(text);
-
-	_grDialog->runGoldenRecipe(true);
-
 }
 
 void VisionApp::showPreviousImage()
@@ -16731,309 +14753,6 @@ void VisionApp::restoreBorderColors()
 	_savedBorderColors.clear();
 }
 
-void VisionApp::runBareBoardAnalysis()
-{
-//// 1) Get the Results folder (contains measurement.json)
-//	const QString productionResultPath = Common::Directory::getProductionResultPath();
-//	if (productionResultPath.isEmpty() || !QDir(productionResultPath).exists()) {
-//		ct::logger::error("Invalid production result path: %s", qPrintable(productionResultPath));
-//		return;
-//	}
-//
-//	// 2) Build path to measurement.json inside Results/
-//	const QString selectedJsonFile = QDir(productionResultPath).filePath(QLatin1String("measurement.json"));
-//	if (!QFileInfo::exists(selectedJsonFile)) {
-//		ct::logger::error("Measurement file not found: %s", qPrintable(selectedJsonFile));
-//		return;
-//	}
-//
-//	// 3) Load & parse array
-//	QFile inFile(selectedJsonFile);
-//	if (!inFile.open(QIODevice::ReadOnly)) {
-//		ct::logger::error("Failed to open input JSON: %s", qPrintable(selectedJsonFile));
-//		return;
-//	}
-//	QJsonDocument loadDoc = QJsonDocument::fromJson(inFile.readAll());
-//	inFile.close();
-//
-//	if (!loadDoc.isArray()) {
-//		ct::logger::error("Expected top‐level array in JSON");
-//		return;
-//	}
-//	QJsonArray measurements = loadDoc.array();
-//
-//	// 4) Bucket heights/volumes by roiName
-//	QMap<QString, QList<double>> heightBuckets;
-//	QMap<QString, QList<double>> volumeBuckets;
-//	for (const QJsonValue& val : measurements) {
-//		if (!val.isObject()) continue;
-//		const QJsonObject obj = val.toObject();
-//		const QString roiName = obj.value("roiName").toString();
-//		const double  heightUm = obj.value("height(um)").toDouble();
-//		const double  volumeUm = obj.value("volume(um)").toDouble();
-//		heightBuckets[roiName].append(heightUm);
-//		volumeBuckets[roiName].append(volumeUm);
-//	}
-//
-//	// 5) Compute averages
-//	QJsonArray outArray;
-//	for (auto it = heightBuckets.constBegin(); it != heightBuckets.constEnd(); ++it) {
-//		const QString& roi = it.key();
-//		const QList<double>& hlist = it.value();
-//		const QList<double>& vlist = volumeBuckets.value(roi);
-//
-//		const double sumH = std::accumulate(hlist.begin(), hlist.end(), 0.0);
-//		const double avgH = hlist.isEmpty() ? 0.0 : sumH / hlist.size();
-//
-//		const double sumV = std::accumulate(vlist.begin(), vlist.end(), 0.0);
-//		const double avgV = vlist.isEmpty() ? 0.0 : sumV / vlist.size();
-//
-//		QJsonObject o;
-//		o["roiName"] = roi;
-//		o["averageHeight(um)"] = avgH;
-//		o["averageVolume(um)"] = avgV;
-//		outArray.append(o);
-//	}
-//
-//	// 6) Read barcode suffix from ../Images/info.json (parent of Results)
-//	// productionResultPath -> .../<Base>/Results
-//	QDir resultsDir(productionResultPath);
-//	if (!resultsDir.cdUp()) {
-//		ct::logger::error("Cannot ascend from Results to base folder: %s", qPrintable(productionResultPath));
-//		return;
-//	}
-//	const QString baseFolder = resultsDir.absolutePath();
-//	const QString infoPath = QDir(baseFolder).filePath(QLatin1String("Images/info.json"));
-//
-//	QString barcodeSuffix = QLatin1String("NoBarcode");
-//	QFile infoFile(infoPath);
-//	if (infoFile.open(QIODevice::ReadOnly)) {
-//		const QJsonDocument infoDoc = QJsonDocument::fromJson(infoFile.readAll());
-//		infoFile.close();
-//		if (infoDoc.isObject()) {
-//			const QString barcode = infoDoc.object().value("barcode_id").toString();
-//			QRegularExpression re(QLatin1String("\\D+(\\d{5})"));
-//			const auto match = re.match(barcode);
-//			if (match.hasMatch()) {
-//				barcodeSuffix = match.captured(1);
-//			} else {
-//				ct::logger::error("Cannot extract 5-digit code from barcode_id: %s", qPrintable(barcode));
-//			}
-//		}
-//	} else {
-//		ct::logger::error("Cannot open info.json at %s", qPrintable(infoPath));
-//	}
-//
-//	// 7) Build save path under current recipe path (folder name with "_BBA" removed)
-//	const QString currentRecipePath = Common::Directory::getRecipeCurrentPath();
-//	QDir recipeDir(currentRecipePath);
-//
-//	// Work out parent folder and recipe folder name
-//	QDir parentDir = recipeDir;
-//	parentDir.cdUp();  // parent of the current recipe folder
-//
-//	QString recipeFolderName = recipeDir.dirName();        // e.g. "MyRecipe_BBA"
-//	const QString suffix = QLatin1String("_BBA");
-//	if (recipeFolderName.endsWith(suffix)) {
-//		recipeFolderName.chop(suffix.size());              // -> "MyRecipe"
-//	}
-//
-//	// Reconstruct the cleaned recipe path (…/MyRecipe)
-//	const QString cleanedRecipePath = parentDir.filePath(recipeFolderName);
-//
-//	// Save directory: …/MyRecipe/BareBoardAnalysisData
-//	const QString saveDir = QDir(cleanedRecipePath).filePath(QLatin1String("BareBoardAnalysisData"));
-//	QDir().mkpath(saveDir);
-//
-//	// File name: BareBoardAnalysis_<barcode>.json
-//	const QString saveJsonFile = QDir(saveDir).filePath(
-//		QLatin1String("BareBoardAnalysis_") + barcodeSuffix + QLatin1String(".json")
-//	);
-//
-//	// 8) Write out the averaged results
-//	QFile outFile(saveJsonFile);
-//	if (!outFile.open(QIODevice::WriteOnly)) {
-//		ct::logger::error("Failed to open output file: %s", qPrintable(saveJsonFile));
-//		return;
-//	}
-//	const QJsonDocument saveDoc(outArray);
-//	outFile.write(saveDoc.toJson(QJsonDocument::Indented));
-//	outFile.close();
-
-	// 9) Done
-	//QMessageBox::information(this,
-	//	tr("BareBoardAnalysis Complete"),
-	//	tr("Computed %1 pads and saved to:\n%2")
-	//	.arg(outArray.size())
-	//	.arg(saveJsonFile)
-	//);
-
- // 1) Get the Results folder (contains measurement.json)
-const QString productionResultPath = Common::Directory::getProductionResultPath();
-if (productionResultPath.isEmpty() || !QDir(productionResultPath).exists()) {
-	ct::logger::error("Invalid production result path: %s", qPrintable(productionResultPath));
-	return;
-}
-
-// 2) Build path to measurement.json inside Results/
-const QString selectedJsonFile = QDir(productionResultPath).filePath(QLatin1String("measurement.json"));
-if (!QFileInfo::exists(selectedJsonFile)) {
-	ct::logger::error("Measurement file not found: %s", qPrintable(selectedJsonFile));
-	return;
-}
-
-// 3) Load & parse array
-QFile inFile(selectedJsonFile);
-if (!inFile.open(QIODevice::ReadOnly)) {
-	ct::logger::error("Failed to open input JSON: %s", qPrintable(selectedJsonFile));
-	return;
-}
-const QJsonDocument loadDoc = QJsonDocument::fromJson(inFile.readAll());
-inFile.close();
-
-if (!loadDoc.isArray()) {
-	ct::logger::error("Expected top-level array in JSON");
-	return;
-}
-const QJsonArray measurements = loadDoc.array();
-
-// 4) Bucket heights/volumes by roiName (use only finite values)
-QMap<QString, QList<double>> heightBuckets;
-QMap<QString, QList<double>> volumeBuckets;
-// (no reserve() for QMap)
-
-for (const QJsonValue& val : measurements) {
-	if (!val.isObject()) continue;
-	const QJsonObject obj = val.toObject();
-	const QString roiName = obj.value("roiName").toString();
-	if (roiName.isEmpty()) continue;
-
-	const auto hVal = obj.value("height(um)");
-	if (hVal.isDouble()) {
-		const double h = hVal.toDouble();
-		if (std::isfinite(h)) heightBuckets[roiName].append(h);
-	}
-
-	const auto vVal = obj.value("volume(um)");
-	if (vVal.isDouble()) {
-		const double v = vVal.toDouble();
-		if (std::isfinite(v)) volumeBuckets[roiName].append(v);
-	}
-}
-
-// 5) Compute medians from ALL collected data (full sort for clarity) + keep averages (optional)
-QJsonArray outArray;   // no reserve()
-
-for (auto it = heightBuckets.constBegin(); it != heightBuckets.constEnd(); ++it) {
-	const QString& roi = it.key();
-	const QList<double>& hlist = it.value();
-	const QList<double>& vlist = volumeBuckets.value(roi);
-
-	std::vector<double> hvec; hvec.reserve(hlist.size());
-	for (double x : hlist) if (std::isfinite(x)) hvec.push_back(x);
-
-	std::vector<double> vvec; vvec.reserve(vlist.size());
-	for (double x : vlist) if (std::isfinite(x)) vvec.push_back(x);
-
-	double medH = 0.0, medV = 0.0;
-	if (!hvec.empty()) {
-		std::sort(hvec.begin(), hvec.end());
-		const size_t n = hvec.size();
-		medH = (n % 2) ? hvec[n / 2] : 0.5 * (hvec[n / 2 - 1] + hvec[n / 2]);
-	}
-	if (!vvec.empty()) {
-		std::sort(vvec.begin(), vvec.end());
-		const size_t n = vvec.size();
-		medV = (n % 2) ? vvec[n / 2] : 0.5 * (vvec[n / 2 - 1] + vvec[n / 2]);
-	}
-
-	const double avgH = hlist.isEmpty() ? 0.0
-		: std::accumulate(hlist.begin(), hlist.end(), 0.0) / double(hlist.size());
-	const double avgV = vlist.isEmpty() ? 0.0
-		: std::accumulate(vlist.begin(), vlist.end(), 0.0) / double(vlist.size());
-
-	QJsonObject o;
-	o["roiName"] = roi;
-	o["countHeight"] = int(hvec.size());
-	o["countVolume"] = int(vvec.size());
-	if (!hvec.empty()) o["medianHeight(um)"] = medH;
-	if (!vvec.empty()) o["medianVolume(um)"] = medV;
-	o["averageHeight(um)"] = avgH;  // remove if you only want medians
-	o["averageVolume(um)"] = avgV;  // remove if you only want medians
-
-	outArray.append(o);
-}
-
-// 6) Read barcode suffix from ../Images/info.json (parent of Results)
-QDir resultsDir(productionResultPath);
-if (!resultsDir.cdUp()) {
-	ct::logger::error("Cannot ascend from Results to base folder: %s", qPrintable(productionResultPath));
-	return;
-}
-const QString baseFolder = resultsDir.absolutePath();
-const QString infoPath = QDir(baseFolder).filePath(QLatin1String("Images/info.json"));
-
-QString barcodeSuffix = QLatin1String("NoBarcode");
-QFile infoFile(infoPath);
-if (infoFile.open(QIODevice::ReadOnly)) {
-	const QJsonDocument infoDoc = QJsonDocument::fromJson(infoFile.readAll());
-	infoFile.close();
-	if (infoDoc.isObject()) {
-		const QString barcode = infoDoc.object().value("barcode_id").toString();
-		QRegularExpression re(QLatin1String("\\D+(\\d{5})"));
-		const auto match = re.match(barcode);
-		if (match.hasMatch()) {
-			barcodeSuffix = match.captured(1);
-		}
-		else {
-			ct::logger::error("Cannot extract 5-digit code from barcode_id: %s", qPrintable(barcode));
-		}
-	}
-}
-else {
-	ct::logger::error("Cannot open info.json at %s", qPrintable(infoPath));
-}
-
-// 7) Build save path under current recipe path (folder name with "_BBA" removed)
-const QString currentRecipePath = Common::Directory::getRecipeCurrentPath();
-if (currentRecipePath.isEmpty()) {
-	ct::logger::error("Empty current recipe path.");
-	return;
-}
-
-QDir recipeDir(currentRecipePath);
-QDir parentDir = recipeDir;
-if (!parentDir.cdUp()) {
-	ct::logger::error("Cannot ascend from recipe path: %s", qPrintable(currentRecipePath));
-	return;
-}
-
-QString recipeFolderName = recipeDir.dirName();      // e.g., "MyRecipe_BBA" or "MyRecipe"
-const QString suffix = QLatin1String("_BBA");
-if (recipeFolderName.endsWith(suffix))
-recipeFolderName.chop(suffix.size());            // -> "MyRecipe"
-
-const QString cleanedRecipePath = parentDir.filePath(recipeFolderName);
-const QString saveDir = QDir(cleanedRecipePath).filePath(QLatin1String("BareBoardAnalysisData"));
-QDir().mkpath(saveDir);
-
-// 8) Write out the results file
-const QString saveJsonFile = QDir(saveDir).filePath(
-	QLatin1String("BareBoardAnalysis_") + barcodeSuffix + QLatin1String(".json")
-);
-
-QFile outFile(saveJsonFile);
-if (!outFile.open(QIODevice::WriteOnly)) {
-	ct::logger::error("Failed to open output file: %s", qPrintable(saveJsonFile));
-	return;
-}
-const QJsonDocument saveDoc(outArray);
-outFile.write(saveDoc.toJson(QJsonDocument::Indented));
-outFile.close();
-
-
-}
-
 bool VisionApp::patchTemplateKeys(const QString& recipeDir, const QStringList& rulesList)
 {
 	const QString jsonPath = QDir(recipeDir).filePath("templateList.json");
@@ -17153,65 +14872,6 @@ bool VisionApp::patchTemplateKeys(const QString& recipeDir, const QStringList& r
 	f.close();
 
 	ct::logger::info("[TemplatePatch] Patched %s with %d rule(s).", qPrintable(jsonPath), rules.size());
-	return true;
-}
-
-bool VisionApp::copyAndPatchRecipe(const QString& sourceDir, const QString& destinationDir)
-{
-	// ---- sanitize
-	const QString src = QDir::cleanPath(sourceDir);
-	const QString dst = QDir::cleanPath(destinationDir);
-
-	if (src.isEmpty() || dst.isEmpty()) {
-		ct::logger::warn("[CopyPatch] Empty source or destination.");
-		return false;
-	}
-	if (!QDir(src).exists()) {
-		ct::logger::warn("[CopyPatch] Source does not exist: %s", qPrintable(src));
-		return false;
-	}
-	if (src == dst) {
-		ct::logger::warn("[CopyPatch] Source and destination are the same: %s", qPrintable(src));
-		return false;
-	}
-	if (dst.startsWith(src + QDir::separator())) {
-		ct::logger::warn("[CopyPatch] Destination is inside source (would recurse): %s", qPrintable(dst));
-		return false;
-	}
-	if (!QDir(dst).exists() && !QDir().mkpath(dst)) {
-		ct::logger::warn("[CopyPatch] Cannot create destination: %s", qPrintable(dst));
-		return false;
-	}
-
-	// ---- YOUR hardcoded knobs
-	const bool addBbaSuffix = true;                   // set false if you don’t want _BBA
-	QStringList excludes{ "Images" };                // top-level subfolders to skip (inside source base)
-	QStringList rules{
-		"Registration_Method*=None",
-		"Get_UpperHeight*=false",
-		"Height_Range*=0, 300"  ,
-		"Check_Volume*=false",
-		"Check_Height*=false",
-		/*"Measurement_Method*=Plane Fitting"*/
-	};
-
-	// ---- copy: src → dst/<base or base_BBA> (always overwrite)
-	util::copyRecipe(src, dst, excludes, addBbaSuffix);
-
-	// figure final destination root path (matches util::copyRecipe naming)
-	const QString baseName = QFileInfo(src).fileName();
-	QString targetName = baseName;
-	if (addBbaSuffix && !baseName.endsWith("_BBA", Qt::CaseInsensitive))
-		targetName += "_BBA";
-	const QString dstRoot = QDir(dst).filePath(targetName);
-
-	// ---- patch templateList.json under dstRoot
-	if (!this->patchTemplateKeys(dstRoot, rules)) {
-		ct::logger::warn("[CopyPatch] JSON patch failed in: %s", qPrintable(dstRoot));
-		return false;
-	}
-
-	ct::logger::info("[CopyPatch] Done. From: %s  →  To: %s", qPrintable(src), qPrintable(dstRoot));
 	return true;
 }
 

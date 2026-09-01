@@ -330,7 +330,6 @@ private:
 	QHash <QString, QLineScan> _lineScans;
 	double m_currentZOffset = 0.0;
 	QHash <QString, nvs::motion::MotionConfig> _motions;
-	QHash<QString, bool> _eMapHash; // key: row[@]col[@]island, value: ignore
 	QViewPlane _plane;
 	QStandardItemModel _recipeModel;
 	QStandardItemModel _objectModel;
@@ -392,40 +391,8 @@ private:
 		MIL_ID mbuf;
 	};
 
-	enum EmapType
-	{
-		CSV01_EMAP,
-		CSV34_EMAP,
-		TEXT_FILE_EMAP
-	};
-	enum EmapMode
-	{
-		AUTO,
-		CSV01,
-		CSV34,
-		TEXT_FILE
-	};
-	struct EmapInfo
-	{
-		QString templateName;
-		EmapMode mode;
-		EmapType topInspEmap;
-		EmapType botInspEmap;
-		QStringList csvEmapDir;
-		QStringList textFileEmapDir;
-		QString incomingEmapPath;
-	};
-	EmapInfo _emapInfo;
+
 	LotInfo _lotInfo;
-
-	EmapInfo _emapLocalSetting;
-	QHash<QString, EmapInfo >_emapTemplateList; //key: templateName
-	QString _emapTemplate;
-
-
-	QString _warpageMethod;
-
-	bool _isUseEmapTemplate; // true = emap template: false = local emap setting
 
 	GoldenRecipeDialog* _grDialog;
 	InspStatus _inspStatus;
@@ -459,8 +426,6 @@ private:
 	QTimer _networkPathCheckerTimer;
 	bool _isVerificationConnected;
 	QTimer _fileRemoverTimer;
-	QTimer _emapReEnableTimer;
-	double _emapReEnableTimerSeconds = 60;
 
 	//PostInspectionInfo* _pPostInspectionInfo;
 	ErrorInfo* _pErrorInfo = nullptr;
@@ -535,7 +500,6 @@ private:
 	QMovie* _movieProductionMode;
 
 	// golden recipe
-	bool _enableGoldenRecipeChecking = false;
 	QString _goldenRecipeCheckListPath = "C:/Advanced/Data/GoldenRecipeCheckList.json";
 	struct GoldenRecipeCheckList
 	{
@@ -551,8 +515,6 @@ private:
 	void editGoldenRecipeCheckList(QString recipeName, bool runStatus, bool reset = false);
 	void setupGoldenRecipeTimer();
 	void triggerOnNewDay();
-	bool checkGoldenRecipeRunStatus(QString recipeName); 
-	void runGoldenRecipe();
 	// golden recipe
 
 	QRect getQRectBasedOnCam(int percentage);
@@ -736,22 +698,15 @@ private:
 	void teachBtmright(dat::WorldCoordinate point);
 	
 	bool _enableSingleViewRecipe = false;
-	bool _enablePreProcessImg;
-	bool _saveDefectVoImg;
-	bool _saveDefectRectVoImg;
 	bool _saveInspImg;
-	bool _enableEmap;
 
 	bool _autoDeleteProductionFile;
-	bool _enableRmsRecipe;
-	bool _enableMounterChecking;
 	QStringList _clearingPathList;
 	int _storageLimit;
 	FileRemovingThread* _fileRemovingThread;
 
 	bool _enable3D = true;
 	bool _enable2D = true;
-	bool _enableVisionObjectSampling = false;
 	double _passYieldPerc;
 	QString laserApi = "";
 	//fiducial
@@ -923,7 +878,6 @@ private:
 
 	//helper
 	TimeLogger _timer;
-	bool _dryRun = false;
 	bool _runGrr = false;
 	TimeLogger _timelogger;
 	TimeLogger _enqueueTimer;
@@ -997,10 +951,8 @@ private:
 	bool roiLocked;
 
 	//bareBoardAnalysis
-	bool _inbbaInspection=false;
 
 	bool patchTemplateKeys(const QString& recipeDir, const QStringList& keyValueRules);
-	bool copyAndPatchRecipe(const QString& sourceDir, const QString& destinationDir);
 
 	QGraphicsPathItem* _no3DZoneItem = nullptr;
 	bool _show2DOnlyOverlay = true;
@@ -1306,7 +1258,7 @@ public slots:
 	bool loadLaserConfig();
 	void updateLaserOffsetUI(dat::WorldCoordinate offset);
 	void duplicateRecipe();
-	bool openRecipe(const QString& recipeName = QString(""), bool autoLoad=false);
+	bool openRecipe(const QString& recipeName = QString(""));
 	void openAutoCalibrationRecipe();
 	void generateAutoCalReport();
 	void archiveRecipe();
@@ -1541,22 +1493,8 @@ public slots:
 
 
 	// read E-map
-	void readEmap();
 	// upload E-map
-	void updateEmap();
-	// read IVEmap
-	void readIVEmap(QString productionFolderPath = QString());
-	// save IVEmap
-	void saveComparisonEmap();
-	// read CSV Emap
-	bool readEmap_Csv01();
-	bool readEmap_Csv34();
-	// read txt File Emap
-	bool readEmap_textFile();
 	//sampling Vision Object
-	void visionObjectSampling();
-	//test EmapID
-	bool testEmapID();
 
 	bool copyFolderRecursively(const QString &srcFolderPath, const QString &destFolderPath);
 	void clearDirectory(const QString& path);
@@ -1585,17 +1523,10 @@ public slots:
 	void refreshLightingTemplateComboBox();
 	void saveLightingTemplateJson(QString filePath);
 
-	bool pullFromRmsRecipe(QString recipeName);
-	bool pushToRmsRecipe(QString recipeName);
-	void rmsRecipeUpdate(const QString& sourceFolder, const QString& destFolder);
 	void udpateRecipeVersion(const QString& folderPath);
 
 	//QXlsx
-	bool csv_readCircuitIdMapping(QString &csvPath);
-	bool csv_readMounterIdMapping(QString &csvPath);
 
-	void loadEmapSetting();
-	void refreshEmapSettingUi();
 
 	void slotDatabaseStatus(bool status);
 
@@ -1614,7 +1545,6 @@ public slots:
 	bool deleteAllFilesInFolder(const QString& folderPath);
 
 	//Bareboard Analysis
-	void runBareBoardAnalysis();
 
 	//Stiching Method
 	void saveStitchingMethod();

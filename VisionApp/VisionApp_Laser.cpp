@@ -58,10 +58,6 @@ void VisionApp::initLaserUI()
 	});
 
 
-	//warpage
-	connect(ui.toolButton_generateWarpageMap, &QToolButton::clicked, this, [=]() { 
-		//TODO: JObthread
-	});
 }
 
 int VisionApp::getScanOrientation(const dat::WorldCoordinate & start, const dat::WorldCoordinate & end)

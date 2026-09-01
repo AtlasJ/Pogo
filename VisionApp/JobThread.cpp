@@ -123,11 +123,6 @@ void JobThread::setRootPath(QString rootPath)
 	m_index = 0;
 }
 
-void JobThread::setWarpageMethod(QString method)
-{
-	m_warpageMethod = method;
-}
-
 void JobThread::setXDecel(int decel)
 {
 	m_xDecel = decel;
@@ -154,11 +149,6 @@ void JobThread::enableFiducial(bool enable)
 void JobThread::enableBarcode(bool enable)
 {
 	m_enableBarcode = enable;
-}
-
-void JobThread::enableWarpageCompensation(bool enable)
-{
-	m_enableWarpageCompensation = enable;
 }
 
 void JobThread::enableRun1stFOVOnly(bool enable)
@@ -298,12 +288,6 @@ void JobThread::snapBand(const OpticsInfo& optic, QString viewID, QString stitch
 
 void JobThread::snapOptic(const OpticsInfo& optic, QString viewID, QString stitchID, bool resetFrame)
 {
-	if (SystemData::instance()._psp) {
-		if (SystemData::instance()._snapDelay_ms != 0) os_tool::doNothing(SystemData::instance()._snapDelay_ms);
-		SystemData::instance().triggerPSP();
-		return;
-	}
-
 	QString camID = optic.camID;
 
 	if (!CAMManager::instance().isConnected(camID)) {
@@ -1809,263 +1793,6 @@ void JobThread::searchBarcode()
 	{
 		emit barcodeDecoded("External_Barcode");
 	}
-}
-
-void JobThread::warpageCompensation()
-{
-	if (m_stopRun) return;
-
-	if (!ProfilerManager::instance().getFrame(m_profilerID)) return;
-	ProfilerManager::instance().getFrame(m_profilerID)->type = ct::s_height_snapshot;
-	if (m_warpageMethod == "Subsampling") subWarpageCompensation();
-	else if (m_warpageMethod == "Fullsampling") fullWarpageCompensation();
-}
-
-void JobThread::subWarpageCompensation()
-{
-	m_compensateZMap.clear();
-
-	//compute subsampling region
-	double xmin = 99999999.0;
-	double ymin = 99999999.0;
-	double xmax = -999.0;
-	double ymax = -999.0;
-	double currentZ = 0.0;
-
-	for (const auto& v : *m_views) {
-		if (xmin > v.world.wx) xmin = v.world.wx;
-		if (xmax < v.world.wx) xmax = v.world.wx;
-		if (ymin > v.world.wy) ymin = v.world.wy;
-		if (ymax < v.world.wy) ymax = v.world.wy;
-		currentZ = v.world.wz;
-	}
-
-
-	int camWidth = CAMManager::instance().getWidth("cam1");
-	int camHeight = CAMManager::instance().getHeight("cam1");
-	auto half_width_mm = ScaleManager::instance().to_horizontal_mm(camWidth) / 2;
-	auto half_height_mm = ScaleManager::instance().to_vertical_mm(camHeight) / 2;
-	auto width_mm = ScaleManager::instance().to_horizontal_mm(camWidth);
-	auto height_mm = ScaleManager::instance().to_vertical_mm(camHeight);
-
-
-	//get first row
-	auto isSameRow = [](const QView& v, double centerY, double range) -> bool {
-		return (abs(centerY - v.world.wy) < range);
-		};
-
-	auto allowable_range = width_mm * 0.3; //30% of FOV
-
-	int numRow = 0;
-	for (const auto v : *m_views) {
-		if (isSameRow(v, ymin, allowable_range)) {
-			numRow++;
-		}
-	}
-	ct::logger::trace("Num rows: %d", numRow);
-
-	//shift to edge, previously is the extremum of center point
-	xmin -= half_width_mm;
-	xmax += half_width_mm;
-	ymin -= half_height_mm;
-	ymax += half_height_mm;
-
-
-	double offsetX = abs(xmax - xmin) / numRow; //offset by width of FOV in x direction
-	double offsetY = abs(ymax - ymin) / 4; //every column will measure 2 points in y direction evenly
-	std::array<double, 2> Ypoints;
-	Ypoints[0] = ymin + abs(ymax - ymin) / 4;
-	Ypoints[1] = ymax - abs(ymax - ymin) / 4;
-
-	ct::logger::trace("X range: %f, %f", xmin, xmax);
-	ct::logger::trace("Y range: %f, %f", ymin, ymax);
-	ct::logger::trace("Offset: %f, %f", offsetX, offsetY);
-
-	struct SampleInfo {
-		double wx, wy, wz;
-		double offsetZ;
-	};
-
-	std::vector<SampleInfo> sampleInfos;
-
-	double currentX = xmin + half_width_mm;
-	while (currentX < xmax) {
-		for (const auto& currentY : Ypoints) {
-			ct::logger::trace("Point: %f, %f", currentX, currentY);
-
-			SampleInfo s;
-			s.wx = currentX;
-			s.wy = currentY;
-			s.wz = currentZ;
-			sampleInfos.push_back(s);
-		}
-		currentX += offsetX;
-	}
-
-
-	//get offset z 
-	//IGocator::instance().stop();
-	ProfilerManager::instance().stop(m_profilerID);
-	ProfilerManager::instance().getFrame(m_profilerID)->type = ct::s_height_map;
-
-	//assign offset to neighbouring sample
-	auto isSameColumn = [](const QView& v, const SampleInfo& s) -> bool {
-		return (abs(s.wx - v.world.wx) < 1);
-		};
-
-	auto isWithinDistance = [](const QView& v, const SampleInfo& s, double distance) -> bool {
-		return (abs(s.wy - v.world.wy) < distance);
-		};
-
-	auto isAssigned = [=](const QView& v) -> bool {
-		return m_compensateZMap.contains(v.id);
-		};
-
-	int index = 0;
-	for (const auto& s : sampleInfos) {
-		if (m_stopRun) return;
-
-		dat::WorldCoordinate point;
-		point.wx = s.wx;
-		point.wy = s.wy;
-		point.wz = s.wz;
-
-		jogLaserBasedOnFiducial(s.wx, s.wy, s.wz, "2D");
-		//IGocator::instance().snapshot();
-		ProfilerManager::instance().snapShot(m_profilerID);
-		ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT);
-
-		/*if (IGocator::instance().go_info().mode != GO_MODE_PROFILE) {
-			ct::logger::error("Expected profile mode, but receive other mode: %d", IGocator::instance().go_info().mode);
-			return;
-		}*/
-
-		auto& profiles = ProfilerManager::instance().getFrame(m_profilerID)->profiles;
-		auto average = std::accumulate(profiles.begin(), profiles.end(), 0.0) / profiles.size();
-
-		auto offset = -average;
-
-		for (const auto& v : *m_views) {
-			if (isSameColumn(v, s) && isWithinDistance(v, s, offsetY) && !isAssigned(v)) {
-				ct::logger::debug("[%d] ID: %s", index, v.name.toStdString().c_str());
-				if (isAssigned(v)) m_compensateZMap[v.id] = s.offsetZ;
-			}
-		}
-
-		index++;
-	}
-}
-
-void JobThread::fullWarpageCompensation()
-{
-	m_compensateZMap.clear();
-
-	//IGocator::instance().stop();
-	ProfilerManager::instance().stop(m_profilerID);
-
-	for (int i = 0; i < m_viewSequence->count(); i++) {
-		if (m_stopRun) return;
-
-		auto item = m_viewSequence->item(i);
-		auto id = item->whatsThis();
-
-		if (!(*m_views).contains(id)) {
-			ct::logger::error("[JobThread] Failed to perform warpage compensation. Invalid view ID: %s", id.toStdString().c_str());
-			continue;
-		}
-
-		auto v = (*m_views)[id];
-
-		jogLaserBasedOnFiducial(v.world.wx, v.world.wy, v.world.wz, "2D");
-		
-		//IGocator::instance().snapshot();
-		ProfilerManager::instance().snapShot(m_profilerID);
-		ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT);
-
-		/*if (IGocator::instance().go_info().mode != GO_MODE_PROFILE) {
-			ct::logger::error("Expected profile mode, but receive other mode: %d", IGocator::instance().go_info().mode);
-			return;
-		}*/
-
-		auto& profiles = ProfilerManager::instance().getFrame(m_profilerID)->profiles;
-		auto average = std::accumulate(profiles.begin(), profiles.end(), 0.0) / profiles.size();
-		if (std::isnan(average))
-		{
-			ct::logger::warn("[Warpage Compenastion] Average value is NAN");
-		}
-		else
-		{
-			auto offset = -average;
-			m_compensateZMap.insert(v.id, offset);
-		}
-		
-	}
-}
-
-void JobThread::generateWarpageMap() //TODO: Get qimg from world
-{
-	//IGocator::instance().stop();
-	ProfilerManager::instance().stop(m_profilerID);
-
-	QImage world3Dimg = m_qimg;
-	world3Dimg.fill(Qt::black);
-
-	for (int i = 0; i < m_viewSequence->count(); i++) {
-		auto item = m_viewSequence->item(i);
-		auto id = item->whatsThis();
-
-		if (!(*m_views).contains(id)) {
-			ct::logger::error("[JobThread] Failed to generate warpage map. Invalid view ID: %s", id.toStdString().c_str());
-			continue;
-		}
-
-		auto v = (*m_views)[id];
-
-		jogLaserBasedOnFiducial(v.world.wx, v.world.wy, v.world.wz, "2D");
-
-		//IGocator::instance().snapshot();
-		ProfilerManager::instance().snapShot(m_profilerID);
-		ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT);
-
-		
-		/*if (IGocator::instance().go_info().mode != GO_MODE_PROFILE) {
-			ct::logger::error("Expected profile mode, but receive other mode: %d", IGocator::instance().go_info().mode);
-			return;
-		}*/
-
-		auto wpx = ScaleManager::instance().fov_to_world(v.px);
-		auto fontSize = wpx.w / 10;
-		auto& profiles = ProfilerManager::instance().getFrame(m_profilerID)->profiles;
-		auto average = std::accumulate(profiles.begin(), profiles.end(), 0.0) / profiles.size();
-		QString avg_z = QString::number(average, 'f', 2);
-
-		QPainter painter(&m_qimg);
-		QPainter painter2(&world3Dimg);
-
-		QPen pen;
-		pen.setWidth(5);
-		pen.setColor(QColor(0, 255, 127));
-		painter.setPen(pen);
-		painter2.setPen(pen);
-		QBrush brush;
-		brush.setColor(QColor(0, 255, 127));
-		painter.setBrush(brush);
-		painter2.setBrush(brush);
-		QFont font = painter.font();
-		font.setPointSize(fontSize);
-		painter.setFont(font);
-		painter2.setFont(font);
-
-		painter.drawText(QPointF((wpx.xmin + wpx.cx) / 2, wpx.cy), avg_z);
-		painter2.drawText(QPointF((wpx.xmin + wpx.cx) / 2, wpx.cy), avg_z);
-		painter.drawRect(QRect(wpx.xmin, wpx.ymin, wpx.w, wpx.h));
-		painter2.drawRect(QRect(wpx.xmin, wpx.ymin, wpx.w, wpx.h));
-		painter.end();
-		painter2.end();
-	}
-
-	m_qimg.save("warp.png");
-	world3Dimg.save("warp2.png");
 }
 
 void JobThread::centerLaserZ()
@@ -4238,7 +3965,6 @@ void JobThread::preAcquisition()
 	searchBarcode();
 	ct::logger::info("preacq-3");
 	colorCompensation(); ct::logger::info("preacq-4");
-	warpageCompensation(); ct::logger::info("preacq-5");
 }
 
 void JobThread::postAcquisition()
@@ -4339,8 +4065,6 @@ void JobThread::acquire2DImages()
 
 		if (m_run1stFOVOnly) break;
 	}
-
-	m_compensateZMap.clear();
 
 	switchToContinuousModeLSC();
 
@@ -6699,10 +6423,6 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 void JobThread::jogView(const QView& v, double z_offset)
 {
 	double new_z = v.world.wz + z_offset;
-
-	if (m_compensateZMap.contains(v.id)) {
-		new_z += m_compensateZMap[v.id];
-	}
 
 	jogBasedOnFiducial(v.world.wx, v.world.wy, new_z, "2D");
 

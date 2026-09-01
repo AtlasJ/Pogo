@@ -95,14 +95,12 @@ public:
 	void attach(QViewPlane* viewPlane);
 	void attach(PortabilityInfo* portabilityInfo);
 	void setRootPath(QString rootPath); 
-	void setWarpageMethod(QString method);
 	void setXSpeed(int speed, int speed3d);
 	void setXDecel(int decel);
 	void getXSpeed(int& speed, int& speed3d);
 
 	void enableFiducial(bool enable);
 	void enableBarcode(bool enable);
-	void enableWarpageCompensation(bool enable);
 	void enableRun1stFOVOnly(bool enable);
 
 	void resetFiducial();
@@ -198,7 +196,6 @@ private:
 
 	//booleans
 	bool m_stopRun = false;
-	bool m_enableWarpageCompensation = false;
 
 	//fid
 	bool m_enableFiducial = false;
@@ -245,17 +242,6 @@ private:
 	bool barcodeExists(int index);
 	void searchBarcode();
 
-	/*
-	Warpage compensation concept
-	1. Teach focus is to obtain the ideal offset of camera to laser. Ideal being that the laser scan should give an average profile of 0
-	2. Therefore the offset to compensate the warpage is -average. Since for gantry, z up is negative while z down is positive.
-	*/
-	QString m_warpageMethod = "None";
-	QHash<QString, double> m_compensateZMap;
-	void warpageCompensation();
-	void subWarpageCompensation();
-	void fullWarpageCompensation();
-	void generateWarpageMap();
 	void centerLaserZ();
 
 

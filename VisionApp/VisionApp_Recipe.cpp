@@ -134,7 +134,7 @@ void VisionApp::createRecipe(const QString& recipeName)
 	toPage(UIPage::LIGHTING);
 }
 
-bool VisionApp::openRecipe(const QString& recentOpenRecipe, bool autoLoad)
+bool VisionApp::openRecipe(const QString& recentOpenRecipe)
 {
 	TimeLogger timer;
 
@@ -147,15 +147,6 @@ bool VisionApp::openRecipe(const QString& recentOpenRecipe, bool autoLoad)
 	QString jsonPath;
 	QString imagePath;
 	QString recipeName;
-	if (autoLoad) {
-		const QString suffix = "_BBA";
-		QString name = Common::Directory::CurrentRecipe.trimmed();
-		if (name.endsWith(suffix)) name.chop(suffix.size());  // remove "_BBA"
-		else name += suffix;                                  // add "_BBA"
-		recipeName = name;
-		qDebug() << "autoLoad toggled recipeName:" << recipeName;
-	}
-	else
 	{
 		if (recentOpenRecipe.isEmpty())
 		{

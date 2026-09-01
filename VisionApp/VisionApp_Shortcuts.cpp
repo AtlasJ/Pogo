@@ -1094,11 +1094,6 @@ void VisionApp::connectShortcuts()
 	connect(shortcut_c9, &QShortcut::activated, [=]() {
 	});
 
-	QShortcut* shortcut_ctrlp = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_P), this);
-	connect(shortcut_ctrlp, &QShortcut::activated, [=]() {
-		SystemData::instance().triggerPSP();
-	});
-
 	QShortcut *shortcut_ctrlj = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_J), this);
 	connect(shortcut_ctrlj, &QShortcut::activated, [=]() { 
 		if (notAllowToAccess(AccessLevel::OPERATOR)) return;
