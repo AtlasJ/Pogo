@@ -4238,7 +4238,7 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 	if (winner == 0) {
 		ct::logger::error("[Acq] No barcode found on either reader - saving as No_Barcode");
 		emit barcodeDecoded("No_Barcode");
-		emit unitBarcode(unitID, "No_Barcode");
+		emit unitBarcode(unitID, "No_Barcode", 0);
 		if (sd._setupRegionPitchMode) emit incrementProgress(); //barcode step
 		if (InspectionThread::instance().isActive())
 			InspectionThread::instance().reportSkipped(unitID, "OCR", "no barcode");
@@ -4248,14 +4248,10 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 	}
 
 	emit barcodeDecoded(barcode);
-	emit unitBarcode(unitID, barcode);
+	emit unitBarcode(unitID, barcode, winner);
 
 	//saved reader images live beside the fiducial images: <root>/X1Y2_reader1.jpg
-	QString saveName = unitID;
-	if (unitID.startsWith("unit_")) {
-		auto parts = unitID.mid(5).split('_');
-		if (parts.size() == 2) saveName = QString("X%1Y%2").arg(parts[0], parts[1]);
-	}
+	const QString saveName = unitID; //unit IDs are already X#Y# (plane mode: "board")
 
 	auto saveReaderImage = [&](int reader) {
 		if (!sd._saveInspImages) {

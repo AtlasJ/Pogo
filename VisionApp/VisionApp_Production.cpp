@@ -7,6 +7,7 @@
 #include "uidGenerator.h"
 #include "AuditLog.h"
 #include "AlgoManager.h"
+#include "MbufPoolManager.h"
 
 void VisionApp::initProductionUI() {
 	//NOTE: for hardware side, user can only turn on in this production page
@@ -46,7 +47,7 @@ void VisionApp::initProductionUI() {
 		return t->rowCount() - 1; //fallback: newest row
 	};
 
-	connect(&_jobThread, &JobThread::unitBarcode, this, [=](QString unitID, QString code) {
+	connect(&_jobThread, &JobThread::unitBarcode, this, [=](QString unitID, QString code, int reader) {
 		if (_processType != ProcessType::PRODUCTION) return;
 
 		auto* t = ui.tableWidget_prodStatus;
@@ -57,17 +58,12 @@ void VisionApp::initProductionUI() {
 		tItem->setData(Qt::UserRole, unitID);
 		t->setItem(row, 0, tItem);
 
-		//"unit_3_2" -> "3, 2"
-		QString xy = unitID;
-		if (unitID.startsWith("unit_")) {
-			auto parts = unitID.mid(5).split('_');
-			if (parts.size() == 2) xy = parts[0] + ", " + parts[1];
-		}
-		t->setItem(row, 1, new QTableWidgetItem(xy));
+		t->setItem(row, 1, new QTableWidgetItem(unitID)); //unit IDs are X#Y#
 
 		const bool codeOk = (code != "No_Barcode" && code != "Fail_to_read_barcode" && code != "ERROR");
 		auto* bItem = new QTableWidgetItem(code);
 		bItem->setForeground(codeOk ? QBrush(Qt::green) : QBrush(Qt::red));
+		bItem->setData(Qt::UserRole, reader); //which reader decoded - keys the saved images
 		t->setItem(row, 2, bItem);
 
 		t->setItem(row, 3, new QTableWidgetItem("-"));
@@ -88,6 +84,83 @@ void VisionApp::initProductionUI() {
 
 		t->scrollToBottom();
 	}, Qt::QueuedConnection);
+
+	//double click a unit's cell to review its saved images:
+	//Barcode -> show the decoding reader's capture; OCR -> cam view + algo setup on
+	//the OCR algo with the OCR-side capture; Pass/Fail -> algo setup on the 3D algo
+	//with the unit's height map. Images exist only when Save Inspection Images is on.
+	connect(ui.tableWidget_prodStatus, &QTableWidget::cellDoubleClicked, this, [=](int row, int col) {
+		auto* t = ui.tableWidget_prodStatus;
+		auto* tItem = t->item(row, 0);
+		if (!tItem) return;
+
+		const QString unitID = tItem->data(Qt::UserRole).toString();
+		const QString saveName = unitID; //unit IDs are already X#Y#
+		const QString root = Common::Directory::getProductionImageSetPath();
+		const int winner = t->item(row, 2) ? t->item(row, 2)->data(Qt::UserRole).toInt() : 0;
+
+		auto loadFirst = [&](const QStringList& paths) -> QImage {
+			for (const auto& p : paths) {
+				QImage img(p);
+				if (!img.isNull()) return img;
+			}
+			return QImage();
+		};
+
+		if (col == 2) {
+			//barcode: just show the capture, no page change
+			QStringList paths;
+			if (winner == 1 || winner == 2) paths << QString("%1%2_reader%3.jpg").arg(root, saveName).arg(winner);
+			paths << root + saveName + "_reader1.jpg" << root + saveName + "_reader2.jpg";
+			const QImage img = loadFirst(paths);
+			if (img.isNull()) {
+				showMsg(QStringLiteral("No saved barcode image for %1 - enable Save Inspection Images.").arg(saveName));
+				return;
+			}
+			//stay on the production page: the FOV widget here shows the capture
+			displayFOV(img);
+			ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
+		}
+		else if (col == 3) {
+			//OCR: cam-only view, algo setup page on the OCR algo, OCR-side capture loaded
+			const int loser = (winner == 1) ? 2 : (winner == 2 ? 1 : 0);
+			QStringList paths;
+			if (loser) paths << QString("%1%2_reader%3.jpg").arg(root, saveName).arg(loser);
+			paths << root + saveName + "_reader2.jpg" << root + saveName + "_reader1.jpg";
+			const QImage img = loadFirst(paths);
+			if (img.isNull()) {
+				showMsg(QStringLiteral("No saved OCR image for %1 - enable Save Inspection Images.").arg(saveName));
+				return;
+			}
+			toggleFOVView();
+			_imageFOV = img; //the algo page runs on the displayed FOV image
+			displayFOV(img);
+			ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
+			ui.comboBox_algoType->setCurrentIndex((int)AlgoPageAlgo::OCR_READ);
+			toPage(UIPage::ALGO_SETUP);
+		}
+		else if (col == 4) {
+			//3D: cam-only view, algo setup page on the height algo, unit's height map loaded
+			const QString hmPath = root + saveName + "_height.tiff";
+			if (!QFile::exists(hmPath)) {
+				showMsg(QStringLiteral("No saved height map for %1 - enable Save Inspection Images.").arg(saveName));
+				return;
+			}
+
+			MIL_ID hm = M_NULL;
+			MbufImportA(hmPath.toStdString().c_str(), M_TIFF, M_RESTORE, M_DEFAULT_HOST, &hm);
+			if (hm == M_NULL) {
+				showMsg(QStringLiteral("Failed to load %1").arg(hmPath));
+				return;
+			}
+
+			AlgoManager::instance().setHeightMap(mtrx::MPM::instance().attach(hm));
+			toggleFOVView();
+			ui.comboBox_algoType->setCurrentIndex((int)AlgoPageAlgo::HEIGHT_3D);
+			toPage(UIPage::ALGO_SETUP);
+			showAlgoHeightMap(true);
+		}
+	});
 
 	//animate the "Inspecting" cells so in-progress units are visible at a glance
 	auto* inspectAnimTimer = new QTimer(this);
