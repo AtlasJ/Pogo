@@ -167,6 +167,19 @@ bool Profiler_Keyence::setSetting(unsigned char type, unsigned char category, un
 	const void* data, unsigned int size, const char* what,
 	unsigned char target1)
 {
+	/*
+	* One SetSetting round trip costs ~700 ms on the LJ-X, and production re-applies
+	* the whole optic before EVERY scan (~11 items = ~8 s per unit). Identical values
+	* are skipped via this session cache; it is cleared on connect, so a fresh
+	* connection always pushes everything once.
+	*/
+	const quint32 key = (quint32(type) << 24) | (quint32(category) << 16) | (quint32(item) << 8) | target1;
+	const QByteArray value(reinterpret_cast<const char*>(data), (int)size);
+	if (m_settingCache.value(key) == value && m_settingCache.contains(key)) {
+		ct::logger::trace("[Profiler_Keyence] SetSetting(%s) unchanged - skipped", what);
+		return true;
+	}
+
 	LJX8IF_TARGET_SETTING ts{};
 	ts.byType = type;
 	ts.byCategory = category;
@@ -190,6 +203,7 @@ bool Profiler_Keyence::setSetting(unsigned char type, unsigned char category, un
 	}
 
 	ct::logger::info("[Profiler_Keyence] SetSetting(%s) OK", what);
+	m_settingCache.insert(key, value);
 	return true;
 }
 
@@ -582,6 +596,9 @@ bool Profiler_Keyence::enable(bool enable)
 bool Profiler_Keyence::connect(QString ip)
 {
 	if (!safeGuard()) return false;
+
+	//new connection: the controller's running settings are unknown, push everything once
+	m_settingCache.clear();
 
 	// The parameter is named 'sn' in IProfiler but every backend receives the IP string
 	// from profiler.json.
