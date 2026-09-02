@@ -20,8 +20,39 @@
 //which algo the setup page combobox is on (name avoids the Algo lib's AlgoType)
 enum class AlgoPageAlgo {
 	OCR_READ = 0,
-	HEIGHT_3D = 1
+	HEIGHT_3D = 1,
+	HEIGHT_3D_V2 = 2,     //new pipeline, built beside HEIGHT_3D - UI shell only for now
+	HEIGHT_3D_V3 = 3      //second layout attempt, also a shell - no locator, no algorithm
 };
+
+/*
+* How many algos own a Locator config. HEIGHT_3D_V2 and HEIGHT_3D_V3 deliberately do NOT -
+* their segmentation stage locates the part itself, on the height data rather than on an 8-bit
+* render of it, and returns width, height and angle instead of only a match score.
+*
+* This constant exists because AlgoPageAlgo indexes AlgoManager::m_locator[] directly and the
+* enum is now LARGER than that array. Anything converting an AlgoPageAlgo to an index must
+* bounds-check against this, or selecting one of those pages writes past the end of the array -
+* silent memory corruption, not a crash, because captureAlgoParamsFromUI() runs on both Save
+* and Run.
+*/
+constexpr int kAlgoLocatorSlots = 2;
+
+inline bool algoHasLocator(AlgoPageAlgo a)
+{
+	const int i = (int)a;
+	return i >= 0 && i < kAlgoLocatorSlots;
+}
+
+/*
+* Which algos actually have an implementation behind them. The V2 and V3 pages are layout only.
+* Written as a WHITELIST rather than a list of exclusions so that the next page added to the
+* enum refuses by default, instead of falling through to whatever the last else branch runs.
+*/
+inline bool algoIsImplemented(AlgoPageAlgo a)
+{
+	return a == AlgoPageAlgo::OCR_READ || a == AlgoPageAlgo::HEIGHT_3D;
+}
 
 //one PaddleOCR text detection (matches IM430's OcrResult)
 struct AlgoOcrBox {

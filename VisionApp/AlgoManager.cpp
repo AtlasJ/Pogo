@@ -266,14 +266,23 @@ void AlgoManager::setHeightParams(const AlgoHeightParams& p)
 	m_heightParams = p;
 }
 
+/*
+* Bounds-checked because AlgoPageAlgo is now larger than m_locator[]: HEIGHT_3D_V2 has no
+* Locator of its own. Without the check, selecting that page and pressing Save or Run would
+* write past the end of the array - silent corruption of whatever follows it, not a crash.
+*/
 AlgoLocatorConfig AlgoManager::locatorConfig(AlgoPageAlgo algo) const
 {
+	if (!algoHasLocator(algo)) return AlgoLocatorConfig();
+
 	std::lock_guard<std::mutex> lock(m_mutex);
 	return m_locator[(int)algo];
 }
 
 void AlgoManager::setLocatorConfig(AlgoPageAlgo algo, const AlgoLocatorConfig& cfg)
 {
+	if (!algoHasLocator(algo)) return;
+
 	std::lock_guard<std::mutex> lock(m_mutex);
 	m_locator[(int)algo] = cfg;
 }

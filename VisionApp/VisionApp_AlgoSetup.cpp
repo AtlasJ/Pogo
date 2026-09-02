@@ -50,6 +50,9 @@ void VisionApp::initAlgoSetupPage()
 	//── header: algo selection + run
 	connect(ui.comboBox_algoType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
 		ui.stackedWidget_algoParams->setCurrentIndex(index);
+		//the Locator frame is shared by all pages, but the V2/V3 pages have none - hide it there
+		//rather than leave a set of controls on screen that write nowhere
+		ui.frame_algoLocator->setVisible(algoHasLocator(currentAlgoPageAlgo()));
 		refreshAlgoLocatorUI();
 		updateAlgoRoiVisibility();
 	});
@@ -57,6 +60,18 @@ void VisionApp::initAlgoSetupPage()
 	connect(ui.toolButton_algoRun, &QToolButton::clicked, this, [=]() {
 		if (AlgoManager::instance().isBusy()) {
 			showMsg("Algo is still running, please wait.");
+			return;
+		}
+
+		/*
+		* The V2 and V3 pages are UI shells only - no params struct, no JSON, no algorithm yet.
+		* Refuse on anything not whitelisted. Falling through to the else below would silently
+		* run the OLD height algo against an untouched page, which reads as the new pipeline
+		* working when nothing of it exists.
+		*/
+		if (!algoIsImplemented(currentAlgoPageAlgo())) {
+			ui.label_algoStatus->setText(ui.comboBox_algoType->currentText()
+				+ ": layout only, no algorithm yet");
 			return;
 		}
 
@@ -296,8 +311,12 @@ void VisionApp::updateAlgoRoiVisibility()
 	for (auto box : _algoPlaneBoxes) box->setVisible(height);
 	for (auto box : _algoHeightBoxes) box->setVisible(height);
 
-	if (_algoLocLearnBox) _algoLocLearnBox->setVisible(onPage && ui.toolButton_algoLocLearnRoi->isChecked());
-	if (_algoLocSearchBox) _algoLocSearchBox->setVisible(onPage && ui.toolButton_algoLocSearchRoi->isChecked());
+	//gated on algoHasLocator as well: frame_algoLocator is hidden on the pages that have no
+	//locator, but its toggle buttons keep whatever checked state they were left in, so without
+	//this the learn/search boxes stay on the FOV with no visible control owning them
+	const bool loc = onPage && algoHasLocator(algo);
+	if (_algoLocLearnBox) _algoLocLearnBox->setVisible(loc && ui.toolButton_algoLocLearnRoi->isChecked());
+	if (_algoLocSearchBox) _algoLocSearchBox->setVisible(loc && ui.toolButton_algoLocSearchRoi->isChecked());
 
 	if (!onPage) clearAlgoOverlay();
 }
@@ -347,8 +366,11 @@ void VisionApp::captureAlgoParamsFromUI()
 	for (auto box : _algoHeightBoxes) h.heightRois.append(box->getGeometry());
 	mgr.setHeightParams(h);
 
-	//locator widgets edit the CURRENT algo's config
+	//locator widgets edit the CURRENT algo's config - but HEIGHT_3D_V2 has no locator slot,
+	//so skip rather than round-trip a config that setLocatorConfig() would discard anyway
 	const AlgoPageAlgo algo = currentAlgoPageAlgo();
+	if (!algoHasLocator(algo)) return;
+
 	AlgoLocatorConfig loc = mgr.locatorConfig(algo);
 	loc.enabled = ui.checkBox_algoLocEnable->isChecked();
 	loc.scoreThreshold = ui.dspin_algoLocScore->value();
