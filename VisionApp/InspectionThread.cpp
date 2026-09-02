@@ -143,7 +143,6 @@ void InspectionThread::process(const Item& item)
 			output = m_ocrOutput;
 		}
 		QString text = output.roi1Text;
-		if (!output.roi2Text.isEmpty()) text += " | " + output.roi2Text;
 		ct::logger::info("[Inspection] OCR result (unit=%s): ok=%d, text='%s' %s (%lldms)",
 			unitID.toStdString().c_str(), output.ok ? 1 : 0, text.toStdString().c_str(),
 			output.message.toStdString().c_str(), (long long)output.elapsedMs);

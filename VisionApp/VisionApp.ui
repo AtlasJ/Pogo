@@ -18573,85 +18573,33 @@ Stop SR Management Tool services to free port 21.</string>
                                   </item>
                                  </layout>
                                 </item>
-                                <item>
-                                 <layout class="QHBoxLayout" name="hl_algoOcrRoi2">
-                                  <item>
-                                   <widget class="QCheckBox" name="checkBox_algoOcrRoi2Enable">
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoOcrOptions">
+                               <property name="title">
+                                <string>Options</string>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_group_algoOcrOptions">
+                                                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrOpt1">
+<item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrPaddle">
                                     <property name="text">
-                                     <string>Enable ROI 2</string>
+                                     <string>Use PaddleOCR</string>
                                     </property>
                                    </widget>
                                   </item>
-                                  <item>
-                                   <widget class="QToolButton" name="toolButton_algoOcrRoi2">
-                                    <property name="minimumSize">
-                                     <size>
-                                      <width>80</width>
-                                      <height>26</height>
-                                     </size>
-                                    </property>
+<item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrRemoveSpecial">
                                     <property name="text">
-                                     <string>Show ROI 2</string>
-                                    </property>
-                                    <property name="checkable">
-                                     <bool>true</bool>
+                                     <string>Remove Special Chars</string>
                                     </property>
                                    </widget>
                                   </item>
-                                  <item>
-                                   <widget class="QLabel" name="label_algoOcrRoi2Rows">
-                                    <property name="text">
-                                     <string>Rows:</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QSpinBox" name="spin_algoOcrRoi2Rows">
-                                    <property name="maximumSize">
-                                     <size>
-                                      <width>80</width>
-                                      <height>16777215</height>
-                                     </size>
-                                    </property>
-                                    <property name="minimum">
-                                     <number>1</number>
-                                    </property>
-                                    <property name="maximum">
-                                     <number>20</number>
-                                    </property>
-                                    <property name="value">
-                                     <number>1</number>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QLabel" name="label_algoOcrRoi2Cols">
-                                    <property name="text">
-                                     <string>Cols:</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QSpinBox" name="spin_algoOcrRoi2Cols">
-                                    <property name="maximumSize">
-                                     <size>
-                                      <width>80</width>
-                                      <height>16777215</height>
-                                     </size>
-                                    </property>
-                                    <property name="minimum">
-                                     <number>0</number>
-                                    </property>
-                                    <property name="maximum">
-                                     <number>64</number>
-                                    </property>
-                                    <property name="value">
-                                     <number>0</number>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <spacer name="hs_algoOcrRoi2">
+<item>
+                                   <spacer name="hs_hl_algoOcrOpt1">
                                     <property name="orientation">
                                      <enum>Qt::Horizontal</enum>
                                     </property>
@@ -18665,25 +18613,16 @@ Stop SR Management Tool services to free port 21.</string>
                                   </item>
                                  </layout>
                                 </item>
-                               </layout>
-                              </widget>
-                             </item>
-                             <item>
-                              <widget class="QGroupBox" name="group_algoOcrOptions">
-                               <property name="title">
-                                <string>Options</string>
-                               </property>
-                               <layout class="QVBoxLayout" name="vl_group_algoOcrOptions">
                                 <item>
-                                 <layout class="QHBoxLayout" name="hl_algoOcrOpt1">
-                                  <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrOpt2">
+<item>
                                    <widget class="QLabel" name="label_algoOcrOrient">
                                     <property name="text">
                                      <string>Orientation:</string>
                                     </property>
                                    </widget>
                                   </item>
-                                  <item>
+<item>
                                    <widget class="QComboBox" name="comboBox_algoOcrOrientation">
                                     <property name="maximumSize">
                                      <size>
@@ -18713,120 +18652,8 @@ Stop SR Management Tool services to free port 21.</string>
                                     </item>
                                    </widget>
                                   </item>
-                                  <item>
-                                   <widget class="QLabel" name="label_algoOcrEnlarge">
-                                    <property name="text">
-                                     <string>Enlarge:</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QDoubleSpinBox" name="dspin_algoOcrEnlarge">
-                                    <property name="maximumSize">
-                                     <size>
-                                      <width>90</width>
-                                      <height>16777215</height>
-                                     </size>
-                                    </property>
-                                    <property name="decimals">
-                                     <number>1</number>
-                                    </property>
-                                    <property name="minimum">
-                                     <double>1.000000000000000</double>
-                                    </property>
-                                    <property name="maximum">
-                                     <double>16.000000000000000</double>
-                                    </property>
-                                    <property name="value">
-                                     <double>4.000000000000000</double>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QCheckBox" name="checkBox_algoOcrPaddle">
-                                    <property name="text">
-                                     <string>Use PaddleOCR</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QCheckBox" name="checkBox_algoOcrRemoveSpecial">
-                                    <property name="text">
-                                     <string>Remove Special Chars</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <spacer name="hs_algoOcrOpt1">
-                                    <property name="orientation">
-                                     <enum>Qt::Horizontal</enum>
-                                    </property>
-                                    <property name="sizeHint" stdset="0">
-                                     <size>
-                                      <width>40</width>
-                                      <height>20</height>
-                                     </size>
-                                    </property>
-                                   </spacer>
-                                  </item>
-                                 </layout>
-                                </item>
-                                <item>
-                                 <layout class="QHBoxLayout" name="hl_algoOcrOpt2">
-                                  <item>
-                                   <widget class="QLabel" name="label_algoOcrPadX">
-                                    <property name="text">
-                                     <string>Char Search Pad X:</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QSpinBox" name="spin_algoOcrPadX">
-                                    <property name="maximumSize">
-                                     <size>
-                                      <width>80</width>
-                                      <height>16777215</height>
-                                     </size>
-                                    </property>
-                                    <property name="minimum">
-                                     <number>-50</number>
-                                    </property>
-                                    <property name="maximum">
-                                     <number>200</number>
-                                    </property>
-                                    <property name="value">
-                                     <number>0</number>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QLabel" name="label_algoOcrPadY">
-                                    <property name="text">
-                                     <string>Y:</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QSpinBox" name="spin_algoOcrPadY">
-                                    <property name="maximumSize">
-                                     <size>
-                                      <width>80</width>
-                                      <height>16777215</height>
-                                     </size>
-                                    </property>
-                                    <property name="minimum">
-                                     <number>-50</number>
-                                    </property>
-                                    <property name="maximum">
-                                     <number>200</number>
-                                    </property>
-                                    <property name="value">
-                                     <number>0</number>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <spacer name="hs_algoOcrOpt2">
+<item>
+                                   <spacer name="hs_hl_algoOcrOpt2">
                                     <property name="orientation">
                                      <enum>Qt::Horizontal</enum>
                                     </property>
@@ -19014,24 +18841,6 @@ Stop SR Management Tool services to free port 21.</string>
                                   </item>
                                   <item>
                                    <widget class="QLineEdit" name="lineEdit_algoOcr1Result">
-                                    <property name="readOnly">
-                                     <bool>true</bool>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                 </layout>
-                                </item>
-                                <item>
-                                 <layout class="QHBoxLayout" name="hl_algoOcrRes2">
-                                  <item>
-                                   <widget class="QLabel" name="label_algoOcr2">
-                                    <property name="text">
-                                     <string>ROI 2:</string>
-                                    </property>
-                                   </widget>
-                                  </item>
-                                  <item>
-                                   <widget class="QLineEdit" name="lineEdit_algoOcr2Result">
                                     <property name="readOnly">
                                      <bool>true</bool>
                                     </property>

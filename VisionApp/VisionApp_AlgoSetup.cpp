@@ -42,7 +42,6 @@ void VisionApp::initAlgoSetupPage()
 	};
 
 	_algoOcrRoi1Box = makeBox(QRectF(100, 100, 400, 150), kAlgoRoiColor, "OCR ROI 1");
-	_algoOcrRoi2Box = makeBox(QRectF(100, 300, 400, 150), kAlgoRoiColor, "OCR ROI 2");
 	_algoOcrLearnBox = makeBox(QRectF(100, 100, 60, 60), kAlgoLearnColor, "Learn Char");
 	_algoLocLearnBox = makeBox(QRectF(50, 50, 150, 150), kAlgoLearnColor, "Locator Learn");
 	_algoLocSearchBox = makeBox(QRectF(0, 0, 800, 600), kAlgoSearchColor, "Locator Search");
@@ -76,9 +75,7 @@ void VisionApp::initAlgoSetupPage()
 
 	//── OCR page controls
 	connect(ui.toolButton_algoOcrRoi1, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
-	connect(ui.toolButton_algoOcrRoi2, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
 	connect(ui.toolButton_algoOcrLearnRoi, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
-	connect(ui.checkBox_algoOcrRoi2Enable, &QCheckBox::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
 
 	connect(ui.toolButton_algoOcrLearnSample, &QToolButton::clicked, this, [=]() {
 		QString error;
@@ -216,7 +213,6 @@ void VisionApp::initAlgoSetupPage()
 	//── results from the worker thread
 	connect(&AlgoManager::instance(), &AlgoManager::ocrFinished, this, [=](const AlgoOcrOutput& out) {
 		ui.lineEdit_algoOcr1Result->setText(out.roi1Key.isEmpty() ? out.roi1Text : out.roi1Key + "   (" + out.roi1Text + ")");
-		ui.lineEdit_algoOcr2Result->setText(out.roi2Key.isEmpty() ? out.roi2Text : out.roi2Key + "   (" + out.roi2Text + ")");
 		ui.label_algoOcrTime->setText(QStringLiteral("%1 ms").arg(out.elapsedMs));
 		ui.label_algoStatus->setText(out.ok ? out.message : "Failed: " + out.message);
 		renderAlgoOverlay(out.overlay);
@@ -289,8 +285,6 @@ void VisionApp::updateAlgoRoiVisibility()
 	const bool height = onPage && (algo == AlgoPageAlgo::HEIGHT_3D);
 
 	if (_algoOcrRoi1Box) _algoOcrRoi1Box->setVisible(ocr && ui.toolButton_algoOcrRoi1->isChecked());
-	if (_algoOcrRoi2Box) _algoOcrRoi2Box->setVisible(ocr && ui.checkBox_algoOcrRoi2Enable->isChecked()
-		&& ui.toolButton_algoOcrRoi2->isChecked());
 	if (_algoOcrLearnBox) _algoOcrLearnBox->setVisible(ocr && ui.toolButton_algoOcrLearnRoi->isChecked());
 
 	for (auto box : _algoPlaneBoxes) box->setVisible(height);
@@ -305,7 +299,6 @@ void VisionApp::updateAlgoRoiVisibility()
 void VisionApp::hideAlgoSetupRois()
 {
 	if (_algoOcrRoi1Box) _algoOcrRoi1Box->hide();
-	if (_algoOcrRoi2Box) _algoOcrRoi2Box->hide();
 	if (_algoOcrLearnBox) _algoOcrLearnBox->hide();
 	if (_algoLocLearnBox) _algoLocLearnBox->hide();
 	if (_algoLocSearchBox) _algoLocSearchBox->hide();
@@ -322,18 +315,11 @@ void VisionApp::captureAlgoParamsFromUI()
 
 	AlgoOcrParams ocr = mgr.ocrParams();
 	ocr.orientation = ui.comboBox_algoOcrOrientation->currentText().toInt();
-	ocr.enlargeOcrImage = ui.dspin_algoOcrEnlarge->value();
 	ocr.roi1Rows = ui.spin_algoOcrRoi1Rows->value();
 	ocr.roi1Columns = ui.spin_algoOcrRoi1Cols->value();
-	ocr.roi2Rows = ui.spin_algoOcrRoi2Rows->value();
-	ocr.roi2Columns = ui.spin_algoOcrRoi2Cols->value();
-	ocr.patternSearchPadX = ui.spin_algoOcrPadX->value();
-	ocr.patternSearchPadY = ui.spin_algoOcrPadY->value();
 	ocr.removeSpecialChars = ui.checkBox_algoOcrRemoveSpecial->isChecked();
 	ocr.paddleOcrEnabled = ui.checkBox_algoOcrPaddle->isChecked();
-	ocr.roi2Enabled = ui.checkBox_algoOcrRoi2Enable->isChecked();
 	if (_algoOcrRoi1Box) ocr.roi1Geo = _algoOcrRoi1Box->getGeometry();
-	if (_algoOcrRoi2Box) ocr.roi2Geo = _algoOcrRoi2Box->getGeometry();
 	mgr.setOcrParams(ocr);
 
 	AlgoHeightParams h = mgr.heightParams();
@@ -391,31 +377,18 @@ void VisionApp::refreshAlgoSetupPage()
 	const AlgoOcrParams ocr = mgr.ocrParams();
 	{
 		QSignalBlocker b1(ui.comboBox_algoOcrOrientation);
-		QSignalBlocker b2(ui.dspin_algoOcrEnlarge);
 		QSignalBlocker b3(ui.spin_algoOcrRoi1Rows);
 		QSignalBlocker b4(ui.spin_algoOcrRoi1Cols);
-		QSignalBlocker b5(ui.spin_algoOcrRoi2Rows);
-		QSignalBlocker b6(ui.spin_algoOcrRoi2Cols);
-		QSignalBlocker b7(ui.spin_algoOcrPadX);
-		QSignalBlocker b8(ui.spin_algoOcrPadY);
 		QSignalBlocker b9(ui.checkBox_algoOcrRemoveSpecial);
 		QSignalBlocker b10(ui.checkBox_algoOcrPaddle);
-		QSignalBlocker b11(ui.checkBox_algoOcrRoi2Enable);
 
 		ui.comboBox_algoOcrOrientation->setCurrentText(QString::number(ocr.orientation));
-		ui.dspin_algoOcrEnlarge->setValue(ocr.enlargeOcrImage);
 		ui.spin_algoOcrRoi1Rows->setValue(ocr.roi1Rows);
 		ui.spin_algoOcrRoi1Cols->setValue(ocr.roi1Columns);
-		ui.spin_algoOcrRoi2Rows->setValue(ocr.roi2Rows);
-		ui.spin_algoOcrRoi2Cols->setValue(ocr.roi2Columns);
-		ui.spin_algoOcrPadX->setValue(ocr.patternSearchPadX);
-		ui.spin_algoOcrPadY->setValue(ocr.patternSearchPadY);
 		ui.checkBox_algoOcrRemoveSpecial->setChecked(ocr.removeSpecialChars);
 		ui.checkBox_algoOcrPaddle->setChecked(ocr.paddleOcrEnabled);
-		ui.checkBox_algoOcrRoi2Enable->setChecked(ocr.roi2Enabled);
 	}
 	if (!ocr.roi1Geo.isEmpty() && _algoOcrRoi1Box) _algoOcrRoi1Box->setGeometry(ocr.roi1Geo);
-	if (!ocr.roi2Geo.isEmpty() && _algoOcrRoi2Box) _algoOcrRoi2Box->setGeometry(ocr.roi2Geo);
 
 	const OcrPatternConfig pat = mgr.patternConfig();
 	{

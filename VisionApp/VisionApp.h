@@ -749,7 +749,6 @@ private:
 
 	//algo setup page ROIs (shown only on the algo page for the selected algo)
 	QDragBox* _algoOcrRoi1Box = nullptr;
-	QDragBox* _algoOcrRoi2Box = nullptr;
 	QDragBox* _algoOcrLearnBox = nullptr;
 	QDragBox* _algoLocLearnBox = nullptr;
 
