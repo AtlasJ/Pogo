@@ -19009,6 +19009,213 @@ Stop SR Management Tool services to free port 21.</string>
                                  </layout>
                                 </item>
                                 <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHRoi3">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHPitchX">
+                                    <property name="text">
+                                     <string>Pitch X (px)</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spinBox_algoHPitchX">
+                                    <property name="minimum">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>100000</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>100</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHPitchY">
+                                    <property name="text">
+                                     <string>Pitch Y (px)</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spinBox_algoHPitchY">
+                                    <property name="minimum">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>100000</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>100</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHDupCount">
+                                    <property name="text">
+                                     <string>Count</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spinBox_algoHDupCount">
+                                    <property name="minimum">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>50</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>1</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHRoi3">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHRoi4">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHDupH">
+                                    <property name="enabled">
+                                     <bool>false</bool>
+                                    </property>
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Duplicate the selected ROI horizontally at Pitch X spacing</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Duplicate H</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHDupV">
+                                    <property name="enabled">
+                                     <bool>false</bool>
+                                    </property>
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Duplicate the selected ROI vertically at Pitch Y spacing</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Duplicate V</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHRoi4">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHRoi5">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHRotAngle">
+                                    <property name="text">
+                                     <string>Angle (deg)</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoHRotAngle">
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>0.100000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>360.000000000000000</double>
+                                    </property>
+                                    <property name="singleStep">
+                                     <double>0.100000000000000</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>90.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHRotCW">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>70</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Rotate the loaded heightmap clockwise by the set angle (the algo runs on the rotated map)</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>CW</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHRotCCW">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>70</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Rotate the loaded heightmap counter-clockwise by the set angle</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>CCW</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoHRoi5">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
                                  <layout class="QHBoxLayout" name="hl_algoHRoi2">
                                   <item>
                                    <widget class="QLabel" name="label_algoHPlaneCount">
@@ -19021,6 +19228,16 @@ Stop SR Management Tool services to free port 21.</string>
                                    <widget class="QLabel" name="label_algoHHeightCount">
                                     <property name="text">
                                      <string>Height ROIs: 0</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoHDiff">
+                                    <property name="styleSheet">
+                                     <string notr="true">color:#F0F0F0;</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Diff: select two ROIs</string>
                                     </property>
                                    </widget>
                                   </item>

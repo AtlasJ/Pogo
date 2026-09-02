@@ -21,8 +21,8 @@
 
 static const QColor kAlgoRoiColor(0, 150, 255);
 static const QColor kAlgoLearnColor(66, 135, 245);
-static const QColor kAlgoPlaneColor(0, 255, 127);
-static const QColor kAlgoHeightColor(255, 105, 180);
+static const QColor kAlgoPlaneColor(255, 165, 0);   //plane ROIs: orange
+static const QColor kAlgoHeightColor(0, 200, 0);    //height ROIs: green
 static const QColor kAlgoSearchColor(255, 165, 0);
 
 // ── setup ────────────────────────────────────────────────────────────────────
@@ -126,11 +126,100 @@ void VisionApp::initAlgoSetupPage()
 		showAlgoHeightMap(_algoHeightView3D);
 	});
 
-	connect(ui.toolButton_algoHAddPlane, &QToolButton::clicked, this, [=]() {
-		if (_algoPlaneBoxes.size() >= kAlgoPlaneRoiCount) {
-			showMsg(QStringLiteral("Maximum %1 plane ROIs.").arg(kAlgoPlaneRoiCount));
-			return;
+	//rotate the loaded heightmap by the set angle - the map itself rotates, so taught
+	//ROIs and the algo stay in the same (rotated) coordinate space. Exact multiples of
+	//90 use the lossless transpose path (and resize the canvas); other angles warp
+	//within the same canvas, nearest-neighbour so heights are never blended.
+	auto rotateHeightmap = [=](bool clockwise) {
+		auto hm = AlgoManager::instance().heightMap();
+		if (!hm) { showMsg("No heightmap loaded."); return; }
+
+		const double angle = ui.dspin_algoHRotAngle->value();
+
+		cv::Mat src, dst;
+		util::Mil_to_cv(hm->id(), src);
+		if (src.empty()) { showMsg("Failed to read the heightmap."); return; }
+
+		if (std::fmod(angle, 90.0) == 0.0) {
+			int quarters = (int)(angle / 90.0) % 4;
+			if (!clockwise) quarters = (4 - quarters) % 4;
+			dst = src;
+			for (int i = 0; i < quarters; i++) {
+				cv::Mat tmp;
+				cv::rotate(dst, tmp, cv::ROTATE_90_CLOCKWISE);
+				dst = tmp;
+			}
 		}
+		else {
+			//OpenCV: positive angle = counter-clockwise
+			const double cvAngle = clockwise ? -angle : angle;
+			const cv::Point2f center(src.cols / 2.0f, src.rows / 2.0f);
+			const cv::Mat m = cv::getRotationMatrix2D(center, cvAngle, 1.0);
+			cv::warpAffine(src, dst, m, src.size(), cv::INTER_NEAREST,
+				cv::BORDER_CONSTANT, cv::Scalar(0)); //0 = invalid height
+		}
+
+		MIL_ID rotated = M_NULL;
+		util::cv_to_Mil(dst, rotated);
+		if (rotated == M_NULL) { showMsg("Rotate failed."); return; }
+
+		AlgoManager::instance().setHeightMap(mtrx::MPM::instance().attach(rotated));
+		showAlgoHeightMap(_algoHeightView3D);
+	};
+	connect(ui.toolButton_algoHRotCW, &QToolButton::clicked, this, [=]() { rotateHeightmap(true); });
+	connect(ui.toolButton_algoHRotCCW, &QToolButton::clicked, this, [=]() { rotateHeightmap(false); });
+
+	//── ROI tools: duplicate at pitch, selection diff, copy/paste ──
+	auto selected3DBoxes = [=]() {
+		QVector<QPair<bool, QDragBox*>> sel; //isPlane, box
+		for (auto b : _algoPlaneBoxes) if (b->getSelected()) sel.append({ true, b });
+		for (auto b : _algoHeightBoxes) if (b->getSelected()) sel.append({ false, b });
+		return sel;
+	};
+
+	auto duplicateSelected = [=](bool horizontal) {
+		const auto sel = selected3DBoxes();
+		if (sel.size() != 1) { showMsg("Select exactly one ROI to duplicate."); return; }
+
+		const bool isPlane = sel[0].first;
+		const QRectF r = sel[0].second->getGeometry();
+		const int count = ui.spinBox_algoHDupCount->value();
+		const double step = horizontal ? ui.spinBox_algoHPitchX->value() : ui.spinBox_algoHPitchY->value();
+
+		for (int i = 1; i <= count; i++) {
+			addAlgoHRoiBox(isPlane, r.translated(horizontal ? step * i : 0.0, horizontal ? 0.0 : step * i));
+		}
+	};
+	connect(ui.toolButton_algoHDupH, &QToolButton::clicked, this, [=]() { duplicateSelected(true); });
+	connect(ui.toolButton_algoHDupV, &QToolButton::clicked, this, [=]() { duplicateSelected(false); });
+
+	//selection watcher: enables Duplicate for exactly one selected ROI, and shows the
+	//center-to-center X/Y difference when exactly two are selected
+	auto* selTimer = new QTimer(this);
+	connect(selTimer, &QTimer::timeout, this, [=]() {
+		if (!isPage(UIPage::ALGO_SETUP)) return;
+
+		const auto sel = selected3DBoxes();
+		ui.toolButton_algoHDupH->setEnabled(sel.size() == 1);
+		ui.toolButton_algoHDupV->setEnabled(sel.size() == 1);
+
+		if (sel.size() == 2) {
+			const QPointF c1 = sel[0].second->getGeometry().center();
+			const QPointF c2 = sel[1].second->getGeometry().center();
+			ui.label_algoHDiff->setText(QStringLiteral("Diff X: %1 px   Y: %2 px")
+				.arg(std::abs(c2.x() - c1.x()), 0, 'f', 1)
+				.arg(std::abs(c2.y() - c1.y()), 0, 'f', 1));
+		}
+		else {
+			ui.label_algoHDiff->setText(QStringLiteral("Diff: select two ROIs"));
+		}
+	});
+	selTimer->start(250);
+
+	//Ctrl+C / Ctrl+V are handled in the global event filter (see VisionApp::eventFilter):
+	//shortcuts scoped to the FOV view need it focused, which the operator rarely does
+
+	connect(ui.toolButton_algoHAddPlane, &QToolButton::clicked, this, [=]() {
 		const int n = _algoPlaneBoxes.size();
 		auto box = makeBox(QRectF(80 + n * 60, 80 + n * 60, 120, 120), kAlgoPlaneColor,
 			QStringLiteral("Plane %1").arg(n + 1));
@@ -261,6 +350,46 @@ void VisionApp::initAlgoSetupPage()
 
 	ui.stackedWidget_algoParams->setCurrentIndex(0);
 	ui.toolButton_algoH2D->setChecked(true);
+}
+
+//Ctrl+C: snapshot the selected 3D ROIs (called from the global event filter)
+void VisionApp::algoHCopySelectedRois()
+{
+	_algoHClipboard.clear();
+	for (auto b : _algoPlaneBoxes) if (b->getSelected()) _algoHClipboard.append({ true, b->getGeometry() });
+	for (auto b : _algoHeightBoxes) if (b->getSelected()) _algoHClipboard.append({ false, b->getGeometry() });
+	if (!_algoHClipboard.isEmpty())
+		showStatus(QStringLiteral("%1 ROI(s) copied").arg(_algoHClipboard.size()));
+}
+
+//Ctrl+V: paste the snapshot offset by 10 px so the copies are visibly separate
+void VisionApp::algoHPasteRois()
+{
+	if (_algoHClipboard.isEmpty()) return;
+	for (const auto& c : _algoHClipboard)
+		addAlgoHRoiBox(c.first, c.second.translated(10, 10));
+	showStatus(QStringLiteral("%1 ROI(s) pasted").arg(_algoHClipboard.size()));
+}
+
+QDragBox* VisionApp::addAlgoHRoiBox(bool isPlane, const QRectF& rect)
+{
+	auto box = new QDragBox();
+	_pGraphicsSceneFOV->addItem(box);
+	box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
+	const int n = (isPlane ? _algoPlaneBoxes.size() : _algoHeightBoxes.size()) + 1;
+	box->setup(rect, isPlane ? kAlgoPlaneColor : kAlgoHeightColor,
+		QStringLiteral("%1 %2").arg(isPlane ? "Plane" : "Height").arg(n));
+	box->setDragable(true);
+	box->setZValue((int)UIHierarchy::DRAGGABLES);
+	connect(box, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(algoSettingsTouched()));
+	connect(box, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(algoSettingsTouched()));
+
+	if (isPlane) _algoPlaneBoxes.append(box);
+	else _algoHeightBoxes.append(box);
+
+	updateAlgoHRoiCounts();
+	updateAlgoRoiVisibility();
+	return box;
 }
 
 AlgoPageAlgo VisionApp::currentAlgoPageAlgo() const

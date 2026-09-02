@@ -5297,6 +5297,21 @@ VisionApp::~VisionApp()
 
 bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 {
+	//algo setup ROI copy/paste: works no matter which widget has focus, but never
+	//steals Ctrl+C/V from a text editor
+	if (event->type() == QEvent::KeyPress) {
+		auto* ke = static_cast<QKeyEvent*>(event);
+		if (ke->modifiers() == Qt::ControlModifier && (ke->key() == Qt::Key_C || ke->key() == Qt::Key_V)) {
+			QWidget* fw = QApplication::focusWidget();
+			const bool editing = qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
+				|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
+			if (!editing && isPage(UIPage::ALGO_SETUP)) {
+				if (ke->key() == Qt::Key_C) algoHCopySelectedRois();
+				else algoHPasteRois();
+				return true;
+			}
+		}
+	}
 
 	if (event->type() == QEvent::MouseButtonPress) {
 		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);

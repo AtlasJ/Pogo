@@ -132,14 +132,13 @@ struct AlgoLocatorResult {
 
 // ── 3D height measurement (QAlgoHeightMeasurement plane-fit style) ──────────
 
-constexpr int kAlgoPlaneRoiCount = 4;
 
 struct AlgoHeightParams {
 	double intensityPerMicron = 11.0; //gray levels per um (Algo convention: raw / ipm = um)
 	double minHeightUm = 0.0;         //pass/fail limits; both 0 = no limit
 	double maxHeightUm = 0.0;
 	bool removeOutliers = true;       //plane-residual outlier rejection before the datum fit
-	QVector<QRectF> planeRois;        //datum plane-fit ROIs (up to kAlgoPlaneRoiCount)
+	QVector<QRectF> planeRois;        //datum plane-fit ROIs (any number, at least 3 to fit)
 	QVector<QRectF> heightRois;       //measurement ROIs (each measured against the datum plane)
 };
 
