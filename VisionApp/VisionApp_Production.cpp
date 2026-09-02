@@ -158,6 +158,13 @@ void VisionApp::initProductionUI() {
 		if (!LSCManager::instance().isConnected()) LSCManager::instance().connect();
 		auto connected = LSCManager::instance().isConnected();
 		nvs::set_background_color(ui.toolButton_lscStatus, connected ? Qt::green : Qt::red);
+
+		//a fresh connection starts in the controller's default mode: re-assert the
+		//configured one so strobe survives a reconnect
+		if (connected) {
+			LSCManager::instance().setMode(SystemData::instance()._lscStrobeMode
+				? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
+		}
 	});
 
 	connect(ui.toolButton_gantryStatus, &QToolButton::clicked, this, [=]() {

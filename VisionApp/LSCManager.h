@@ -22,6 +22,8 @@ private:
 	int m_responseTimeout = 1000;
 	lsc::MODE m_mode = lsc::MODE::CONTINUOUS;
 	int m_currentPulseWidth = -1;
+	bool m_strobeInternalTrigger = true; //from the channel trigger_type in lsc.json
+	int m_strobeInternalCycleUs = 0;     //strobe_internal_cycle from lsc.json
 
 	struct Channel {
 		QString id;
@@ -90,6 +92,8 @@ public:
 	lsc::MODE getMode();
 	int setTriggerDuration(QString ch, int us);
 	int setStrobePulseWidth(int us); //all channels, latched, no-op unless in strobe mode
+	bool strobeInternalTrigger() const { return m_strobeInternalTrigger; } //LAN = internal, IO = external (Y110)
+	int strobePulseWidthUs() const { return m_currentPulseWidth; } //last latched pulse width, -1 = none
 
 	int setTriggerSequence(const QVector<LSCManager::SequenceData>& datas);
 

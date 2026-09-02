@@ -4774,7 +4774,29 @@ void VisionApp::triggerCamera()
 	CAMManager::instance().frame(_camID)->type = _mainOptics[_camID].type;
 	CAMManager::instance().frame(_camID)->postTask.combineRGB = false;
 	CAMManager::instance().frame(_camID)->postTask.rotationalAngle = SystemData::instance()._camAngles[_camID];
+
+	//external strobe: fire one light pulse per live-view grab, same as a snap
+	const bool strobeFlash = (LSCManager::instance().getMode() == lsc::MODE::TRIGGER)
+		&& !LSCManager::instance().strobeInternalTrigger();
+	if (strobeFlash) {
+		//never raise the edge while the previous pulse is still running (edge ignored -> dark)
+		const int pulseUs = LSCManager::instance().strobePulseWidthUs();
+		if (pulseUs > 0) {
+			const qint64 minGapMs = pulseUs / 1000 + 2;
+			const qint64 sinceLast = QDateTime::currentMSecsSinceEpoch() - SystemData::instance()._lastStrobeEdgeMs.load();
+			if (sinceLast >= 0 && sinceLast < minGapMs) QThread::msleep((unsigned long)(minGapMs - sinceLast));
+		}
+
+		MotionController::instance().set_DO(_motionID, 0, (int)DOA::CHANNEL1_DO, true);
+		SystemData::instance()._lastStrobeEdgeMs = QDateTime::currentMSecsSinceEpoch();
+		QThread::msleep(10); //let the light fire and settle before the exposure starts
+	}
+
 	CAMManager::instance().softTrigger(_camID);
+
+	if (strobeFlash) {
+		MotionController::instance().set_DO(_motionID, 0, (int)DOA::CHANNEL1_DO, false);
+	}
 }
 
 void VisionApp::toggleLiveView()
