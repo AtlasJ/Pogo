@@ -826,7 +826,6 @@ bool VisionApp::readDefectPriorityList()
 	}
 	else
 	{
-	
 		return false;
 	}
 
@@ -5637,6 +5636,9 @@ void VisionApp::resizeWidgetAnimation(QWidget * widget, int minValue, int maxVal
 				//tab fully closed: give the workspace the whole width back - the
 				//cap only exists so the page and the OPEN tab fit the screen together
 				ui.frame_workSpace->setMaximumWidth(QWIDGETSIZE_MAX);
+
+				//a collapsed algo setup tab also hides its page-scoped ROIs
+				if (_algoOcrRoi1Box) updateAlgoRoiVisibility();
 			}
 		}
 		else
@@ -6536,6 +6538,7 @@ bool VisionApp::toPage(UIPage page) {
 		return true;
 	case UIPage::ALGO_SETUP:
 		unlockAllROIs();
+		toggleFOVView(); //algo setup always works on the single camera FOV view
 		showRightTab((int)page, QStringLiteral("Open Algo Setup"));
 		updateAlgoRoiVisibility();
 		return true;
@@ -6892,6 +6895,10 @@ bool VisionApp::showRightTab(int index, QString status)
 			resizeWidgetAnimation(ui.frame_rightTab, 0, rightTabsize, false, index, ui.stackedWidget);
 		}
 	}
+
+	//leaving the algo setup tab by ANY route (right-menu buttons call this directly,
+	//without toPage) hides its page-scoped ROIs
+	if (index != (int)UIPage::ALGO_SETUP && _algoOcrRoi1Box) hideAlgoSetupRois();
 
 	showStatus(status);
 	return propertyShown;
