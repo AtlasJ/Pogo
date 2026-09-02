@@ -18410,26 +18410,6 @@ Stop SR Management Tool services to free port 21.</string>
                             </widget>
                            </item>
                            <item>
-                            <widget class="QToolButton" name="toolButton_algoSave">
-                             <property name="minimumSize">
-                              <size>
-                               <width>0</width>
-                               <height>0</height>
-                              </size>
-                             </property>
-                             <property name="text">
-                              <string>Save Settings</string>
-                             </property>
-                             <property name="icon">
-                              <iconset resource="VisionApp.qrc">
-                               <normaloff>:/24x24/Icon/24x24/cil-save.png</normaloff>:/24x24/Icon/24x24/cil-save.png</iconset>
-                             </property>
-                             <property name="toolButtonStyle">
-                              <enum>Qt::ToolButtonTextBesideIcon</enum>
-                             </property>
-                            </widget>
-                           </item>
-                           <item>
                             <widget class="QToolButton" name="toolButton_algoRun">
                              <property name="minimumSize">
                               <size>

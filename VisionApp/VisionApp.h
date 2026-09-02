@@ -797,6 +797,7 @@ private:
 	void updateAlgoRoiVisibility();
 	void updateAlgoHRoiCounts();
 	void hideAlgoSetupRois();
+	QTimer* _algoAutoSaveTimer = nullptr; //debounced auto-save of algo settings
 
 	QDragBox* addAlgoHRoiBox(bool isPlane, const QRectF& rect); //plane/height ROI with standard styling
 	void algoHCopySelectedRois(); //Ctrl+C on the algo setup page
@@ -967,6 +968,7 @@ private:
 
 
 public slots:
+	void algoSettingsTouched(); //any algo-setup edit: debounce then save
 
 	void enableFiducial(bool enable);
 	void enableSaveInspectionImage(bool enable);

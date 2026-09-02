@@ -38,6 +38,8 @@ void VisionApp::initAlgoSetupPage()
 		box->setDragable(true);
 		box->setZValue((int)UIHierarchy::DRAGGABLES);
 		box->hide();
+		connect(box, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(algoSettingsTouched()));
+		connect(box, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(algoSettingsTouched()));
 		return box;
 	};
 
@@ -347,13 +349,30 @@ void VisionApp::initAlgoSetupPage()
 		AuditLog::instance().log(QStringLiteral("ALGO_LOCATOR_LEARN"));
 	});
 
-	//── save
-	connect(ui.toolButton_algoSave, &QToolButton::clicked, this, [=]() {
+	//── auto-save: every edit (widgets and ROI moves) saves the settings after a short
+	//debounce; the manual Save Settings button is gone
+	_algoAutoSaveTimer = new QTimer(this);
+	_algoAutoSaveTimer->setSingleShot(true);
+	_algoAutoSaveTimer->setInterval(600);
+	connect(_algoAutoSaveTimer, &QTimer::timeout, this, [=]() {
 		captureAlgoParamsFromUI();
-		if (AlgoManager::instance().saveRecipeConfig()) showStatus("Algo settings saved!");
+		if (AlgoManager::instance().saveRecipeConfig()) showStatus("Algo settings saved");
 		else showMsg("Failed to save algo settings!");
-		AuditLog::instance().log(QStringLiteral("ALGO_CONFIG_SAVE"));
 	});
+
+	{
+		QWidget* root = ui.scrollAreaContents_algoPage;
+		for (auto* sb : root->findChildren<QSpinBox*>())
+			connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this, &VisionApp::algoSettingsTouched);
+		for (auto* db : root->findChildren<QDoubleSpinBox*>())
+			connect(db, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &VisionApp::algoSettingsTouched);
+		for (auto* cb : root->findChildren<QComboBox*>())
+			connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &VisionApp::algoSettingsTouched);
+		for (auto* ch : root->findChildren<QCheckBox*>())
+			connect(ch, &QCheckBox::toggled, this, &VisionApp::algoSettingsTouched);
+		for (auto* le : root->findChildren<QLineEdit*>())
+			connect(le, &QLineEdit::editingFinished, this, &VisionApp::algoSettingsTouched);
+	}
 
 	//── results from the worker thread
 	connect(&AlgoManager::instance(), &AlgoManager::ocrFinished, this, [=](const AlgoOcrOutput& out) {
@@ -821,3 +840,10 @@ void VisionApp::refreshAlgoPatternList()
 		vLayout->addWidget(section);
 	}
 }
+
+//any algo-setup edit lands here: debounce, then capture + save
+void VisionApp::algoSettingsTouched()
+{
+	if (_algoAutoSaveTimer) _algoAutoSaveTimer->start();
+}
+
