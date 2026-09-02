@@ -2218,11 +2218,7 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 			//production: archive the scan beside the fiducial/reader images as
 			//<X#Y#>_height.tiff + <X#Y#>_intensity.jpg (worker thread, non-blocking)
 			if (_processType == ProcessType::PRODUCTION && SystemData::instance()._saveInspImages) {
-				QString saveName = info.viewID;
-				if (saveName.startsWith("unit_")) {
-					auto parts = saveName.mid(5).split('_');
-					if (parts.size() == 2) saveName = QString("X%1Y%2").arg(parts[0], parts[1]);
-				}
+				const QString saveName = info.viewID; //unit IDs are already X#Y#
 
 				const QString root = Common::Directory::getProductionImageSetPath();
 				ImageSaveInfo task;

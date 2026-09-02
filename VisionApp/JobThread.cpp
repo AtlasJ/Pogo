@@ -4135,7 +4135,7 @@ bool JobThread::acquireBarcodeAndOcr()
 					sd._pitchP1x + ix * sd._pitchX,
 					sd._pitchP1y + iy * sd._pitchY,
 					sd._pitchP1z,
-					QString("unit_%1_%2").arg(ix + 1).arg(iy + 1));
+					QString("X%1Y%2").arg(ix + 1).arg(iy + 1));
 			}
 		}
 
@@ -4527,7 +4527,7 @@ void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
 		end.wx = baseX + halfLen;
 	}
 
-	const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+	const QString unitID = QString("X%1Y%2").arg(ix + 1).arg(iy + 1);
 	ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
 		scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
 
@@ -4594,7 +4594,7 @@ void JobThread::acquire2D3DAlternatePitch()
 
 	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
 		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
-			const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+			const QString unitID = QString("X%1Y%2").arg(ix + 1).arg(iy + 1);
 
 			if (sd._pitchEnableBarcode) {
 				ct::logger::info("[Acq] Unit (%d, %d): barcode/OCR", ix + 1, iy + 1);
