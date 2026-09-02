@@ -357,6 +357,7 @@ void VisionApp::startProduction()
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
 	clearErrorLogs();
+	clearInspectionLogs();
 
 	//production runs inspect: OCR + 3D height on the acquired images
 	InspectionThread::instance().setActive(true);
@@ -429,6 +430,7 @@ void VisionApp::startProductionS()
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
 	clearErrorLogs();
+	clearInspectionLogs();
 
 	//production runs inspect: OCR + 3D height on the acquired images
 	InspectionThread::instance().setActive(true);
@@ -502,6 +504,19 @@ void VisionApp::runProdS()
 void VisionApp::unloadBoard()
 {
 	emit signalUnloadBoard();
+}
+
+//production start wipes the previous run's [Inspection] lines from the machine
+//status log; errors and other lines stay (clearErrorLogs handles errors)
+void VisionApp::clearInspectionLogs()
+{
+	for (int i = m_logStatus.size() - 1; i >= 0; --i) {
+		if (m_logStatus[i].contains("[Inspection]"))
+			m_logStatus.removeAt(i);
+	}
+
+	ui.textEdit_statusLog->setPlainText(m_logStatus.join("\n"));
+	ui.textEdit_statusLog->moveCursor(QTextCursor::End);
 }
 
 void VisionApp::addLogLine(const QString& line)
