@@ -75,6 +75,62 @@ void VisionApp::initAlgoSetupPage()
 
 	//── OCR page controls
 	connect(ui.toolButton_algoOcrRoi1, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
+
+	/*
+	* Reference IMAGE: "Save as Ref" stores the current image (OCR: the FOV image,
+	* 3D: the loaded height map) as a machine-level reference; "Load Ref" brings it
+	* back into the display. Settings are not part of the reference.
+	*/
+	const QString ocrRefPath = QStringLiteral("%1/algoRef_ocr.png").arg(Common::Directory::ConfigPath());
+	const QString hRefPath = QStringLiteral("%1/algoRef_height.tif").arg(Common::Directory::ConfigPath());
+
+	auto refreshRefButtons = [=]() {
+		ui.toolButton_algoOcrLoadRef->setEnabled(QFile::exists(ocrRefPath));
+		ui.toolButton_algoHLoadRef->setEnabled(QFile::exists(hRefPath));
+	};
+
+	connect(ui.toolButton_algoOcrSaveRef, &QToolButton::clicked, this, [=]() {
+		if (_imageFOV.isNull()) { showMsg("No image loaded to save as reference."); return; }
+		if (_imageFOV.save(ocrRefPath)) {
+			showStatus("OCR reference image saved");
+			AuditLog::instance().log(QStringLiteral("ALGO_REF_SAVE"), QStringLiteral("ocr"));
+		}
+		else showMsg("Failed to save the reference image.");
+		refreshRefButtons();
+	});
+
+	connect(ui.toolButton_algoOcrLoadRef, &QToolButton::clicked, this, [=]() {
+		QImage img(ocrRefPath);
+		if (img.isNull()) { showMsg("No reference image saved yet."); refreshRefButtons(); return; }
+		_imageFOV = img;
+		displayFOV(_imageFOV);
+		ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
+		showStatus("OCR reference image loaded");
+		AuditLog::instance().log(QStringLiteral("ALGO_REF_LOAD"), QStringLiteral("ocr"));
+	});
+
+	connect(ui.toolButton_algoHSaveRef, &QToolButton::clicked, this, [=]() {
+		auto hm = AlgoManager::instance().heightMap();
+		if (!hm || hm->id() == M_NULL) { showMsg("No height map loaded to save as reference."); return; }
+		MbufExportA(hRefPath.toStdString().c_str(), M_TIFF, hm->id());
+		showStatus("3D reference height map saved");
+		AuditLog::instance().log(QStringLiteral("ALGO_REF_SAVE"), QStringLiteral("height"));
+		refreshRefButtons();
+	});
+
+	connect(ui.toolButton_algoHLoadRef, &QToolButton::clicked, this, [=]() {
+		if (!QFile::exists(hRefPath)) { showMsg("No reference height map saved yet."); refreshRefButtons(); return; }
+		MIL_ID hm = M_NULL;
+		MbufImportA(hRefPath.toStdString().c_str(), M_TIFF, M_RESTORE, M_DEFAULT_HOST, &hm);
+		if (hm == M_NULL) { showMsg("Failed to load the reference height map."); return; }
+		AlgoManager::instance().setHeightMap(mtrx::MPM::instance().attach(hm));
+		showAlgoHeightMap(_algoHeightView3D);
+		showStatus("3D reference height map loaded");
+		AuditLog::instance().log(QStringLiteral("ALGO_REF_LOAD"), QStringLiteral("height"));
+	});
+
+	refreshRefButtons();
+
 	connect(ui.toolButton_algoOcrLearnRoi, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
 
 	connect(ui.toolButton_algoOcrLearnSample, &QToolButton::clicked, this, [=]() {

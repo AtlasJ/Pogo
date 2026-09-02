@@ -18667,6 +18667,42 @@ Stop SR Management Tool services to free port 21.</string>
                                   </item>
                                  </layout>
                                 </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoOcrRef">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoOcrSaveRef">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Save the current OCR settings as the machine reference</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Save as Ref</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoOcrLoadRef">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Load the saved OCR reference settings into this recipe</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Load Ref</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                 </layout>
+                                </item>
                                </layout>
                               </widget>
                              </item>
@@ -19212,6 +19248,42 @@ Stop SR Management Tool services to free port 21.</string>
                                      </size>
                                     </property>
                                    </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoHRef">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHSaveRef">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Save the current 3D height settings as the machine reference</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Save as Ref</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoHLoadRef">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>100</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Load the saved 3D height reference settings into this recipe</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Load Ref</string>
+                                    </property>
+                                   </widget>
                                   </item>
                                  </layout>
                                 </item>
