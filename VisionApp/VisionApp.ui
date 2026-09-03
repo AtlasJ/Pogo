@@ -3079,8 +3079,8 @@ QLineEdit:focus {
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>1988</width>
-                   <height>1165</height>
+                   <width>1907</width>
+                   <height>1199</height>
                   </rect>
                  </property>
                  <property name="styleSheet">
@@ -5136,8 +5136,8 @@ QToolButton:hover {
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>105</width>
-               <height>1190</height>
+               <width>85</width>
+               <height>1199</height>
               </rect>
              </property>
              <layout class="QGridLayout" name="gridLayout_113">
@@ -5379,10 +5379,10 @@ QToolButton:hover {
             <widget class="QWidget" name="scrollAreaWidgetContents">
              <property name="geometry">
               <rect>
-               <x>-8</x>
+               <x>0</x>
                <y>0</y>
-               <width>666</width>
-               <height>2451</height>
+               <width>663</width>
+               <height>1902</height>
               </rect>
              </property>
              <property name="layoutDirection">
@@ -11755,8 +11755,7 @@ border: none;
                          <number>25</number>
                         </property>
                         <item row="6" column="0">
-                         <layout class="QHBoxLayout" name="horizontalLayout_33">
-                         </layout>
+                         <layout class="QHBoxLayout" name="horizontalLayout_33"/>
                         </item>
                         <item row="5" column="0">
                          <layout class="QHBoxLayout" name="horizontalLayout_42">
@@ -11780,8 +11779,7 @@ border: none;
                          </layout>
                         </item>
                         <item row="7" column="0">
-                         <layout class="QHBoxLayout" name="horizontalLayout_43">
-                         </layout>
+                         <layout class="QHBoxLayout" name="horizontalLayout_43"/>
                         </item>
                         <item row="14" column="0">
                          <spacer name="verticalSpacer_13">
@@ -11797,8 +11795,7 @@ border: none;
                          </spacer>
                         </item>
                         <item row="9" column="0">
-                         <layout class="QHBoxLayout" name="horizontalLayout_44">
-                         </layout>
+                         <layout class="QHBoxLayout" name="horizontalLayout_44"/>
                         </item>
                         <item row="10" column="0">
                          <layout class="QHBoxLayout" name="horizontalLayout_75">
@@ -12185,8 +12182,7 @@ border: none;
                           <property name="frameShadow">
                            <enum>QFrame::Raised</enum>
                           </property>
-                          <layout class="QGridLayout" name="gridLayout_66">
-                          </layout>
+                          <layout class="QGridLayout" name="gridLayout_66"/>
                          </widget>
                         </item>
                         <item row="9" column="0">
@@ -12203,12 +12199,10 @@ border: none;
                          </spacer>
                         </item>
                         <item row="7" column="0">
-                         <layout class="QHBoxLayout" name="horizontalLayout_48">
-                         </layout>
+                         <layout class="QHBoxLayout" name="horizontalLayout_48"/>
                         </item>
                         <item row="1" column="0">
-                         <layout class="QHBoxLayout" name="horizontalLayout_60">
-                         </layout>
+                         <layout class="QHBoxLayout" name="horizontalLayout_60"/>
                         </item>
                        </layout>
                       </widget>
@@ -12869,8 +12863,8 @@ QToolButton:hover {
                          <rect>
                           <x>0</x>
                           <y>0</y>
-                          <width>131</width>
-                          <height>131</height>
+                          <width>107</width>
+                          <height>107</height>
                          </rect>
                         </property>
                         <layout class="QGridLayout" name="gridLayout_69">
@@ -12884,8 +12878,8 @@ color: white</string>
                             <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
 &lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
 p, li { white-space: pre-wrap; }
-&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;
-&lt;p style=&quot;-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;br /&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:9.6pt; font-weight:400; font-style:normal;&quot;&gt;
+&lt;p style=&quot;-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:8pt;&quot;&gt;&lt;br /&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                            </property>
                           </widget>
                          </item>
@@ -17111,8 +17105,8 @@ QToolButton:hover {
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>577</width>
-                       <height>1463</height>
+                       <width>641</width>
+                       <height>1880</height>
                       </rect>
                      </property>
                      <layout class="QVBoxLayout" name="verticalLayout_srxPageInner">
@@ -17909,8 +17903,8 @@ Stop SR Management Tool services to free port 21.</string>
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>792</width>
-                       <height>2399</height>
+                       <width>767</width>
+                       <height>1859</height>
                       </rect>
                      </property>
                      <layout class="QVBoxLayout" name="vl_algoPageInner">
@@ -18407,6 +18401,16 @@ Stop SR Management Tool services to free port 21.</string>
                                <string>3D Height Measurement</string>
                               </property>
                              </item>
+                             <item>
+                              <property name="text">
+                               <string>3D Height Measurement 2</string>
+                              </property>
+                             </item>
+                             <item>
+                              <property name="text">
+                               <string>3D Height Measurement 3</string>
+                              </property>
+                             </item>
                             </widget>
                            </item>
                            <item>
@@ -18453,6 +18457,9 @@ Stop SR Management Tool services to free port 21.</string>
                          </item>
                          <item>
                           <widget class="QStackedWidget" name="stackedWidget_algoParams">
+                           <property name="currentIndex">
+                            <number>3</number>
+                           </property>
                            <widget class="QWidget" name="widget_algoOcrPage">
                             <layout class="QVBoxLayout" name="vl_algoOcrPage">
                              <item>
@@ -19532,6 +19539,1724 @@ each Height ROI is measured against it.</string>
                              </item>
                             </layout>
                            </widget>
+                           <widget class="QWidget" name="widget_algoHeight2Page">
+                            <layout class="QVBoxLayout" name="vl_algoHeight2Page">
+                             <item>
+                              <widget class="QGroupBox" name="group_algoH2Scale">
+                               <property name="title">
+                                <string/>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_algoH2Scale">
+                                <item>
+                                 <widget class="QRadioButton" name="radio_algoH2Scale">
+                                  <property name="font">
+                                   <font>
+                                    <pointsize>10</pointsize>
+                                    <weight>75</weight>
+                                    <bold>true</bold>
+                                   </font>
+                                  </property>
+                                  <property name="toolTip">
+                                   <string>Pixel and height scaling for this map.
+
+When a profiler is connected these are read from it and locked. Offline - replaying a saved TIFF on a PC with no sensor - they become editable, because there is nothing to derive them from.
+
+Selecting this section shows the raw image with no ROIs.</string>
+                                  </property>
+                                  <property name="styleSheet">
+                                   <string notr="true">color: rgb(255, 255, 255);</string>
+                                  </property>
+                                  <property name="text">
+                                   <string>0 - Scale</string>
+                                  </property>
+                                  <property name="checked">
+                                   <bool>true</bool>
+                                  </property>
+                                  <attribute name="buttonGroup">
+                                   <string notr="true">buttonGroup_algoH2Section</string>
+                                  </attribute>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Load">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2LoadHeight">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>130</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Load a 16-bit height map tiff. This is the image everything is measured from.
+
+raw_heightmap.tiff from a Profiler Scan Test is unprocessed - no resize, no rotate - so it is the cleanest input available. heightmap.tiff from a production run has already been resampled.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Load Heightmap...</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2LoadIntensity">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>130</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Load the matching 8-bit luminance map. Optional - nothing measures from it yet - but it is carried alongside the height map so it is available later, and pin tops and pad edges are far easier to see in it when placing ROIs.
+
+It must be the same width and height as the height map, or the pair is rejected.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Load Intensity...</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2UseLast">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Use the height map from the most recent 3D scan instead of a file. Both maps come through together, already aligned.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Use Last Scan</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Load">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2Loaded">
+                                  <property name="text">
+                                   <string>Loaded: nothing</string>
+                                  </property>
+                                  <property name="wordWrap">
+                                   <bool>true</bool>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Scale1">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2X">
+                                    <property name="text">
+                                     <string>X um/px:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2X">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Microns per pixel across the laser line. Read from the profiler and locked when one is connected; editable offline so a saved map can be replayed on a PC with no sensor.
+
+With 3D Native Resolution on - which this project always uses - it is the sensor's own pitch, 5.0 um, and it does NOT change with the divider.</string>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>3</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>0.010000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>10000.000000000000000</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>5.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Y">
+                                    <property name="text">
+                                     <string>Y um/px:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2Y">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Microns per pixel along the scan. Read from the profiler and locked when one is connected; editable offline.
+
+On a PROCESSED map this equals the X pitch - both axes are resampled to the same output pitch, so 5.0. It only differs on a RAW tiff straight from the scan test, where it is yPitchUm x divider.</string>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>3</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>0.010000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>10000.000000000000000</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>5.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Native">
+                                    <property name="text">
+                                     <string/>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Scale1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Scale2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Z">
+                                    <property name="text">
+                                     <string>Z grey/um:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2Z">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Grey levels per micron. For the LJ-X8060 this is 1.25, because the head reports 0.8 um per grey level. Note the units are INVERTED between the two - entering 0.8 here is wrong by a factor of 1.5625.</string>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>3</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>0.010000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>1000.000000000000000</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>1.250000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2ZInfo">
+                                    <property name="text">
+                                     <string>= 0.800 um per grey level</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Scale2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Scale3">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Window">
+                                    <property name="toolTip">
+                                     <string>How far above and below its reference plane the head can measure at all. The LJ-X8060 sees +/-7300 um about a reference distance of 64 mm, so 14.6 mm full scale.
+
+A height outside this range cannot be a real measurement - the sensor returns grey 0 for anything it cannot reach - so a value beyond it is a stray peak or an interpolation artefact. It is here as a sanity floor and as a reference when setting the valid raw band in section 2.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Sensor Z range um:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLineEdit" name="lineEdit_algoH2WinMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="readOnly">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2WinTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLineEdit" name="lineEdit_algoH2WinMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="readOnly">
+                                     <bool>true</bool>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Scale3">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoH2Seg">
+                               <property name="title">
+                                <string/>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_algoH2Seg">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2SegHdr">
+                                  <item>
+                                   <widget class="QRadioButton" name="radio_algoH2Seg">
+                                    <property name="font">
+                                     <font>
+                                      <pointsize>10</pointsize>
+                                      <weight>75</weight>
+                                      <bold>true</bold>
+                                     </font>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Finds the part inside the search area and measures its bounding rectangle.
+
+Every ROI in sections 2 and 3 is placed relative to that rectangle, so if this stage fails the run stops here - without a part pose the other ROIs have no meaning.
+
+Selecting this section shows the raw image and its one search-area ROI.</string>
+                                    </property>
+                                    <property name="styleSheet">
+                                     <string notr="true">color: rgb(255, 255, 255);</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>1 - Find Part</string>
+                                    </property>
+                                    <attribute name="buttonGroup">
+                                     <string notr="true">buttonGroup_algoH2Section</string>
+                                    </attribute>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2RunSeg">
+                                    <property name="enabled">
+                                     <bool>false</bool>
+                                    </property>
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>34</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Run this stage on its own.
+
+Nothing above it is needed, so this is always available once a height map is loaded. Re-running it clears the results of stages 2 and 3, because moving the part pose invalidates every ROI placed relative to it.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string/>
+                                    </property>
+                                    <property name="icon">
+                                     <iconset resource="VisionApp.qrc">
+                                      <normaloff>:/24x24/Icon/24x24/cil-media-play.png</normaloff>:/24x24/Icon/24x24/cil-media-play.png</iconset>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2SegHdr">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Seg1">
+                                  <item>
+                                   <widget class="QCheckBox" name="checkBox_algoH2LimitSearch">
+                                    <property name="toolTip">
+                                     <string>Unchecked, the part is searched for across the whole image. Checked, only inside the search-area ROI.
+
+Worth turning on: the map is around 32 megapixels, so bounding the search is faster, and it stops the segmentation latching onto a fixture, a neighbouring unit or a reflection at the frame edge.
+
+The ROI itself appears while this section is selected above.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Limit search to an area</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2SearchReset">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Snap the search-area ROI back to the whole image.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Reset Area to Full</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Seg1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Seg2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2SegW">
+                                    <property name="text">
+                                     <string>Width mm:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2WMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>85</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>2</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>10000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2WTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2WMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>85</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>2</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>10000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2SegH">
+                                    <property name="text">
+                                     <string>Height mm:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2HMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>85</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>2</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>10000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2HTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2HMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>85</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>2</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>10000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Seg2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Seg3">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2SegA">
+                                    <property name="text">
+                                     <string>Angle +/- deg:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2Angle">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>85</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>2</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>180.000000000000000</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>2.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2SegArea">
+                                    <property name="text">
+                                     <string>Min area %:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2MinArea">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>85</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>2</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100.000000000000000</double>
+                                    </property>
+                                    <property name="value">
+                                     <double>5.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Seg3">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QGridLayout" name="gl_algoH2SegResult">
+                                  <item row="0" column="0">
+                                   <widget class="QLabel" name="label_algoH2SegHdrM">
+                                    <property name="text">
+                                     <string>Measured</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="0" column="1">
+                                   <widget class="QLabel" name="label_algoH2SegHdrV">
+                                    <property name="text">
+                                     <string>Value</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="0" column="2">
+                                   <widget class="QLabel" name="label_algoH2SegHdrL">
+                                    <property name="text">
+                                     <string>Accepted range</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="0" column="3">
+                                   <widget class="QLabel" name="label_algoH2SegHdrR">
+                                    <property name="text">
+                                     <string>Result</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="1" column="0">
+                                   <widget class="QLabel" name="label_algoH2SegWName">
+                                    <property name="text">
+                                     <string>Width</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="1" column="1">
+                                   <widget class="QLabel" name="label_algoH2SegWVal">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="1" column="2">
+                                   <widget class="QLabel" name="label_algoH2SegWLim">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="1" column="3">
+                                   <widget class="QLabel" name="label_algoH2SegWRes">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="2" column="0">
+                                   <widget class="QLabel" name="label_algoH2SegHName">
+                                    <property name="text">
+                                     <string>Height</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="2" column="1">
+                                   <widget class="QLabel" name="label_algoH2SegHVal">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="2" column="2">
+                                   <widget class="QLabel" name="label_algoH2SegHLim">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="2" column="3">
+                                   <widget class="QLabel" name="label_algoH2SegHRes">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="3" column="0">
+                                   <widget class="QLabel" name="label_algoH2SegAName">
+                                    <property name="text">
+                                     <string>Angle</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="3" column="1">
+                                   <widget class="QLabel" name="label_algoH2SegAVal">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="3" column="2">
+                                   <widget class="QLabel" name="label_algoH2SegALim">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="3" column="3">
+                                   <widget class="QLabel" name="label_algoH2SegARes">
+                                    <property name="text">
+                                     <string>-</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item row="0" column="4" rowspan="4">
+                                   <spacer name="hs_algoH2SegResult">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2SegStatus">
+                                  <property name="text">
+                                   <string>Status: load a height map first</string>
+                                  </property>
+                                  <property name="wordWrap">
+                                   <bool>true</bool>
+                                  </property>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoH2Datum">
+                               <property name="title">
+                                <string/>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_algoH2Datum">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2DatumHdr">
+                                  <item>
+                                   <widget class="QRadioButton" name="radio_algoH2Datum">
+                                    <property name="font">
+                                     <font>
+                                      <pointsize>10</pointsize>
+                                      <weight>75</weight>
+                                      <bold>true</bold>
+                                     </font>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Fits the reference plane that every height in section 3 is measured FROM. Get this wrong and nothing downstream can be recovered.
+
+Place the ROIs on the substrate and spread them as widely as possible. Corners constrain tilt far better than the middle - each ROI already contributes thousands of pixels, so what is scarce is lever arm, not data.
+
+Three ROIs define a plane exactly, with no redundancy and no error estimate. Four or more make it overdetermined, which averages the noise down and produces the RMS residual this section gates on.
+
+Selecting this section shows the straightened part view and its datum ROIs.</string>
+                                    </property>
+                                    <property name="styleSheet">
+                                     <string notr="true">color: rgb(255, 255, 255);</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>2 - Fit Datum Plane</string>
+                                    </property>
+                                    <attribute name="buttonGroup">
+                                     <string notr="true">buttonGroup_algoH2Section</string>
+                                    </attribute>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2RunDatum">
+                                    <property name="enabled">
+                                     <bool>false</bool>
+                                    </property>
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>34</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Fit the plane on its own.
+
+Needs stage 1 to have passed - the ROIs are placed relative to the part pose, so without it there is nothing to place them against. Re-running this clears stage 3, whose heights are all measured from this plane.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string/>
+                                    </property>
+                                    <property name="icon">
+                                     <iconset resource="VisionApp.qrc">
+                                      <normaloff>:/24x24/Icon/24x24/cil-media-play.png</normaloff>:/24x24/Icon/24x24/cil-media-play.png</iconset>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2DatumHdr">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Datum1">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2AddPlane">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Add ROI</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2RemovePlane">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Remove Selected</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2AutoPlane">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>130</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Puts four ROIs at the corners of the segmented rectangle. Needs segmentation to have run. This is usually the best placement available, because a plane fit is limited by how far apart its points are.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Auto-place Corners</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2PlaneCount">
+                                    <property name="text">
+                                     <string>Plane ROIs: 0 of 4</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Datum1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Datum2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Method">
+                                    <property name="text">
+                                     <string>Fit method:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QComboBox" name="comboBox_algoH2Method">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>200</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <item>
+                                     <property name="text">
+                                      <string>Least Squares</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>Least Squares + Trim</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>RANSAC</string>
+                                     </property>
+                                    </item>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Datum2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Datum3">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Raw">
+                                    <property name="toolTip">
+                                     <string>Only pixels whose raw grey value falls in this range are used for the fit. This is the filter that keeps dropouts (grey 0) and interpolation artefacts out of the datum - on a real production scan about 3% of pixels hold heights the sensor physically cannot measure, and they have normal-looking intensity, so nothing else catches them.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Valid raw grey:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoH2RawMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>65535</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>1</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2RawTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoH2RawMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>65535</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>65535</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2RawFromScan">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Set from Scan</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Datum3">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Datum4">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Rms">
+                                    <property name="toolTip">
+                                     <string>Fit quality limit. A high residual means the surface under the ROIs is not actually flat - a warped part, or an ROI overlapping a raised feature - so the plane is wrong and every height measured from it is wrong with it. Stopping here is better than reporting plausible numbers. 0 disables the check.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Max RMS um:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2MaxRms">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2PlaneCover">
+                                    <property name="text">
+                                     <string>Min cover %:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoH2PlaneCover">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>100</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2LimitHint">
+                                    <property name="text">
+                                     <string>(0 = no limit)</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Datum4">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2DatumPoints">
+                                  <property name="text">
+                                   <string>Points used: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2DatumRms">
+                                  <property name="toolTip">
+                                   <string>How far the ROI pixels sit from the fitted plane on average. Low means the reference surface really is flat. High means it is not - a warped part, or an ROI overlapping a raised feature - and then the plane is wrong and every height measured from it is wrong too.</string>
+                                  </property>
+                                  <property name="text">
+                                   <string>RMS residual: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2DatumTilt">
+                                  <property name="text">
+                                   <string>Plane tilt: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2DatumStatus">
+                                  <property name="text">
+                                   <string>Status: waiting for 1 - Find Part</string>
+                                  </property>
+                                  <property name="wordWrap">
+                                   <bool>true</bool>
+                                  </property>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoH2Height">
+                               <property name="title">
+                                <string/>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_algoH2Height">
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2HeightHdr">
+                                  <item>
+                                   <widget class="QRadioButton" name="radio_algoH2Height">
+                                    <property name="font">
+                                     <font>
+                                      <pointsize>10</pointsize>
+                                      <weight>75</weight>
+                                      <bold>true</bold>
+                                     </font>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Measures each ROI against the datum plane from section 2.
+
+The two ranges below do different jobs. Valid decides which pixels are measured at all; Criteria decides pass or fail.
+
+Valid must be WIDER than Criteria. If they match, a feature that is genuinely out of spec gets thrown away as invalid instead of failing - the ROI reports NO DATA and the defect ships.
+
+Selecting this section shows the straightened part view and its height ROIs.</string>
+                                    </property>
+                                    <property name="styleSheet">
+                                     <string notr="true">color: rgb(255, 255, 255);</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>3 - Measure Heights</string>
+                                    </property>
+                                    <attribute name="buttonGroup">
+                                     <string notr="true">buttonGroup_algoH2Section</string>
+                                    </attribute>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2RunHeight">
+                                    <property name="enabled">
+                                     <bool>false</bool>
+                                    </property>
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>34</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="toolTip">
+                                     <string>Measure the height ROIs on their own.
+
+Needs stage 2 to have passed - every height here is a distance from that plane, so without it there is nothing to measure against.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string/>
+                                    </property>
+                                    <property name="icon">
+                                     <iconset resource="VisionApp.qrc">
+                                      <normaloff>:/24x24/Icon/24x24/cil-media-play.png</normaloff>:/24x24/Icon/24x24/cil-media-play.png</iconset>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2HeightHdr">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Height1">
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2AddHeight">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>90</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Add ROI</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QToolButton" name="toolButton_algoH2RemoveHeight">
+                                    <property name="minimumSize">
+                                     <size>
+                                      <width>110</width>
+                                      <height>26</height>
+                                     </size>
+                                    </property>
+                                    <property name="text">
+                                     <string>Remove Selected</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2HeightCount">
+                                    <property name="text">
+                                     <string>Height ROIs: 0</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Height1">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Height2">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Stat">
+                                    <property name="toolTip">
+                                     <string>How the pixels inside an ROI become one number. Mean is the least forgiving: on a raised feature, any sidewall or gap the ROI catches drags the value down and the feature measures short. Top N% Mean and Median tolerate imprecise ROI placement far better.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Statistic:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QComboBox" name="comboBox_algoH2Stat">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>180</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <item>
+                                     <property name="text">
+                                      <string>Mean</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>Median</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>Max</string>
+                                     </property>
+                                    </item>
+                                    <item>
+                                     <property name="text">
+                                      <string>Top N% Mean</string>
+                                     </property>
+                                    </item>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2TopN">
+                                    <property name="text">
+                                     <string>N %:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoH2TopN">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="minimum">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>100</number>
+                                    </property>
+                                    <property name="value">
+                                     <number>20</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Height2">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Height3">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Valid">
+                                    <property name="text">
+                                     <string>Valid height um:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2ValidMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>95</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>-100000.000000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2ValidTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2ValidMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>95</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>-100000.000000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2ValidHint">
+                                    <property name="toolTip">
+                                     <string>Height above the datum, in microns. Pixels outside this band are ignored - use it to exclude a neighbouring feature clipping the corner of the ROI. Set it generously: anything excluded here can never be reported as a failure.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>which pixels count - keep WIDER than Criteria</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Height3">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Height4">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Crit">
+                                    <property name="text">
+                                     <string>Criteria height um:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2CritMin">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>95</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>-100000.000000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2CritTo">
+                                    <property name="text">
+                                     <string>to</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QDoubleSpinBox" name="dspin_algoH2CritMax">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>95</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="decimals">
+                                     <number>1</number>
+                                    </property>
+                                    <property name="minimum">
+                                     <double>-100000.000000000000000</double>
+                                    </property>
+                                    <property name="maximum">
+                                     <double>100000.000000000000000</double>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2CritHint">
+                                    <property name="toolTip">
+                                     <string>The acceptance limits for the measured value. Leave both at 0 and no verdict is applied - every ROI passes regardless of what it measures, which is how the existing algo is currently configured.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>the pass / fail spec - both 0 means no limit</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Height4">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <layout class="QHBoxLayout" name="hl_algoH2Height5">
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2Cover">
+                                    <property name="text">
+                                     <string>Min cover %:</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QSpinBox" name="spin_algoH2Cover">
+                                    <property name="maximumSize">
+                                     <size>
+                                      <width>80</width>
+                                      <height>16777215</height>
+                                     </size>
+                                    </property>
+                                    <property name="maximum">
+                                     <number>100</number>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <widget class="QLabel" name="label_algoH2CoverHint">
+                                    <property name="toolTip">
+                                     <string>Percentage of the ROI that must yield valid pixels, measured against the whole ROI area - so an ROI hanging half off the part reads about 50%. Below the threshold the ROI reports NO DATA rather than a number: it does not pass, but it is labelled separately from a real out-of-spec FAIL so you check dropout, standoff or ROI placement instead of hunting a dimensional defect.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>below this the ROI reports NO DATA</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+                                  <item>
+                                   <spacer name="hs_algoH2Height5">
+                                    <property name="orientation">
+                                     <enum>Qt::Horizontal</enum>
+                                    </property>
+                                    <property name="sizeHint" stdset="0">
+                                     <size>
+                                      <width>40</width>
+                                      <height>20</height>
+                                     </size>
+                                    </property>
+                                   </spacer>
+                                  </item>
+                                 </layout>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2HeightCounts">
+                                  <property name="toolTip">
+                                   <string>How the ROIs came out: how many passed, how many failed on the criteria, and how many returned NO DATA because too little of the ROI yielded valid pixels. The per-ROI numbers are in section 4.</string>
+                                  </property>
+                                  <property name="text">
+                                   <string>Measured: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2HeightStatus">
+                                  <property name="text">
+                                   <string>Status: waiting for 2 - Fit Datum Plane</string>
+                                  </property>
+                                  <property name="wordWrap">
+                                   <bool>true</bool>
+                                  </property>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <widget class="QGroupBox" name="group_algoH2Result">
+                               <property name="title">
+                                <string/>
+                               </property>
+                               <layout class="QVBoxLayout" name="vl_algoH2Result">
+                                <item>
+                                 <widget class="QRadioButton" name="radio_algoH2Result">
+                                  <property name="font">
+                                   <font>
+                                    <pointsize>10</pointsize>
+                                    <weight>75</weight>
+                                    <bold>true</bold>
+                                   </font>
+                                  </property>
+                                  <property name="toolTip">
+                                   <string>Three outcomes, not two.
+
+PASS and FAIL are measurements. NO DATA means the measurement never happened - too few valid pixels - so it does not pass, but it is labelled separately so you check dropout, standoff or ROI placement instead of hunting a dimensional defect that is not there.
+
+When a stage above stops the run, this is where it says which one and why.
+
+Selecting this section shows the image with no ROIs.</string>
+                                  </property>
+                                  <property name="styleSheet">
+                                   <string notr="true">color: rgb(255, 255, 255);</string>
+                                  </property>
+                                  <property name="text">
+                                   <string>4 - Result</string>
+                                  </property>
+                                  <attribute name="buttonGroup">
+                                   <string notr="true">buttonGroup_algoH2Section</string>
+                                  </attribute>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2Summary">
+                                  <property name="text">
+                                   <string>Status: not run</string>
+                                  </property>
+                                  <property name="wordWrap">
+                                   <bool>true</bool>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2Part">
+                                  <property name="text">
+                                   <string>Part: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2Plane">
+                                  <property name="text">
+                                   <string>Plane: -</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QTableWidget" name="tableWidget_algoH2Result">
+                                  <property name="minimumSize">
+                                   <size>
+                                    <width>0</width>
+                                    <height>150</height>
+                                   </size>
+                                  </property>
+                                  <column>
+                                   <property name="text">
+                                    <string>#</string>
+                                   </property>
+                                  </column>
+                                  <column>
+                                   <property name="text">
+                                    <string>ROI</string>
+                                   </property>
+                                  </column>
+                                  <column>
+                                   <property name="text">
+                                    <string>Value um</string>
+                                   </property>
+                                  </column>
+                                  <column>
+                                   <property name="text">
+                                    <string>Min</string>
+                                   </property>
+                                  </column>
+                                  <column>
+                                   <property name="text">
+                                    <string>Max</string>
+                                   </property>
+                                  </column>
+                                  <column>
+                                   <property name="text">
+                                    <string>Cover</string>
+                                   </property>
+                                  </column>
+                                  <column>
+                                   <property name="text">
+                                    <string>Result</string>
+                                   </property>
+                                  </column>
+                                 </widget>
+                                </item>
+                                <item>
+                                 <widget class="QLabel" name="label_algoH2Time">
+                                  <property name="text">
+                                   <string>-</string>
+                                  </property>
+                                 </widget>
+                                </item>
+                               </layout>
+                              </widget>
+                             </item>
+                             <item>
+                              <spacer name="vs_algoHeight2Page">
+                               <property name="orientation">
+                                <enum>Qt::Vertical</enum>
+                               </property>
+                               <property name="sizeHint" stdset="0">
+                                <size>
+                                 <width>20</width>
+                                 <height>0</height>
+                                </size>
+                               </property>
+                              </spacer>
+                             </item>
+                            </layout>
+                           </widget>
+                           <widget class="QWidget" name="widget_algoHeight3Page"/>
                           </widget>
                          </item>
                          <item>
@@ -21304,4 +23029,7 @@ color: #F0F0F0;</string>
   <include location="VisionApp.qrc"/>
  </resources>
  <connections/>
+ <buttongroups>
+  <buttongroup name="buttonGroup_algoH2Section"/>
+ </buttongroups>
 </ui>
