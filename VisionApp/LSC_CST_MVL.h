@@ -1,5 +1,9 @@
 #pragma once
 #include "ILSC.h"
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <functional>
 
 #include "MVL/CommonToolDll.h"
 #include "MVL/ControllerDll.h"
@@ -19,7 +23,7 @@ private:
 	int m_numChannel = 0;
 	int m_connectionType = 0;
 
-	int m_lastIntensity[4] = { 0, 0, 0, 0 };
+	int m_lastIntensity[4] = { 0, 0, 0, 0 }; //last nonzero intensity per channel - restores on toggle(on)
 	lsc::MODE m_mode = lsc::MODE::CONTINUOUS;
 
 	//strobe setup (see setStrobeConfig): trigger source follows the channel
@@ -28,6 +32,28 @@ private:
 	int m_strobeInternalCycle = 0;//internal trigger cycle via SetIntCycleValue, 0 = leave controller setting
 
 	ControllerHandle m_handler;
+
+	/*
+	* The MVL controller drops an idle TCP client after a few seconds (observed ~5 s:
+	* the first command after connect succeeds, everything later fails with ERROR_TX).
+	* KeepAlive() every 2 s holds the session open. The mutex serializes ALL controller
+	* commands - they arrive from the GUI thread, the job thread and the keepalive
+	* thread, and the protocol cannot interleave requests.
+	*/
+	std::thread m_keepAliveThread;
+	std::atomic<bool> m_keepAliveRun{ false };
+	std::mutex m_ioMutex;
+	void keepAliveLoop();
+	void stopKeepAlive();
+
+	/*
+	* Observed on the machine: only the FIRST command after a connection succeeds -
+	* the controller appears to reset the session per command (CST's own tool still
+	* works, so it must reconnect too). Every command therefore runs through this
+	* helper: on failure it reconnects and retries once. Assumes m_ioMutex is held.
+	*/
+	bool reconnectLocked();
+	int runCmd(const char* what, const std::function<int()>& fn);
 
 public:
 	LSC_CST_MVL();

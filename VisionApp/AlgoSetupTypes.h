@@ -116,29 +116,20 @@ struct OcrPatternConfig {
 
 struct AlgoOcrParams {
 	int orientation = 0;          //0 / 90 / 180 / 270
-	double enlargeOcrImage = 4.0; //scale-up factor for small crops before PaddleOCR
 	int roi1Rows = 1;
-	int roi2Rows = 1;
 	int roi1Columns = 0;          //0 = use PaddleOCR charCount; >0 = fixed column split
-	int roi2Columns = 0;
-	int patternSearchPadX = 0;    //extra padding (px) around each char slot before find_pattern
-	int patternSearchPadY = 0;
 	bool removeSpecialChars = false;
 	bool paddleOcrEnabled = true; //false = rows/columns grid + pattern matching only
-	bool roi2Enabled = false;
 
 	//geometries captured from the UI drag boxes at run time (FOV px)
 	QRectF roi1Geo;
-	QRectF roi2Geo;
 };
 
 struct AlgoOcrOutput {
 	bool ok = false;
 	QString message;
 	QString roi1Text;  //rows joined with ','
-	QString roi2Text;
 	QString roi1Key;   //first token per row, joined (IM430's m_inspBar.start)
-	QString roi2Key;
 	qint64 elapsedMs = 0;
 	QVector<AlgoOverlayItem> overlay;
 };
@@ -172,14 +163,13 @@ struct AlgoLocatorResult {
 
 // ── 3D height measurement (QAlgoHeightMeasurement plane-fit style) ──────────
 
-constexpr int kAlgoPlaneRoiCount = 4;
 
 struct AlgoHeightParams {
 	double intensityPerMicron = 11.0; //gray levels per um (Algo convention: raw / ipm = um)
 	double minHeightUm = 0.0;         //pass/fail limits; both 0 = no limit
 	double maxHeightUm = 0.0;
 	bool removeOutliers = true;       //plane-residual outlier rejection before the datum fit
-	QVector<QRectF> planeRois;        //datum plane-fit ROIs (up to kAlgoPlaneRoiCount)
+	QVector<QRectF> planeRois;        //datum plane-fit ROIs (any number, at least 3 to fit)
 	QVector<QRectF> heightRois;       //measurement ROIs (each measured against the datum plane)
 };
 

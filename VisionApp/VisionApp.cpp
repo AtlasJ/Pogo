@@ -826,7 +826,6 @@ bool VisionApp::readDefectPriorityList()
 	}
 	else
 	{
-	
 		return false;
 	}
 
@@ -2218,11 +2217,7 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 			//production: archive the scan beside the fiducial/reader images as
 			//<X#Y#>_height.tiff + <X#Y#>_intensity.jpg (worker thread, non-blocking)
 			if (_processType == ProcessType::PRODUCTION && SystemData::instance()._saveInspImages) {
-				QString saveName = info.viewID;
-				if (saveName.startsWith("unit_")) {
-					auto parts = saveName.mid(5).split('_');
-					if (parts.size() == 2) saveName = QString("X%1Y%2").arg(parts[0], parts[1]);
-				}
+				const QString saveName = info.viewID; //unit IDs are already X#Y#
 
 				const QString root = Common::Directory::getProductionImageSetPath();
 				ImageSaveInfo task;
@@ -4774,7 +4769,29 @@ void VisionApp::triggerCamera()
 	CAMManager::instance().frame(_camID)->type = _mainOptics[_camID].type;
 	CAMManager::instance().frame(_camID)->postTask.combineRGB = false;
 	CAMManager::instance().frame(_camID)->postTask.rotationalAngle = SystemData::instance()._camAngles[_camID];
+
+	//external strobe: fire one light pulse per live-view grab, same as a snap
+	const bool strobeFlash = (LSCManager::instance().getMode() == lsc::MODE::TRIGGER)
+		&& !LSCManager::instance().strobeInternalTrigger();
+	if (strobeFlash) {
+		//never raise the edge while the previous pulse is still running (edge ignored -> dark)
+		const int pulseUs = LSCManager::instance().strobePulseWidthUs();
+		if (pulseUs > 0) {
+			const qint64 minGapMs = pulseUs / 1000 + 2;
+			const qint64 sinceLast = QDateTime::currentMSecsSinceEpoch() - SystemData::instance()._lastStrobeEdgeMs.load();
+			if (sinceLast >= 0 && sinceLast < minGapMs) QThread::msleep((unsigned long)(minGapMs - sinceLast));
+		}
+
+		MotionController::instance().set_DO(_motionID, 0, (int)DOA::CHANNEL1_DO, true);
+		SystemData::instance()._lastStrobeEdgeMs = QDateTime::currentMSecsSinceEpoch();
+		QThread::msleep(10); //let the light fire and settle before the exposure starts
+	}
+
 	CAMManager::instance().softTrigger(_camID);
+
+	if (strobeFlash) {
+		MotionController::instance().set_DO(_motionID, 0, (int)DOA::CHANNEL1_DO, false);
+	}
 }
 
 void VisionApp::toggleLiveView()
@@ -5279,6 +5296,21 @@ VisionApp::~VisionApp()
 
 bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 {
+	//algo setup ROI copy/paste: works no matter which widget has focus, but never
+	//steals Ctrl+C/V from a text editor
+	if (event->type() == QEvent::KeyPress) {
+		auto* ke = static_cast<QKeyEvent*>(event);
+		if (ke->modifiers() == Qt::ControlModifier && (ke->key() == Qt::Key_C || ke->key() == Qt::Key_V)) {
+			QWidget* fw = QApplication::focusWidget();
+			const bool editing = qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
+				|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
+			if (!editing && isPage(UIPage::ALGO_SETUP)) {
+				if (ke->key() == Qt::Key_C) algoHCopySelectedRois();
+				else algoHPasteRois();
+				return true;
+			}
+		}
+	}
 
 	if (event->type() == QEvent::MouseButtonPress) {
 		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
@@ -5604,6 +5636,9 @@ void VisionApp::resizeWidgetAnimation(QWidget * widget, int minValue, int maxVal
 				//tab fully closed: give the workspace the whole width back - the
 				//cap only exists so the page and the OPEN tab fit the screen together
 				ui.frame_workSpace->setMaximumWidth(QWIDGETSIZE_MAX);
+
+				//a collapsed algo setup tab also hides its page-scoped ROIs
+				if (_algoOcrRoi1Box) updateAlgoRoiVisibility();
 			}
 		}
 		else
@@ -6503,6 +6538,7 @@ bool VisionApp::toPage(UIPage page) {
 		return true;
 	case UIPage::ALGO_SETUP:
 		unlockAllROIs();
+		toggleFOVView(); //algo setup always works on the single camera FOV view
 		showRightTab((int)page, QStringLiteral("Open Algo Setup"));
 		updateAlgoRoiVisibility();
 		return true;
@@ -6859,6 +6895,10 @@ bool VisionApp::showRightTab(int index, QString status)
 			resizeWidgetAnimation(ui.frame_rightTab, 0, rightTabsize, false, index, ui.stackedWidget);
 		}
 	}
+
+	//leaving the algo setup tab by ANY route (right-menu buttons call this directly,
+	//without toPage) hides its page-scoped ROIs
+	if (index != (int)UIPage::ALGO_SETUP && _algoOcrRoi1Box) hideAlgoSetupRois();
 
 	showStatus(status);
 	return propertyShown;

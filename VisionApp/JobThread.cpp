@@ -166,6 +166,9 @@ void JobThread::resetFiducial()
 void JobThread::switchToContinuousModeLSC() {
 	m_lscFastMode = false;
 	//restore the configured default mode (strobe if enabled in config)
+	ct::logger::info("[Acq][strobe] switchToContinuousModeLSC: config strobe=%d -> restoring %s mode",
+		SystemData::instance()._lscStrobeMode ? 1 : 0,
+		SystemData::instance()._lscStrobeMode ? "STROBE" : "CONTINUOUS");
 	LSCManager::instance().setMode(SystemData::instance()._lscStrobeMode ? lsc::MODE::TRIGGER : lsc::MODE::CONTINUOUS);
 	LSCManager::instance().resetLatch();
 }
@@ -244,10 +247,20 @@ void JobThread::snapBand(const OpticsInfo& optic, QString viewID, QString stitch
 
 	TimeLogger timer;
 
-	//strobe mode: pulse width must cover the camera exposure. Uses the saved
-	//exposure state (no camera API round trip); latched inside, no-op unless
-	//the LSC is in strobe mode.
-	LSCManager::instance().setStrobePulseWidth((int)CAMManager::instance().currentExposure(optic.camID));
+	//strobe mode: pulse width must cover the camera exposure PLUS the latency between
+	//raising the trigger DO and the camera actually exposing (both software-timed).
+	//EXTERNAL trigger only: internal trigger runs pulse = cycle (100% duty, steady
+	//light) set at mode change - overwriting it here would re-introduce the
+	//random-darkness phase lottery for short exposures.
+	const bool strobeMode = (LSCManager::instance().getMode() == lsc::MODE::TRIGGER);
+	const bool strobeFlash = strobeMode && !LSCManager::instance().strobeInternalTrigger();
+	if (strobeFlash) {
+		constexpr int kStrobeLatencyMargin_us = 50000; //covers the DO -> camera trigger -> exposure latency chain
+		const int exposure_us = (int)CAMManager::instance().currentExposure(optic.camID);
+		ct::logger::debug("[Acq][strobe] snap: camera '%s' exposure=%d us -> pulse width %d us",
+			optic.camID.toStdString().c_str(), exposure_us, exposure_us + kStrobeLatencyMargin_us);
+		LSCManager::instance().setStrobePulseWidth(exposure_us + kStrobeLatencyMargin_us);
+	}
 
 	if (m_lscFastMode) {
 		CAMManager::instance().setDO(m_camID, m_camTriggerIO, true);
@@ -268,8 +281,32 @@ void JobThread::snapBand(const OpticsInfo& optic, QString viewID, QString stitch
 	timer.log_duration("Set channels");
 
 	MachineController::instance().trackTime("Snap");
+
+	//strobe: the light controller sits on its external trigger input, wired to Y110.
+	//A rising edge fires ONE pulse of the latched width - raise it right before the
+	//camera trigger, drop it after the frame so the next snap gets a fresh edge.
+	if (strobeFlash) {
+		//a rising edge during a still-running pulse is IGNORED by the controller (dark
+		//frame): wait out the remainder of the previous pulse before raising again
+		const int pulseUs = LSCManager::instance().strobePulseWidthUs();
+		if (pulseUs > 0) {
+			const qint64 minGapMs = pulseUs / 1000 + 2;
+			const qint64 sinceLast = QDateTime::currentMSecsSinceEpoch() - SystemData::instance()._lastStrobeEdgeMs.load();
+			if (sinceLast >= 0 && sinceLast < minGapMs) os_tool::doNothing((int)(minGapMs - sinceLast));
+		}
+
+		MotionController::instance().set_DO(m_motionID, 0, (int)DOA::CHANNEL1_DO, true);
+		SystemData::instance()._lastStrobeEdgeMs = QDateTime::currentMSecsSinceEpoch();
+		os_tool::doNothing(10); //let the light fire and settle before the exposure starts
+	}
+
 	CAMManager::instance().softTrigger(optic.camID);
 	CAMManager::instance().waitAcquisition(optic.camID, 5000);
+
+	if (strobeFlash) {
+		MotionController::instance().set_DO(m_motionID, 0, (int)DOA::CHANNEL1_DO, false);
+	}
+
 	MachineController::instance().logTime("Snap");
 
 	timer.log_duration("Snap image");
@@ -4098,7 +4135,7 @@ bool JobThread::acquireBarcodeAndOcr()
 					sd._pitchP1x + ix * sd._pitchX,
 					sd._pitchP1y + iy * sd._pitchY,
 					sd._pitchP1z,
-					QString("unit_%1_%2").arg(ix + 1).arg(iy + 1));
+					QString("X%1Y%2").arg(ix + 1).arg(iy + 1));
 			}
 		}
 
@@ -4201,7 +4238,7 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 	if (winner == 0) {
 		ct::logger::error("[Acq] No barcode found on either reader - saving as No_Barcode");
 		emit barcodeDecoded("No_Barcode");
-		emit unitBarcode(unitID, "No_Barcode");
+		emit unitBarcode(unitID, "No_Barcode", 0);
 		if (sd._setupRegionPitchMode) emit incrementProgress(); //barcode step
 		if (InspectionThread::instance().isActive())
 			InspectionThread::instance().reportSkipped(unitID, "OCR", "no barcode");
@@ -4211,14 +4248,10 @@ bool JobThread::acquireBarcodeAndOcrAt(double baseX, double baseY, double baseZ,
 	}
 
 	emit barcodeDecoded(barcode);
-	emit unitBarcode(unitID, barcode);
+	emit unitBarcode(unitID, barcode, winner);
 
 	//saved reader images live beside the fiducial images: <root>/X1Y2_reader1.jpg
-	QString saveName = unitID;
-	if (unitID.startsWith("unit_")) {
-		auto parts = unitID.mid(5).split('_');
-		if (parts.size() == 2) saveName = QString("X%1Y%2").arg(parts[0], parts[1]);
-	}
+	const QString saveName = unitID; //unit IDs are already X#Y# (plane mode: "board")
 
 	auto saveReaderImage = [&](int reader) {
 		if (!sd._saveInspImages) {
@@ -4490,7 +4523,7 @@ void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
 		end.wx = baseX + halfLen;
 	}
 
-	const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+	const QString unitID = QString("X%1Y%2").arg(ix + 1).arg(iy + 1);
 	ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
 		scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
 
@@ -4557,7 +4590,7 @@ void JobThread::acquire2D3DAlternatePitch()
 
 	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
 		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
-			const QString unitID = QString("unit_%1_%2").arg(ix + 1).arg(iy + 1);
+			const QString unitID = QString("X%1Y%2").arg(ix + 1).arg(iy + 1);
 
 			if (sd._pitchEnableBarcode) {
 				ct::logger::info("[Acq] Unit (%d, %d): barcode/OCR", ix + 1, iy + 1);

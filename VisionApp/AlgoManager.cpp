@@ -352,18 +352,11 @@ bool AlgoManager::loadRecipeConfig()
 		if (exists) {
 			auto ocr = root.value("ocr").toObject();
 			m_ocrParams.orientation = jsonHelper::getInteger(ocr, "orientation", 0);
-			m_ocrParams.enlargeOcrImage = jsonHelper::getDouble(ocr, "enlarge", 4.0);
 			m_ocrParams.roi1Rows = jsonHelper::getInteger(ocr, "roi1_rows", 1);
-			m_ocrParams.roi2Rows = jsonHelper::getInteger(ocr, "roi2_rows", 1);
 			m_ocrParams.roi1Columns = jsonHelper::getInteger(ocr, "roi1_columns", 0);
-			m_ocrParams.roi2Columns = jsonHelper::getInteger(ocr, "roi2_columns", 0);
-			m_ocrParams.patternSearchPadX = jsonHelper::getInteger(ocr, "pattern_search_pad_x", 0);
-			m_ocrParams.patternSearchPadY = jsonHelper::getInteger(ocr, "pattern_search_pad_y", 0);
 			m_ocrParams.removeSpecialChars = jsonHelper::getBool(ocr, "remove_special_chars", false);
 			m_ocrParams.paddleOcrEnabled = jsonHelper::getBool(ocr, "paddle_enabled", true);
-			m_ocrParams.roi2Enabled = jsonHelper::getBool(ocr, "roi2_enabled", false);
 			m_ocrParams.roi1Geo = jsonToRect(ocr.value("roi1").toObject());
-			m_ocrParams.roi2Geo = jsonToRect(ocr.value("roi2").toObject());
 
 			auto h = root.value("height").toObject();
 			m_heightParams.intensityPerMicron = jsonHelper::getDouble(h, "intensity_per_micron", 11.0);
@@ -423,18 +416,11 @@ bool AlgoManager::saveRecipeConfig()
 
 		QJsonObject ocr;
 		ocr.insert("orientation", m_ocrParams.orientation);
-		ocr.insert("enlarge", m_ocrParams.enlargeOcrImage);
 		ocr.insert("roi1_rows", m_ocrParams.roi1Rows);
-		ocr.insert("roi2_rows", m_ocrParams.roi2Rows);
 		ocr.insert("roi1_columns", m_ocrParams.roi1Columns);
-		ocr.insert("roi2_columns", m_ocrParams.roi2Columns);
-		ocr.insert("pattern_search_pad_x", m_ocrParams.patternSearchPadX);
-		ocr.insert("pattern_search_pad_y", m_ocrParams.patternSearchPadY);
 		ocr.insert("remove_special_chars", m_ocrParams.removeSpecialChars);
 		ocr.insert("paddle_enabled", m_ocrParams.paddleOcrEnabled);
-		ocr.insert("roi2_enabled", m_ocrParams.roi2Enabled);
 		ocr.insert("roi1", rectToJson(m_ocrParams.roi1Geo));
-		ocr.insert("roi2", rectToJson(m_ocrParams.roi2Geo));
 		root.insert("ocr", ocr);
 
 		QJsonObject h;
@@ -835,7 +821,7 @@ void AlgoManager::runOcr(const QImage& fov)
 QPointF AlgoManager::ocrToFov(const QPointF& ocrPt, const OcrRoiTransform& t) const
 {
 	//inverse transform: OCR image coords -> FOV coords
-	//(reverses: ROI crop -> cv::rotate -> enlarge -> canvas pad)
+	//(reverses: ROI crop -> cv::rotate -> canvas pad)
 	double px = ocrPt.x() - t.canvasPad.x();
 	double py = ocrPt.y() - t.canvasPad.y();
 
@@ -929,7 +915,7 @@ QVector<AlgoOcrBox> AlgoManager::runOcrOnRoi(const cv::Mat& fovBgr, const QRectF
 		return results;
 	}
 
-	//── PaddleOCR-enabled path: rotate before OCR, enlarge small crops, pad to min canvas
+	//── PaddleOCR-enabled path: rotate before OCR, pad to min canvas
 	if (angle == 90)       cv::rotate(cvImg, cvImg, cv::ROTATE_90_CLOCKWISE);
 	else if (angle == 180) cv::rotate(cvImg, cvImg, cv::ROTATE_180);
 	else if (angle == 270) cv::rotate(cvImg, cvImg, cv::ROTATE_90_COUNTERCLOCKWISE);
@@ -937,11 +923,6 @@ QVector<AlgoOcrBox> AlgoManager::runOcrOnRoi(const cv::Mat& fovBgr, const QRectF
 
 	const int ocrMinWidth = 1200;
 	const int ocrMinHeight = 1200;
-
-	if (cvImg.cols < 200 || cvImg.rows < 200) {
-		transform.scale = param.enlargeOcrImage > 0 ? param.enlargeOcrImage : 4.0;
-		cv::resize(cvImg, cvImg, cv::Size(), transform.scale, transform.scale, cv::INTER_CUBIC);
-	}
 
 	if (cvImg.cols < ocrMinWidth || cvImg.rows < ocrMinHeight) {
 		int canvasW = std::max(cvImg.cols, ocrMinWidth);
@@ -1049,10 +1030,10 @@ void AlgoManager::applyPatternMatching(const cv::Mat& fovGray, QVector<AlgoOcrBo
 			const double maxY = std::max({ c1.y(), c2.y(), c3.y(), c4.y() });
 
 			//expand by search pad and clamp to image bounds
-			const int padX = std::max(0, (int)std::floor(minX) - param.patternSearchPadX);
-			const int padY = std::max(0, (int)std::floor(minY) - param.patternSearchPadY);
-			const int padR = std::min(fovGray.cols, (int)std::ceil(maxX) + param.patternSearchPadX);
-			const int padB = std::min(fovGray.rows, (int)std::ceil(maxY) + param.patternSearchPadY);
+			const int padX = std::max(0, (int)std::floor(minX));
+			const int padY = std::max(0, (int)std::floor(minY));
+			const int padR = std::min(fovGray.cols, (int)std::ceil(maxX));
+			const int padB = std::min(fovGray.rows, (int)std::ceil(maxY));
 			const int padW = padR - padX;
 			const int padH = padB - padY;
 			if (padW < 1 || padH < 1) continue;
@@ -1212,22 +1193,24 @@ void AlgoManager::doRunOcr(QImage fov)
 		if (loc.ran && !loc.found) out.message = "Locator: no match - ran unshifted. ";
 
 		const QRectF roi1 = applyLocatorToRoi(param.roi1Geo, loc);
-		const QRectF roi2 = applyLocatorToRoi(param.roi2Geo, loc);
 
 		//── ROI1
 		OcrRoiTransform t1;
 		auto results1 = runOcrOnRoi(fovBgr, roi1, param.roi1Rows, param.roi1Columns, param, t1, out.overlay);
 		applyPatternMatching(fovGray, results1, 0, std::max(1, param.roi1Rows) - 1, param.roi1Columns, param, t1, out.overlay);
 
+		//every detected line goes into the displayed text (the overlay draws them all,
+		//so the table must agree); the Rows setting only caps the KEY tokens
 		QStringList roi1Rows, roi1Tokens;
 		for (const auto& r : results1) {
 			const QString text = r.text;
 			if (text.trimmed().isEmpty()) continue;
-			if ((int)roi1Tokens.size() >= std::max(1, param.roi1Rows)) break;
 
 			roi1Rows << text;
-			const QStringList parts = text.split(' ', QString::SkipEmptyParts);
-			if (!parts.isEmpty()) roi1Tokens << parts.first();
+			if ((int)roi1Tokens.size() < std::max(1, param.roi1Rows)) {
+				const QStringList parts = text.split(' ', QString::SkipEmptyParts);
+				if (!parts.isEmpty()) roi1Tokens << parts.first();
+			}
 		}
 		out.roi1Text = roi1Rows.join(",");
 		out.roi1Key = roi1Tokens.join("");
@@ -1241,37 +1224,6 @@ void AlgoManager::doRunOcr(QImage fov)
 		}
 		out.overlay.append(AlgoOverlayItem::makeText(out.roi1Text, t1.roiGeo.topLeft() - QPointF(0, 40), Qt::green, 24));
 
-		//── ROI2 (optional)
-		if (param.roi2Enabled && !param.roi2Geo.isEmpty()) {
-			OcrRoiTransform t2;
-			auto results2 = runOcrOnRoi(fovBgr, roi2, param.roi2Rows, param.roi2Columns, param, t2, out.overlay);
-			const int total = results2.size();
-			const int startIdx = std::max(0, total - std::max(1, param.roi2Rows));
-			applyPatternMatching(fovGray, results2, startIdx, total - 1, param.roi2Columns, param, t2, out.overlay);
-
-			QStringList roi2Rows, roi2Tokens;
-			for (const auto& r : results2) {
-				const QString text = r.text;
-				if (text.trimmed().isEmpty()) continue;
-				roi2Rows << text;
-			}
-			const int tokenStart = std::max(0, roi2Rows.size() - std::max(1, param.roi2Rows));
-			for (int i = tokenStart; i < roi2Rows.size(); i++) {
-				const QStringList parts = roi2Rows[i].split(' ', QString::SkipEmptyParts);
-				if (!parts.isEmpty()) roi2Tokens << parts.last();
-			}
-			out.roi2Text = roi2Rows.join(",");
-			out.roi2Key = roi2Tokens.join("");
-			if (param.removeSpecialChars) out.roi2Key.remove(QRegExp("[^a-zA-Z0-9]"));
-
-			for (const auto& r : results2) {
-				if (r.box.size() < 4) continue;
-				QPolygonF poly;
-				for (const auto& pt : r.box) poly << ocrToFov(pt, t2);
-				out.overlay.append(AlgoOverlayItem::makePoly(poly, Qt::cyan));
-			}
-			out.overlay.append(AlgoOverlayItem::makeText(out.roi2Text, t2.roiGeo.topLeft() - QPointF(0, 40), Qt::green, 24));
-		}
 
 		//recognizing nothing is a fail, not a pass (e.g. Paddle server missing
 		//or nothing readable in the ROI)
@@ -1280,8 +1232,8 @@ void AlgoManager::doRunOcr(QImage fov)
 	} while (false);
 
 	out.elapsedMs = timer.elapsed();
-	ct::logger::info("[Algo OCR] Done in %lldms: roi1='%s' roi2='%s' %s",
-		out.elapsedMs, out.roi1Key.toStdString().c_str(), out.roi2Key.toStdString().c_str(),
+	ct::logger::info("[Algo OCR] Done in %lldms: roi1='%s' %s",
+		out.elapsedMs, out.roi1Key.toStdString().c_str(),
 		out.message.toStdString().c_str());
 
 	m_busy = false;

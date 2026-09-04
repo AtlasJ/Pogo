@@ -101,7 +101,7 @@ private:
 	//OCR internals (worker thread)
 	struct OcrRoiTransform {
 		QRectF roiGeo;      //crop geometry in FOV space
-		double scale = 1.0; //enlarge applied before OCR
+		double scale = 1.0; //scale applied before OCR (currently always 1)
 		QPoint canvasPad;   //centering pad applied before OCR
 		int rotation = 0;   //0/90/180/270 applied before OCR
 	};

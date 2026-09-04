@@ -538,6 +538,7 @@ private:
 	
 	QStringList m_logStatus;
 	void addLogLine(const QString& line);
+	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
 	void clearErrorLogs();
 	void setXAxisVelocity();
 
@@ -748,7 +749,6 @@ private:
 
 	//algo setup page ROIs (shown only on the algo page for the selected algo)
 	QDragBox* _algoOcrRoi1Box = nullptr;
-	QDragBox* _algoOcrRoi2Box = nullptr;
 	QDragBox* _algoOcrLearnBox = nullptr;
 	QDragBox* _algoLocLearnBox = nullptr;
 
@@ -797,6 +797,12 @@ private:
 	void updateAlgoRoiVisibility();
 	void updateAlgoHRoiCounts();
 	void hideAlgoSetupRois();
+	QTimer* _algoAutoSaveTimer = nullptr; //debounced auto-save of algo settings
+
+	QDragBox* addAlgoHRoiBox(bool isPlane, const QRectF& rect); //plane/height ROI with standard styling
+	void algoHCopySelectedRois(); //Ctrl+C on the algo setup page
+	void algoHPasteRois();        //Ctrl+V: paste offset 10 px
+	QVector<QPair<bool, QRectF>> _algoHClipboard; //Ctrl+C snapshot of selected 3D ROIs (isPlane, rect)
 	void captureAlgoParamsFromUI();
 	void showAlgoHeightMap(bool view3D);
 	void clearAlgoOverlay();
@@ -962,6 +968,7 @@ private:
 
 
 public slots:
+	void algoSettingsTouched(); //any algo-setup edit: debounce then save
 
 	void enableFiducial(bool enable);
 	void enableSaveInspectionImage(bool enable);

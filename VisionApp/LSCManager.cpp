@@ -65,6 +65,10 @@ LSCManager & LSCManager::instance()
 void LSCManager::loadConfig(QJsonObject obj)
 {
 	m_enable = jsonHelper::getBool(obj, "enable");
+	if (!m_enable) {
+		ct::logger::warn("[LSC][strobe] LSC manager DISABLED by config (top-level \"enable\" in lsc.json is false/missing) - "
+			"ALL lighting calls (mode, intensity, strobe pulse) will be silent no-ops");
+	}
 	m_connectionTimeout = jsonHelper::getInteger(obj, "connection_timeout(ms)");
 	m_responseTimeout = jsonHelper::getInteger(obj, "response_timeout(ms)");
 
@@ -81,6 +85,7 @@ void LSCManager::loadConfig(QJsonObject obj)
 				auto ip = jsonHelper::getString(lscObj, "ip");
 				auto port = jsonHelper::getInteger(lscObj, "port");
 				auto enable = jsonHelper::getBool(lscObj, "enable", false);
+				if (!enable) ct::logger::warn("[LSC][strobe] Controller '%s' DISABLED by its \"enable\" flag in lsc.json", id.toStdString().c_str());
 
 				auto lsc = m_lsc.back();
 				lsc->id() = id.toStdString();
@@ -126,10 +131,15 @@ void LSCManager::loadConfig(QJsonObject obj)
 
 				if (id == "CST_MVL") {
 					//strobe trigger source follows the channel trigger_type:
-					//LAN = internal trigger, IO = external trigger
+					//LAN = internal trigger, IO = external trigger (Y110 pulses per snap)
+					m_strobeInternalTrigger = (lscTriggerType == "LAN");
+
+					//internal cycle is fixed in code: pulse = cycle gives steady output, so
+					//the exact period does not matter and never tracks the exposure
+					m_strobeInternalCycleUs = m_strobeInternalTrigger ? 10000 : 0; //10 ms period, 100% duty
 					static_cast<LSC_CST_MVL*>(lsc)->setStrobeConfig(
-						lscTriggerType == "LAN",
-						jsonHelper::getInteger(lscObj, "strobe_internal_cycle", 0));
+						m_strobeInternalTrigger,
+						m_strobeInternalCycleUs);
 				}
 			}
 			else {
@@ -245,6 +255,15 @@ int LSCManager::toggle(QString ch, bool on)
 	
 	if (channel.trigger_type == "LAN") {
 		ret = m_lsc[lsc_index]->toggle(ch_index, on);
+
+		//the CST toggle is EMULATED via the intensity register (OFF writes 0, ON
+		//restores the driver's cached value), so this cache goes stale: OFF leaves it
+		//claiming the old intensity and the next setIntensity latches out, keeping the
+		//light dark. Track OFF as 0 and ON as unknown so the next write goes through.
+		//With EXTERNAL strobe the toggle is a no-op (light fires per Y110 pulse) and the
+		//cache stays; continuous and INTERNAL strobe really write 0/restore.
+		if (ret == (int)LSC_RC::PASS && (m_mode != lsc::MODE::TRIGGER || m_strobeInternalTrigger))
+			m_currentIntensity[ch] = on ? -1 : 0;
 	}
 	else if (channel.trigger_type == "IO") {
 		if (!validIO()) return (int)LSC_RC::FAIL;
@@ -263,7 +282,14 @@ int LSCManager::setIntensity(QString ch, int intensity)
 
 	if (!isChannelValid(ch)) return (int)LSC_RC::FAIL;
 
-	if (m_currentIntensity[ch] == intensity) return (int)LSC_RC::PASS;
+	if (m_currentIntensity[ch] == intensity) {
+		ct::logger::trace("[LSC][strobe] intensity %s=%d already latched (mode %s) - skipped",
+			ch.toStdString().c_str(), intensity, m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS");
+		return (int)LSC_RC::PASS;
+	}
+
+	ct::logger::debug("[LSC][strobe] setIntensity %s=%d writing to %s register",
+		ch.toStdString().c_str(), intensity, m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS");
 
 	int ret = 0;
 	auto& channel = m_channels[ch];
@@ -295,7 +321,19 @@ int LSCManager::setMultiIntensity(const QHash<QString, int>& intensityMap)
 		}
 	}
 
-	if (isSet) return ret;
+	if (isSet) {
+		ct::logger::trace("[LSC][strobe] multi intensity already latched (mode %s) - skipped",
+			m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS");
+		return ret;
+	}
+
+	{
+		QStringList vals;
+		for (auto key : intensityMap.keys()) vals << QString("%1=%2").arg(key).arg(intensityMap[key]);
+		ct::logger::info("[LSC][strobe] setMultiIntensity (%s register): %s",
+			m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS",
+			vals.join(", ").toStdString().c_str());
+	}
 
 	//safe guard
 	QVector<QVector<ChannelSetting>> LSCs;
@@ -370,12 +408,22 @@ int LSCManager::setMode(lsc::MODE mode)
 {
 	ScopedTimeLogger stl("[LSC] Set mode");
 
-	if (!m_enable) return (int)LSC_RC::PASS;
+	ct::logger::info("[LSC][strobe] setMode requested: %s -> %s (enable=%d, lsc count=%d)",
+		m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS",
+		mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS",
+		m_enable ? 1 : 0, (int)m_lsc.size());
+
+	if (!m_enable) {
+		ct::logger::warn("[LSC][strobe] setMode SKIPPED - LSC manager disabled");
+		return (int)LSC_RC::PASS;
+	}
 
 	int ret = 0;
 
 	for (auto lsc : m_lsc) {
 		ret = lsc->setMode(mode);
+		ct::logger::info("[LSC][strobe] setMode on controller returned %s",
+			ret == (int)LSC_RC::PASS ? "PASS" : "FAIL");
 		if (ret == (int)LSC_RC::PASS) m_mode = mode;
 	}
 
@@ -384,22 +432,61 @@ int LSCManager::setMode(lsc::MODE mode)
 	//change - reset so the next setIntensity writes through
 	resetLatch();
 	m_currentPulseWidth = -1;
+	ct::logger::info("[LSC][strobe] intensity latch + pulse width reset after mode change (mode now %s)",
+		m_mode == lsc::MODE::TRIGGER ? "STROBE" : "CONTINUOUS");
+
+	/*
+	* INTERNAL trigger fix: free-running flashes are unsynchronized with the camera, so
+	* an exposure shorter than the cycle catches a random slice of it (randomly dark
+	* frames). Pulse width = cycle makes the duty 100% - the flashes butt together and
+	* the light is effectively steady, consistent for ANY exposure. Mind the intensity:
+	* 100% duty means continuous-rated drive, not strobe overdrive.
+	*/
+	if (m_mode == lsc::MODE::TRIGGER && m_strobeInternalTrigger && m_strobeInternalCycleUs > 0) {
+		for (const auto& channel : m_channels.values()) {
+			if (!validLSC(channel.lsc_index)) continue;
+			m_lsc[channel.lsc_index]->setTriggerDuration(channel.channel_index, m_strobeInternalCycleUs);
+		}
+		m_currentPulseWidth = m_strobeInternalCycleUs;
+		ct::logger::info("[LSC][strobe] internal trigger: pulse = cycle (%d us) -> steady output for any exposure",
+			m_strobeInternalCycleUs);
+	}
 
 	return ret;
 }
 
 int LSCManager::setStrobePulseWidth(int us)
 {
-	if (!m_enable) return (int)LSC_RC::PASS;
-	if (m_mode != lsc::MODE::TRIGGER) return (int)LSC_RC::PASS; //only relevant in strobe mode
-	if (us <= 0) return (int)LSC_RC::PASS;
-	if (m_currentPulseWidth == us) return (int)LSC_RC::PASS; //latched
+	if (!m_enable) {
+		ct::logger::debug("[LSC][strobe] pulse width %d us SKIPPED - manager disabled", us);
+		return (int)LSC_RC::PASS;
+	}
+	if (m_mode != lsc::MODE::TRIGGER) {
+		ct::logger::debug("[LSC][strobe] pulse width %d us SKIPPED - mode is CONTINUOUS, not strobe", us);
+		return (int)LSC_RC::PASS;
+	}
+	if (us <= 0) {
+		ct::logger::warn("[LSC][strobe] pulse width SKIPPED - invalid value %d us (camera exposure not known?)", us);
+		return (int)LSC_RC::PASS;
+	}
+	if (m_currentPulseWidth == us) {
+		ct::logger::trace("[LSC][strobe] pulse width %d us already latched - skipped", us);
+		return (int)LSC_RC::PASS;
+	}
 
 	int ret = (int)LSC_RC::PASS;
 
 	for (const auto& channel : m_channels.values()) {
-		if (!validLSC(channel.lsc_index)) continue;
-		ret = m_lsc[channel.lsc_index]->setTriggerDuration(channel.channel_index, us);
+		if (!validLSC(channel.lsc_index)) {
+			ct::logger::warn("[LSC][strobe] pulse width: channel %s has invalid LSC index %d - skipped",
+				channel.id.toStdString().c_str(), channel.lsc_index);
+			continue;
+		}
+		const int r = m_lsc[channel.lsc_index]->setTriggerDuration(channel.channel_index, us);
+		ct::logger::info("[LSC][strobe] pulse width %d us -> channel %s (ch idx %d): %s",
+			us, channel.id.toStdString().c_str(), channel.channel_index,
+			r == (int)LSC_RC::PASS ? "PASS" : "FAIL");
+		ret = r;
 	}
 
 	m_currentPulseWidth = us;

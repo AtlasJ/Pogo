@@ -481,7 +481,7 @@ signals:
 	void fiducialFailed();
 
 	void barcodeDecoded(QString code);
-	void unitBarcode(QString unitID, QString code); //per pitch unit (or "board"), for the live status table
+	void unitBarcode(QString unitID, QString code, int reader); //reader that decoded: 1/2, 0 = none //per pitch unit (or "board"), for the live status table
 	void locatedBarcode(QRectF roi, int index, bool pass, QString code);
 	void barcodeFailed();
 

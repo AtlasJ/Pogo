@@ -139,6 +139,7 @@ private:
 	//--- program / geometry
 	unsigned char m_programNo = 0;        // Type byte is 0x10 + programNo
 	bool     m_liveMode = false;          // live view: continuous trigger, batch off
+	QHash<quint32, QByteArray> m_settingCache; // last value pushed per setting item (see setSetting)
 	int      m_divider = 1;               // encoder sub-sampling count
 	double   m_yPitchUm = 10.0;           // per-trigger Y pitch BEFORE sub-sampling
 	double   m_zPitchUm = 1.6;            // grey-level -> micron factor, from head model

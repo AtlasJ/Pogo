@@ -28,6 +28,7 @@ enum class DOA { //card0
 	BUZZER = 6,              //Y106
 	TROLLEY_LOCK_RELEASE = 7,//Y107
 	BRAKE_RELEASE = 8,       //Y108 Z axis motor brake release
+	CHANNEL1_DO = 10,        //Y110 light channel 1 DO
 	LAST_INDEX
 };
 
@@ -143,6 +144,7 @@ public:
 	bool isLineScanDirectionNegative() const { return _lineScanDirection == 1; }
 
 	std::atomic<bool> _lscStrobeMode = false; //light controller default mode: strobe (trigger) vs continuous
+	std::atomic<qint64> _lastStrobeEdgeMs = 0; //when Y110 last rose - retrigger guard (see fire sites)
 
 	std::atomic<int> _camImageRotation = 0; //camera alignment rotation option: 0/90/180/270, applied in ImageManager preprocessing
 
