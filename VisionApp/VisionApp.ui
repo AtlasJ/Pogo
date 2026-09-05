@@ -6663,7 +6663,7 @@ QToolButton:hover {
              <property name="geometry">
               <rect>
                <x>-8</x>
-               <y>-304</y>
+               <y>-22</y>
                <width>666</width>
                <height>2092</height>
               </rect>
@@ -18388,8 +18388,8 @@ QToolButton:hover {
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>539</width>
-                       <height>1398</height>
+                       <width>586</width>
+                       <height>1463</height>
                       </rect>
                      </property>
                      <layout class="QVBoxLayout" name="verticalLayout_srxPageInner">
@@ -19186,8 +19186,8 @@ Stop SR Management Tool services to free port 21.</string>
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>738</width>
-                       <height>2040</height>
+                       <width>893</width>
+                       <height>2061</height>
                       </rect>
                      </property>
                      <layout class="QVBoxLayout" name="vl_algoPageInner">
@@ -19852,23 +19852,23 @@ Stop SR Management Tool services to free port 21.</string>
                                 <string>Options</string>
                                </property>
                                <layout class="QVBoxLayout" name="vl_group_algoOcrOptions">
-                                                                <item>
+                                <item>
                                  <layout class="QHBoxLayout" name="hl_algoOcrOpt1">
-<item>
+                                  <item>
                                    <widget class="QCheckBox" name="checkBox_algoOcrPaddle">
                                     <property name="text">
                                      <string>Use PaddleOCR</string>
                                     </property>
                                    </widget>
                                   </item>
-<item>
+                                  <item>
                                    <widget class="QCheckBox" name="checkBox_algoOcrRemoveSpecial">
                                     <property name="text">
                                      <string>Remove Special Chars</string>
                                     </property>
                                    </widget>
                                   </item>
-<item>
+                                  <item>
                                    <spacer name="hs_hl_algoOcrOpt1">
                                     <property name="orientation">
                                      <enum>Qt::Horizontal</enum>
@@ -19885,14 +19885,14 @@ Stop SR Management Tool services to free port 21.</string>
                                 </item>
                                 <item>
                                  <layout class="QHBoxLayout" name="hl_algoOcrOpt2">
-<item>
+                                  <item>
                                    <widget class="QLabel" name="label_algoOcrOrient">
                                     <property name="text">
                                      <string>Orientation:</string>
                                     </property>
                                    </widget>
                                   </item>
-<item>
+                                  <item>
                                    <widget class="QComboBox" name="comboBox_algoOcrOrientation">
                                     <property name="maximumSize">
                                      <size>
@@ -19922,7 +19922,7 @@ Stop SR Management Tool services to free port 21.</string>
                                     </item>
                                    </widget>
                                   </item>
-<item>
+                                  <item>
                                    <spacer name="hs_hl_algoOcrOpt2">
                                     <property name="orientation">
                                      <enum>Qt::Horizontal</enum>
@@ -22626,8 +22626,8 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>634</width>
-                                  <height>303</height>
+                                  <width>815</width>
+                                  <height>318</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
@@ -22832,20 +22832,243 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  </item>
                                 </layout>
                                </widget>
+                               <widget class="QWidget" name="page_algoH3Preprocess">
+                                <property name="geometry">
+                                 <rect>
+                                  <x>0</x>
+                                  <y>0</y>
+                                  <width>815</width>
+                                  <height>288</height>
+                                 </rect>
+                                </property>
+                                <property name="styleSheet">
+                                 <string notr="true">QWidget#page_algoH3Preprocess {background: transparent;}</string>
+                                </property>
+                                <attribute name="label">
+                                 <string>▼ 1. Data Preprocessing</string>
+                                </attribute>
+                                <layout class="QFormLayout" name="formLayout_algoH3Preprocess">
+                                 <item row="0" column="0">
+                                  <widget class="QLabel" name="label_algoH3PreprocessMethod">
+                                   <property name="text">
+                                    <string>Data Preprocessing Method </string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="0" column="1">
+                                  <widget class="QComboBox" name="comboBox_algoH3PreprocessMethod">
+                                   <item>
+                                    <property name="text">
+                                     <string>None</string>
+                                    </property>
+                                   </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Median Filter</string>
+                                    </property>
+                                   </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Gaussian Filter</string>
+                                    </property>
+                                   </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Bilateral Filter</string>
+                                    </property>
+                                   </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Morphological Opening</string>
+                                    </property>
+                                   </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Morphological Closing</string>
+                                    </property>
+                                   </item>
+                                  </widget>
+                                 </item>
+                                 <item row="1" column="1">
+                                  <widget class="QStackedWidget" name="stackedWidget_algoH3Preprocess">
+                                   <widget class="QWidget" name="page_algoH3PreprocessNone">
+                                    <layout class="QFormLayout" name="formLayout_algoH3PreprocessNone">
+                                     <item row="0" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessNoneDesc">
+                                       <property name="text">
+                                        <string>No parameters required.</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                    </layout>
+                                   </widget>
+                                   <widget class="QWidget" name="page_algoH3PreprocessMedian">
+                                    <layout class="QFormLayout" name="formLayout_algoH3PreprocessMedian">
+                                     <item row="0" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessMedianKernelSize">
+                                       <property name="text">
+                                        <string>Kernel Size</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="0" column="1">
+                                      <widget class="QSpinBox" name="spinBox_algoH3PreprocessMedianKernelSize"/>
+                                     </item>
+                                    </layout>
+                                   </widget>
+                                   <widget class="QWidget" name="page_algoH3PreprocessGaussian">
+                                    <layout class="QFormLayout" name="formLayout_algoH3PreprocessGaussian">
+                                     <item row="0" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessGaussianKernelSize">
+                                       <property name="text">
+                                        <string>Kernel Size</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="0" column="1">
+                                      <widget class="QSpinBox" name="spinBox_algoH3PreprocessGaussianKernelSize"/>
+                                     </item>
+                                     <item row="1" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessGaussianSigma">
+                                       <property name="text">
+                                        <string>Sigma</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="1" column="1">
+                                      <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3PreprocessGaussianSigma"/>
+                                     </item>
+                                    </layout>
+                                   </widget>
+                                   <widget class="QWidget" name="page_algoH3PreprocessBilateral">
+                                    <layout class="QFormLayout" name="formLayout_algoH3PreprocessBilateral">
+                                     <item row="0" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessBilateralDiameter">
+                                       <property name="text">
+                                        <string>Diameter</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="1" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessBilateralSpatialSigma">
+                                       <property name="text">
+                                        <string>Spatial Sigma</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="2" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessBilateralHeightSigma">
+                                       <property name="text">
+                                        <string>Height Sigma</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="0" column="1">
+                                      <widget class="QSpinBox" name="spinBox_algoH3PreprocessBilateralDiameter"/>
+                                     </item>
+                                     <item row="1" column="1">
+                                      <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3PreprocessBilateralSpatialSigma"/>
+                                     </item>
+                                     <item row="2" column="1">
+                                      <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3PreprocessBilateralHeightSigma"/>
+                                     </item>
+                                    </layout>
+                                   </widget>
+                                   <widget class="QWidget" name="page_algoH3PreprocessOpening">
+                                    <layout class="QFormLayout" name="formLayout_algoH3PreprocessOpening">
+                                     <item row="0" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessOpeningKernelSize">
+                                       <property name="text">
+                                        <string>Kernel Size</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="0" column="1">
+                                      <widget class="QSpinBox" name="spinBox_algoH3PreprocessOpeningKernelSize"/>
+                                     </item>
+                                    </layout>
+                                   </widget>
+                                   <widget class="QWidget" name="page_algoH3PreprocessClosing">
+                                    <layout class="QFormLayout" name="formLayout_algoH3PreprocessClosing">
+                                     <item row="0" column="0">
+                                      <widget class="QLabel" name="label_algoH3PreprocessClosingKernelSize">
+                                       <property name="text">
+                                        <string>Kernel Size</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="0" column="1">
+                                      <widget class="QSpinBox" name="spinBox_algoH3PreprocessClosingKernelSize"/>
+                                     </item>
+                                    </layout>
+                                   </widget>
+                                  </widget>
+                                 </item>
+                                 <item row="1" column="0">
+                                  <widget class="QLabel" name="label_algoH3PreprocessParamsHdr">
+                                   <property name="text">
+                                    <string>Parameters</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="0">
+                                  <widget class="QLabel" name="label_algoH3PreprocessResult">
+                                   <property name="text">
+                                    <string>Result (Pass/Fail)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="0">
+                                  <widget class="QLabel" name="label_algoH3PreprocessFailReason">
+                                   <property name="text">
+                                    <string>Fail Reason</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="4" column="0">
+                                  <widget class="QLabel" name="label_algoH3PreprocessTimeMs">
+                                   <property name="text">
+                                    <string>Time Taken (ms)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="1">
+                                  <widget class="QLineEdit" name="lineEdit_algoH3PreprocessResult">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="1">
+                                  <widget class="QLineEdit" name="lineEdit_algoH3PreprocessFailReason">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="4" column="1">
+                                  <widget class="QLineEdit" name="lineEdit_algoH3PreprocessTimeMs">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                </layout>
+                               </widget>
                                <widget class="QWidget" name="page_algoH3Seg">
                                 <property name="geometry">
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>634</width>
-                                  <height>350</height>
+                                  <width>789</width>
+                                  <height>377</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
                                  <string notr="true">QWidget#page_algoH3Seg {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 1. Segmentation</string>
+                                 <string>▼ 2. Segmentation</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Seg">
                                  <item row="0" column="0">
@@ -23078,15 +23301,15 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>634</width>
-                                  <height>325</height>
+                                  <width>789</width>
+                                  <height>346</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
                                  <string notr="true">QWidget#page_algoH3Datum {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 2. Datum Plane</string>
+                                 <string>▼ 3. Datum Plane</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Datum">
                                  <item row="0" column="0" colspan="2">
@@ -23332,15 +23555,15 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>660</width>
-                                  <height>258</height>
+                                  <width>815</width>
+                                  <height>324</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
                                  <string notr="true">QWidget#page_algoH3Method {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 3. Height Measurement Settings</string>
+                                 <string>▼ 4. Height Measurement Settings</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Method">
                                  <item row="0" column="0">
@@ -23636,15 +23859,15 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>693</width>
-                                  <height>299</height>
+                                  <width>815</width>
+                                  <height>328</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
                                  <string notr="true">QWidget#page_algoH3Roi {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 4. ROI Types &amp;&amp; Criteria</string>
+                                 <string>▼ 5. ROI Types &amp;&amp; Criteria</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Roi">
                                  <item row="0" column="0">
@@ -23780,15 +24003,15 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>634</width>
-                                  <height>407</height>
+                                  <width>457</width>
+                                  <height>442</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
                                  <string notr="true">QWidget#page_algoH3Result {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 5. Measurement Results</string>
+                                 <string>▼ 6. Measurement Results</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Result">
                                  <item row="0" column="0">
@@ -23989,15 +24212,15 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>634</width>
-                                  <height>380</height>
+                                  <width>498</width>
+                                  <height>410</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
                                  <string notr="true">QWidget#page_algoH3Overall {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 6. Overall Results</string>
+                                 <string>▼ 7. Overall Results</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Overall">
                                  <item row="0" column="0">
