@@ -6663,7 +6663,7 @@ QToolButton:hover {
              <property name="geometry">
               <rect>
                <x>-8</x>
-               <y>-22</y>
+               <y>0</y>
                <width>666</width>
                <height>2092</height>
               </rect>
@@ -22837,8 +22837,8 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>815</width>
-                                  <height>288</height>
+                                  <width>789</width>
+                                  <height>327</height>
                                  </rect>
                                 </property>
                                 <property name="styleSheet">
@@ -23011,45 +23011,52 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="2" column="0">
+                                 <item row="3" column="0">
                                   <widget class="QLabel" name="label_algoH3PreprocessResult">
                                    <property name="text">
                                     <string>Result (Pass/Fail)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="0">
+                                 <item row="4" column="0">
                                   <widget class="QLabel" name="label_algoH3PreprocessFailReason">
                                    <property name="text">
                                     <string>Fail Reason</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="0">
+                                 <item row="5" column="0">
                                   <widget class="QLabel" name="label_algoH3PreprocessTimeMs">
                                    <property name="text">
                                     <string>Time Taken (ms)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="2" column="1">
+                                 <item row="3" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3PreprocessResult">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="1">
+                                 <item row="4" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3PreprocessFailReason">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="1">
+                                 <item row="5" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3PreprocessTimeMs">
                                    <property name="readOnly">
                                     <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="0">
+                                  <widget class="QToolButton" name="toolButton_algoH3PreprocessRun">
+                                   <property name="text">
+                                    <string>Run Preprocessing</string>
                                    </property>
                                   </widget>
                                  </item>
@@ -24003,7 +24010,7 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>457</width>
+                                  <width>789</width>
                                   <height>442</height>
                                  </rect>
                                 </property>
@@ -24212,7 +24219,7 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <rect>
                                   <x>0</x>
                                   <y>0</y>
-                                  <width>498</width>
+                                  <width>789</width>
                                   <height>410</height>
                                  </rect>
                                 </property>
