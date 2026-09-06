@@ -2210,9 +2210,11 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 		QString cid = util::combineID(info.viewID, info.opticID);
 		ct::logger::info("[ImageReady] Receive ready image: %s", cid.toStdString().c_str());
 
-		//keep the latest heightmap available for the Algo Setup page ("Use Last Scan")
+		//keep the latest scan available for the Algo Setup page ("Use Last Scan"). Both
+		//maps, not just the height one: V3 needs the intensity map too, and the only
+		//place the two are guaranteed pixel-aligned is the frame they arrived in.
 		if (info.type == ct::s_height_map && info.pHeightMap) {
-			AlgoManager::instance().setHeightMap(info.pHeightMap);
+			AlgoManager::instance().setLastScanMaps(info.pHeightMap, info.pImage);
 
 			//production: archive the scan beside the fiducial/reader images as
 			//<X#Y#>_height.tiff + <X#Y#>_intensity.jpg (worker thread, non-blocking)
@@ -5271,7 +5273,10 @@ VisionApp::~VisionApp()
 	* FREE_BUFFER buffer - which is exactly what the rotated height map is - is invisible to it,
 	* so the pool teardown cannot clean up after this reference no matter when it runs.
 	*/
-	AlgoManager::instance().setHeightMap(nullptr);
+	//both halves of the last scan, for the same reason - the intensity map is attached the
+	//same way and would be just as invisible to the pool teardown
+	AlgoManager::instance().setLastScanMaps(nullptr, nullptr);
+	AlgoManager::instance().height3Clear();
 
 	mtrx::MPM::instance().release_pools();
 	_databaseThread.terminate(); 
@@ -5305,8 +5310,15 @@ bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 			const bool editing = qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
 				|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
 			if (!editing && isPage(UIPage::ALGO_SETUP)) {
-				if (ke->key() == Qt::Key_C) algoHCopySelectedRois();
-				else algoHPasteRois();
+				//the V3 page has its own ROIs in their own coordinate space - copying
+				//them with the V1 handler would snapshot the wrong boxes entirely
+				const bool v3 = (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3);
+				if (ke->key() == Qt::Key_C) {
+					if (v3) algoH3CopySelectedRois(); else algoHCopySelectedRois();
+				}
+				else {
+					if (v3) algoH3PasteRois(); else algoHPasteRois();
+				}
 				return true;
 			}
 		}
@@ -5339,6 +5351,11 @@ bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 
 		_worldFOV.hide();
 	}
+
+	//drag-to-spin on the V3 page's 3D surface view. Placed after the menu-dismiss block
+	//above so clicking the image still closes an open menu, and it claims events only
+	//while that view is actually on screen.
+	if (algoH3HandleViewMouse(obj, event)) return true;
 
 	if (event->type() == QEvent::MouseMove) {
 		if (!_blockEventFilter)

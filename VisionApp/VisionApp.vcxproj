@@ -228,8 +228,11 @@
     <ClCompile Include="Profiler_Keyence.cpp" />
     <ClCompile Include="ScaleManager.cpp" />
     <ClCompile Include="AlgoBuffers.cpp" />
+    <ClCompile Include="AlgoHeight3.cpp" />
     <ClCompile Include="AlgoManager.cpp" />
+    <ClCompile Include="AlgoManager_Height3.cpp" />
     <ClCompile Include="AlgoTemplate.cpp" />
+    <ClCompile Include="VisionApp_AlgoHeight3.cpp" />
     <ClCompile Include="VisionApp_AlgoSetup.cpp" />
     <ClCompile Include="VisionApp_DryRun.cpp" />
     <ClCompile Include="InspectionThread.cpp" />
@@ -256,6 +259,8 @@
     <QtMoc Include="AlgoManager.h" />
     <QtMoc Include="InspectionThread.h" />
     <QtMoc Include="PaddleOcrClient.h" />
+    <ClInclude Include="AlgoHeight3.h" />
+    <ClInclude Include="AlgoHeight3Types.h" />
     <ClInclude Include="AlgoSetupTypes.h" />
     <ClInclude Include="DryRunTableWidget.h" />
     <QtMoc Include="SRXFtpServer.h" />

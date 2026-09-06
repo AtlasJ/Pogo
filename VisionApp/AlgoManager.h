@@ -3,12 +3,14 @@
 #include <QObject>
 #include <QThread>
 #include <QHash>
+#include <QJsonObject>
 #include <QStringList>
 #include <mutex>
 #include <atomic>
 #include <opencv2/opencv.hpp>
 
 #include "AlgoSetupTypes.h"
+#include "AlgoHeight3.h"
 #include "mtrx.h"
 #include "MbufWrapper.h"
 
@@ -51,6 +53,9 @@ public:
 	AlgoHeightParams heightParams() const;
 	void setHeightParams(const AlgoHeightParams& p);
 
+	AlgoHeight3Params height3Params() const;
+	void setHeight3Params(const AlgoHeight3Params& p);
+
 	AlgoLocatorConfig locatorConfig(AlgoPageAlgo algo) const;
 	void setLocatorConfig(AlgoPageAlgo algo, const AlgoLocatorConfig& cfg);
 
@@ -72,25 +77,49 @@ public:
 
 	//── heightmap source ──
 	void setHeightMap(mtrx::SharedMilID heightMap);         //e.g. last scanned map
+	void setLastScanMaps(mtrx::SharedMilID heightMap, mtrx::SharedMilID intensityMap);
 	bool loadHeightMapFromFile(const QString& tiffPath, QString& error);
 	mtrx::SharedMilID heightMap() const;
+	mtrx::SharedMilID lastScanIntensityMap() const;
 	QImage heightMapImage(bool colorMapped) const;          //for 2D/3D display
+
+	// ── 3D Height Measurement 3 (AlgoHeight3Pipeline) ──
+	//sources: either the last scan's pair, or files loaded on the page for offline work
+	bool height3UseLastScan(QString& error);
+	bool height3LoadHeightFile(const QString& path, QString& error);
+	bool height3LoadIntensityFile(const QString& path, QString& error);
+	void height3Clear();
+
+	bool height3HasHeight() const;
+	bool height3HasIntensity() const;
+	bool height3SegmentReady() const;
+	bool height3DatumReady() const;
+	QSize height3CropSize() const;
+	AlgoHeight3Output height3Output() const;
+
+	//display renders, taken under the same lock the worker writes under
+	QImage height3Image(bool intensity, bool preprocessed, bool segmented, bool colorMapped) const;
+	QImage height3Surface(bool preprocessed, bool segmented,
+		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize) const;
 
 	//── runs (queued to the worker thread; results come by signal) ──
 	void runOcr(const QImage& fov);
 	void runHeight();
+	void runHeight3(AlgoH3Stage stage);
 
 	bool isBusy() const { return m_busy; }
 
 signals:
 	void ocrFinished(AlgoOcrOutput output);
 	void heightFinished(AlgoHeightOutput output);
+	void height3Finished(int stage, AlgoHeight3Output output);
 	void busyChanged(bool busy);
 	void patternsChanged();
 
 private slots:
 	void doRunOcr(QImage fov);
 	void doRunHeight();
+	void doRunHeight3(int stage);
 
 private:
 	AlgoManager();
@@ -123,6 +152,10 @@ private:
 
 	QString algoConfigPath() const;
 
+	//height3 persistence, defined beside the rest of the V3 code in AlgoHeight3.cpp
+	void height3FromJson(const QJsonObject& root);
+	QJsonObject height3ToJson() const;
+
 	QThread m_thread;
 	bool m_initialized = false;
 	std::atomic<bool> m_busy = false;
@@ -137,6 +170,18 @@ private:
 	QHash<QString, QStringList> m_patternFiles; //label -> .mpat paths
 
 	mtrx::SharedMilID m_heightMap;
+	mtrx::SharedMilID m_lastScanIntensity; //companion of m_heightMap, for "Use Last Scan"
+
+	/*
+	* 3D Height Measurement 3. The params live under m_mutex like every other config,
+	* but the PIPELINE gets its own lock: a stage can run for seconds, and holding the
+	* config mutex that long would stall every unrelated caller. The display accessors
+	* only try_lock it, so dragging the 3D view while a stage runs keeps the last frame
+	* instead of freezing the GUI thread.
+	*/
+	AlgoHeight3Params m_height3Params;
+	mutable std::mutex m_height3Mutex;
+	AlgoHeight3Pipeline m_height3;
 
 	PaddleOcrClient* m_paddle = nullptr; //created on worker thread
 };

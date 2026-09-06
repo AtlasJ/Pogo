@@ -56,6 +56,11 @@ void VisionApp::initAlgoSetupPage()
 		ui.frame_algoLocator->setVisible(algoHasLocator(currentAlgoPageAlgo()));
 		refreshAlgoLocatorUI();
 		updateAlgoRoiVisibility();
+
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+			updateAlgoH3Enables();
+			updateAlgoH3Display();
+		}
 	});
 
 	connect(ui.toolButton_algoRun, &QToolButton::clicked, this, [=]() {
@@ -65,14 +70,21 @@ void VisionApp::initAlgoSetupPage()
 		}
 
 		/*
-		* The V2 and V3 pages are UI shells only - no params struct, no JSON, no algorithm yet.
-		* Refuse on anything not whitelisted. Falling through to the else below would silently
-		* run the OLD height algo against an untouched page, which reads as the new pipeline
+		* The V2 page is a UI shell only - no params struct, no JSON, no algorithm. Refuse
+		* on anything not whitelisted. Falling through to the else below would silently run
+		* the OLD height algo against an untouched page, which reads as the new pipeline
 		* working when nothing of it exists.
 		*/
 		if (!algoIsImplemented(currentAlgoPageAlgo())) {
 			ui.label_algoStatus->setText(ui.comboBox_algoType->currentText()
 				+ ": layout only, no algorithm yet");
+			return;
+		}
+
+		//V3's Run is a Run All: every stage in order, stopping at the first failure. It
+		//does its own capture and validation, so hand straight over.
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+			algoH3RunStage(AlgoH3Stage::All);
 			return;
 		}
 
@@ -432,6 +444,7 @@ void VisionApp::initAlgoSetupPage()
 	connect(&AlgoManager::instance(), &AlgoManager::busyChanged, this, [=](bool busy) {
 		ui.toolButton_algoRun->setEnabled(!busy);
 		if (busy) ui.label_algoStatus->setText("Running...");
+		updateAlgoH3Enables(); //V3's per-section Run buttons follow the same busy state
 	});
 
 	connect(&AlgoManager::instance(), &AlgoManager::patternsChanged, this, [=]() {
@@ -440,6 +453,9 @@ void VisionApp::initAlgoSetupPage()
 
 	ui.stackedWidget_algoParams->setCurrentIndex(0);
 	ui.toolButton_algoH2D->setChecked(true);
+
+	//the 3D Height Measurement 3 page owns its own wiring - see VisionApp_AlgoHeight3.cpp
+	initAlgoHeight3Page();
 }
 
 //Ctrl+C: snapshot the selected 3D ROIs (called from the global event filter)
@@ -516,6 +532,9 @@ void VisionApp::updateAlgoRoiVisibility()
 	if (_algoLocLearnBox) _algoLocLearnBox->setVisible(loc && ui.toolButton_algoLocLearnRoi->isChecked());
 	if (_algoLocSearchBox) _algoLocSearchBox->setVisible(loc && ui.toolButton_algoLocSearchRoi->isChecked());
 
+	//V3's ROIs have their own rule - the open section decides which set is shown
+	updateAlgoH3RoiVisibility();
+
 	if (!onPage) clearAlgoOverlay();
 }
 
@@ -527,6 +546,7 @@ void VisionApp::hideAlgoSetupRois()
 	if (_algoLocSearchBox) _algoLocSearchBox->hide();
 	for (auto box : _algoPlaneBoxes) box->hide();
 	for (auto box : _algoHeightBoxes) box->hide();
+	hideAlgoH3Rois();
 	clearAlgoOverlay();
 }
 
@@ -544,6 +564,10 @@ void VisionApp::captureAlgoParamsFromUI()
 	ocr.paddleOcrEnabled = ui.checkBox_algoOcrPaddle->isChecked();
 	if (_algoOcrRoi1Box) ocr.roi1Geo = _algoOcrRoi1Box->getGeometry();
 	mgr.setOcrParams(ocr);
+
+	//3D Height Measurement 3 lives on its own page with its own params struct; capture it
+	//BEFORE the locator early-return below, or nothing on that page would ever be saved
+	captureAlgoH3ParamsFromUI();
 
 	AlgoHeightParams h = mgr.heightParams();
 	h.intensityPerMicron = ui.dspin_algoHIpm->value();
@@ -664,6 +688,7 @@ void VisionApp::refreshAlgoSetupPage()
 
 	refreshAlgoLocatorUI();
 	refreshAlgoPatternList();
+	refreshAlgoHeight3Page();
 	updateAlgoRoiVisibility();
 }
 

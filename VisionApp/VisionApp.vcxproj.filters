@@ -358,6 +358,15 @@
     <ClCompile Include="AlgoManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="AlgoManager_Height3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AlgoHeight3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="VisionApp_AlgoHeight3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="PaddleOcrClient.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -928,6 +937,12 @@
       <Filter>Header Files</Filter>
     </QtMoc>
     <ClInclude Include="AlgoSetupTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AlgoHeight3Types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AlgoHeight3.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="DryRunTableWidget.h">
