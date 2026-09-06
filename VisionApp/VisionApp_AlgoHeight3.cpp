@@ -139,15 +139,8 @@ void VisionApp::initAlgoHeight3Page()
 		"Add one datum ROI, at the centre of the segmented part." + copyHint);
 
 	// ── display mode + section: both decide what is on screen ──
-	connect(ui.radioButton_algoH3DisplayHeightMap, &QRadioButton::toggled, this, [=](bool on) {
-		if (on) updateAlgoH3Display();
-	});
-	connect(ui.radioButton_algoH3DisplayIntensityMap, &QRadioButton::toggled, this, [=](bool on) {
-		if (on) updateAlgoH3Display();
-	});
-	connect(ui.radioButton_algoH3DisplaySurface3D, &QRadioButton::toggled, this, [=](bool on) {
-		if (on) updateAlgoH3Display();
-	});
+	connect(ui.comboBox_algoH3Display, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) { updateAlgoH3Display(); });
 
 	connect(ui.toolBox_algoH3Sections, &QToolBox::currentChanged, this, [=](int) {
 		updateAlgoH3Display();
@@ -803,7 +796,7 @@ void VisionApp::updateAlgoH3RoiVisibility()
 		&& (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3);
 
 	//the 3D view is a projection - an ROI dragged on it would not mean anything
-	const bool flatView = !ui.radioButton_algoH3DisplaySurface3D->isChecked();
+	const bool flatView = (algoH3DisplayMode() != AlgoH3Display::Surface3D);
 	const bool cropOnScreen = onPage && flatView && (_algoH3BoxCropW > 0);
 	const int section = algoH3CurrentSection();
 
@@ -823,6 +816,22 @@ int VisionApp::algoH3CurrentSection() const
 	return ui.toolBox_algoH3Sections ? ui.toolBox_algoH3Sections->currentIndex() : 0;
 }
 
+/*
+* An out-of-range index can only mean the combo and AlgoH3Display have drifted apart, so
+* fall back to the height view rather than pick a mode the operator did not ask for.
+*/
+AlgoH3Display VisionApp::algoH3DisplayMode() const
+{
+	if (!ui.comboBox_algoH3Display) return AlgoH3Display::HeightColor;
+
+	const int i = ui.comboBox_algoH3Display->currentIndex();
+	if (i < static_cast<int>(AlgoH3Display::HeightColor)
+		|| i > static_cast<int>(AlgoH3Display::Surface3D)) {
+		return AlgoH3Display::HeightColor;
+	}
+	return static_cast<AlgoH3Display>(i);
+}
+
 void VisionApp::updateAlgoH3Display()
 {
 	if (!isPage(UIPage::ALGO_SETUP)) return;
@@ -836,20 +845,30 @@ void VisionApp::updateAlgoH3Display()
 	const bool preprocessed = (section >= SEC_SEG);
 	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
 
-	if (!ui.radioButton_algoH3DisplaySurface3D->isChecked()) _algoH3Dragging = false;
+	const AlgoH3Display mode = algoH3DisplayMode();
+	if (mode != AlgoH3Display::Surface3D) _algoH3Dragging = false;
 
 	QImage img;
-	if (ui.radioButton_algoH3DisplaySurface3D->isChecked()) {
+	switch (mode) {
+	case AlgoH3Display::Surface3D:
 		img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
 			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas);
-	}
-	else if (ui.radioButton_algoH3DisplayIntensityMap->isChecked()) {
+		break;
+
+	case AlgoH3Display::Intensity:
 		img = mgr.height3Image(true, preprocessed, segmented, false);
 		if (img.isNull() && mgr.height3HasHeight() && !mgr.height3HasIntensity())
 			showStatus("No intensity map loaded - load one to view it.");
-	}
-	else {
-		img = mgr.height3Image(false, preprocessed, segmented, true);
+		break;
+
+	//both height modes read the same map and differ only in how it is painted:
+	//the JET ramp makes small steps obvious, grey keeps the surface readable
+	case AlgoH3Display::HeightColor:
+	case AlgoH3Display::HeightGray:
+	default:
+		img = mgr.height3Image(false, preprocessed, segmented,
+			mode == AlgoH3Display::HeightColor);
+		break;
 	}
 
 	if (img.isNull()) return; //nothing loaded yet, or a stage is running - keep the view
@@ -881,7 +900,7 @@ void VisionApp::updateAlgoH3Display()
 //re-render just the 3D surface, throttled, so a drag stays smooth without queueing frames
 void VisionApp::updateAlgoH3Surface()
 {
-	if (!ui.radioButton_algoH3DisplaySurface3D->isChecked()) return;
+	if (algoH3DisplayMode() != AlgoH3Display::Surface3D) return;
 
 	if (_algoH3DragClock.isValid() && _algoH3DragClock.elapsed() < 40) return;
 	_algoH3DragClock.restart();
@@ -912,7 +931,7 @@ bool VisionApp::algoH3HandleViewMouse(QObject* obj, QEvent* ev)
 	if (!ui.graphicsViewFOV || obj != ui.graphicsViewFOV->viewport()) return false;
 	if (!isPage(UIPage::ALGO_SETUP)) return false;
 	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return false;
-	if (!ui.radioButton_algoH3DisplaySurface3D->isChecked()) { _algoH3Dragging = false; return false; }
+	if (algoH3DisplayMode() != AlgoH3Display::Surface3D) { _algoH3Dragging = false; return false; }
 
 	switch (ev->type()) {
 	case QEvent::MouseButtonPress: {

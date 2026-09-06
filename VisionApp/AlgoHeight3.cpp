@@ -971,8 +971,11 @@ QImage algoH3HeightToQImage(const cv::Mat& height16, int minValidRaw, int maxVal
 	if (cv::countNonZero(mask) > 0) cv::minMaxLoc(src, &mn, &mx, nullptr, nullptr, mask);
 	if (mx <= mn) { mn = 0; mx = 65535; }
 
+	//valid heights map into 1..255 so that 0 is left to mean "no data". In the grey view
+	//that is the only thing separating a dropout from the lowest real surface; the colour
+	//view does not need it because it repaints dropouts below.
 	cv::Mat gray8;
-	src.convertTo(gray8, CV_8U, 255.0 / (mx - mn), -mn * 255.0 / (mx - mn));
+	src.convertTo(gray8, CV_8U, 254.0 / (mx - mn), 1.0 - mn * 254.0 / (mx - mn));
 	gray8.setTo(0, ~mask);
 
 	if (!colorMapped) {

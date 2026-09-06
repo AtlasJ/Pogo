@@ -22551,36 +22551,27 @@ Selecting this section shows the image with no ROIs.</string>
                                 </widget>
                                </item>
                                <item>
-                                <widget class="QRadioButton" name="radioButton_algoH3DisplayHeightMap">
-                                 <property name="styleSheet">
-                                  <string notr="true">color: white;</string>
-                                 </property>
-                                 <property name="text">
-                                  <string>2D Height Map</string>
-                                 </property>
-                                 <property name="checked">
-                                  <bool>true</bool>
-                                 </property>
-                                </widget>
-                               </item>
-                               <item>
-                                <widget class="QRadioButton" name="radioButton_algoH3DisplayIntensityMap">
-                                 <property name="styleSheet">
-                                  <string notr="true">color: white;</string>
-                                 </property>
-                                 <property name="text">
-                                  <string>2D Intensity Map</string>
-                                 </property>
-                                </widget>
-                               </item>
-                               <item>
-                                <widget class="QRadioButton" name="radioButton_algoH3DisplaySurface3D">
-                                 <property name="styleSheet">
-                                  <string notr="true">color: white;</string>
-                                 </property>
-                                 <property name="text">
-                                  <string>3D Surface View</string>
-                                 </property>
+                                <widget class="QComboBox" name="comboBox_algoH3Display">
+                                 <item>
+                                  <property name="text">
+                                   <string>2D Height Map (Color)</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>2D Height Map (Grayscale)</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>2D Intensity Map</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Surface View</string>
+                                  </property>
+                                 </item>
                                 </widget>
                                </item>
                                <item>

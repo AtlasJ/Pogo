@@ -827,6 +827,7 @@ private:
 	void algoH3RunStage(AlgoH3Stage stage);
 	bool algoH3HandleViewMouse(QObject* obj, QEvent* ev); //drag-to-spin in the 3D view
 	int algoH3CurrentSection() const;
+	AlgoH3Display algoH3DisplayMode() const;  //comboBox_algoH3Display, guarded against a null ui
 	QDragBox* makeAlgoH3Box(const QRectF& sceneRect, const QColor& color, const QString& name);
 
 	//Ctrl+C / Ctrl+V on the V3 page, routed from the global event filter

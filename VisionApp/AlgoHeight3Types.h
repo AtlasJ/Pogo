@@ -40,6 +40,17 @@ enum class AlgoH3Stage {
 	All
 };
 
+/*
+* Which image the page is showing. Order matches comboBox_algoH3Display. This is pure
+* view state and is never persisted, so unlike AlgoH3Method it can be reordered freely.
+*/
+enum class AlgoH3Display {
+	HeightColor = 0,
+	HeightGray,
+	Intensity,
+	Surface3D
+};
+
 //order matches comboBox_algoH3PreprocessMethod and stackedWidget_algoH3Preprocess
 enum class AlgoH3Preprocess {
 	None = 0,
