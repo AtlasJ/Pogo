@@ -1,4 +1,5 @@
 #include "MotionController.h"
+#include <QDateTime>
 #include "Motion_8134A.h"
 #include "Motion_APS.h"
 #include "Logger.h"
@@ -44,11 +45,21 @@ bool MotionController::create(QString id, QString api)
 	return true;
 }
 
+bool MotionController::available(QString id) const
+{
+    return m_enable && m_motion.contains(id) && m_initStatus.value(id, false);
+}
+
 bool MotionController::valid(QString id) const
 {
 	if (!m_enable) return false;
     if (!m_motion.contains(id)) {
-        ct::logger::warn("[Motion] Trying to access invalid motion controller: %s", id.toStdString().c_str());
+        //offline machine: every poller lands here - warn once every 5 s, not per call
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_lastInvalidWarnMs >= 5000) {
+            m_lastInvalidWarnMs = now;
+            ct::logger::warn("[Motion] Trying to access invalid motion controller: %s", id.toStdString().c_str());
+        }
         return false;
     }
     //Block APS access while the card is released or re-initializing (reconnect):

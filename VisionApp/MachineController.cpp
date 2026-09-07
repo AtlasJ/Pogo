@@ -188,6 +188,13 @@ void MachineController::poolStates()
         }
         m_pollingParked = false;
 
+        //machine offline (controller missing or not initialized): polling IO would
+        //only spam errors - idle here and pick up again once it comes back
+        if (!MotionController::instance().available(m_motionID)) {
+            os_tool::goSleep(1000);
+            continue;
+        }
+
         handleDIA();
         handleDIB();
         handleDOA();

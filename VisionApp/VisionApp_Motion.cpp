@@ -52,6 +52,13 @@ void VisionApp::initMotion() {
 
 		vs_updateUptimer();
 
+		//machine offline: skip the position/IO reads instead of spamming the log.
+		//The gantry light must not freeze at its last color - offline means NOT on.
+		if (!MotionController::instance().available(_motionID)) {
+			nvs::set_background_color(ui.toolButton_gantryStatus, Qt::red);
+			return;
+		}
+
 		double x = 0.0, y = 0.0, z = 0.0; //potential bug
 
 		auto optional_x =  MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::X);

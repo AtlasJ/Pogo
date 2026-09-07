@@ -18,6 +18,10 @@ public:
     void enable(bool enable);
     void enable_motion(bool enable);
 
+    //quiet validity check: same answer as valid() but never logs - for pollers
+    //that need to know whether the controller is worth talking to at all
+    bool available(QString id) const;
+
     // Query
     std::optional<std::string> version(QString id, int cardID) const;
     std::optional<double> get_position_mm(QString id, int cardID, int axis) const;
@@ -79,6 +83,7 @@ private:
 
 	bool m_enable = true;
     bool m_enableMotion = true;
+    mutable qint64 m_lastInvalidWarnMs = 0; //throttles the invalid-controller warning
     QString m_configPath; //motion.json path, kept for reconnect
 
     QHash<QString, bool> m_initStatus;
