@@ -141,6 +141,36 @@ bool AlgoManager::height3UseLastScan(QString& error)
 	return true;
 }
 
+/*
+* The production path's way in. Differs from height3UseLastScan in two ways that matter:
+* it takes the buffers of the frame actually being inspected rather than whatever the GUI
+* thread stored last, and a mismatched intensity map is DROPPED rather than treated as an
+* error - the pipeline never measures from intensity, so failing a unit over a display-only
+* map would be wrong. An unusable HEIGHT map is still a hard failure.
+*/
+bool AlgoManager::height3SetSourceMaps(mtrx::SharedMilID heightMap,
+	mtrx::SharedMilID intensityMap, QString& note)
+{
+	const cv::Mat height = milToMatCopy(heightMap);
+	if (height.empty()) {
+		note = QStringLiteral("the frame carried no usable height map");
+		return false;
+	}
+
+	cv::Mat intensity = milToMatCopy(intensityMap);
+	if (!intensity.empty() && intensity.size() != height.size()) {
+		note = QStringLiteral("intensity map %1 x %2 does not match the height map %3 x %4 - ignored")
+			.arg(intensity.cols).arg(intensity.rows).arg(height.cols).arg(height.rows);
+		intensity = cv::Mat();
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_height3Mutex);
+		m_height3.setSourceMaps(height, intensity);
+	}
+	return true;
+}
+
 bool AlgoManager::height3LoadHeightFile(const QString& path, QString& error)
 {
 	if (!QFile::exists(path)) { error = "File not found: " + path; return false; }

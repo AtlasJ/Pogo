@@ -36,6 +36,26 @@ QString algoH3MethodName(int methodId)
 	}
 }
 
+/*
+* A Run All stops at the first stage that fails, so the useful summary is the name of that
+* stage plus its own reason. Only when every stage passed is the pin tally meaningful - and
+* the tally is what gets reported rather than a list of heights, because a part here has
+* hundreds of pins and a comma-joined list of them is not a result anyone can read.
+*/
+QString algoH3RunSummary(const AlgoHeight3Output& out)
+{
+	if (!out.preprocess.ran) return QStringLiteral("did not run");
+	if (!out.preprocess.pass) return QStringLiteral("preprocessing failed: ") + out.preprocess.failReason;
+	if (!out.segment.pass)    return QStringLiteral("segmentation failed: ") + out.segment.failReason;
+	if (!out.datum.pass)      return QStringLiteral("plane fit failed: ") + out.datum.failReason;
+	if (!out.measure.pass)    return QStringLiteral("measurement failed: ") + out.measure.failReason;
+
+	QString s = QStringLiteral("%1/%2 pins passed").arg(out.passedPins).arg(out.totalPins);
+	if (!out.overallPass && !out.overall.failReason.isEmpty())
+		s += QStringLiteral(" - ") + out.overall.failReason;
+	return s;
+}
+
 bool algoH3MethodValid(int methodId)
 {
 	return methodId >= 0 && methodId < kAlgoH3MethodCount;

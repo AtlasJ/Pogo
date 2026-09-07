@@ -226,4 +226,12 @@ struct AlgoHeight3Output {
 	const AlgoH3RoiResult* roiById(int id) const;
 };
 
+/*
+* One readable line describing a Run All: which stage stopped it, or the pin tally when it
+* got all the way through. Lives here rather than in the page because production reports the
+* same thing to the inspection log, and a unit's verdict must not be described two different
+* ways depending on who is looking.
+*/
+QString algoH3RunSummary(const AlgoHeight3Output& out);
+
 Q_DECLARE_METATYPE(AlgoHeight3Output)
