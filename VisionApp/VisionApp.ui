@@ -1760,7 +1760,7 @@ QLineEdit:focus {
                    <item row="6" column="2">
                     <widget class="QLabel" name="label_EMXA_DI5_d">
                      <property name="text">
-                      <string>Trolley Lock Guard Switch On</string>
+                      <string>Trolley Lock Guard Attached</string>
                      </property>
                     </widget>
                    </item>
@@ -1794,7 +1794,7 @@ QLineEdit:focus {
                    <item row="7" column="2">
                     <widget class="QLabel" name="label_EMXA_DI6_d">
                      <property name="text">
-                      <string>E-Stop Safety Relay OK</string>
+                      <string>E-Stop Safety Relay Trigger</string>
                      </property>
                     </widget>
                    </item>
@@ -1828,7 +1828,7 @@ QLineEdit:focus {
                    <item row="8" column="2">
                     <widget class="QLabel" name="label_EMXA_DI7_d">
                      <property name="text">
-                      <string>Curtain Sensor Safety Relay OK</string>
+                      <string>Curtain Sensor Safety Relay Trigger</string>
                      </property>
                     </widget>
                    </item>
@@ -2953,7 +2953,7 @@ QLineEdit:focus {
                    <item row="8" column="2">
                     <widget class="QLabel" name="label_EMXA_DO7_d">
                      <property name="text">
-                      <string>Trolley Lock Guard Switch Release</string>
+                      <string>Trolley Lock Guard On</string>
                      </property>
                     </widget>
                    </item>

@@ -156,8 +156,11 @@ void VisionApp::initMotion() {
 				if (!button) continue;
 
 				auto state = EMXA_DIs[i];
-				//NC inputs: stop button, estop trigger 1 & 2 read low when active
-				if (i == (int)DIA::STOP_BTN || i == (int)DIA::ESTOP_1 || i == (int)DIA::ESTOP_2) state = !state;
+				//NC inputs: stop button, estop trigger 1 & 2 read low when active.
+				//The e-stop relay reads HIGH when healthy but its row is labeled "Trigger",
+				//so invert it; the curtain input already reads HIGH when triggered.
+				if (i == (int)DIA::STOP_BTN || i == (int)DIA::ESTOP_1 || i == (int)DIA::ESTOP_2
+					|| i == (int)DIA::ESTOP_SAFETY_RELAY) state = !state;
 
 				nvs::set_background_color(button, state ? Qt::green : Qt::red);
 			}
