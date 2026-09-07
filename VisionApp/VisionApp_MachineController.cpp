@@ -155,7 +155,8 @@ void VisionApp::connectMachineController()
 			addLogLine("Error: E-Stop Safety Relay Fault");
 			break;
 		case MachineError::CURTAIN_RELAY_FAULT:
-			addLogLine("Error: Curtain Sensor Safety Relay Fault");
+			addLogLine("Error: Curtain Sensor Triggered");
+			ui.toolButton_machineState->setText("Curtain Sensor Triggered");
 			break;
 		case MachineError::TROLLEY_GUARD_OPEN:
 			addLogLine("Error: Trolley Lock Guard Open");

@@ -263,7 +263,30 @@ void VisionApp::initProductionUI() {
 		AuditLog::instance().log(QStringLiteral("PROD_SEQUENCE"), index == 1 ? QStringLiteral("Alternate") : QStringLiteral("2D to 3D"));
 	});
 
+	//trolley auto-lock: MachineController engages the lock on the guard's OFF->ON edge,
+	//the run's end (or Stop) releases it. Off = the lock only moves via the button below.
+	connect(ui.checkBox_autoLockTrolley, &QCheckBox::toggled, this, [=](bool on) {
+		SystemData::instance()._autoLockTrolley = on;
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("AUTO_LOCK_TROLLEY"), on ? QStringLiteral("ON") : QStringLiteral("OFF"));
+	});
+
+	//manual override: lock or release the trolley regardless of the auto behavior. The
+	//motion status poll keeps the checked state synced with the REAL output, so a lock
+	//engaged automatically shows here as checked and can be released by clicking.
+	connect(ui.toolButton_lockTrolley, &QToolButton::clicked, this, [=](bool checked) {
+		MotionController::instance().set_DO(_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, checked);
+		ui.toolButton_lockTrolley->setText(checked ? tr("Unlock Trolley") : tr("Lock Trolley"));
+		AuditLog::instance().log(QStringLiteral("TROLLEY_LOCK_MANUAL"), checked ? QStringLiteral("LOCK") : QStringLiteral("RELEASE"));
+	});
+
 	connect(ui.toolButton_startProduction, &QToolButton::clicked, this, [=]() {
+		//the 1 s poll grays this button out, but never race it: a click that lands
+		//before the first tick after a trip must still refuse
+		if (MachineController::instance().curtainTripped()) {
+			showMsg("Curtain sensor triggered - press the reset button to re-arm before starting.");
+			return;
+		}
 		startProduction();
 	});
 

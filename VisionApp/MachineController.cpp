@@ -29,9 +29,8 @@ MachineController::MachineController(QObject* parent)
 
     //E-stop safety relay wiring confirmed on the machine 2026-08-28 (X106), so it is no
     //longer bypassed - a relay fault now raises ESTOP_RELAY_FAULT and applies the Z brake.
-    //The curtain relay (X107) has NOT been confirmed yet and stays bypassed.
-    //TODO: temporary bypass until curtain safety relay wiring is confirmed
-    m_bypassErrors[(int)MachineError::CURTAIN_RELAY_FAULT] = true;
+    //Curtain relay (X107) is live too: a beam break raises CURTAIN_RELAY_FAULT (error state
+    //blinks the reset LED) and the reset button then re-enables all three servo axes.
 
 }
 
@@ -326,6 +325,23 @@ void MachineController::handleDIA()
     if (reset_btn && !m_resetBtnPressed) {
         m_resetBtnPressed = true;
         MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, true);
+
+        //after a curtain trip the drives are off: reset turns all three servo axes
+        //back on first (only once the curtain is clear), then clears the alarm
+        if (m_curtainTripped) {
+            if (!io[(int)DIA::CURTAIN_SAFETY_RELAY]) { //low = curtain clear (inverted wiring)
+                if (servoOnAllAxes()) {
+                    m_curtainTripped = false;
+                    //clear the latched error NOW - resetAlarm below refuses while any
+                    //error is still active, and the poll only re-assesses next cycle
+                    assessError(true, MachineError::CURTAIN_RELAY_FAULT);
+                }
+            }
+            else {
+                ct::logger::warn("[MachineController] Reset pressed but the curtain sensor is still triggered.");
+            }
+        }
+
         resetAlarm();
         emit signalMachineEvent(MachineEvent::RESET_BTN);
     }
@@ -342,7 +358,12 @@ void MachineController::handleDIA()
 
     //Check safety relays, high = OK
     assessError(io[(int)DIA::ESTOP_SAFETY_RELAY], MachineError::ESTOP_RELAY_FAULT);
-    assessError(io[(int)DIA::CURTAIN_SAFETY_RELAY], MachineError::CURTAIN_RELAY_FAULT);
+
+    //Curtain sensor: X107 reads HIGH while the beam is broken (inverted wiring). The trip
+    //LATCHES: the error stays active after the beam clears and never self-resets - the
+    //operator must press reset (which also re-servos X/Y/Z) to acknowledge the break.
+    if (io[(int)DIA::CURTAIN_SAFETY_RELAY]) m_curtainTripped = true;
+    assessError(!m_curtainTripped, MachineError::CURTAIN_RELAY_FAULT);
 
     //Check trolley lock guard, bypassed in debug mode or when config\interlock.json exists
     bool trolleyLocked = SystemData::instance()._machineDebugMode || m_bypassInterlock || io[(int)DIA::TROLLEY_LOCK_GUARD];
@@ -562,6 +583,42 @@ bool MachineController::safelyReleaseBrake(int servoWaitMs)
     }
 
     return ret;
+}
+
+//Turn all three servo axes on, wait (bounded) for each drive to report SVON, clear
+//the servo-off errors, and release the Z brake - the curtain-trip recovery path.
+bool MachineController::servoOnAllAxes()
+{
+    if (!m_enable) return false;
+
+    ct::logger::info("[MachineController] Turning ON all servo axes (X, Y, Z)");
+    for (int axis : { (int)Axis::X, (int)Axis::Y, (int)Axis::Z })
+        MotionController::instance().set_servo(m_motionID, 0, axis, true);
+
+    bool allOn = true;
+    for (int axis : { (int)Axis::X, (int)Axis::Y, (int)Axis::Z }) {
+        bool on = false;
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count() < 2000) {
+            auto io = MotionController::instance().get_motion_io_status(m_motionID, axis);
+            if (io.has_value() && io.value()[(int)Motion_APS::SVON]) { on = true; break; }
+            os_tool::goSleep(50);
+        }
+        if (!on) ct::logger::error("[MachineController] Axis %d servo did not report ON", axis);
+        allOn &= on;
+    }
+
+    if (allOn) {
+        //servo-off errors are raised externally (notifyError), not re-assessed each
+        //poll - clear them here so the reset that follows can succeed
+        assessError(true, MachineError::X_SERVO_OFF);
+        assessError(true, MachineError::Y_SERVO_OFF);
+        assessError(true, MachineError::Z_SERVO_OFF);
+        safelyReleaseBrake(2000);
+    }
+
+    return allOn;
 }
 
 void MachineController::setTowerLight(DOA towerLight)

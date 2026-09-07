@@ -112,8 +112,10 @@ public:
 
     bool turnOnBrake();
     bool safelyReleaseBrake(int servoWaitMs = 3000);
+    bool servoOnAllAxes(); //servo X/Y/Z on, wait for SVON, clear servo errors, release Z brake
 
     bool resetAlarm();
+    bool curtainTripped() const { return m_curtainTripped; } //latched curtain break, cleared by reset
     bool pauseStatePolling(bool pause); //park the state poll loop (for motion reconnect)
     void notifyEvent(MachineEvent e);
     void notifyWarning(MachineWarning w);
@@ -191,6 +193,9 @@ private:
     //feed the one ESTOP_PRESSED code and separate assessError() calls would cancel
     //each other out. Defaults true so a DI read failure cannot invent an e-stop.
     bool m_estopButtonsOk = true;
+    bool m_curtainTripped = false; //latched when the curtain relay drops; reset re-servos X/Y/Z
+    bool m_trolleyGuardOn = false; //last trolley guard DI state - the OFF->ON edge auto-locks
+    bool m_limitWasHit = false;    //a soft/hard limit raised the current error - self-clears off the switch
     QTimer* m_redTowerTimer = nullptr;
 
     //Time
