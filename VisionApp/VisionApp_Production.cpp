@@ -232,6 +232,26 @@ void VisionApp::initProductionUI() {
 		//ProfilerManager::instance().connect()
 	});
 
+	//the profiler light was set once at startup and then never again - poll the live
+	//connection instead, same source the 3D optics tab's status uses. keys() first so a
+	//machine with no profiler configured does not spam "invalid profiler" every second.
+	auto* profStatusTimer = new QTimer(this);
+	connect(profStatusTimer, &QTimer::timeout, this, [=]() {
+		const bool known = ProfilerManager::instance().keys().contains(_profilerID);
+		const bool connected = known && ProfilerManager::instance().isConnected(_profilerID);
+		nvs::set_background_color(ui.toolButton_3dProfilerStatus, connected ? Qt::green : Qt::red);
+
+		//a latched curtain break blocks starting production until the operator resets
+		const bool curtain = MachineController::instance().curtainTripped();
+		if (ui.toolButton_startProduction->isEnabled() == curtain) {
+			ui.toolButton_startProduction->setEnabled(!curtain);
+			ui.toolButton_startProduction->setToolTip(curtain
+				? tr("Curtain sensor triggered - press the reset button to re-arm before starting.")
+				: QString());
+		}
+	});
+	profStatusTimer->start(1000);
+
 	connect(ui.toolButton_lscStatus, &QToolButton::clicked, this, [=]() {
 		if (!LSCManager::instance().isConnected()) LSCManager::instance().connect();
 		auto connected = LSCManager::instance().isConnected();

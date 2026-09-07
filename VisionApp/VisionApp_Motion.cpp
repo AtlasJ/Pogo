@@ -91,6 +91,7 @@ void VisionApp::initMotion() {
 		SystemData::instance().setCurrentCoordinate(x, y, z);
 
 		bool gantryState = true;
+		bool gantryKnown = false; //true once at least one axis answered - unreadable is NOT green
 
 		auto optional_axisX =  MotionController::instance().get_motion_io_status(_motionID, (int)Axis::X);
 		if (optional_axisX.has_value()) {
@@ -107,6 +108,7 @@ void VisionApp::initMotion() {
 			nvs::set_background_color(ui.toolButton_EMXA_X_INP, motion_io[Motion_APS::INP] ? Qt::green : Qt::red);
 			nvs::set_background_color(ui.toolButton_EMXA_X_SVON, motion_io[Motion_APS::SVON] ? Qt::green : Qt::red);
 			gantryState &= motion_io[Motion_APS::SVON];
+			gantryKnown = true;
 		}
 
 		auto optional_axisY =  MotionController::instance().get_motion_io_status(_motionID, (int)Axis::Y);
@@ -143,7 +145,7 @@ void VisionApp::initMotion() {
 			gantryState &= motion_io[Motion_APS::SVON];
 		}
 
-		nvs::set_background_color(ui.toolButton_gantryStatus, gantryState ? Qt::green : Qt::red);
+		nvs::set_background_color(ui.toolButton_gantryStatus, (gantryKnown && gantryState) ? Qt::green : Qt::red);
 
 		auto optional_EMXA_DIs =  MotionController::instance().get_all_DI(_motionID, 0);
 		if (optional_EMXA_DIs.has_value()) {
