@@ -177,6 +177,19 @@ void VisionApp::initMotion() {
 
 		auto optional_EMXA_DOs = MotionController::instance().get_all_DO(_motionID, 0);
 		if (optional_EMXA_DOs.has_value()) {
+			auto EMXA_DOsNow = optional_EMXA_DOs.value();
+
+			//keep the production page's Lock Trolley toggle showing the REAL lock state -
+			//the auto lock/release changes the DO outside this button
+			if ((int)DOA::TROLLEY_LOCK_RELEASE < (int)EMXA_DOsNow.size()) {
+				const bool locked = EMXA_DOsNow[(int)DOA::TROLLEY_LOCK_RELEASE];
+				if (ui.toolButton_lockTrolley->isChecked() != locked) {
+					QSignalBlocker b(ui.toolButton_lockTrolley);
+					ui.toolButton_lockTrolley->setChecked(locked);
+					ui.toolButton_lockTrolley->setText(locked ? tr("Unlock Trolley") : tr("Lock Trolley"));
+				}
+			}
+
 			auto EMXA_DOs = optional_EMXA_DOs.value();
 
 			for (int i = 0; i < EMXA_DOs.size(); i++) {

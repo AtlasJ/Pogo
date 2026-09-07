@@ -27,6 +27,11 @@ void VisionApp::initProductionUI() {
 		}
 	});
 	connect(&_jobThread, &JobThread::acquisitionDone, this, [=]() {
+		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._autoLockTrolley) {
+			//end of the production run: release the trolley lock automatically
+			MotionController::instance().set_DO(_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, false);
+			ct::logger::info("[Production] Run ended - trolley lock released (auto)");
+		}
 		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._setupRegionPitchMode) {
 			inspDrainTimer->start(500);
 		}
@@ -295,6 +300,11 @@ void VisionApp::initProductionUI() {
 		stopRun();
 		vs_stopElapseTimer();
 
+		//a stopped run has ended too: release the trolley lock like a normal finish
+		if (SystemData::instance()._autoLockTrolley) {
+			MotionController::instance().set_DO(_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, false);
+			ct::logger::info("[Production] Run stopped - trolley lock released (auto)");
+		}
 	});
 
 	connect(ui.toolButton_resetProduction, &QToolButton::clicked, this, [=]() {

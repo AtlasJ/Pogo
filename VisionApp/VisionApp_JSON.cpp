@@ -1396,6 +1396,7 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("pitchEnable3D"), (bool)SystemData::instance()._pitchEnable3D);
 	obj.insert(QStringLiteral("pitchScanLen_mm"), SystemData::instance()._pitchScanLen_mm.load());
 	obj.insert(QStringLiteral("prodSequence"), (int)SystemData::instance()._prodSequence);
+	obj.insert(QStringLiteral("autoLockTrolley"), (bool)SystemData::instance()._autoLockTrolley);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 
 	int speed, speed3d;
@@ -1998,6 +1999,11 @@ bool VisionApp::loadRecipeConfig()
 		{
 			QSignalBlocker b(ui.comboBox_prodSequence);
 			ui.comboBox_prodSequence->setCurrentIndex(SystemData::instance()._prodSequence == 1 ? 1 : 0);
+		}
+		SystemData::instance()._autoLockTrolley = jsonHelper::getBool(root, QStringLiteral("autoLockTrolley"), true);
+		{
+			QSignalBlocker b(ui.checkBox_autoLockTrolley);
+			ui.checkBox_autoLockTrolley->setChecked(SystemData::instance()._autoLockTrolley);
 		}
 		{
 			QSignalBlocker b0(ui.comboBox_setupRegionMode);

@@ -3245,6 +3245,27 @@ QToolButton:hover {
                            </property>
                           </widget>
                          </item>
+                         <item row="3" column="0" colspan="2">
+                          <widget class="QCheckBox" name="checkBox_autoLockTrolley">
+                           <property name="font">
+                            <font>
+                             <pointsize>11</pointsize>
+                            </font>
+                           </property>
+                           <property name="styleSheet">
+                            <string notr="true">color:#F0F0F0;</string>
+                           </property>
+                           <property name="toolTip">
+                            <string>Automatically lock the trolley when its guard switch attaches, and release the lock when the production run ends. Off = the lock only moves via the Lock Trolley button.</string>
+                           </property>
+                           <property name="text">
+                            <string>Auto Lock Trolley</string>
+                           </property>
+                           <property name="checked">
+                            <bool>true</bool>
+                           </property>
+                          </widget>
+                         </item>
                          <item row="2" column="1">
                           <widget class="QComboBox" name="comboBox_prodSequence">
                            <property name="toolTip">
@@ -3520,6 +3541,54 @@ QToolButton:hover {
                            </property>
                            <property name="text">
                             <string>Reset</string>
+                           </property>
+                          </widget>
+                         </item>
+                         <item row="6" column="0">
+                          <widget class="QToolButton" name="toolButton_lockTrolley">
+                           <property name="sizePolicy">
+                            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                             <horstretch>0</horstretch>
+                             <verstretch>0</verstretch>
+                            </sizepolicy>
+                           </property>
+                           <property name="font">
+                            <font>
+                             <pointsize>22</pointsize>
+                             <weight>75</weight>
+                             <bold>true</bold>
+                            </font>
+                           </property>
+                           <property name="styleSheet">
+                            <string notr="true">QToolButton {
+  background-color:  #7E57C2;
+  color: #F0F0F0;
+  border-radius: 8px;
+  margin: 0px;
+  padding: 2px;
+}
+
+QToolButton:checked {
+  background-color: #4527A0;
+}
+
+QToolButton:pressed {
+   margin: 1px;
+   border: 1px solid #FFE723;
+}
+
+QToolButton:hover {
+ background-color: #9575CD;
+}</string>
+                           </property>
+                           <property name="toolTip">
+                            <string>Manually lock or release the trolley, overriding the auto lock.</string>
+                           </property>
+                           <property name="text">
+                            <string>Lock Trolley</string>
+                           </property>
+                           <property name="checkable">
+                            <bool>true</bool>
                            </property>
                           </widget>
                          </item>

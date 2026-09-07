@@ -368,6 +368,16 @@ void MachineController::handleDIA()
     //Check trolley lock guard, bypassed in debug mode or when config\interlock.json exists
     bool trolleyLocked = SystemData::instance()._machineDebugMode || m_bypassInterlock || io[(int)DIA::TROLLEY_LOCK_GUARD];
     assessError(trolleyLocked, MachineError::TROLLEY_GUARD_OPEN);
+
+    //Trolley auto-lock: the guard switch going OFF -> ON means the trolley was just
+    //attached - engage the lock so it cannot be pulled out mid-run. The production run's
+    //end releases it (VisionApp_Production). Both halves obey the Auto Lock Trolley config.
+    const bool trolleyOn = io[(int)DIA::TROLLEY_LOCK_GUARD];
+    if (trolleyOn && !m_trolleyGuardOn && SystemData::instance()._autoLockTrolley) {
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, true);
+        ct::logger::info("[MachineController] Trolley attached - lock engaged (auto)");
+    }
+    m_trolleyGuardOn = trolleyOn;
 }
 
 void MachineController::handleDIB()
