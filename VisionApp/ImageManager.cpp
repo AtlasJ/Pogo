@@ -1,6 +1,7 @@
 #include "ImageManager.h"
 #include "Logger.h"
 #include "OpticsInfo.h"
+#include "CommonDir.h"
 #include <opencv2/stitching.hpp>
 #include <QPainter>
 #include "Utilities.h"

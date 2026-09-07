@@ -1,5 +1,6 @@
 #pragma once
 #include "IProfiler.h"
+#include "OpticsInfo.h"
 #include <QHash>
 
 

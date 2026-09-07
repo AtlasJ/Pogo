@@ -5,6 +5,7 @@
 #include "Box2d.h"
 #include "WorldCoordinate.h"
 #include "Def.h"
+#include "OpticsInfo.h"
 
 struct QROI {
 	std::string id = "";

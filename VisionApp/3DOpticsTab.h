@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include "OpticsInfo.h"
 #include <QFile>
 #include <QMessageBox>
 #include <QHash>

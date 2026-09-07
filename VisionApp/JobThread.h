@@ -15,6 +15,7 @@
 #include "QViewPlane.h"
 #include "QLineScan.h"
 #include "OpticsInfo.h"
+#include "mtrx.h"
 #include <QDebug>
 #include "WinEvents.h"
 #include "Fiducial.h"

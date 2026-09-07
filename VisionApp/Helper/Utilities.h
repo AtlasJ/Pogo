@@ -10,6 +10,7 @@
 #include "EM_Core.h"
 #include "EM_Vector.h"
 #include "QView.h"
+#include "OpticsInfo.h"
 #include "ScopedTimeLogger.h"
 #include "TimeLogger.h"
 #include <opencv2/opencv.hpp>

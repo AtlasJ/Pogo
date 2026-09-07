@@ -2,6 +2,7 @@
 #include <QString>
 #include "WorldCoordinate.h"
 #include "Box2D.h"
+#include "OpticsInfo.h"
 
 struct FiducialInfo {
 	QString id;
