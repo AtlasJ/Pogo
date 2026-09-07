@@ -832,7 +832,8 @@ private:
 	void refreshAlgoH3TypeTable();
 	void refreshAlgoH3RoiBoxes();      //rebuild boxes from params, in the current crop
 	void refreshAlgoH3ResultSection(); //the selected ROI's row of the last measurement
-	void appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const; //height + verdict per ROI
+	void appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const;  //height + verdict per ROI
+	void appendAlgoH3OverallRois(QVector<AlgoOverlayItem>& overlay) const; //section 7: read-only pass/fail rects
 	void applyAlgoH3Output(const AlgoHeight3Output& out);
 	void algoH3RunStage(AlgoH3Stage stage);
 	bool algoH3HandleViewMouse(QObject* obj, QEvent* ev); //drag-to-spin in the 3D view

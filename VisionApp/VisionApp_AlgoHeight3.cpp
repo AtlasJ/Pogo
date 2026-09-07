@@ -92,6 +92,13 @@ static H3RoiOwner h3SectionOwner(int section)
 	return H3RoiOwner::None;
 }
 
+//what an ROI's label reads, shared by the measurement sections and the overall section so
+//the same measurement never appears formatted two different ways
+static QString h3RoiLabelText(const AlgoH3RoiResult& r)
+{
+	return r.valid ? QString::number(r.heightUm, 'f', 1) : QStringLiteral("NO DATA");
+}
+
 //the same sentence in both refusals, so the operator is told where the ROIs DO belong
 static const char* kH3RoiSectionHint =
 	"Open the Datum Plane section to work with datum ROIs, or ROI Types & Criteria / "
@@ -1030,6 +1037,11 @@ void VisionApp::refreshAlgoH3Overlay()
 		for (const auto& pt : _algoH3Output.segCorners) poly << pt;
 		overlay.append(AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127)));
 	}
+	else if (section == SEC_OVERALL && _algoH3Output.measure.ran
+		&& _algoH3BoxCropW > 0 && algoH3DisplayMode() != AlgoH3Display::Surface3D) {
+		//the overall section draws the ROIs itself, as overlay - see the note on the function
+		appendAlgoH3OverallRois(overlay);
+	}
 	else if (_algoH3Output.measure.ran) {
 		//no section test of its own: the labels are anchored to the boxes and skip a hidden
 		//one, so they follow whatever updateAlgoH3RoiVisibility() already decided
@@ -1037,6 +1049,44 @@ void VisionApp::refreshAlgoH3Overlay()
 	}
 
 	renderAlgoOverlay(overlay);
+}
+
+/*
+* The overall section's view of the ROIs: PASS/FAIL only, and NOT editable.
+*
+* Drawn as overlay rectangles rather than by showing the QDragBoxes, which is what makes
+* "not editable" true by construction - an overlay item has no grabbers, cannot be dragged,
+* cannot be selected, and so cannot be copied either. Re-using the drag boxes would have
+* meant stripping their movable/selectable flags and then RECOLOURING boxes that sections 3,
+* 5 and 6 share, which would have destroyed the per-type colours those sections exist to
+* show. Nothing has to be undone on the way out of this section either.
+*
+* Colour carries the whole message here: green for pass, red for fail, on both the rectangle
+* and its height. The ROI type is deliberately not shown - by this section the operator has
+* stopped asking which type a pin is and is only asking whether the unit passed.
+*
+* Geometry comes from the stored part-frame rect rather than from the boxes, because the
+* boxes are hidden in this section. That is also why this branch needs its own crop and
+* flat-view guards: it has no box visibility to piggyback on.
+*/
+void VisionApp::appendAlgoH3OverallRois(QVector<AlgoOverlayItem>& overlay) const
+{
+	const double cx = _algoH3BoxCropW / 2.0;
+	const double cy = _algoH3BoxCropH / 2.0;
+
+	for (const auto& r : _algoH3Output.roiResults) {
+		const QColor c = r.pass ? kAlgoH3PassColor : kAlgoH3FailColor;
+
+		//a light wash makes a failing pin findable at a glance on a part with hundreds of
+		//them, without hiding the surface underneath
+		QColor fill = c;
+		fill.setAlpha(40);
+
+		const QRectF rect = r.rel.translated(cx, cy);
+		overlay.append(AlgoOverlayItem::makeRect(rect, c, fill));
+		overlay.append(AlgoOverlayItem::makeText(h3RoiLabelText(r),
+			rect.topLeft() - QPointF(0, kAlgoH3LabelOffsetPx), c, kAlgoH3LabelPointSize));
+	}
 }
 
 /*
@@ -1062,11 +1112,7 @@ void VisionApp::appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const
 
 		//NO DATA is not a number, but it is still a verdict - and design decision 12 makes
 		//it not-pass - so it reads red like any other failure rather than going blank
-		const QString text = r->valid
-			? QString::number(r->heightUm, 'f', 1)
-			: QStringLiteral("NO DATA");
-
-		overlay.append(AlgoOverlayItem::makeText(text,
+		overlay.append(AlgoOverlayItem::makeText(h3RoiLabelText(*r),
 			b->getGeometry().topLeft() - QPointF(0, kAlgoH3LabelOffsetPx),
 			r->pass ? kAlgoH3PassColor : kAlgoH3FailColor, kAlgoH3LabelPointSize));
 	}
