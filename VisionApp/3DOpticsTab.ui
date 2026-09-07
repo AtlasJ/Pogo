@@ -913,6 +913,19 @@ background-color: transparent</string>
       <item row="7" column="1">
        <widget class="QComboBox" name="comboBox_profEncoderMinTime"/>
       </item>
+      <item row="8" column="0">
+       <widget class="QLabel" name="label_capProfLightCtrl">
+        <property name="styleSheet">
+         <string notr="true">color:white</string>
+        </property>
+        <property name="text">
+         <string>Laser Intensity Control</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QComboBox" name="comboBox_profLightCtrl"/>
+      </item>
       <item row="3" column="0">
        <widget class="QLabel" name="label_capProfCmdPort">
         <property name="styleSheet">

@@ -792,6 +792,14 @@ void Optics3DTab::initProfilerHwUi()
     for (int i = 0; i < 9; ++i)
         ui.comboBox_profEncoderMinTime->addItem(QStringLiteral("%1  %2").arg(i).arg(minTimes[i]), i);
 
+    ui.comboBox_profLightCtrl->clear();
+    ui.comboBox_profLightCtrl->addItem(tr("0  Auto"), 0);
+    ui.comboBox_profLightCtrl->addItem(tr("1  Manual"), 1);
+    ui.comboBox_profLightCtrl->setToolTip(
+        tr("How the LJ-X drives its laser intensity. Auto: the controller adjusts intensity "
+           "per profile, kept between each optic's Laser Lower/Upper Limit. Manual: intensity "
+           "is fixed by the limits. Applied at Connect."));
+
     //A typo'd octet is not a cheap mistake here: it gets past a mere is-empty check, and Connect
     //then freezes the GUI for the SDK's internal EthernetOpen timeout (~10 s, and LJX8_IF.h
     //exposes no way to shorten it). Reject it at the keystroke instead. The validator still
@@ -854,6 +862,16 @@ void Optics3DTab::initProfilerHwUi()
         ui.lineEdit_lineThreshold->setToolTip(
             tr("Not used by the LJ-X8000A. Use Peak Sensitivity instead - this field used to "
                "drive it, and no longer does. Still active on the other profiler backends."));
+
+        //On the LJ-X the generic Gain drives the imaging DYNAMIC RANGE (1-9): say so on the
+        //label instead of leaving the operator to know the mapping. Same one-setting-one-control
+        //rule as Line Threshold above - this control already goes to the right place, it was
+        //only the name that lied.
+        ui.label_6->setText(tr("Dynamic Range"));
+        ui.lineEdit_Gain->setToolTip(
+            tr("LJ-X imaging dynamic range, 1-9 (the generic Gain maps to it on this head). "
+               "Higher values capture a wider reflectance range in one profile at the cost of "
+               "height resolution. Applied per scan from this optic."));
     }
 
     /*
@@ -891,6 +909,8 @@ void Optics3DTab::initProfilerHwUi()
     connect(ui.comboBox_profEncoderMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
         this, [=](int) { markProfilerHwDirty(); });
     connect(ui.comboBox_profEncoderMinTime, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, [=](int) { markProfilerHwDirty(); });
+    connect(ui.comboBox_profLightCtrl, QOverload<int>::of(&QComboBox::currentIndexChanged),
         this, [=](int) { markProfilerHwDirty(); });
     connect(ui.doubleSpinBox_profYPitch, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
         this, [=](double) { markProfilerHwDirty(); });
@@ -1011,6 +1031,7 @@ bool Optics3DTab::loadProfilerHwToUi()
     const int trig = drv.value("triggerMode").toInt(2);
     const int encMode = drv.value("encoderInputMode").toInt(1);
     const int encTime = drv.value("encoderMinInputTime").toInt(0);
+    const int lightCtrl = drv.value("lightControlMode").toInt(1);
     const double yPitch = drv.value("yPitchUm").toDouble(10.0);
 
     QSignalBlocker b1(ui.spinBox_profCmdPort);
@@ -1019,6 +1040,7 @@ bool Optics3DTab::loadProfilerHwToUi()
     QSignalBlocker b4(ui.comboBox_profEncoderMode);
     QSignalBlocker b5(ui.comboBox_profEncoderMinTime);
     QSignalBlocker b6(ui.doubleSpinBox_profYPitch);
+    QSignalBlocker b7(ui.comboBox_profLightCtrl);
 
     ui.spinBox_profCmdPort->setValue(cmdPort);
     ui.spinBox_profHsPort->setValue(hsPort);
@@ -1031,6 +1053,7 @@ bool Optics3DTab::loadProfilerHwToUi()
     selectByData(ui.comboBox_profTriggerMode, trig);
     selectByData(ui.comboBox_profEncoderMode, encMode);
     selectByData(ui.comboBox_profEncoderMinTime, encTime);
+    selectByData(ui.comboBox_profLightCtrl, lightCtrl);
 
     //Clamped to the widget's range so a hand-edited absurdity in keyence.json is visible as a
     //clamp rather than silently accepted. The load is what defines "not dirty", so the value
@@ -1086,6 +1109,7 @@ bool Optics3DTab::saveProfilerHwToJson()
     const int trig = ui.comboBox_profTriggerMode->currentData().toInt();
     const int encMode = ui.comboBox_profEncoderMode->currentData().toInt();
     const int encTime = ui.comboBox_profEncoderMinTime->currentData().toInt();
+    const int lightCtrl = ui.comboBox_profLightCtrl->currentData().toInt();
     const double yPitch = ui.doubleSpinBox_profYPitch->value();
 
     //--- Read and validate BOTH files before writing EITHER. profiler.json used to be written
@@ -1161,6 +1185,7 @@ bool Optics3DTab::saveProfilerHwToJson()
         drv["triggerMode"] = trig;
         drv["encoderInputMode"] = encMode;
         drv["encoderMinInputTime"] = encTime;
+        drv["lightControlMode"] = lightCtrl;
         drv["yPitchUm"] = yPitch;
         haveDrv = true;
     }
@@ -1169,8 +1194,8 @@ bool Optics3DTab::saveProfilerHwToJson()
     if (haveDrv && !writeJsonObject(drvPath, drv)) return false;
     if (!writeJsonObject(profilerJsonPath(), root)) return false;
 
-    ct::logger::info("[Optics3DTab/Prof] Saved hw config: ip=%s ports=%d/%d trig=%d enc=%d/%d yPitch=%.2f",
-        qPrintable(ip), cmdPort, hsPort, trig, encMode, encTime, yPitch);
+    ct::logger::info("[Optics3DTab/Prof] Saved hw config: ip=%s ports=%d/%d trig=%d enc=%d/%d lightCtrl=%d yPitch=%.2f",
+        qPrintable(ip), cmdPort, hsPort, trig, encMode, encTime, lightCtrl, yPitch);
     return true;
 }
 
@@ -1242,6 +1267,7 @@ void Optics3DTab::refreshProfilerStatus()
     //initProfilerHwUi(). Re-enabling it here would undo that on the first status poll.
     ui.comboBox_profEncoderMode->setEnabled(configurable);
     ui.comboBox_profEncoderMinTime->setEnabled(configurable);
+    ui.comboBox_profLightCtrl->setEnabled(configurable);
     //Y pitch is not pushed to the controller - setScanLength does the maths in software and
     //the image maths reads it back through getLinePitchUm(). It is still locked while
     //connected, for the same reason as the rest: what is displayed should be what is running.
