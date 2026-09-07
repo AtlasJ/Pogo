@@ -44,6 +44,21 @@
 // ── that one colour always means "this is a datum patch" on every recipe
 static const QColor kAlgoH3DatumColor(255, 165, 0);
 
+//the page's verdict colours, in one place because they are now painted twice: on the
+//PASS / FAIL fields and on the per-ROI labels drawn over the image
+static const QColor kAlgoH3PassColor(0, 200, 83);
+static const QColor kAlgoH3FailColor(255, 82, 82);
+
+/*
+* Per-ROI result labels. The size is in SCENE units, so a label scales with the part as
+* the view is zoomed - the same behaviour as the V1 height overlay. That is deliberate:
+* fit-to-view on a 9000 px crop is far too small to read a few hundred numbers anyway, and
+* zooming in to look at a pin is exactly when its number becomes legible.
+* The offset lifts the text clear of the box's top edge at that size.
+*/
+static const int kAlgoH3LabelPointSize = 24;
+static const double kAlgoH3LabelOffsetPx = kAlgoH3LabelPointSize * 5.0 / 3.0;
+
 //fixed canvas for the software 3D render: a constant size keeps the scene rect stable,
 //so spinning the surface never makes the view jump or refit
 static const QSize kAlgoH3SurfaceCanvas(1200, 900);
@@ -78,8 +93,8 @@ static void h3ShowVerdict(QLineEdit* le, bool ran, bool pass)
 		return;
 	}
 	le->setText(pass ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
-	le->setStyleSheet(pass ? QStringLiteral("color:#00C853; font-weight:bold;")
-	                       : QStringLiteral("color:#FF5252; font-weight:bold;"));
+	le->setStyleSheet(QStringLiteral("color:%1; font-weight:bold;")
+		.arg((pass ? kAlgoH3PassColor : kAlgoH3FailColor).name()));
 }
 
 //the Result / Fail Reason / Time trio every section shares
@@ -604,6 +619,10 @@ QDragBox* VisionApp::makeAlgoH3Box(const QRectF& sceneRect, const QColor& color,
 	box->hide();
 	connect(box, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(algoSettingsTouched()));
 	connect(box, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(algoSettingsTouched()));
+	//a moved or resized box has to take its result label with it, or the number is left
+	//floating over where the ROI used to be
+	connect(box, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(refreshAlgoH3Overlay()));
+	connect(box, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(refreshAlgoH3Overlay()));
 	return box;
 }
 
@@ -882,19 +901,84 @@ void VisionApp::updateAlgoH3Display()
 
 	if (sizeChanged) ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
 
-	//segmentation draws its found rectangle on the full map, so the operator can see what
-	//was found before deciding to trust the crop
-	clearAlgoOverlay();
+	//BEFORE the overlay, not after: the ROI labels below are anchored to the boxes and read
+	//their visibility to decide whether this section owns them at all
+	updateAlgoH3RoiVisibility();
+
+	refreshAlgoH3Overlay();
+}
+
+/*
+* Two overlays, and never both at once because the sections that want them are different:
+* segmentation draws its found rectangle on the full map so the operator can see what was
+* found before deciding to trust the crop, and the measurement sections draw each ROI's
+* own result over the crop.
+*
+* Split out of updateAlgoH3Display() so a dragged ROI can take its label with it without
+* repainting the image - rebuilding a 36 MB crop into a QImage on every box release would
+* be a lot of work to move a few pieces of text.
+*
+* renderAlgoOverlay() clears before it draws, so an empty list is how the overlay is taken
+* down; that is what replaced the bare clearAlgoOverlay() call this used to make.
+*/
+void VisionApp::refreshAlgoH3Overlay()
+{
+	//guarded independently of the caller: this is a slot on every V3 box's release signal,
+	//and the shared overlay list belongs to whichever algo page is actually showing
+	if (!isPage(UIPage::ALGO_SETUP)) return;
+	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return;
+
+	const int section = algoH3CurrentSection();
+	const bool segmented = (section >= SEC_DATUM) && AlgoManager::instance().height3SegmentReady();
+
+	QVector<AlgoOverlayItem> overlay;
+
 	if (section == SEC_SEG && !segmented && _algoH3Output.segment.ran && _algoH3Output.segment.pass
 		&& _algoH3Output.segCorners.size() == 4) {
-		QVector<AlgoOverlayItem> overlay;
 		QPolygonF poly;
 		for (const auto& pt : _algoH3Output.segCorners) poly << pt;
 		overlay.append(AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127)));
-		renderAlgoOverlay(overlay);
+	}
+	else if (_algoH3Output.measure.ran) {
+		//no section test of its own: the labels are anchored to the boxes and skip a hidden
+		//one, so they follow whatever updateAlgoH3RoiVisibility() already decided
+		appendAlgoH3RoiLabels(overlay);
 	}
 
-	updateAlgoH3RoiVisibility();
+	renderAlgoOverlay(overlay);
+}
+
+/*
+* One label per measured ROI, just outside its top-left corner: the height in microns,
+* green when the ROI passed and red when it did not. Section 6 can only describe one ROI
+* at a time - the right panel would be an unreadable wall of numbers otherwise - so the
+* image is the only place the whole result can be taken in at once.
+*
+* Labels are index-matched to the boxes exactly the way the results section is, box i
+* carrying ROI id i+1, so an ROI added or pasted since the last run has no result and gets
+* no label rather than borrowing its neighbour's number.
+*/
+void VisionApp::appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const
+{
+	for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
+		auto* b = _algoH3RoiBoxes[i];
+		//visibility is the section gate: a hidden box means this section does not own the
+		//measurement ROIs, and a label with no box under it would point at nothing
+		if (!b || !b->isVisible()) continue;
+
+		const AlgoH3RoiResult* r = _algoH3Output.roiById(i + 1);
+		if (!r) continue;
+
+		//NO DATA is not a number, but it is still a verdict - and design decision 12 makes
+		//it not-pass - so it reads red like any other failure rather than going blank
+		const QString text = r->valid
+			? QString::number(r->heightUm, 'f', 1)
+			: QStringLiteral("NO DATA");
+
+		overlay.append(AlgoOverlayItem::makeText(text,
+			b->getGeometry().topLeft() - QPointF(0, kAlgoH3LabelOffsetPx),
+			r->pass ? kAlgoH3PassColor : kAlgoH3FailColor, kAlgoH3LabelPointSize));
+	}
 }
 
 //re-render just the 3D surface, throttled, so a drag stays smooth without queueing frames

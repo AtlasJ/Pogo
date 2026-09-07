@@ -823,6 +823,7 @@ private:
 	void refreshAlgoH3TypeTable();
 	void refreshAlgoH3RoiBoxes();      //rebuild boxes from params, in the current crop
 	void refreshAlgoH3ResultSection(); //the selected ROI's row of the last measurement
+	void appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const; //height + verdict per ROI
 	void applyAlgoH3Output(const AlgoHeight3Output& out);
 	void algoH3RunStage(AlgoH3Stage stage);
 	bool algoH3HandleViewMouse(QObject* obj, QEvent* ev); //drag-to-spin in the 3D view
@@ -1024,6 +1025,7 @@ private:
 
 public slots:
 	void algoSettingsTouched(); //any algo-setup edit: debounce then save
+	void refreshAlgoH3Overlay(); //V3's scene overlay only, without repainting the image
 
 	void enableFiducial(bool enable);
 	void enableSaveInspectionImage(bool enable);
