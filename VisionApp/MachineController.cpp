@@ -496,6 +496,23 @@ void MachineController::handleAxisState()
         assessError(!m_y.negative_limit, MachineError::Y_NEGATIVE_LIMIT_HIT);
         assessError(!m_z.positive_limit, MachineError::Z_POSITIVE_LIMIT_HIT);
         assessError(!m_z.negative_limit, MachineError::Z_NEGATIVE_LIMIT_HIT);
+
+        //Limit errors self-clear: the operator recovers by jogging OFF the switch, and a
+        //reset press on top of that adds nothing. Auto-reset only when the limit was the
+        //only problem - any other active error still needs the reset button.
+        const bool anyLimit = m_x.positive_limit || m_x.negative_limit
+            || m_y.positive_limit || m_y.negative_limit
+            || m_z.positive_limit || m_z.negative_limit;
+        if (anyLimit) {
+            m_limitWasHit = true;
+        }
+        else if (m_limitWasHit) {
+            m_limitWasHit = false;
+            if (m_currentState == MachineState::S_ERROR && m_errorStatuses.isEmpty()) {
+                ct::logger::info("[MachineController] Axis moved off the limit - error cleared automatically");
+                setMachineState(m_readyState);
+            }
+        }
     }
 
     //force user home when servo is off
