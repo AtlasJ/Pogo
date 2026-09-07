@@ -801,9 +801,18 @@ private:
 	QTimer* _algoAutoSaveTimer = nullptr; //debounced auto-save of algo settings
 
 	QDragBox* addAlgoHRoiBox(bool isPlane, const QRectF& rect); //plane/height ROI with standard styling
-	void algoHCopySelectedRois(); //Ctrl+C on the algo setup page
+
+	//Ctrl+C / Ctrl+V dispatch for the whole app: vision objects on the recipe page, ROIs on
+	//the algo pages, nothing while a text field has focus. Called from the QShortcuts in
+	//VisionApp_Shortcuts.cpp - NOT from eventFilter, which never sees these keys.
+	void copyShortcutPressed();
+	void pasteShortcutPressed();
+	bool copyPasteGoesToText() const;
+
+	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
 	void algoHPasteRois();        //Ctrl+V: paste offset 10 px
 	QVector<QPair<bool, QRectF>> _algoHClipboard; //Ctrl+C snapshot of selected 3D ROIs (isPlane, rect)
+	int _algoHPasteCount = 0;     //pastes of the current clipboard, so the offset steps
 	void captureAlgoParamsFromUI();
 	void showAlgoHeightMap(bool view3D);
 	void clearAlgoOverlay();
@@ -843,6 +852,7 @@ private:
 		QRectF rel;
 	};
 	QVector<AlgoH3ClipRoi> _algoH3Clipboard;
+	int _algoH3PasteCount = 0;   //pastes of the current clipboard, so the offset steps
 
 	QVector<QDragBox*> _algoH3DatumBoxes;
 	QVector<QDragBox*> _algoH3RoiBoxes;

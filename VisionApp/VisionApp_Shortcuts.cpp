@@ -1412,13 +1412,14 @@ void VisionApp::connectShortcuts()
 		ui.toolButton_analyseGridIntensity->animateClick();
 	});
 
-	//copyVisionObject
+	//copy / paste. Which handler runs depends on the open page, and that decision lives in
+	//copyShortcutPressed/pasteShortcutPressed (VisionApp_AlgoSetup.cpp) rather than here -
+	//vision objects on the recipe page, ROIs on the algo pages, nothing while editing text
 	QShortcut *shortcut_ctrlC = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_C), this);
-	connect(shortcut_ctrlC, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; copyVisionObject(); });
+	connect(shortcut_ctrlC, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; copyShortcutPressed(); });
 
-	//pasteVisionObject
 	QShortcut *shortcut_ctrlV = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_V), this);
-	connect(shortcut_ctrlV, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; pasteVisionObject(); });
+	connect(shortcut_ctrlV, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; pasteShortcutPressed(); });
 
 	QShortcut *shortcut_ctrlB = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_B), this);
 	connect(shortcut_ctrlB, &QShortcut::activated, [=]() {

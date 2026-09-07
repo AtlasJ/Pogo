@@ -13,11 +13,16 @@
 #include "AlgoManager.h"
 #include "AuditLog.h"
 
+#include <QAbstractSpinBox>
+#include <QApplication>
 #include <QFileDialog>
-#include <QMessageBox>
-#include <QTableWidgetItem>
 #include <QHeaderView>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTableWidgetItem>
+#include <QTextEdit>
 
 static const QColor kAlgoRoiColor(0, 150, 255);
 static const QColor kAlgoLearnColor(66, 135, 245);
@@ -301,8 +306,9 @@ void VisionApp::initAlgoSetupPage()
 	});
 	selTimer->start(250);
 
-	//Ctrl+C / Ctrl+V are handled in the global event filter (see VisionApp::eventFilter):
-	//shortcuts scoped to the FOV view need it focused, which the operator rarely does
+	//Ctrl+C / Ctrl+V have no button of their own: they arrive from the app-wide QShortcuts
+	//in VisionApp_Shortcuts.cpp and are routed by copyShortcutPressed/pasteShortcutPressed
+	//below. Do NOT add an eventFilter for them - the shortcut consumes the key first.
 
 	connect(ui.toolButton_algoHAddPlane, &QToolButton::clicked, this, [=]() {
 		const int n = _algoPlaneBoxes.size();
@@ -458,22 +464,93 @@ void VisionApp::initAlgoSetupPage()
 	initAlgoHeight3Page();
 }
 
-//Ctrl+C: snapshot the selected 3D ROIs (called from the global event filter)
+/*
+* THE ONE PLACE Ctrl+C / Ctrl+V IS DECIDED. Both keys arrive here from the QShortcuts in
+* VisionApp_Shortcuts.cpp, and this picks the handler by which page is open.
+*
+* It has to be a shortcut and not an event filter, and that is worth spelling out because
+* it was got wrong once: Qt dispatches shortcuts BEFORE key events exist. A key press first
+* goes out as QEvent::ShortcutOverride, and if nobody accepts it the shortcut map fires the
+* QShortcut and NO QEvent::KeyPress is ever generated. So while a QShortcut owns Ctrl+C,
+* an eventFilter watching for KeyPress can never see it - which is exactly why the algo
+* pages' copy/paste looked implemented but had never once run, on V1 or V3.
+*
+* Text editing is left alone. QLineEdit and the spin boxes accept ShortcutOverride for the
+* standard Copy/Paste sequences and so would win anyway, but the guard is kept explicit
+* rather than resting on that.
+*/
+bool VisionApp::copyPasteGoesToText() const
+{
+	QWidget* fw = QApplication::focusWidget();
+	return qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
+		|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
+}
+
+void VisionApp::copyShortcutPressed()
+{
+	if (copyPasteGoesToText()) return;
+
+	if (isPage(UIPage::ALGO_SETUP)) {
+		//the V3 page keeps its ROIs in a different coordinate space (part frame), so the
+		//V1 handler would snapshot the wrong boxes entirely
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3CopySelectedRois();
+		else algoHCopySelectedRois();
+		return;
+	}
+
+	copyVisionObject();
+}
+
+void VisionApp::pasteShortcutPressed()
+{
+	if (copyPasteGoesToText()) return;
+
+	if (isPage(UIPage::ALGO_SETUP)) {
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3PasteRois();
+		else algoHPasteRois();
+		return;
+	}
+
+	//the page test above is also what stops a vision-object clipboard from being pasted
+	//into the recipe while the operator is looking at the Algo Setup page
+	pasteVisionObject();
+}
+
+//Ctrl+C: snapshot the selected 3D ROIs (dispatched from copyShortcutPressed)
 void VisionApp::algoHCopySelectedRois()
 {
 	_algoHClipboard.clear();
 	for (auto b : _algoPlaneBoxes) if (b->getSelected()) _algoHClipboard.append({ true, b->getGeometry() });
 	for (auto b : _algoHeightBoxes) if (b->getSelected()) _algoHClipboard.append({ false, b->getGeometry() });
-	if (!_algoHClipboard.isEmpty())
+	if (!_algoHClipboard.isEmpty()) {
+		_algoHPasteCount = 0; //a fresh clipboard starts the paste offset over
 		showStatus(QStringLiteral("%1 ROI(s) copied").arg(_algoHClipboard.size()));
+	}
 }
 
 //Ctrl+V: paste the snapshot offset by 10 px so the copies are visibly separate
+//(dispatched from pasteShortcutPressed)
 void VisionApp::algoHPasteRois()
 {
 	if (_algoHClipboard.isEmpty()) return;
+
+	//the offset steps per paste, or a second Ctrl+V would land exactly on the first copy
+	_algoHPasteCount++;
+	const qreal step = 10.0 * _algoHPasteCount;
+
+	//the paste owns the selection when it finishes, so the sources are cleared first
+	for (auto b : _algoPlaneBoxes) if (b) b->setSelected(false);
+	for (auto b : _algoHeightBoxes) if (b) b->setSelected(false);
+
+	//collected and selected only after every box exists and updateAlgoRoiVisibility() has
+	//shown them: setSelected() is a no-op on a hidden QGraphicsItem
+	QVector<QDragBox*> fresh;
 	for (const auto& c : _algoHClipboard)
-		addAlgoHRoiBox(c.first, c.second.translated(10, 10));
+		fresh.append(addAlgoHRoiBox(c.first, c.second.translated(step, step)));
+
+	updateAlgoRoiVisibility();
+	for (auto* b : fresh) if (b) b->setSelected(true);
+
 	showStatus(QStringLiteral("%1 ROI(s) pasted").arg(_algoHClipboard.size()));
 }
 

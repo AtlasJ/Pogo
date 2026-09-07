@@ -5301,28 +5301,12 @@ VisionApp::~VisionApp()
 
 bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 {
-	//algo setup ROI copy/paste: works no matter which widget has focus, but never
-	//steals Ctrl+C/V from a text editor
-	if (event->type() == QEvent::KeyPress) {
-		auto* ke = static_cast<QKeyEvent*>(event);
-		if (ke->modifiers() == Qt::ControlModifier && (ke->key() == Qt::Key_C || ke->key() == Qt::Key_V)) {
-			QWidget* fw = QApplication::focusWidget();
-			const bool editing = qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
-				|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
-			if (!editing && isPage(UIPage::ALGO_SETUP)) {
-				//the V3 page has its own ROIs in their own coordinate space - copying
-				//them with the V1 handler would snapshot the wrong boxes entirely
-				const bool v3 = (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3);
-				if (ke->key() == Qt::Key_C) {
-					if (v3) algoH3CopySelectedRois(); else algoHCopySelectedRois();
-				}
-				else {
-					if (v3) algoH3PasteRois(); else algoHPasteRois();
-				}
-				return true;
-			}
-		}
-	}
+	/*
+	* Ctrl+C / Ctrl+V used to be handled here and it NEVER RAN. Qt fires the QShortcuts
+	* registered in VisionApp_Shortcuts.cpp before a KeyPress event exists, so this branch
+	* could not see those keys at all. The routing now lives in copyShortcutPressed /
+	* pasteShortcutPressed - see the comment there before adding a key handler here.
+	*/
 
 	if (event->type() == QEvent::MouseButtonPress) {
 		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);

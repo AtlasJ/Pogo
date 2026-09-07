@@ -77,6 +77,26 @@ enum AlgoH3Section {
 	SEC_OVERALL
 };
 
+/*
+* Which kind of ROI the open section owns - the page's organising rule, made explicit so
+* copy and paste are gated on the same thing the display is. Only section 3 owns datum
+* ROIs; only 5 and 6 own measurement ROIs; every other section owns none, and copy/paste
+* has no meaning there.
+*/
+enum class H3RoiOwner { None, Datum, Measurement };
+
+static H3RoiOwner h3SectionOwner(int section)
+{
+	if (section == SEC_DATUM) return H3RoiOwner::Datum;
+	if (section == SEC_ROI || section == SEC_RESULT) return H3RoiOwner::Measurement;
+	return H3RoiOwner::None;
+}
+
+//the same sentence in both refusals, so the operator is told where the ROIs DO belong
+static const char* kH3RoiSectionHint =
+	"Open the Datum Plane section to work with datum ROIs, or ROI Types & Criteria / "
+	"Measurement Results for measurement ROIs.";
+
 const char* kH3ColorProp = "algoH3Color"; //QColor carried by a type row's colour button
 
 static void h3SetReadonly(QLineEdit* le)
@@ -692,8 +712,12 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 }
 
 /*
-* Ctrl+C / Ctrl+V for V3's ROIs. Only ever touches the set the open section owns, because
-* copy takes what is SELECTED and only one set is ever visible and selectable at a time.
+* Ctrl+C / Ctrl+V for V3's ROIs. Both are gated on the OPEN SECTION, which is the page's
+* own rule: section 3 owns the datum ROIs, 5 and 6 own the measurement ROIs, and no other
+* section owns either. So a copy can only take the kind the section owns, and a paste is
+* refused outright anywhere that kind could not be shown - otherwise the ROIs are created
+* perfectly correctly somewhere the operator cannot see them, the count ticks up, and
+* nothing appears on the image.
 *
 * The clipboard holds part-frame geometry, not scene geometry, so a copy taken before a
 * re-segmentation still pastes to the same place on the part afterwards.
@@ -705,31 +729,48 @@ void VisionApp::algoH3CopySelectedRois()
 		return;
 	}
 
+	const H3RoiOwner owner = h3SectionOwner(algoH3CurrentSection());
+	if (owner == H3RoiOwner::None) {
+		showMsg(QStringLiteral("This section has no ROIs to copy. %1").arg(kH3RoiSectionHint));
+		return;
+	}
+
 	const double cx = _algoH3BoxCropW / 2.0;
 	const double cy = _algoH3BoxCropH / 2.0;
 
 	_algoH3Clipboard.clear();
 
-	for (auto* b : _algoH3DatumBoxes) {
-		if (!b || !b->isVisible() || !b->getSelected()) continue;
-		AlgoH3ClipRoi c;
-		c.datum = true;
-		c.rel = b->getGeometry().translated(-cx, -cy);
-		_algoH3Clipboard.append(c);
+	//one kind only, decided by the section rather than inferred from which boxes happen to
+	//be visible - that keeps the clipboard homogeneous, which paste relies on
+	if (owner == H3RoiOwner::Datum) {
+		for (auto* b : _algoH3DatumBoxes) {
+			if (!b || !b->isVisible() || !b->getSelected()) continue;
+			AlgoH3ClipRoi c;
+			c.datum = true;
+			c.rel = b->getGeometry().translated(-cx, -cy);
+			_algoH3Clipboard.append(c);
+		}
 	}
-	for (auto* b : _algoH3RoiBoxes) {
-		if (!b || !b->isVisible() || !b->getSelected()) continue;
-		AlgoH3ClipRoi c;
-		c.datum = false;
-		c.typeName = b->getTag();
-		c.rel = b->getGeometry().translated(-cx, -cy);
-		_algoH3Clipboard.append(c);
+	else {
+		for (auto* b : _algoH3RoiBoxes) {
+			if (!b || !b->isVisible() || !b->getSelected()) continue;
+			AlgoH3ClipRoi c;
+			c.datum = false;
+			c.typeName = b->getTag();
+			c.rel = b->getGeometry().translated(-cx, -cy);
+			_algoH3Clipboard.append(c);
+		}
 	}
 
 	if (_algoH3Clipboard.isEmpty()) {
-		showMsg("Click one or more ROIs on the image first, then Ctrl+C.");
+		showMsg(owner == H3RoiOwner::Datum
+			? "Click one or more datum ROIs on the image first, then Ctrl+C."
+			: "Click one or more measurement ROIs on the image first, then Ctrl+C.");
 		return;
 	}
+	//a fresh clipboard starts the paste offset over, so the first paste of a new copy lands
+	//10 px off its own original rather than wherever the last run of pastes had got to
+	_algoH3PasteCount = 0;
 	showStatus(QStringLiteral("%1 ROI(s) copied").arg(_algoH3Clipboard.size()));
 }
 
@@ -742,6 +783,26 @@ void VisionApp::algoH3PasteRois()
 		return;
 	}
 
+	/*
+	* Section checks BEFORE anything else, so a refused paste is a true no-op: no capture,
+	* no bump of the paste offset, no clearing of the current selection.
+	*/
+	const H3RoiOwner owner = h3SectionOwner(algoH3CurrentSection());
+	if (owner == H3RoiOwner::None) {
+		showMsg(QStringLiteral("Nothing here can show a pasted ROI. %1").arg(kH3RoiSectionHint));
+		return;
+	}
+	const bool wantDatum = (owner == H3RoiOwner::Datum);
+
+	//copy takes one kind at a time, so the clipboard is homogeneous and its first entry
+	//speaks for all of it
+	if (_algoH3Clipboard.first().datum != wantDatum) {
+		showMsg(wantDatum
+			? "The clipboard holds measurement ROIs - open ROI Types & Criteria or Measurement Results to paste them."
+			: "The clipboard holds datum ROIs - open the Datum Plane section to paste them.");
+		return;
+	}
+
 	//the type table is the truth for colours and for which types still exist, so push it
 	//down before reading any of it back
 	captureAlgoH3ParamsFromUI();
@@ -750,18 +811,35 @@ void VisionApp::algoH3PasteRois()
 	const double cx = _algoH3BoxCropW / 2.0;
 	const double cy = _algoH3BoxCropH / 2.0;
 
+	/*
+	* The offset STEPS with each paste of the same clipboard. It has to: the clipboard holds
+	* the original geometry, so a fixed 10 px would put the second Ctrl+V exactly on top of
+	* the first and the operator would be stacking invisible duplicates. Counting pastes
+	* instead of mutating the clipboard keeps the clipboard meaning what was copied.
+	*/
+	_algoH3PasteCount++;
+	const double step = 10.0 * _algoH3PasteCount;
+
+	//the paste owns the selection when it finishes, so clear what was selected first -
+	//otherwise the sources stay selected too and the next Ctrl+C would copy six ROIs
+	//when the operator can only see three highlighted
+	for (auto* b : _algoH3DatumBoxes) if (b) b->setSelected(false);
+	for (auto* b : _algoH3RoiBoxes) if (b) b->setSelected(false);
+
 	int pasted = 0;
 	int skipped = 0;
+	QVector<QDragBox*> fresh; //selected at the end - see the note below
 
 	for (const auto& c : _algoH3Clipboard) {
-		//offset by 10 px so a copy is visibly separate from its original, the same
-		//gesture the V1 height page already uses
-		const QRectF rel = c.rel.translated(10, 10);
+		//offset so a copy is visibly separate from its original, the same gesture the V1
+		//height page uses
+		const QRectF rel = c.rel.translated(step, step);
 
 		if (c.datum) {
 			auto* b = makeAlgoH3Box(rel.translated(cx, cy), kAlgoH3DatumColor,
 				QStringLiteral("Datum %1").arg(_algoH3DatumBoxes.size() + 1));
 			_algoH3DatumBoxes.append(b);
+			fresh.append(b);
 			pasted++;
 			continue;
 		}
@@ -775,18 +853,28 @@ void VisionApp::algoH3PasteRois()
 			QStringLiteral("R%1 %2").arg(_algoH3RoiBoxes.size() + 1).arg(c.typeName));
 		b->setTag(c.typeName);
 		_algoH3RoiBoxes.append(b);
+		fresh.append(b);
 		pasted++;
 	}
 
 	ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(_algoH3DatumBoxes.size()));
 	ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
 
+	/*
+	* VISIBILITY FIRST, THEN SELECTION, and the order is not cosmetic:
+	* QGraphicsItem::setSelected() DOES NOTHING when the item is not visible, and
+	* makeAlgoH3Box() creates every box hidden. Selecting inside the loop above therefore
+	* gets silently discarded - the paste looked like it cleared the selection instead of
+	* moving it. Anything that selects a box it just created has to show it first.
+	*/
+	updateAlgoH3RoiVisibility();
+	for (auto* b : fresh) if (b) b->setSelected(true);
+
 	//a paste adds ROIs the last measurement knows nothing about, so its per-ROI numbers
 	//no longer line up with the ROI ids on screen
 	_algoH3Output.roiResults.clear();
 	refreshAlgoH3ResultSection();
 
-	updateAlgoH3RoiVisibility();
 	algoSettingsTouched();
 
 	if (skipped > 0) {
