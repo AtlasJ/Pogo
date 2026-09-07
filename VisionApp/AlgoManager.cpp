@@ -205,6 +205,7 @@ void AlgoManager::init()
 
 	qRegisterMetaType<AlgoOcrOutput>("AlgoOcrOutput");
 	qRegisterMetaType<AlgoHeightOutput>("AlgoHeightOutput");
+	qRegisterMetaType<AlgoHeight3Output>("AlgoHeight3Output");
 
 	moveToThread(&m_thread);
 	m_thread.start();
@@ -401,6 +402,10 @@ bool AlgoManager::loadRecipeConfig()
 		}
 	}
 
+	//3D Height Measurement 3 - its own "height3" block, applied even when the block is
+	//absent so a recipe saved before this algo existed simply comes back as defaults
+	height3FromJson(root);
+
 	loadPatterns();
 
 	ct::logger::info("[Algo] Recipe config %s: %s",
@@ -458,6 +463,8 @@ bool AlgoManager::saveRecipeConfig()
 		}
 		root.insert("locators", locators);
 	}
+
+	root.insert("height3", height3ToJson());
 
 	auto ret = jsonHelper::saveJson(algoConfigPath(), QJsonDocument(root));
 	if (!ret) ct::logger::error("[Algo] Failed to save %s", algoConfigPath().toStdString().c_str());

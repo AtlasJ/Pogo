@@ -2210,9 +2210,11 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 		QString cid = util::combineID(info.viewID, info.opticID);
 		ct::logger::info("[ImageReady] Receive ready image: %s", cid.toStdString().c_str());
 
-		//keep the latest heightmap available for the Algo Setup page ("Use Last Scan")
+		//keep the latest scan available for the Algo Setup page ("Use Last Scan"). Both
+		//maps, not just the height one: V3 needs the intensity map too, and the only
+		//place the two are guaranteed pixel-aligned is the frame they arrived in.
 		if (info.type == ct::s_height_map && info.pHeightMap) {
-			AlgoManager::instance().setHeightMap(info.pHeightMap);
+			AlgoManager::instance().setLastScanMaps(info.pHeightMap, info.pImage);
 
 			//production: archive the scan beside the fiducial/reader images as
 			//<X#Y#>_height.tiff + <X#Y#>_intensity.jpg (worker thread, non-blocking)
@@ -5271,7 +5273,10 @@ VisionApp::~VisionApp()
 	* FREE_BUFFER buffer - which is exactly what the rotated height map is - is invisible to it,
 	* so the pool teardown cannot clean up after this reference no matter when it runs.
 	*/
-	AlgoManager::instance().setHeightMap(nullptr);
+	//both halves of the last scan, for the same reason - the intensity map is attached the
+	//same way and would be just as invisible to the pool teardown
+	AlgoManager::instance().setLastScanMaps(nullptr, nullptr);
+	AlgoManager::instance().height3Clear();
 
 	mtrx::MPM::instance().release_pools();
 	_databaseThread.terminate(); 
@@ -5296,21 +5301,12 @@ VisionApp::~VisionApp()
 
 bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 {
-	//algo setup ROI copy/paste: works no matter which widget has focus, but never
-	//steals Ctrl+C/V from a text editor
-	if (event->type() == QEvent::KeyPress) {
-		auto* ke = static_cast<QKeyEvent*>(event);
-		if (ke->modifiers() == Qt::ControlModifier && (ke->key() == Qt::Key_C || ke->key() == Qt::Key_V)) {
-			QWidget* fw = QApplication::focusWidget();
-			const bool editing = qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
-				|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
-			if (!editing && isPage(UIPage::ALGO_SETUP)) {
-				if (ke->key() == Qt::Key_C) algoHCopySelectedRois();
-				else algoHPasteRois();
-				return true;
-			}
-		}
-	}
+	/*
+	* Ctrl+C / Ctrl+V used to be handled here and it NEVER RAN. Qt fires the QShortcuts
+	* registered in VisionApp_Shortcuts.cpp before a KeyPress event exists, so this branch
+	* could not see those keys at all. The routing now lives in copyShortcutPressed /
+	* pasteShortcutPressed - see the comment there before adding a key handler here.
+	*/
 
 	if (event->type() == QEvent::MouseButtonPress) {
 		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
@@ -5339,6 +5335,11 @@ bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 
 		_worldFOV.hide();
 	}
+
+	//drag-to-spin on the V3 page's 3D surface view. Placed after the menu-dismiss block
+	//above so clicking the image still closes an open menu, and it claims events only
+	//while that view is actually on screen.
+	if (algoH3HandleViewMouse(obj, event)) return true;
 
 	if (event->type() == QEvent::MouseMove) {
 		if (!_blockEventFilter)

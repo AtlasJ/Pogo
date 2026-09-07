@@ -21,8 +21,8 @@
 enum class AlgoPageAlgo {
 	OCR_READ = 0,
 	HEIGHT_3D = 1,
-	HEIGHT_3D_V2 = 2,     //new pipeline, built beside HEIGHT_3D - UI shell only for now
-	HEIGHT_3D_V3 = 3      //second layout attempt, also a shell - no locator, no algorithm
+	HEIGHT_3D_V2 = 2,     //abandoned layout attempt, kept as a visual reference - UI shell only
+	HEIGHT_3D_V3 = 3      //the new pipeline: AlgoHeight3Pipeline, no locator
 };
 
 /*
@@ -45,13 +45,15 @@ inline bool algoHasLocator(AlgoPageAlgo a)
 }
 
 /*
-* Which algos actually have an implementation behind them. The V2 and V3 pages are layout only.
+* Which algos actually have an implementation behind them. The V2 page is layout only.
 * Written as a WHITELIST rather than a list of exclusions so that the next page added to the
 * enum refuses by default, instead of falling through to whatever the last else branch runs.
 */
 inline bool algoIsImplemented(AlgoPageAlgo a)
 {
-	return a == AlgoPageAlgo::OCR_READ || a == AlgoPageAlgo::HEIGHT_3D;
+	return a == AlgoPageAlgo::OCR_READ
+		|| a == AlgoPageAlgo::HEIGHT_3D
+		|| a == AlgoPageAlgo::HEIGHT_3D_V3; //AlgoHeight3Pipeline, see AlgoHeight3.h
 }
 
 //one PaddleOCR text detection (matches IM430's OcrResult)

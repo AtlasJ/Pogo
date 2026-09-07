@@ -28,6 +28,7 @@
 #include "FiducialInfo.h"
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
+#include "AlgoHeight3Types.h"
 #include "InspectionThread.h"
 #include "AlgoDefectResult.h"
 #include "ErrorInfo.h"
@@ -800,14 +801,80 @@ private:
 	QTimer* _algoAutoSaveTimer = nullptr; //debounced auto-save of algo settings
 
 	QDragBox* addAlgoHRoiBox(bool isPlane, const QRectF& rect); //plane/height ROI with standard styling
-	void algoHCopySelectedRois(); //Ctrl+C on the algo setup page
+
+	//Ctrl+C / Ctrl+V dispatch for the whole app: vision objects on the recipe page, ROIs on
+	//the algo pages, nothing while a text field has focus. Called from the QShortcuts in
+	//VisionApp_Shortcuts.cpp - NOT from eventFilter, which never sees these keys.
+	void copyShortcutPressed();
+	void pasteShortcutPressed();
+	bool copyPasteGoesToText() const;
+
+	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
 	void algoHPasteRois();        //Ctrl+V: paste offset 10 px
 	QVector<QPair<bool, QRectF>> _algoHClipboard; //Ctrl+C snapshot of selected 3D ROIs (isPlane, rect)
+	int _algoHPasteCount = 0;     //pastes of the current clipboard, so the offset steps
 	void captureAlgoParamsFromUI();
 	void showAlgoHeightMap(bool view3D);
 	void clearAlgoOverlay();
 	void renderAlgoOverlay(const QVector<AlgoOverlayItem>& overlay);
 	AlgoPageAlgo currentAlgoPageAlgo() const;
+
+	//── 3D Height Measurement 3 page - VisionApp_AlgoHeight3.cpp ──
+	void initAlgoHeight3Page();
+	void refreshAlgoHeight3Page();     //recipe -> widgets, ROI boxes, tables
+	void configureAlgoH3Ranges();      //spin box limits live in code, not in the .ui
+	void captureAlgoH3ParamsFromUI();
+	void updateAlgoH3Display();        //which image this section should be showing
+	void updateAlgoH3Surface();        //re-render the 3D view only (used while dragging)
+	void updateAlgoH3RoiVisibility();  //which ROIs this section owns
+	void updateAlgoH3Enables();        //gate each Run button on its prerequisite
+	void hideAlgoH3Rois();
+	void refreshAlgoH3TypeTable();
+	void refreshAlgoH3RoiBoxes();      //rebuild boxes from params, in the current crop
+	void refreshAlgoH3ResultSection(); //the selected ROI's row of the last measurement
+	void appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const;  //height + verdict per ROI
+	void appendAlgoH3OverallRois(QVector<AlgoOverlayItem>& overlay) const; //section 7: read-only pass/fail rects
+	void applyAlgoH3Output(const AlgoHeight3Output& out);
+	void algoH3RunStage(AlgoH3Stage stage);
+	bool algoH3HandleViewMouse(QObject* obj, QEvent* ev); //drag-to-spin in the 3D view
+	int algoH3CurrentSection() const;
+	AlgoH3Display algoH3DisplayMode() const;  //comboBox_algoH3Display, guarded against a null ui
+	QDragBox* makeAlgoH3Box(const QRectF& sceneRect, const QColor& color, const QString& name);
+
+	//Ctrl+C / Ctrl+V on the V3 page, routed from the global event filter
+	void algoH3CopySelectedRois();
+	void algoH3PasteRois();
+
+	//one copied ROI, held in the PART FRAME so a paste still means the same thing after
+	//the part has been re-segmented at a slightly different size
+	struct AlgoH3ClipRoi {
+		bool datum = false;   //a datum ROI rather than a measurement ROI
+		QString typeName;     //empty for a datum ROI
+		QRectF rel;
+	};
+	QVector<AlgoH3ClipRoi> _algoH3Clipboard;
+	int _algoH3PasteCount = 0;   //pastes of the current clipboard, so the offset steps
+
+	QVector<QDragBox*> _algoH3DatumBoxes;
+	QVector<QDragBox*> _algoH3RoiBoxes;
+	AlgoHeight3Output _algoH3Output;      //last result, for the results/overall readouts
+	/*
+	* The crop size the ROI boxes are currently laid out against. ROIs are stored in the
+	* part frame, so a box's scene position only means something while a crop of THIS
+	* size is on screen. Zero means "the boxes are not in part-frame space right now" and
+	* capture must leave the stored geometry alone rather than overwrite it with nonsense.
+	*/
+	int _algoH3BoxCropW = 0;
+	int _algoH3BoxCropH = 0;
+	bool _algoH3Updating = false;         //re-entrancy guard while rebuilding the type table
+	double _algoH3Yaw = 35.0;             //3D view orientation, degrees
+	double _algoH3Pitch = 55.0;
+	double _algoH3ZExaggeration = 1.0;
+	bool _algoH3Dragging = false;
+	QPoint _algoH3DragFrom;
+	QElapsedTimer _algoH3DragClock;       //throttles re-renders during a drag
+	QTimer* _algoH3SelTimer = nullptr;    //watches which ROI is selected on the scene
+	int _algoH3ShownRoi = -1;             //ROI index the results section is showing
 	void showBarcode(int index);
 	void showBarcodeDebugImage(int index);
 	bool saveBarcode();
@@ -969,6 +1036,7 @@ private:
 
 public slots:
 	void algoSettingsTouched(); //any algo-setup edit: debounce then save
+	void refreshAlgoH3Overlay(); //V3's scene overlay only, without repainting the image
 
 	void enableFiducial(bool enable);
 	void enableSaveInspectionImage(bool enable);

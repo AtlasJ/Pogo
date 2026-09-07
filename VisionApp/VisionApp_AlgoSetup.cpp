@@ -13,12 +13,17 @@
 #include "AlgoManager.h"
 #include "AuditLog.h"
 
+#include <QAbstractSpinBox>
+#include <QApplication>
 #include <QFileDialog>
-#include <QMessageBox>
 #include <QPainter>
-#include <QTableWidgetItem>
 #include <QHeaderView>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTableWidgetItem>
+#include <QTextEdit>
 
 static const QColor kAlgoRoiColor(0, 150, 255);
 static const QColor kAlgoLearnColor(66, 135, 245);
@@ -57,6 +62,11 @@ void VisionApp::initAlgoSetupPage()
 		ui.frame_algoLocator->setVisible(algoHasLocator(currentAlgoPageAlgo()));
 		refreshAlgoLocatorUI();
 		updateAlgoRoiVisibility();
+
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+			updateAlgoH3Enables();
+			updateAlgoH3Display();
+		}
 	});
 
 	connect(ui.toolButton_algoRun, &QToolButton::clicked, this, [=]() {
@@ -66,14 +76,21 @@ void VisionApp::initAlgoSetupPage()
 		}
 
 		/*
-		* The V2 and V3 pages are UI shells only - no params struct, no JSON, no algorithm yet.
-		* Refuse on anything not whitelisted. Falling through to the else below would silently
-		* run the OLD height algo against an untouched page, which reads as the new pipeline
+		* The V2 page is a UI shell only - no params struct, no JSON, no algorithm. Refuse
+		* on anything not whitelisted. Falling through to the else below would silently run
+		* the OLD height algo against an untouched page, which reads as the new pipeline
 		* working when nothing of it exists.
 		*/
 		if (!algoIsImplemented(currentAlgoPageAlgo())) {
 			ui.label_algoStatus->setText(ui.comboBox_algoType->currentText()
 				+ ": layout only, no algorithm yet");
+			return;
+		}
+
+		//V3's Run is a Run All: every stage in order, stopping at the first failure. It
+		//does its own capture and validation, so hand straight over.
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+			algoH3RunStage(AlgoH3Stage::All);
 			return;
 		}
 
@@ -246,8 +263,8 @@ void VisionApp::initAlgoSetupPage()
 	//── ROI tools: duplicate at pitch, selection diff, copy/paste ──
 	auto selected3DBoxes = [=]() {
 		QVector<QPair<bool, QDragBox*>> sel; //isPlane, box
-		for (auto b : _algoPlaneBoxes) if (b->getSelected()) sel.append({ true, b });
-		for (auto b : _algoHeightBoxes) if (b->getSelected()) sel.append({ false, b });
+		for (auto b : _algoPlaneBoxes) if (b->isSelected()) sel.append({ true, b });
+		for (auto b : _algoHeightBoxes) if (b->isSelected()) sel.append({ false, b });
 		return sel;
 	};
 
@@ -290,8 +307,9 @@ void VisionApp::initAlgoSetupPage()
 	});
 	selTimer->start(250);
 
-	//Ctrl+C / Ctrl+V are handled in the global event filter (see VisionApp::eventFilter):
-	//shortcuts scoped to the FOV view need it focused, which the operator rarely does
+	//Ctrl+C / Ctrl+V have no button of their own: they arrive from the app-wide QShortcuts
+	//in VisionApp_Shortcuts.cpp and are routed by copyShortcutPressed/pasteShortcutPressed
+	//below. Do NOT add an eventFilter for them - the shortcut consumes the key first.
 
 	connect(ui.toolButton_algoHAddPlane, &QToolButton::clicked, this, [=]() {
 		const int n = _algoPlaneBoxes.size();
@@ -316,14 +334,14 @@ void VisionApp::initAlgoSetupPage()
 		bool removed = false;
 
 		for (int i = _algoPlaneBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoPlaneBoxes[i]->getSelected()) continue;
+			if (!_algoPlaneBoxes[i]->isSelected()) continue;
 			_pGraphicsSceneFOV->removeItem(_algoPlaneBoxes[i]);
 			delete _algoPlaneBoxes[i];
 			_algoPlaneBoxes.removeAt(i);
 			removed = true;
 		}
 		for (int i = _algoHeightBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoHeightBoxes[i]->getSelected()) continue;
+			if (!_algoHeightBoxes[i]->isSelected()) continue;
 			_pGraphicsSceneFOV->removeItem(_algoHeightBoxes[i]);
 			delete _algoHeightBoxes[i];
 			_algoHeightBoxes.removeAt(i);
@@ -444,6 +462,7 @@ void VisionApp::initAlgoSetupPage()
 	connect(&AlgoManager::instance(), &AlgoManager::busyChanged, this, [=](bool busy) {
 		ui.toolButton_algoRun->setEnabled(!busy);
 		if (busy) ui.label_algoStatus->setText("Running...");
+		updateAlgoH3Enables(); //V3's per-section Run buttons follow the same busy state
 	});
 
 	connect(&AlgoManager::instance(), &AlgoManager::patternsChanged, this, [=]() {
@@ -452,24 +471,117 @@ void VisionApp::initAlgoSetupPage()
 
 	ui.stackedWidget_algoParams->setCurrentIndex(0);
 	ui.toolButton_algoH2D->setChecked(true);
+
+	//the 3D Height Measurement 3 page owns its own wiring - see VisionApp_AlgoHeight3.cpp
+	initAlgoHeight3Page();
 }
 
-//Ctrl+C: snapshot the selected 3D ROIs (called from the global event filter)
+/*
+* THE ONE PLACE Ctrl+C / Ctrl+V IS DECIDED. Both keys arrive here from the QShortcuts in
+* VisionApp_Shortcuts.cpp, and this picks the handler by which page is open.
+*
+* It has to be a shortcut and not an event filter, and that is worth spelling out because
+* it was got wrong once: Qt dispatches shortcuts BEFORE key events exist. A key press first
+* goes out as QEvent::ShortcutOverride, and if nobody accepts it the shortcut map fires the
+* QShortcut and NO QEvent::KeyPress is ever generated. So while a QShortcut owns Ctrl+C,
+* an eventFilter watching for KeyPress can never see it - which is exactly why the algo
+* pages' copy/paste looked implemented but had never once run, on V1 or V3.
+*
+* Text editing is left alone. QLineEdit and the spin boxes accept ShortcutOverride for the
+* standard Copy/Paste sequences and so would win anyway, but the guard is kept explicit
+* rather than resting on that.
+*/
+bool VisionApp::copyPasteGoesToText() const
+{
+	QWidget* fw = QApplication::focusWidget();
+	return qobject_cast<QLineEdit*>(fw) || qobject_cast<QTextEdit*>(fw)
+		|| qobject_cast<QPlainTextEdit*>(fw) || qobject_cast<QAbstractSpinBox*>(fw);
+}
+
+void VisionApp::copyShortcutPressed()
+{
+	if (copyPasteGoesToText()) return;
+
+	if (isPage(UIPage::ALGO_SETUP)) {
+		//the V3 page keeps its ROIs in a different coordinate space (part frame), so the
+		//V1 handler would snapshot the wrong boxes entirely
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3CopySelectedRois();
+		else algoHCopySelectedRois();
+		return;
+	}
+
+	copyVisionObject();
+}
+
+void VisionApp::pasteShortcutPressed()
+{
+	if (copyPasteGoesToText()) return;
+
+	if (isPage(UIPage::ALGO_SETUP)) {
+		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3PasteRois();
+		else algoHPasteRois();
+		return;
+	}
+
+	//the page test above is also what stops a vision-object clipboard from being pasted
+	//into the recipe while the operator is looking at the Algo Setup page
+	pasteVisionObject();
+}
+
+/*
+* ALWAYS ASK A BOX `isSelected()`, NEVER `getSelected()`. Every algo page reads selection
+* through Qt's own QGraphicsItem::isSelected(), and that is not a style preference:
+*
+* QDragBox::_isSelected is declared WITHOUT an initialiser (QDragBox.h) and is written in
+* exactly one place - paintFunction(), from option->state. So on a box that has not been
+* painted yet the value is INDETERMINATE, and Qt does not paint items outside the viewport,
+* so a box that has never been scrolled into view keeps that indeterminate value for good.
+*
+* What that looked like in practice: Run Height Measurement destroys and rebuilds every ROI
+* box, the new boxes land in the heap blocks just freed by the old ones, and _isSelected
+* often came back as the OLD box's value. Copy then reported 18 ROIs copied with nothing
+* selected, and the results section counted phantom selections and refused to show a result
+* for the one ROI actually clicked. isSelected() has none of these problems - it is the real
+* state, correct immediately, independent of painting and of the viewport.
+*
+* This is why copyVisionObject() was never affected: it already used isSelected().
+*/
+
+//Ctrl+C: snapshot the selected 3D ROIs (dispatched from copyShortcutPressed)
 void VisionApp::algoHCopySelectedRois()
 {
 	_algoHClipboard.clear();
-	for (auto b : _algoPlaneBoxes) if (b->getSelected()) _algoHClipboard.append({ true, b->getGeometry() });
-	for (auto b : _algoHeightBoxes) if (b->getSelected()) _algoHClipboard.append({ false, b->getGeometry() });
-	if (!_algoHClipboard.isEmpty())
+	for (auto b : _algoPlaneBoxes) if (b->isSelected()) _algoHClipboard.append({ true, b->getGeometry() });
+	for (auto b : _algoHeightBoxes) if (b->isSelected()) _algoHClipboard.append({ false, b->getGeometry() });
+	if (!_algoHClipboard.isEmpty()) {
+		_algoHPasteCount = 0; //a fresh clipboard starts the paste offset over
 		showStatus(QStringLiteral("%1 ROI(s) copied").arg(_algoHClipboard.size()));
+	}
 }
 
 //Ctrl+V: paste the snapshot offset by 10 px so the copies are visibly separate
+//(dispatched from pasteShortcutPressed)
 void VisionApp::algoHPasteRois()
 {
 	if (_algoHClipboard.isEmpty()) return;
+
+	//the offset steps per paste, or a second Ctrl+V would land exactly on the first copy
+	_algoHPasteCount++;
+	const qreal step = 10.0 * _algoHPasteCount;
+
+	//the paste owns the selection when it finishes, so the sources are cleared first
+	for (auto b : _algoPlaneBoxes) if (b) b->setSelected(false);
+	for (auto b : _algoHeightBoxes) if (b) b->setSelected(false);
+
+	//collected and selected only after every box exists and updateAlgoRoiVisibility() has
+	//shown them: setSelected() is a no-op on a hidden QGraphicsItem
+	QVector<QDragBox*> fresh;
 	for (const auto& c : _algoHClipboard)
-		addAlgoHRoiBox(c.first, c.second.translated(10, 10));
+		fresh.append(addAlgoHRoiBox(c.first, c.second.translated(step, step)));
+
+	updateAlgoRoiVisibility();
+	for (auto* b : fresh) if (b) b->setSelected(true);
+
 	showStatus(QStringLiteral("%1 ROI(s) pasted").arg(_algoHClipboard.size()));
 }
 
@@ -528,6 +640,9 @@ void VisionApp::updateAlgoRoiVisibility()
 	if (_algoLocLearnBox) _algoLocLearnBox->setVisible(loc && ui.toolButton_algoLocLearnRoi->isChecked());
 	if (_algoLocSearchBox) _algoLocSearchBox->setVisible(loc && ui.toolButton_algoLocSearchRoi->isChecked());
 
+	//V3's ROIs have their own rule - the open section decides which set is shown
+	updateAlgoH3RoiVisibility();
+
 	if (!onPage) clearAlgoOverlay();
 }
 
@@ -539,6 +654,7 @@ void VisionApp::hideAlgoSetupRois()
 	if (_algoLocSearchBox) _algoLocSearchBox->hide();
 	for (auto box : _algoPlaneBoxes) box->hide();
 	for (auto box : _algoHeightBoxes) box->hide();
+	hideAlgoH3Rois();
 	clearAlgoOverlay();
 }
 
@@ -557,6 +673,10 @@ void VisionApp::captureAlgoParamsFromUI()
 	ocr.superResolution = ui.checkBox_algoOcrSR->isChecked();
 	if (_algoOcrRoi1Box) ocr.roi1Geo = _algoOcrRoi1Box->getGeometry();
 	mgr.setOcrParams(ocr);
+
+	//3D Height Measurement 3 lives on its own page with its own params struct; capture it
+	//BEFORE the locator early-return below, or nothing on that page would ever be saved
+	captureAlgoH3ParamsFromUI();
 
 	AlgoHeightParams h = mgr.heightParams();
 	h.intensityPerMicron = ui.dspin_algoHIpm->value();
@@ -679,6 +799,7 @@ void VisionApp::refreshAlgoSetupPage()
 
 	refreshAlgoLocatorUI();
 	refreshAlgoPatternList();
+	refreshAlgoHeight3Page();
 	updateAlgoRoiVisibility();
 }
 
