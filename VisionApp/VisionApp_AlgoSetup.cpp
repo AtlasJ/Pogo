@@ -262,8 +262,8 @@ void VisionApp::initAlgoSetupPage()
 	//── ROI tools: duplicate at pitch, selection diff, copy/paste ──
 	auto selected3DBoxes = [=]() {
 		QVector<QPair<bool, QDragBox*>> sel; //isPlane, box
-		for (auto b : _algoPlaneBoxes) if (b->getSelected()) sel.append({ true, b });
-		for (auto b : _algoHeightBoxes) if (b->getSelected()) sel.append({ false, b });
+		for (auto b : _algoPlaneBoxes) if (b->isSelected()) sel.append({ true, b });
+		for (auto b : _algoHeightBoxes) if (b->isSelected()) sel.append({ false, b });
 		return sel;
 	};
 
@@ -333,14 +333,14 @@ void VisionApp::initAlgoSetupPage()
 		bool removed = false;
 
 		for (int i = _algoPlaneBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoPlaneBoxes[i]->getSelected()) continue;
+			if (!_algoPlaneBoxes[i]->isSelected()) continue;
 			_pGraphicsSceneFOV->removeItem(_algoPlaneBoxes[i]);
 			delete _algoPlaneBoxes[i];
 			_algoPlaneBoxes.removeAt(i);
 			removed = true;
 		}
 		for (int i = _algoHeightBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoHeightBoxes[i]->getSelected()) continue;
+			if (!_algoHeightBoxes[i]->isSelected()) continue;
 			_pGraphicsSceneFOV->removeItem(_algoHeightBoxes[i]);
 			delete _algoHeightBoxes[i];
 			_algoHeightBoxes.removeAt(i);
@@ -516,12 +516,31 @@ void VisionApp::pasteShortcutPressed()
 	pasteVisionObject();
 }
 
+/*
+* ALWAYS ASK A BOX `isSelected()`, NEVER `getSelected()`. Every algo page reads selection
+* through Qt's own QGraphicsItem::isSelected(), and that is not a style preference:
+*
+* QDragBox::_isSelected is declared WITHOUT an initialiser (QDragBox.h) and is written in
+* exactly one place - paintFunction(), from option->state. So on a box that has not been
+* painted yet the value is INDETERMINATE, and Qt does not paint items outside the viewport,
+* so a box that has never been scrolled into view keeps that indeterminate value for good.
+*
+* What that looked like in practice: Run Height Measurement destroys and rebuilds every ROI
+* box, the new boxes land in the heap blocks just freed by the old ones, and _isSelected
+* often came back as the OLD box's value. Copy then reported 18 ROIs copied with nothing
+* selected, and the results section counted phantom selections and refused to show a result
+* for the one ROI actually clicked. isSelected() has none of these problems - it is the real
+* state, correct immediately, independent of painting and of the viewport.
+*
+* This is why copyVisionObject() was never affected: it already used isSelected().
+*/
+
 //Ctrl+C: snapshot the selected 3D ROIs (dispatched from copyShortcutPressed)
 void VisionApp::algoHCopySelectedRois()
 {
 	_algoHClipboard.clear();
-	for (auto b : _algoPlaneBoxes) if (b->getSelected()) _algoHClipboard.append({ true, b->getGeometry() });
-	for (auto b : _algoHeightBoxes) if (b->getSelected()) _algoHClipboard.append({ false, b->getGeometry() });
+	for (auto b : _algoPlaneBoxes) if (b->isSelected()) _algoHClipboard.append({ true, b->getGeometry() });
+	for (auto b : _algoHeightBoxes) if (b->isSelected()) _algoHClipboard.append({ false, b->getGeometry() });
 	if (!_algoHClipboard.isEmpty()) {
 		_algoHPasteCount = 0; //a fresh clipboard starts the paste offset over
 		showStatus(QStringLiteral("%1 ROI(s) copied").arg(_algoHClipboard.size()));

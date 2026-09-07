@@ -282,7 +282,7 @@ void VisionApp::initAlgoHeight3Page()
 	connect(ui.toolButton_algoH3DatumDeleteRoi, &QToolButton::clicked, this, [=]() {
 		bool removed = false;
 		for (int i = _algoH3DatumBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoH3DatumBoxes[i]->getSelected()) continue;
+			if (!_algoH3DatumBoxes[i]->isSelected()) continue;
 			_pGraphicsSceneFOV->removeItem(_algoH3DatumBoxes[i]);
 			delete _algoH3DatumBoxes[i];
 			_algoH3DatumBoxes.removeAt(i);
@@ -429,7 +429,7 @@ void VisionApp::initAlgoHeight3Page()
 	connect(ui.toolButton_algoH3RoiDelete, &QToolButton::clicked, this, [=]() {
 		bool removed = false;
 		for (int i = _algoH3RoiBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoH3RoiBoxes[i]->getSelected()) continue;
+			if (!_algoH3RoiBoxes[i]->isSelected()) continue;
 			_pGraphicsSceneFOV->removeItem(_algoH3RoiBoxes[i]);
 			delete _algoH3RoiBoxes[i];
 			_algoH3RoiBoxes.removeAt(i);
@@ -465,7 +465,7 @@ void VisionApp::initAlgoHeight3Page()
 		int changed = 0;
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
 			auto* b = _algoH3RoiBoxes[i];
-			if (!b->getSelected()) continue;
+			if (!b->isSelected()) continue;
 			b->setTag(typeName);
 			b->setBorderColor(color);
 			b->setName(QStringLiteral("R%1 %2").arg(i + 1).arg(typeName));
@@ -505,7 +505,7 @@ void VisionApp::initAlgoHeight3Page()
 		//second and the section is a dozen line edits
 		int selected = -1, count = 0;
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
-			if (!_algoH3RoiBoxes[i] || !_algoH3RoiBoxes[i]->getSelected()) continue;
+			if (!_algoH3RoiBoxes[i] || !_algoH3RoiBoxes[i]->isSelected()) continue;
 			if (selected < 0) selected = i;
 			count++;
 		}
@@ -721,6 +721,9 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 *
 * The clipboard holds part-frame geometry, not scene geometry, so a copy taken before a
 * re-segmentation still pastes to the same place on the part afterwards.
+*
+* Selection is read with Qt's isSelected(), never QDragBox::getSelected() - see the note
+* above algoHCopySelectedRois() in VisionApp_AlgoSetup.cpp for why that matters.
 */
 void VisionApp::algoH3CopySelectedRois()
 {
@@ -744,7 +747,7 @@ void VisionApp::algoH3CopySelectedRois()
 	//be visible - that keeps the clipboard homogeneous, which paste relies on
 	if (owner == H3RoiOwner::Datum) {
 		for (auto* b : _algoH3DatumBoxes) {
-			if (!b || !b->isVisible() || !b->getSelected()) continue;
+			if (!b || !b->isVisible() || !b->isSelected()) continue;
 			AlgoH3ClipRoi c;
 			c.datum = true;
 			c.rel = b->getGeometry().translated(-cx, -cy);
@@ -753,7 +756,7 @@ void VisionApp::algoH3CopySelectedRois()
 	}
 	else {
 		for (auto* b : _algoH3RoiBoxes) {
-			if (!b || !b->isVisible() || !b->getSelected()) continue;
+			if (!b || !b->isVisible() || !b->isSelected()) continue;
 			AlgoH3ClipRoi c;
 			c.datum = false;
 			c.typeName = b->getTag();
@@ -1541,7 +1544,7 @@ void VisionApp::refreshAlgoH3ResultSection()
 	int selected = -1;
 	int selectedCount = 0;
 	for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
-		if (!_algoH3RoiBoxes[i] || !_algoH3RoiBoxes[i]->getSelected()) continue;
+		if (!_algoH3RoiBoxes[i] || !_algoH3RoiBoxes[i]->isSelected()) continue;
 		if (selected < 0) selected = i;
 		selectedCount++;
 	}
