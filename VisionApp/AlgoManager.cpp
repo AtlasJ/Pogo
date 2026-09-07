@@ -356,6 +356,7 @@ bool AlgoManager::loadRecipeConfig()
 			m_ocrParams.roi1Columns = jsonHelper::getInteger(ocr, "roi1_columns", 0);
 			m_ocrParams.removeSpecialChars = jsonHelper::getBool(ocr, "remove_special_chars", false);
 			m_ocrParams.paddleOcrEnabled = jsonHelper::getBool(ocr, "paddle_enabled", true);
+			m_ocrParams.superResolution = jsonHelper::getBool(ocr, "super_resolution", false);
 			m_ocrParams.roi1Geo = jsonToRect(ocr.value("roi1").toObject());
 
 			auto h = root.value("height").toObject();
@@ -420,6 +421,7 @@ bool AlgoManager::saveRecipeConfig()
 		ocr.insert("roi1_columns", m_ocrParams.roi1Columns);
 		ocr.insert("remove_special_chars", m_ocrParams.removeSpecialChars);
 		ocr.insert("paddle_enabled", m_ocrParams.paddleOcrEnabled);
+		ocr.insert("super_resolution", m_ocrParams.superResolution);
 		ocr.insert("roi1", rectToJson(m_ocrParams.roi1Geo));
 		root.insert("ocr", ocr);
 
@@ -854,7 +856,8 @@ QPointF AlgoManager::ocrToFov(const QPointF& ocrPt, const OcrRoiTransform& t) co
 }
 
 QVector<AlgoOcrBox> AlgoManager::runOcrOnRoi(const cv::Mat& fovBgr, const QRectF& roiGeo, int rows, int cols,
-	const AlgoOcrParams& param, OcrRoiTransform& transform, QVector<AlgoOverlayItem>& overlay)
+	const AlgoOcrParams& param, OcrRoiTransform& transform, QVector<AlgoOverlayItem>& overlay,
+	QImage* srImage)
 {
 	QVector<AlgoOcrBox> results;
 
@@ -915,25 +918,13 @@ QVector<AlgoOcrBox> AlgoManager::runOcrOnRoi(const cv::Mat& fovBgr, const QRectF
 		return results;
 	}
 
-	//── PaddleOCR-enabled path: rotate before OCR, pad to min canvas
+	//── PaddleOCR-enabled path: rotate before OCR. Super-resolution of small crops
+	//and min-canvas padding both happen in the Paddle server (pyPaddleAPI.py), which
+	//returns boxes in the coordinates of the image we send - so no pad/scale here.
 	if (angle == 90)       cv::rotate(cvImg, cvImg, cv::ROTATE_90_CLOCKWISE);
 	else if (angle == 180) cv::rotate(cvImg, cvImg, cv::ROTATE_180);
 	else if (angle == 270) cv::rotate(cvImg, cvImg, cv::ROTATE_90_COUNTERCLOCKWISE);
 	transform.rotation = angle;
-
-	const int ocrMinWidth = 1200;
-	const int ocrMinHeight = 1200;
-
-	if (cvImg.cols < ocrMinWidth || cvImg.rows < ocrMinHeight) {
-		int canvasW = std::max(cvImg.cols, ocrMinWidth);
-		int canvasH = std::max(cvImg.rows, ocrMinHeight);
-		cv::Mat canvas(canvasH, canvasW, cvImg.type(), cv::Scalar(0, 0, 0));
-		int offsetX = (canvasW - cvImg.cols) / 2;
-		int offsetY = (canvasH - cvImg.rows) / 2;
-		transform.canvasPad = QPoint(offsetX, offsetY);
-		cvImg.copyTo(canvas(cv::Rect(offsetX, offsetY, cvImg.cols, cvImg.rows)));
-		cvImg = canvas;
-	}
 
 	if (!m_paddle) {
 		m_paddle = new PaddleOcrClient(this);
@@ -941,7 +932,7 @@ QVector<AlgoOcrBox> AlgoManager::runOcrOnRoi(const cv::Mat& fovBgr, const QRectF
 
 	QElapsedTimer paddleTimer;
 	paddleTimer.start();
-	if (!m_paddle->runOcr(cvImg, results)) {
+	if (!m_paddle->runOcr(cvImg, results, 30000, param.superResolution, srImage)) {
 		ct::logger::error("[Algo OCR] PaddleOCR transport failure");
 	}
 	ct::logger::info("[Algo OCR] PaddleOCR returned %d row(s) in %lldms", results.size(), paddleTimer.elapsed());
@@ -1196,7 +1187,26 @@ void AlgoManager::doRunOcr(QImage fov)
 
 		//── ROI1
 		OcrRoiTransform t1;
-		auto results1 = runOcrOnRoi(fovBgr, roi1, param.roi1Rows, param.roi1Columns, param, t1, out.overlay);
+		QImage sr1;
+		auto results1 = runOcrOnRoi(fovBgr, roi1, param.roi1Rows, param.roi1Columns, param, t1, out.overlay, &sr1);
+
+		//super-resolution preview: undo the pre-OCR rotation and size the enhanced
+		//crop back to its ROI so the UI can paint it over the FOV in place
+		if (param.superResolution && sr1.isNull()) {
+			ct::logger::warn("[Algo OCR] Super Resolution is ON but the server did not run it - "
+				"check the Paddle server startup lines: torch installed in the venv, weights file "
+				"models/realesr-general-x4v3.pth present. Crops with a side >= 500 px are never super-resolved.");
+		}
+		if (!sr1.isNull()) {
+			QImage img = sr1;
+			if (t1.rotation != 0) {
+				QTransform tr;
+				tr.rotate(-t1.rotation);
+				img = img.transformed(tr);
+			}
+			out.srImage = img.scaled(t1.roiGeo.size().toSize(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+			out.srRect = t1.roiGeo;
+		}
 		applyPatternMatching(fovGray, results1, 0, std::max(1, param.roi1Rows) - 1, param.roi1Columns, param, t1, out.overlay);
 
 		//every detected line goes into the displayed text (the overlay draws them all,

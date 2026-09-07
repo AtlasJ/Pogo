@@ -107,7 +107,8 @@ private:
 	};
 	QPointF ocrToFov(const QPointF& pt, const OcrRoiTransform& t) const;
 	QVector<AlgoOcrBox> runOcrOnRoi(const cv::Mat& fovBgr, const QRectF& roiGeo, int rows, int cols,
-		const AlgoOcrParams& param, OcrRoiTransform& transform, QVector<AlgoOverlayItem>& overlay);
+		const AlgoOcrParams& param, OcrRoiTransform& transform, QVector<AlgoOverlayItem>& overlay,
+		QImage* srImage = nullptr);
 	void applyPatternMatching(const cv::Mat& fovGray, QVector<AlgoOcrBox>& results,
 		int startIdx, int endIdx, int columnsOverride, const AlgoOcrParams& param,
 		const OcrRoiTransform& transform, QVector<AlgoOverlayItem>& overlay);

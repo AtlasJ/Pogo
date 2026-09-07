@@ -18586,6 +18586,16 @@ Stop SR Management Tool services to free port 21.</string>
                                    </widget>
                                   </item>
 <item>
+                                   <widget class="QCheckBox" name="checkBox_algoOcrSR">
+                                    <property name="toolTip">
+                                     <string>Super-resolve small OCR crops (4x Real-ESRGAN in the Paddle server) before recognition. The enhanced image is shown in the FOV after a run.</string>
+                                    </property>
+                                    <property name="text">
+                                     <string>Super Resolution</string>
+                                    </property>
+                                   </widget>
+                                  </item>
+<item>
                                    <spacer name="hs_hl_algoOcrOpt1">
                                     <property name="orientation">
                                      <enum>Qt::Horizontal</enum>

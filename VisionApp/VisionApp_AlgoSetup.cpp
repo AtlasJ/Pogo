@@ -15,6 +15,7 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QPainter>
 #include <QTableWidgetItem>
 #include <QHeaderView>
 #include <QPushButton>
@@ -394,6 +395,17 @@ void VisionApp::initAlgoSetupPage()
 		ui.lineEdit_algoOcr1Result->setText(out.roi1Key.isEmpty() ? out.roi1Text : out.roi1Key + "   (" + out.roi1Text + ")");
 		ui.label_algoOcrTime->setText(QStringLiteral("%1 ms").arg(out.elapsedMs));
 		ui.label_algoStatus->setText(out.ok ? out.message : "Failed: " + out.message);
+
+		//super-resolution preview: paint the enhanced crop over its ROI in the display.
+		//_imageFOV itself stays raw, so every run starts from the original image.
+		if (!out.srImage.isNull() && !_imageFOV.isNull() && isPage(UIPage::ALGO_SETUP)) {
+			QImage disp = _imageFOV.convertToFormat(QImage::Format_RGB32);
+			QPainter p(&disp);
+			p.drawImage(out.srRect, out.srImage);
+			p.end();
+			displayFOV(disp);
+		}
+
 		renderAlgoOverlay(out.overlay);
 	});
 
@@ -542,6 +554,7 @@ void VisionApp::captureAlgoParamsFromUI()
 	ocr.roi1Columns = ui.spin_algoOcrRoi1Cols->value();
 	ocr.removeSpecialChars = ui.checkBox_algoOcrRemoveSpecial->isChecked();
 	ocr.paddleOcrEnabled = ui.checkBox_algoOcrPaddle->isChecked();
+	ocr.superResolution = ui.checkBox_algoOcrSR->isChecked();
 	if (_algoOcrRoi1Box) ocr.roi1Geo = _algoOcrRoi1Box->getGeometry();
 	mgr.setOcrParams(ocr);
 
@@ -607,12 +620,14 @@ void VisionApp::refreshAlgoSetupPage()
 		QSignalBlocker b4(ui.spin_algoOcrRoi1Cols);
 		QSignalBlocker b9(ui.checkBox_algoOcrRemoveSpecial);
 		QSignalBlocker b10(ui.checkBox_algoOcrPaddle);
+		QSignalBlocker b11(ui.checkBox_algoOcrSR);
 
 		ui.comboBox_algoOcrOrientation->setCurrentText(QString::number(ocr.orientation));
 		ui.spin_algoOcrRoi1Rows->setValue(ocr.roi1Rows);
 		ui.spin_algoOcrRoi1Cols->setValue(ocr.roi1Columns);
 		ui.checkBox_algoOcrRemoveSpecial->setChecked(ocr.removeSpecialChars);
 		ui.checkBox_algoOcrPaddle->setChecked(ocr.paddleOcrEnabled);
+		ui.checkBox_algoOcrSR->setChecked(ocr.superResolution);
 	}
 	if (!ocr.roi1Geo.isEmpty() && _algoOcrRoi1Box) _algoOcrRoi1Box->setGeometry(ocr.roi1Geo);
 

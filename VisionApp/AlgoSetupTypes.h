@@ -120,6 +120,7 @@ struct AlgoOcrParams {
 	int roi1Columns = 0;          //0 = use PaddleOCR charCount; >0 = fixed column split
 	bool removeSpecialChars = false;
 	bool paddleOcrEnabled = true; //false = rows/columns grid + pattern matching only
+	bool superResolution = false; //4x Real-ESRGAN on small crops (runs in the Paddle server)
 
 	//geometries captured from the UI drag boxes at run time (FOV px)
 	QRectF roi1Geo;
@@ -132,6 +133,8 @@ struct AlgoOcrOutput {
 	QString roi1Key;   //first token per row, joined (IM430's m_inspBar.start)
 	qint64 elapsedMs = 0;
 	QVector<AlgoOverlayItem> overlay;
+	QImage srImage; //super-resolved crop sized back to the ROI, for display (null = SR did not run)
+	QRectF srRect;  //where srImage belongs in the FOV
 };
 
 // ── Locator (QAlgoLocator style) ────────────────────────────────────────────

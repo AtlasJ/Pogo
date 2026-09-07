@@ -41,7 +41,10 @@ public:
 
 	//blocking OCR round trip. Returns false on transport error/timeout;
 	//an empty result list with true is a valid "nothing read".
-	bool runOcr(const cv::Mat& imageBgr, QVector<AlgoOcrBox>& results, int timeoutMs = 30000);
+	//superRes asks the server to 4x Real-ESRGAN small crops before OCR; when it ran,
+	//the enhanced image comes back in *srImage (left null otherwise)
+	bool runOcr(const cv::Mat& imageBgr, QVector<AlgoOcrBox>& results, int timeoutMs = 30000,
+		bool superRes = false, QImage* srImage = nullptr);
 
 	bool isReady() const { return m_initialized; }
 	void shutdown();

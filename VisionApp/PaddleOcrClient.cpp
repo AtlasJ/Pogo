@@ -104,12 +104,18 @@ bool PaddleOcrClient::ensureStarted(int timeoutMs)
 	return false;
 }
 
-bool PaddleOcrClient::runOcr(const cv::Mat& imageBgr, QVector<AlgoOcrBox>& results, int timeoutMs)
+bool PaddleOcrClient::runOcr(const cv::Mat& imageBgr, QVector<AlgoOcrBox>& results, int timeoutMs,
+	bool superRes, QImage* srImage)
 {
 	results.clear();
+	if (srImage) *srImage = QImage();
 
 	if (imageBgr.empty()) return false;
 	if (!ensureStarted()) return false;
+
+	//tell the server whether to super-resolve this frame (stateless: sent every time,
+	//so a server restart or reconnect can never leave the flag stale)
+	sendPacket(MSG_TEXT, superRes ? QByteArrayLiteral("SR:1") : QByteArrayLiteral("SR:0"));
 
 	//encode as PNG (lossless — OCR quality over bandwidth on loopback)
 	std::vector<uchar> encoded;
@@ -135,6 +141,14 @@ bool PaddleOcrClient::runOcr(const cv::Mat& imageBgr, QVector<AlgoOcrBox>& resul
 			return false;
 		}
 
+		if (type == MSG_FRAME) {
+			//the super-resolved crop, for display
+			if (srImage) {
+				srImage->loadFromData(payload);
+				ct::logger::info("[PaddleOCR] SR image received: %dx%d", srImage->width(), srImage->height());
+			}
+			continue;
+		}
 		if (type != MSG_TEXT) continue;
 		const QString text = QString::fromUtf8(payload);
 
