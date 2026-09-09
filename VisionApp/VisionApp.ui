@@ -22648,7 +22648,37 @@ Selecting this section shows the image with no ROIs.</string>
                                  </item>
                                  <item>
                                   <property name="text">
+                                   <string>2D Relief (Shaded)</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
                                    <string>3D Surface View</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Mesh View</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Shaded (Smooth)</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Wireframe</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Point Cloud</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Textured (Intensity)</string>
                                   </property>
                                  </item>
                                 </widget>
