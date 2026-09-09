@@ -92,6 +92,32 @@ static H3RoiOwner h3SectionOwner(int section)
 	return H3RoiOwner::None;
 }
 
+/*
+* Is the page showing a 3D projection rather than a flat map?
+*
+* The two 3D modes differ ONLY in how the render is painted. Everything else about them
+* is identical: no ROI drag boxes, no overlays, and drag-to-spin. Six separate places
+* used to compare against Surface3D by name; ask this instead, so adding a third 3D
+* style is one enum value and not another six-way edit that one site will be missed in.
+*/
+static bool h3IsSurfaceMode(AlgoH3Display m)
+{
+	return algoH3IsSurfaceDisplay(m);
+}
+
+//which paint style each 3D mode asks the one shared renderer for
+static AlgoH3SurfaceStyle h3StyleFor(AlgoH3Display m)
+{
+	switch (m) {
+	case AlgoH3Display::Mesh3D:       return AlgoH3SurfaceStyle::ShadedMesh;
+	case AlgoH3Display::Smooth3D:     return AlgoH3SurfaceStyle::SmoothShaded;
+	case AlgoH3Display::Wireframe3D:  return AlgoH3SurfaceStyle::Wireframe;
+	case AlgoH3Display::PointCloud3D: return AlgoH3SurfaceStyle::PointCloud;
+	case AlgoH3Display::Textured3D:   return AlgoH3SurfaceStyle::Textured;
+	default:                          return AlgoH3SurfaceStyle::Filled;
+	}
+}
+
 //what an ROI's label reads, shared by the measurement sections and the overall section so
 //the same measurement never appears formatted two different ways
 static QString h3RoiLabelText(const AlgoH3RoiResult& r)
@@ -913,7 +939,7 @@ void VisionApp::updateAlgoH3RoiVisibility()
 		&& (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3);
 
 	//the 3D view is a projection - an ROI dragged on it would not mean anything
-	const bool flatView = (algoH3DisplayMode() != AlgoH3Display::Surface3D);
+	const bool flatView = !h3IsSurfaceMode(algoH3DisplayMode());
 	const bool cropOnScreen = onPage && flatView && (_algoH3BoxCropW > 0);
 	const int section = algoH3CurrentSection();
 
@@ -943,7 +969,7 @@ AlgoH3Display VisionApp::algoH3DisplayMode() const
 
 	const int i = ui.comboBox_algoH3Display->currentIndex();
 	if (i < static_cast<int>(AlgoH3Display::HeightColor)
-		|| i > static_cast<int>(AlgoH3Display::Surface3D)) {
+		|| i >= kAlgoH3DisplayCount) {
 		return AlgoH3Display::HeightColor;
 	}
 	return static_cast<AlgoH3Display>(i);
@@ -957,19 +983,35 @@ void VisionApp::updateAlgoH3Display()
 	auto& mgr = AlgoManager::instance();
 	const int section = algoH3CurrentSection();
 
-	//sections 0 and 1 look at the raw map; 2 onwards look at the filtered one; 3 onwards
-	//look at the straightened crop - but only once there actually is one
-	const bool preprocessed = (section >= SEC_SEG);
+	//section 0 looks at the raw map; 1 onwards look at the FILTERED one - the preprocessing
+	//section is where the filter and kernel are chosen, so it is the one place the cleaned
+	//result has to be visible to judge them; 3 onwards look at the straightened crop.
+	//Each only takes effect once that map exists: heightForDisplay falls back to the raw
+	//map while m_work is empty, so nothing special is needed before the stage has run.
+	//KEEP IN SYNC with updateAlgoH3Surface() - the 2D and 3D views must show the same map.
+	const bool preprocessed = (section >= SEC_PREPROCESS);
 	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
 
 	const AlgoH3Display mode = algoH3DisplayMode();
-	if (mode != AlgoH3Display::Surface3D) _algoH3Dragging = false;
+	if (!h3IsSurfaceMode(mode)) _algoH3Dragging = false;
 
 	QImage img;
 	switch (mode) {
+	//every 3D mode is the same projection; only the paint style differs
 	case AlgoH3Display::Surface3D:
+	case AlgoH3Display::Mesh3D:
+	case AlgoH3Display::Smooth3D:
+	case AlgoH3Display::Wireframe3D:
+	case AlgoH3Display::PointCloud3D:
+	case AlgoH3Display::Textured3D:
 		img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
-			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas);
+			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
+		break;
+
+	//lit but flat, and rendered at full resolution - so unlike the 3D views this one is
+	//still a map: the ROI boxes and overlays sit on it exactly where they belong
+	case AlgoH3Display::Relief2D:
+		img = mgr.height3Relief(preprocessed, segmented, _algoH3ZExaggeration, true);
 		break;
 
 	case AlgoH3Display::Intensity:
@@ -1121,18 +1163,20 @@ void VisionApp::appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const
 //re-render just the 3D surface, throttled, so a drag stays smooth without queueing frames
 void VisionApp::updateAlgoH3Surface()
 {
-	if (algoH3DisplayMode() != AlgoH3Display::Surface3D) return;
+	const AlgoH3Display mode = algoH3DisplayMode();
+	if (!h3IsSurfaceMode(mode)) return;
 
 	if (_algoH3DragClock.isValid() && _algoH3DragClock.elapsed() < 40) return;
 	_algoH3DragClock.restart();
 
 	auto& mgr = AlgoManager::instance();
 	const int section = algoH3CurrentSection();
-	const bool preprocessed = (section >= SEC_SEG);
+	//KEEP IN SYNC with updateAlgoH3Display() - same rule, or 2D and 3D disagree
+	const bool preprocessed = (section >= SEC_PREPROCESS);
 	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
 
 	const QImage img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
-		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas);
+		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
 	if (img.isNull()) return;
 
 	//the canvas size never changes, so the pixmap can be swapped in place - going through
@@ -1152,7 +1196,7 @@ bool VisionApp::algoH3HandleViewMouse(QObject* obj, QEvent* ev)
 	if (!ui.graphicsViewFOV || obj != ui.graphicsViewFOV->viewport()) return false;
 	if (!isPage(UIPage::ALGO_SETUP)) return false;
 	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return false;
-	if (algoH3DisplayMode() != AlgoH3Display::Surface3D) { _algoH3Dragging = false; return false; }
+	if (!h3IsSurfaceMode(algoH3DisplayMode())) { _algoH3Dragging = false; return false; }
 
 	switch (ev->type()) {
 	case QEvent::MouseButtonPress: {

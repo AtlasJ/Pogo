@@ -109,7 +109,10 @@ public:
 	//display renders, taken under the same lock the worker writes under
 	QImage height3Image(bool intensity, bool preprocessed, bool segmented, bool colorMapped) const;
 	QImage height3Surface(bool preprocessed, bool segmented,
-		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize) const;
+		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
+		AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled) const;
+	QImage height3Relief(bool preprocessed, bool segmented,
+		double zExaggeration, bool colorMapped) const;
 
 	//── runs (queued to the worker thread; results come by signal) ──
 	void runOcr(const QImage& fov);

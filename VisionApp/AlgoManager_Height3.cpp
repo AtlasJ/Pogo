@@ -313,15 +313,31 @@ QImage AlgoManager::height3Image(bool intensity, bool preprocessed, bool segment
 }
 
 QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
-	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize) const
+	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
+	AlgoH3SurfaceStyle style) const
 {
 	const AlgoHeight3Params p = height3Params();
 
 	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
 	if (!lock.owns_lock()) return QImage();
 
+	//the texture has to come from the SAME segmentation state as the geometry, or a
+	//straightened crop would be painted with the uncropped map and slide off the part
 	return algoH3RenderSurface3D(m_height3.heightForDisplay(preprocessed, segmented),
-		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize);
+		m_height3.intensityForDisplay(segmented),
+		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style);
+}
+
+QImage AlgoManager::height3Relief(bool preprocessed, bool segmented,
+	double zExaggeration, bool colorMapped) const
+{
+	const AlgoHeight3Params p = height3Params();
+
+	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
+	if (!lock.owns_lock()) return QImage();
+
+	return algoH3RenderRelief2D(m_height3.heightForDisplay(preprocessed, segmented),
+		p.minValidRaw, p.maxValidRaw, zExaggeration, colorMapped);
 }
 
 // =============================================================================

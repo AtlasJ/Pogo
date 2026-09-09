@@ -97,6 +97,25 @@ QImage algoH3GrayToQImage(const cv::Mat& gray8);
 * drag to spin, not a colour ramp of a flat image. Deliberately CPU-only: the app has no
 * OpenGL surface anywhere else, and a viewing aid is not worth a GL context on a machine
 * PC. The grid is downsampled to keep a drag interactive.
+*
+* Two styles, one code path (see AlgoH3SurfaceStyle): Filled is the original flat-quad
+* view; ShadedMesh lights each facet by its own normal and draws the wireframe, which is
+* what actually conveys shape - height-only colouring cannot, because two facets at the
+* same height but different slopes come out the same colour.
 */
-QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxValidRaw,
-	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize);
+QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
+	int minValidRaw, int maxValidRaw,
+	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
+	AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled);
+
+/*
+* Top-down relief (hillshade): the surface lit by a raking light, at FULL resolution.
+*
+* The 3D projection has to downsample to stay draggable, which throws away exactly the
+* fine detail that matters on a pin top. This keeps every pixel and spends the whole
+* image on lighting instead of on perspective - so it resolves detail no 3D view can,
+* at the cost of not showing the profile. Output is the same size as the input map, so
+* ROI boxes and overlays line up on it exactly as they do on the flat height views.
+*/
+QImage algoH3RenderRelief2D(const cv::Mat& height16, int minValidRaw, int maxValidRaw,
+	double zExaggeration, bool colorMapped);

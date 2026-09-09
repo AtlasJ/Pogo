@@ -48,7 +48,35 @@ enum class AlgoH3Display {
 	HeightColor = 0,
 	HeightGray,
 	Intensity,
-	Surface3D
+	Relief2D,      //top-down, but lit - full resolution, and ROIs still line up on it
+	Surface3D,
+	Mesh3D,
+	Smooth3D,
+	Wireframe3D,
+	PointCloud3D,
+	Textured3D
+};
+constexpr int kAlgoH3DisplayCount = 10;
+
+//is this mode a spinnable 3D projection? Relief2D is lit but flat, so it is NOT one.
+inline bool algoH3IsSurfaceDisplay(AlgoH3Display m)
+{
+	return m >= AlgoH3Display::Surface3D && m <= AlgoH3Display::Textured3D;
+}
+
+/*
+* How algoH3RenderSurface3D paints the projected mesh. Every style shares the whole
+* projection, downsample, quad-build and painter's-algorithm path - they differ only in
+* grid density and in how a facet is drawn - so this is one renderer with a style, not
+* six renderers to keep in step.
+*/
+enum class AlgoH3SurfaceStyle {
+	Filled = 0,   //flat quads coloured by height alone: the original 3D Surface view
+	ShadedMesh,   //diffuse lighting from each facet's normal, plus a visible wireframe
+	SmoothShaded, //the same lighting on a much finer grid, no wireframe: reads as solid
+	Wireframe,    //hidden-line lattice: stroked in colour, filled with the background
+	PointCloud,   //one dot per sample - the data as the profiler actually measured it
+	Textured      //lit facets coloured by the INTENSITY map instead of by height
 };
 
 //order matches comboBox_algoH3PreprocessMethod and stackedWidget_algoH3Preprocess
