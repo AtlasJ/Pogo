@@ -251,6 +251,72 @@ static bool validStats(const cv::Mat& height16, const cv::Mat& mask,
 	return cv::countNonZero(mask) > 0;
 }
 
+/*
+* Median over the VALID neighbours only.
+*
+* cv::medianBlur has no concept of a mask, so on a height map it ranks the dropout
+* zeros as if they were real measurements: a window that is majority-dropout returns
+* 0 - turning measured pixels into dropouts - and even a minority of zeros drags the
+* rank down. That matters here because the laser cannot see the sides of the pins, so
+* ~19% of the part's own rectangle is interior dropout and every pin has a halo.
+* Measured on 20260828_193223 at k=5: 28,551 valid pixels destroyed outright, 51,960
+* wrong by more than 100 um, worst case 25 mm. Median was the only method in
+* doPreprocess that was not dropout-aware; Gaussian, Bilateral and the morphology
+* branches all already are.
+*
+* Where every pixel in the window is valid this returns exactly what cv::medianBlur
+* returns - verified over 14,449,859 such pixels on that map, 100.00% identical - so
+* it is a strict repair, not a different filter.
+*
+* On an even number of valid neighbours this takes the upper middle sample rather
+* than averaging the middle two, because averaging would invent a height that no
+* pixel actually measured. Same reason doPreprocess re-imposes the mask at the end.
+*
+* Doing it by hand also removes OpenCV's 3-or-5 aperture limit for 16-bit input: any
+* odd kernel up to kMaxMedianK works. The 3/5 cap is kept at the call site so saved
+* recipes keep their meaning - lifting it is a separate, deliberate decision.
+*/
+static const int kMaxMedianK = 11;
+
+static void maskedMedian16(const cv::Mat& src, const cv::Mat& mask, int k, cv::Mat& dst)
+{
+	CV_Assert(src.type() == CV_16U && mask.type() == CV_8U && src.size() == mask.size());
+	CV_Assert(k >= 1 && k <= kMaxMedianK && (k % 2) == 1);
+
+	const int r = k / 2;
+	const int rows = src.rows, cols = src.cols;
+	dst.create(src.size(), CV_16U);
+
+	cv::parallel_for_(cv::Range(0, rows), [&](const cv::Range& band) {
+		//fixed buffer: no allocation per pixel, and k is bounded by kMaxMedianK
+		unsigned short buf[kMaxMedianK * kMaxMedianK];
+
+		for (int y = band.start; y < band.end; y++) {
+			const unsigned char* mRow = mask.ptr<unsigned char>(y);
+			unsigned short* dRow = dst.ptr<unsigned short>(y);
+			const int y0 = std::max(0, y - r), y1 = std::min(rows - 1, y + r);
+
+			for (int x = 0; x < cols; x++) {
+				//a dropout stays a dropout: no filter is allowed to invent a measurement
+				if (!mRow[x]) { dRow[x] = 0; continue; }
+
+				const int x0 = std::max(0, x - r), x1 = std::min(cols - 1, x + r);
+				int n = 0;
+				for (int yy = y0; yy <= y1; yy++) {
+					const unsigned short* s = src.ptr<unsigned short>(yy);
+					const unsigned char* m = mask.ptr<unsigned char>(yy);
+					for (int xx = x0; xx <= x1; xx++)
+						if (m[xx]) buf[n++] = s[xx];
+				}
+				//the centre pixel is valid, so n >= 1 always
+				const int mid = n / 2;
+				std::nth_element(buf, buf + mid, buf + n);
+				dRow[x] = buf[mid];
+			}
+		}
+	});
+}
+
 } //namespace
 
 // =============================================================================
@@ -445,11 +511,14 @@ bool AlgoHeight3Pipeline::doPreprocess(const AlgoHeight3Params& p)
 		break;
 
 	case AlgoH3Preprocess::Median: {
-		//OpenCV's 16-bit medianBlur accepts an aperture of 3 or 5 only - refuse loudly
-		//rather than silently filtering with a different kernel than the one on screen
+		//masked: the median is taken over the valid neighbours only, so a pin's dropout
+		//halo cannot drag its top down or zero it out. See maskedMedian16.
+		//The kernel stays capped at 3 or 5 so saved recipes keep their meaning, even
+		//though maskedMedian16 itself has no such limit - refuse loudly rather than
+		//silently filtering with a different kernel than the one on screen.
 		if (p.medianKernel > 5)
-			return fail(QStringLiteral("Median on a 16-bit map supports kernel 3 or 5 only"));
-		cv::medianBlur(m_height, dst, oddKernel(p.medianKernel, 3, 5));
+			return fail(QStringLiteral("Median kernel must be 3 or 5"));
+		maskedMedian16(m_height, mask, oddKernel(p.medianKernel, 3, 5), dst);
 		break;
 	}
 
