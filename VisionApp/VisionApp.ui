@@ -23149,13 +23149,29 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Seg">
                                  <item row="0" column="0">
+                                  <widget class="QLabel" name="label_algoH3SegMethod">
+                                   <property name="text">
+                                    <string>Segmentation Method</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="0" column="1">
+                                  <widget class="QComboBox" name="comboBox_algoH3SegMethod">
+                                   <item>
+                                    <property name="text">
+                                     <string>Largest Connected Region (Min-Area Rect)</string>
+                                    </property>
+                                   </item>
+                                  </widget>
+                                 </item>
+                                 <item row="1" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableWidthCheck">
                                    <property name="text">
                                     <string>Enable Width Check (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="0" column="1">
+                                 <item row="1" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegWidth">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinWidthUm">
@@ -23192,14 +23208,14 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="1" column="0">
+                                 <item row="2" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableHeightCheck">
                                    <property name="text">
                                     <string>Enable Height Check (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="1" column="1">
+                                 <item row="2" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegHeight">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinHeightUm">
@@ -23236,14 +23252,14 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="2" column="0">
+                                 <item row="3" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableAngleCheck">
                                    <property name="text">
                                     <string>Enable Angle Check (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="2" column="1">
+                                 <item row="3" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegAngle">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinAngleDeg">
@@ -23280,91 +23296,91 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="3" column="0">
+                                 <item row="4" column="0">
                                   <widget class="QToolButton" name="toolButton_algoH3SegRun">
                                    <property name="text">
                                     <string>Run Segmentation</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="0">
+                                 <item row="5" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredWidthUm">
                                    <property name="text">
                                     <string>Measured Width (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="1">
+                                 <item row="5" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredWidthUm">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="5" column="0">
+                                 <item row="6" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredHeightUm">
                                    <property name="text">
                                     <string>Measured Height (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="5" column="1">
+                                 <item row="6" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredHeightUm">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="6" column="0">
+                                 <item row="7" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredAngleDeg">
                                    <property name="text">
                                     <string>Measured Angle (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="6" column="1">
+                                 <item row="7" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredAngleDeg">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="0">
+                                 <item row="8" column="0">
                                   <widget class="QLabel" name="label_algoH3SegResult">
                                    <property name="text">
                                     <string>Result (Pass/Fail)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="1">
+                                 <item row="8" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegResult">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="0">
+                                 <item row="9" column="0">
                                   <widget class="QLabel" name="label_algoH3SegFailReason">
                                    <property name="text">
                                     <string>Fail Reason</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="1">
+                                 <item row="9" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegFailReason">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="9" column="0">
+                                 <item row="10" column="0">
                                   <widget class="QLabel" name="label_algoH3SegTimeMs">
                                    <property name="text">
                                     <string>Time Taken (ms)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="9" column="1">
+                                 <item row="10" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegTimeMs">
                                    <property name="readOnly">
                                     <bool>true</bool>
