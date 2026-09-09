@@ -34,6 +34,9 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
+#include <QScrollArea>
 #include <QSpinBox>
 #include <QTableWidgetItem>
 #include <QToolButton>
@@ -155,7 +158,13 @@ static void h3ShowStage(QLineEdit* result, QLineEdit* reason, QLineEdit* time,
 	const AlgoH3StageResult& s)
 {
 	h3ShowVerdict(result, s.ran, s.pass);
-	if (reason) reason->setText(s.ran ? s.failReason : QString());
+	if (reason) {
+		//a stage that passed clears failReason, so the note is the only thing left to show -
+		//and a part cropped to fit the canvas has to be visible, not just logged
+		QString text = s.failReason;
+		if (text.isEmpty() && !s.note.isEmpty()) text = QStringLiteral("Note: ") + s.note;
+		reason->setText(s.ran ? text : QString());
+	}
 	if (time) time->setText(s.ran ? QString::number(s.elapsedMs) : QString());
 }
 
@@ -163,6 +172,18 @@ static void h3ShowNumber(QLineEdit* le, bool have, double v, int decimals)
 {
 	if (!le) return;
 	le->setText(have ? QString::number(v, 'f', decimals) : QStringLiteral("-"));
+}
+
+//a small filled square, so the type combo says which colour a type is without being opened
+static QIcon h3ColorIcon(const QColor& c)
+{
+	QPixmap pm(14, 14);
+	pm.fill(c);
+	QPainter pr(&pm);
+	pr.setPen(QColor(80, 80, 80));
+	pr.drawRect(0, 0, 13, 13);
+	pr.end();
+	return QIcon(pm);
 }
 
 } //namespace
@@ -344,14 +365,71 @@ void VisionApp::initAlgoHeight3Page()
 		});
 
 	// ── section 5: ROI types and ROIs ──
+
+	/*
+	* The per-type method list is built from algoH3MethodName() rather than typed into the
+	* .ui, so it can never drift from the AlgoH3Method enum - the index IS the Method ID,
+	* which is the number stored in the recipe.
+	*/
+	for (int m = 0; m < kAlgoH3MethodCount; m++)
+		ui.comboBox_algoH3RoiTypeMethod->addItem(
+			QStringLiteral("%1 - %2").arg(m).arg(algoH3MethodName(m)));
+
+	//switching type commits the one being left BEFORE loading the new one - capture keys
+	//off _algoH3TypeIndex, which still points at the outgoing type at this moment
+	connect(ui.comboBox_algoH3RoiType, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) {
+			if (_algoH3Updating) return;
+			captureAlgoH3ParamsFromUI();
+			loadAlgoH3TypeFields();
+		});
+
+	connect(ui.toolButton_algoH3RoiTypeColor, &QToolButton::clicked, this, [=]() {
+		if (_algoH3TypeIndex < 0) return;
+		const QColor picked = QColorDialog::getColor(algoH3SelectedTypeColor(), this,
+			"ROI Type Colour");
+		if (!picked.isValid()) return;
+
+		const QString typeName = ui.comboBox_algoH3RoiType->currentText();
+		ui.toolButton_algoH3RoiTypeColor->setProperty(kH3ColorProp, picked);
+		ui.toolButton_algoH3RoiTypeColor->setStyleSheet(QStringLiteral(
+			"QToolButton { background:%1; border:1px solid #777; }").arg(picked.name()));
+		//and the swatch in the list, so the combo still tells the truth when it is closed
+		ui.comboBox_algoH3RoiType->setItemIcon(
+			ui.comboBox_algoH3RoiType->currentIndex(), h3ColorIcon(picked));
+
+		//recolour this type's ROIs immediately - the colour is how the operator tells one
+		//type from another on the image
+		for (auto* b : _algoH3RoiBoxes) {
+			if (!b || b->getTag() != typeName) continue;
+			b->setBorderColor(picked);
+			b->update();
+		}
+		algoSettingsTouched();
+	});
+
+	//the three value widgets belong to the SELECTED type, so an edit is a recipe change
+	connect(ui.doubleSpinBox_algoH3RoiTypeMinUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=](double) {
+			if (!_algoH3Updating) algoSettingsTouched();
+		});
+	connect(ui.doubleSpinBox_algoH3RoiTypeMaxUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=](double) {
+			if (!_algoH3Updating) algoSettingsTouched();
+		});
+	connect(ui.comboBox_algoH3RoiTypeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) {
+			if (!_algoH3Updating) algoSettingsTouched();
+		});
+
 	connect(ui.toolButton_algoH3RoiAddType, &QToolButton::clicked, this, [=]() {
 		bool ok = false;
 		const QString name = QInputDialog::getText(this, "Add ROI Type",
 			"Type name:", QLineEdit::Normal, QString(), &ok).trimmed();
 		if (!ok || name.isEmpty()) return;
 
-		//capture first: the table's cell widgets are the truth for the existing types,
-		//and appending to a stale copy would throw away whatever was just edited
+		//capture first: the per-type widgets are the truth for the type on screen, and
+		//appending to a stale copy would throw away whatever was just edited
 		captureAlgoH3ParamsFromUI();
 		AlgoHeight3Params p = AlgoManager::instance().height3Params();
 
@@ -371,19 +449,24 @@ void VisionApp::initAlgoHeight3Page()
 		p.roiTypes.append(t);
 		AlgoManager::instance().setHeight3Params(p);
 
-		refreshAlgoH3TypeTable();
-		ui.tableWidget_algoH3RoiTypes->selectRow(p.roiTypes.size() - 1);
+		refreshAlgoH3TypeList();
+		//select what was just added, by name - the list is rebuilt, so an index would be
+		//a guess about ordering that refreshAlgoH3TypeList does not promise
+		{
+			QSignalBlocker b(ui.comboBox_algoH3RoiType);
+			ui.comboBox_algoH3RoiType->setCurrentIndex(
+				ui.comboBox_algoH3RoiType->findText(name));
+		}
+		loadAlgoH3TypeFields();
 		algoSettingsTouched();
 	});
 
 	connect(ui.toolButton_algoH3RoiDeleteType, &QToolButton::clicked, this, [=]() {
-		auto* tbl = ui.tableWidget_algoH3RoiTypes;
-		const int row = tbl->currentRow();
-		if (row < 0 || row >= tbl->rowCount() || !tbl->item(row, 0)) {
-			showMsg("Select an ROI type row first.");
+		const QString name = ui.comboBox_algoH3RoiType->currentText();
+		if (name.isEmpty()) {
+			showMsg("Select an ROI type first.");
 			return;
 		}
-		const QString name = tbl->item(row, 0)->text();
 
 		//count the ROIs that would go with it - deleting a type has to take its ROIs too,
 		//otherwise the recipe would carry ROIs with no criteria and no method
@@ -414,12 +497,13 @@ void VisionApp::initAlgoHeight3Page()
 			if (p.rois[i].typeName == name) p.rois.remove(i);
 		AlgoManager::instance().setHeight3Params(p);
 
-		refreshAlgoH3TypeTable();
+		refreshAlgoH3TypeList();
 		//ROI ids shift when one is removed, so the boxes have to be renamed
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++)
 			_algoH3RoiBoxes[i]->setName(QStringLiteral("R%1 %2").arg(i + 1).arg(_algoH3RoiBoxes[i]->getTag()));
 
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+		updateAlgoH3TypeStatus();
 		_algoH3Output.roiResults.clear();
 		refreshAlgoH3ResultSection();
 		algoSettingsTouched();
@@ -430,21 +514,14 @@ void VisionApp::initAlgoHeight3Page()
 			showMsg("Run segmentation first - an ROI is positioned relative to the segmented part.");
 			return;
 		}
-		auto* tbl = ui.tableWidget_algoH3RoiTypes;
-		const int row = tbl->currentRow();
-		if (row < 0 || row >= tbl->rowCount() || !tbl->item(row, 0)) {
+		const QString typeName = ui.comboBox_algoH3RoiType->currentText();
+		if (typeName.isEmpty()) {
 			//an ROI with no type would have no criteria and no method, so there is
 			//nothing sensible to do with it - require the type up front
-			showMsg("Select exactly one ROI type first - a new ROI is created with that type.");
+			showMsg("Add an ROI type first - a new ROI is created with the selected type.");
 			return;
 		}
-
-		const QString typeName = tbl->item(row, 0)->text();
-		QColor color(0, 200, 0);
-		if (auto* btn = qobject_cast<QToolButton*>(tbl->cellWidget(row, 1))) {
-			const QVariant v = btn->property(kH3ColorProp);
-			if (v.canConvert<QColor>()) color = v.value<QColor>();
-		}
+		const QColor color = algoH3SelectedTypeColor();
 
 		const int n = _algoH3RoiBoxes.size();
 		const QSize crop = AlgoManager::instance().height3CropSize();
@@ -455,6 +532,7 @@ void VisionApp::initAlgoHeight3Page()
 		_algoH3RoiBoxes.append(box);
 
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+		updateAlgoH3TypeStatus();
 		updateAlgoH3RoiVisibility();
 		algoSettingsTouched();
 	});
@@ -476,24 +554,19 @@ void VisionApp::initAlgoHeight3Page()
 			_algoH3RoiBoxes[i]->setName(QStringLiteral("R%1 %2").arg(i + 1).arg(_algoH3RoiBoxes[i]->getTag()));
 
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+		updateAlgoH3TypeStatus();
 		_algoH3Output.roiResults.clear();
 		refreshAlgoH3ResultSection();
 		algoSettingsTouched();
 	});
 
 	connect(ui.toolButton_algoH3RoiAssignType, &QToolButton::clicked, this, [=]() {
-		auto* tbl = ui.tableWidget_algoH3RoiTypes;
-		const int row = tbl->currentRow();
-		if (row < 0 || row >= tbl->rowCount() || !tbl->item(row, 0)) {
+		const QString typeName = ui.comboBox_algoH3RoiType->currentText();
+		if (typeName.isEmpty()) {
 			showMsg("Select the ROI type to assign to first.");
 			return;
 		}
-		const QString typeName = tbl->item(row, 0)->text();
-		QColor color(0, 200, 0);
-		if (auto* btn = qobject_cast<QToolButton*>(tbl->cellWidget(row, 1))) {
-			const QVariant v = btn->property(kH3ColorProp);
-			if (v.canConvert<QColor>()) color = v.value<QColor>();
-		}
+		const QColor color = algoH3SelectedTypeColor();
 
 		int changed = 0;
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
@@ -646,6 +719,12 @@ void VisionApp::configureAlgoH3Ranges()
 	setD(ui.doubleSpinBox_algoH3SegMinAngleDeg, -45.0, 45.0, 3);
 	setD(ui.doubleSpinBox_algoH3SegMaxAngleDeg, -45.0, 45.0, 3);
 
+	// ── section 5: the per-type criteria ──
+	setD(ui.doubleSpinBox_algoH3RoiTypeMinUm, -1000000.0, 1000000.0, 2);
+	setD(ui.doubleSpinBox_algoH3RoiTypeMaxUm, -1000000.0, 1000000.0, 2);
+	//an offset is a magnitude, so it starts at 0 rather than going negative
+	setD(ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm, 0.0, 1000000.0, 2);
+
 	// ── section 3 ──
 	setD(ui.doubleSpinBox_algoH3DatumMaxTiltDeg, 0.0, 90.0, 3);
 
@@ -728,6 +807,7 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 		_algoH3BoxCropH = 0;
 		ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(p.datumRois.size()));
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(p.rois.size()));
+		updateAlgoH3TypeStatus();
 		return;
 	}
 
@@ -756,6 +836,7 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 
 	ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(_algoH3DatumBoxes.size()));
 	ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+	updateAlgoH3TypeStatus();
 	updateAlgoH3RoiVisibility();
 }
 
@@ -910,6 +991,7 @@ void VisionApp::algoH3PasteRois()
 
 	ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(_algoH3DatumBoxes.size()));
 	ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+	updateAlgoH3TypeStatus();
 
 	/*
 	* VISIBILITY FIRST, THEN SELECTION, and the order is not cosmetic:
@@ -1303,96 +1385,122 @@ void VisionApp::updateAlgoH3Enables()
 // ROI type table
 // =============================================================================
 
-void VisionApp::refreshAlgoH3TypeTable()
+//the colour button's property is the single source both capture and Add ROI read, exactly
+//as the table's cell widget used to be
+QColor VisionApp::algoH3SelectedTypeColor() const
 {
-	auto* tbl = ui.tableWidget_algoH3RoiTypes;
-	if (!tbl) return;
+	const QVariant v = ui.toolButton_algoH3RoiTypeColor->property(kH3ColorProp);
+	return v.canConvert<QColor>() ? v.value<QColor>() : QColor(0, 200, 0);
+}
+
+int VisionApp::algoH3RoiCountForType(const QString& name) const
+{
+	//the boxes are the live truth while a crop is on screen; before segmentation there are
+	//no boxes at all and the recipe is all there is
+	if (_algoH3BoxCropW > 0) {
+		int n = 0;
+		for (auto* b : _algoH3RoiBoxes) if (b && b->getTag() == name) n++;
+		return n;
+	}
+	int n = 0;
+	for (const auto& r : AlgoManager::instance().height3Params().rois)
+		if (r.typeName == name) n++;
+	return n;
+}
+
+void VisionApp::updateAlgoH3TypeStatus()
+{
+	if (!ui.lineEdit_algoH3RoiTypeStatus) return;
+
+	const QString name = ui.comboBox_algoH3RoiType->currentText();
+	ui.lineEdit_algoH3RoiTypeCount->setText(
+		name.isEmpty() ? QString() : QString::number(algoH3RoiCountForType(name)));
+
+	//say the next useful thing rather than a fixed caption - this line is the only place
+	//left to explain a section that no longer has a table to read
+	QString msg;
+	if (ui.comboBox_algoH3RoiType->count() == 0)
+		msg = QStringLiteral("Add an ROI type first - every ROI belongs to one.");
+	else if (!AlgoManager::instance().height3SegmentReady())
+		msg = QStringLiteral("Run segmentation before adding ROIs.");
+	else
+		msg = QStringLiteral("Add ROI creates one of '%1'. Select ROIs on the image to "
+			"re-assign, copy (Ctrl+C) or delete them.").arg(name);
+
+	ui.lineEdit_algoH3RoiTypeStatus->setText(msg);
+}
+
+void VisionApp::loadAlgoH3TypeFields()
+{
+	const AlgoHeight3Params p = AlgoManager::instance().height3Params();
+	const int i = ui.comboBox_algoH3RoiType->currentIndex();
+	_algoH3TypeIndex = (i >= 0 && i < p.roiTypes.size()) ? i : -1;
+
+	const bool have = (_algoH3TypeIndex >= 0);
+	ui.toolButton_algoH3RoiTypeColor->setEnabled(have);
+	ui.checkBox_algoH3RoiTypeEnableHeightCheck->setEnabled(have);
+	ui.doubleSpinBox_algoH3RoiTypeMinUm->setEnabled(have);
+	ui.doubleSpinBox_algoH3RoiTypeMaxUm->setEnabled(have);
+	ui.checkBox_algoH3RoiTypeEnableOffsetCheck->setEnabled(have);
+	ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->setEnabled(have);
+	ui.comboBox_algoH3RoiTypeMethod->setEnabled(have);
+
+	_algoH3Updating = true;
+	{
+		//every one of these is also wired to the generic auto-save sweep in
+		//VisionApp_AlgoSetup, which does not know about _algoH3Updating - blocking is what
+		//stops merely SHOWING a type from marking the recipe dirty
+		QSignalBlocker b1(ui.doubleSpinBox_algoH3RoiTypeMinUm);
+		QSignalBlocker b2(ui.doubleSpinBox_algoH3RoiTypeMaxUm);
+		QSignalBlocker b3(ui.comboBox_algoH3RoiTypeMethod);
+		QSignalBlocker b4(ui.checkBox_algoH3RoiTypeEnableHeightCheck);
+		QSignalBlocker b5(ui.checkBox_algoH3RoiTypeEnableOffsetCheck);
+		QSignalBlocker b6(ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm);
+
+		const AlgoH3RoiType t = have ? p.roiTypes[_algoH3TypeIndex] : AlgoH3RoiType();
+		ui.checkBox_algoH3RoiTypeEnableHeightCheck->setChecked(have && t.checkHeight);
+		ui.doubleSpinBox_algoH3RoiTypeMinUm->setValue(have ? t.minUm : 0.0);
+		ui.doubleSpinBox_algoH3RoiTypeMaxUm->setValue(have ? t.maxUm : 0.0);
+		ui.checkBox_algoH3RoiTypeEnableOffsetCheck->setChecked(have && t.checkOffset);
+		ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->setValue(have ? t.maxOffsetUm : 0.0);
+		ui.comboBox_algoH3RoiTypeMethod->setCurrentIndex(
+			(t.methodId >= 0 && t.methodId < ui.comboBox_algoH3RoiTypeMethod->count())
+			? t.methodId : 0);
+
+		//the colour lives on the button as a property, the way it used to live on the
+		//table's cell widget - it is the single source capture and Add ROI both read
+		ui.toolButton_algoH3RoiTypeColor->setProperty(kH3ColorProp, t.color);
+		ui.toolButton_algoH3RoiTypeColor->setStyleSheet(have
+			? QStringLiteral("QToolButton { background:%1; border:1px solid #777; }").arg(t.color.name())
+			: QString());
+	}
+	_algoH3Updating = false;
+
+	updateAlgoH3TypeStatus();
+}
+
+void VisionApp::refreshAlgoH3TypeList()
+{
+	auto* cb = ui.comboBox_algoH3RoiType;
+	if (!cb) return;
 
 	const AlgoHeight3Params p = AlgoManager::instance().height3Params();
 
+	//keep the selection by NAME, not by index: deleting a type shifts every index after it
+	const QString keep = cb->currentText();
+
 	_algoH3Updating = true;
-	const int keepRow = tbl->currentRow();
+	{
+		QSignalBlocker b(cb);
+		cb->clear();
+		for (const auto& t : p.roiTypes) cb->addItem(h3ColorIcon(t.color), t.name);
 
-	//setRowCount(0) first: QTableWidget owns the cell widgets, and this is what deletes
-	//the previous set. clearContents() would leave them behind, connected and orphaned.
-	tbl->setRowCount(0);
-	tbl->setColumnCount(5);
-	tbl->setHorizontalHeaderLabels({ "Type", "Color", "Min (um)", "Max (um)", "Method ID" });
-	tbl->verticalHeader()->setVisible(false);
-	tbl->setSelectionBehavior(QAbstractItemView::SelectRows);
-	tbl->setSelectionMode(QAbstractItemView::SingleSelection);
-	tbl->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-	for (int c = 1; c < 5; c++)
-		tbl->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
-
-	tbl->setRowCount(p.roiTypes.size());
-
-	for (int row = 0; row < p.roiTypes.size(); row++) {
-		const AlgoH3RoiType& t = p.roiTypes[row];
-
-		//the name is the key ROIs refer to, so it is fixed once the type is created
-		auto* nameItem = new QTableWidgetItem(t.name);
-		nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
-		tbl->setItem(row, 0, nameItem);
-
-		auto* colorBtn = new QToolButton();
-		colorBtn->setProperty(kH3ColorProp, t.color);
-		colorBtn->setMinimumWidth(48);
-		colorBtn->setToolTip(QStringLiteral("Click to choose the ROI colour for '%1'").arg(t.name));
-		colorBtn->setStyleSheet(QStringLiteral(
-			"QToolButton { background:%1; border:1px solid #777; }").arg(t.color.name()));
-		const QString typeName = t.name;
-		connect(colorBtn, &QToolButton::clicked, this, [this, colorBtn, typeName]() {
-			const QVariant v = colorBtn->property(kH3ColorProp);
-			const QColor current = v.canConvert<QColor>() ? v.value<QColor>() : QColor(0, 200, 0);
-			const QColor picked = QColorDialog::getColor(current, this, "ROI Type Colour");
-			if (!picked.isValid()) return;
-
-			colorBtn->setProperty(kH3ColorProp, picked);
-			colorBtn->setStyleSheet(QStringLiteral(
-				"QToolButton { background:%1; border:1px solid #777; }").arg(picked.name()));
-
-			//recolour the ROIs of this type immediately - the colour is how the operator
-			//tells one type from another on the image
-			for (auto* b : _algoH3RoiBoxes) {
-				if (!b || b->getTag() != typeName) continue;
-				b->setBorderColor(picked);
-				b->update();
-			}
-			algoSettingsTouched();
-		});
-		tbl->setCellWidget(row, 1, colorBtn);
-
-		auto makeDouble = [&](double value) {
-			auto* sb = new QDoubleSpinBox();
-			sb->setDecimals(2);
-			sb->setRange(-1000000.0, 1000000.0);
-			sb->setKeyboardTracking(false);
-			sb->setValue(value);
-			connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double) {
-				if (_algoH3Updating) return;
-				algoSettingsTouched();
-			});
-			return sb;
-		};
-
-		tbl->setCellWidget(row, 2, makeDouble(t.minUm));
-		tbl->setCellWidget(row, 3, makeDouble(t.maxUm));
-
-		auto* methodSpin = new QSpinBox();
-		methodSpin->setRange(0, kAlgoH3MethodCount - 1);
-		methodSpin->setKeyboardTracking(false);
-		methodSpin->setValue(t.methodId);
-		methodSpin->setToolTip(QStringLiteral("Method ID from the Height Measurement Settings section"));
-		connect(methodSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
-			if (_algoH3Updating) return;
-			algoSettingsTouched();
-		});
-		tbl->setCellWidget(row, 4, methodSpin);
+		const int at = cb->findText(keep);
+		cb->setCurrentIndex(at >= 0 ? at : (cb->count() > 0 ? 0 : -1));
 	}
-
-	if (keepRow >= 0 && keepRow < tbl->rowCount()) tbl->selectRow(keepRow);
 	_algoH3Updating = false;
+
+	loadAlgoH3TypeFields();
 }
 
 // =============================================================================
@@ -1445,26 +1553,24 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 	p.methodId = ui.comboBox_algoH3Method->currentIndex();
 	p.percentile = ui.doubleSpinBox_algoH3MethodPercentileValue->value();
 
-	// ── section 5: types come from the table's cell widgets ──
-	auto* tbl = ui.tableWidget_algoH3RoiTypes;
-	if (tbl && tbl->columnCount() >= 5) {
-		QVector<AlgoH3RoiType> types;
-		for (int row = 0; row < tbl->rowCount(); row++) {
-			auto* nameItem = tbl->item(row, 0);
-			if (!nameItem || nameItem->text().isEmpty()) continue;
-
-			AlgoH3RoiType t;
-			t.name = nameItem->text();
-			if (auto* btn = qobject_cast<QToolButton*>(tbl->cellWidget(row, 1))) {
-				const QVariant v = btn->property(kH3ColorProp);
-				if (v.canConvert<QColor>()) t.color = v.value<QColor>();
-			}
-			if (auto* sb = qobject_cast<QDoubleSpinBox*>(tbl->cellWidget(row, 2))) t.minUm = sb->value();
-			if (auto* sb = qobject_cast<QDoubleSpinBox*>(tbl->cellWidget(row, 3))) t.maxUm = sb->value();
-			if (auto* sb = qobject_cast<QSpinBox*>(tbl->cellWidget(row, 4))) t.methodId = sb->value();
-			types.append(t);
-		}
-		p.roiTypes = types;
+	/*
+	* ── section 5: only ONE type is on screen, so only that one can be written back ──
+	*
+	* The others are left exactly as the recipe holds them. This is why _algoH3TypeIndex
+	* exists rather than reading the combo: currentIndexChanged fires AFTER the index has
+	* moved, so a capture triggered by switching types has to write the type the widgets
+	* still hold - the OUTGOING one - or it would stamp its values onto the incoming type.
+	*/
+	if (_algoH3TypeIndex >= 0 && _algoH3TypeIndex < p.roiTypes.size()) {
+		AlgoH3RoiType& t = p.roiTypes[_algoH3TypeIndex];
+		//the name is the key ROIs refer to and is never editable, so it is not touched here
+		t.color = algoH3SelectedTypeColor();
+		t.checkHeight = ui.checkBox_algoH3RoiTypeEnableHeightCheck->isChecked();
+		t.minUm = ui.doubleSpinBox_algoH3RoiTypeMinUm->value();
+		t.maxUm = ui.doubleSpinBox_algoH3RoiTypeMaxUm->value();
+		t.checkOffset = ui.checkBox_algoH3RoiTypeEnableOffsetCheck->isChecked();
+		t.maxOffsetUm = ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->value();
+		t.methodId = ui.comboBox_algoH3RoiTypeMethod->currentIndex();
 	}
 
 	/*
@@ -1617,7 +1723,7 @@ void VisionApp::refreshAlgoHeight3Page()
 		ui.doubleSpinBox_algoH3OverallMaxRate->setValue(p.overallMaxRatePct);
 	}
 
-	refreshAlgoH3TypeTable();
+	refreshAlgoH3TypeList();
 	refreshAlgoH3RoiBoxes();
 
 	//a freshly opened recipe has run nothing yet

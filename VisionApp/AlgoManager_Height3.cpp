@@ -442,6 +442,16 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 			if (QColor::isValidColor(colorName)) t.color = QColor(colorName);
 			t.minUm = jsonHelper::getDouble(o, "min_um", 0.0);
 			t.maxUm = jsonHelper::getDouble(o, "max_um", 0.0);
+			/*
+			* MIGRATION: before this key existed, "max > min" was what turned the height
+			* criterion on. Defaulting a missing key to false would silently stop checking
+			* every type in every recipe already out there, so fall back to the old rule.
+			*/
+			t.checkHeight = o.contains("check_height")
+				? jsonHelper::getBool(o, "check_height", false)
+				: (t.maxUm > t.minUm);
+			t.checkOffset = jsonHelper::getBool(o, "check_offset", false);
+			t.maxOffsetUm = jsonHelper::getDouble(o, "max_offset_um", 0.0);
 			t.methodId = jsonHelper::getInteger(o, "method_id", 0);
 			p.roiTypes.append(t);
 		}
@@ -546,8 +556,11 @@ QJsonObject AlgoManager::height3ToJson() const
 		QJsonObject o;
 		o.insert("name", t.name);
 		o.insert("color", t.color.name(QColor::HexRgb));
+		o.insert("check_height", t.checkHeight);
 		o.insert("min_um", t.minUm);
 		o.insert("max_um", t.maxUm);
+		o.insert("check_offset", t.checkOffset);
+		o.insert("max_offset_um", t.maxOffsetUm);
 		o.insert("method_id", t.methodId);
 		types.append(o);
 	}

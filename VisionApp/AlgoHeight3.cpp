@@ -987,9 +987,8 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 
 		r.valid = true;
 
-		//max <= min means the type carries no criteria, so the ROI simply reports
-		const bool criteriaActive = (type.maxUm > type.minUm);
-		if (!criteriaActive) {
+		//an unchecked type simply reports its height without judging it
+		if (!type.checkHeight) {
 			r.pass = true;
 		}
 		else if (r.heightUm < type.minUm) {
@@ -1010,6 +1009,24 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 	m_measureDone = true;
 	res.pass = true;   //the stage itself succeeded; individual ROIs carry their own verdict
 	res.failReason.clear();
+
+	/*
+	* The XY offset criterion exists in the recipe but nothing measures an offset yet. Say so
+	* loudly: a check the operator has ticked and which quietly does nothing is the worst
+	* kind of dead setting, because the recipe claims a guarantee the machine is not giving.
+	* Remove this the moment doMeasure learns to compute an offset.
+	*/
+	{
+		QStringList pending;
+		for (const auto& t : p.roiTypes)
+			if (t.checkOffset) pending << t.name;
+		if (!pending.isEmpty()) {
+			res.note = QStringLiteral(
+				"XY offset check is enabled on %1 but offset measurement is not implemented "
+				"yet - that criterion is NOT being applied").arg(pending.join(", "));
+		}
+	}
+
 	res.elapsedMs = t.elapsed();
 	return true;
 }

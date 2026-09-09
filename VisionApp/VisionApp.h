@@ -828,8 +828,19 @@ private:
 	void updateAlgoH3Surface();        //re-render the 3D view only (used while dragging)
 	void updateAlgoH3RoiVisibility();  //which ROIs this section owns
 	void updateAlgoH3Enables();        //gate each Run button on its prerequisite
+	void updateAlgoH3CanvasPxLabel();  //the canvas in um -> the even pixel count it becomes
+	void fitAlgoH3Sections();          //no scrollbar inside a toolbox section: let it grow
 	void hideAlgoH3Rois();
-	void refreshAlgoH3TypeTable();
+	/*
+	* ROI types are edited ONE AT A TIME, chosen by comboBox_algoH3RoiType, instead of in a
+	* grid: the panel is tall and narrow, and a 5-column table could only ever be read by
+	* scrolling it sideways.
+	*/
+	void refreshAlgoH3TypeList();   //params -> the type combo, keeping the selection by name
+	void loadAlgoH3TypeFields();    //the selected type -> the per-type widgets
+	void updateAlgoH3TypeStatus();  //the instruction line and this type's ROI count
+	int algoH3RoiCountForType(const QString& name) const;
+	QColor algoH3SelectedTypeColor() const;
 	void refreshAlgoH3RoiBoxes();      //rebuild boxes from params, in the current crop
 	void refreshAlgoH3ResultSection(); //the selected ROI's row of the last measurement
 	void appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const;  //height + verdict per ROI
@@ -866,7 +877,13 @@ private:
 	*/
 	int _algoH3BoxCropW = 0;
 	int _algoH3BoxCropH = 0;
-	bool _algoH3Updating = false;         //re-entrancy guard while rebuilding the type table
+	bool _algoH3Updating = false;         //re-entrancy guard while rebuilding the type list
+	/*
+	* Which ROI type the per-type widgets currently hold. NOT the combo's currentIndex:
+	* currentIndexChanged fires AFTER the index has moved, so capture must still write the
+	* OUTGOING type or switching types would stamp the old values onto the new one.
+	*/
+	int _algoH3TypeIndex = -1;
 	double _algoH3Yaw = 35.0;             //3D view orientation, degrees
 	double _algoH3Pitch = 55.0;
 	double _algoH3ZExaggeration = 1.0;

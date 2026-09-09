@@ -134,8 +134,22 @@ bool algoH3MethodValid(int methodId);
 struct AlgoH3RoiType {
 	QString name;                        //unique, chosen once at Add time, never edited after
 	QColor color = QColor(0, 200, 0);
-	double minUm = 0.0;                  //criteria band; max <= min means "no limit"
+
+	/*
+	* Z height band. The enable flag is explicit, matching the segmentation checks - it used
+	* to be inferred from "max > min", which could not tell "no criteria" apart from a band
+	* somebody had typed backwards. A recipe saved before the flag existed is migrated on
+	* load from that old sentinel, so nothing silently stops being checked.
+	*/
+	bool checkHeight = false;
+	double minUm = 0.0;
 	double maxUm = 0.0;
+
+	//XY offset from where the ROI was taught. A magnitude, so there is a maximum and no
+	//minimum - "within 50 um of where it should be" has no lower bound to speak of.
+	bool checkOffset = false;
+	double maxOffsetUm = 0.0;
+
 	int methodId = (int)AlgoH3Method::Mean;
 };
 
@@ -208,6 +222,10 @@ struct AlgoH3StageResult {
 	bool ran = false;         //false = never attempted since the last invalidation
 	bool pass = false;
 	QString failReason;
+	//something worth saying that is NOT a failure - a part cropped to fit the canvas, say.
+	//A stage that passes still clears failReason, so without this there is nowhere to put a
+	//remark the operator needs to see and the fact would be lost.
+	QString note;
 	qint64 elapsedMs = 0;
 };
 
