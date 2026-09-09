@@ -201,6 +201,7 @@ void VisionApp::initAlgoHeight3Page()
 		"lineEdit_algoH3InputLoadHeightStatus", "lineEdit_algoH3InputLoadIntensityStatus",
 		"lineEdit_algoH3InputUseLastScanStatus",
 		"lineEdit_algoH3PreprocessResult", "lineEdit_algoH3PreprocessFailReason", "lineEdit_algoH3PreprocessTimeMs",
+		"lineEdit_algoH3SegCanvasPx",
 		"lineEdit_algoH3SegMeasuredWidthUm", "lineEdit_algoH3SegMeasuredHeightUm", "lineEdit_algoH3SegMeasuredAngleDeg",
 		"lineEdit_algoH3SegResult", "lineEdit_algoH3SegFailReason", "lineEdit_algoH3SegTimeMs",
 		"lineEdit_algoH3DatumRoiCount", "lineEdit_algoH3DatumCoeffA", "lineEdit_algoH3DatumCoeffB",
@@ -235,6 +236,9 @@ void VisionApp::initAlgoHeight3Page()
 		updateAlgoH3Display();
 		updateAlgoH3RoiVisibility();
 		refreshAlgoH3ResultSection();
+		//the newly opened section decides the height now, and a stacked sub-page may have
+		//changed since it was last measured
+		fitAlgoH3Sections();
 	});
 
 	// ── section 0: input ──
@@ -304,6 +308,8 @@ void VisionApp::initAlgoHeight3Page()
 			//one parameter page per method, in the same order as the combo
 			if (index >= 0 && index < ui.stackedWidget_algoH3Preprocess->count())
 				ui.stackedWidget_algoH3Preprocess->setCurrentIndex(index);
+			//a taller parameter page needs a taller section
+			fitAlgoH3Sections();
 		});
 
 	connect(ui.toolButton_algoH3PreprocessRun, &QToolButton::clicked, this, [=]() {
@@ -314,6 +320,14 @@ void VisionApp::initAlgoHeight3Page()
 	connect(ui.toolButton_algoH3SegRun, &QToolButton::clicked, this, [=]() {
 		algoH3RunStage(AlgoH3Stage::Segment);
 	});
+
+	//the px readout is the only place the um -> even-px conversion is visible
+	connect(ui.doubleSpinBox_algoH3SegCanvasWidthUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+		this, [=](double) { updateAlgoH3CanvasPxLabel(); });
+	connect(ui.doubleSpinBox_algoH3SegCanvasHeightUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+		this, [=](double) { updateAlgoH3CanvasPxLabel(); });
 
 	// ── section 3: datum plane ──
 	connect(ui.toolButton_algoH3DatumAddRoi, &QToolButton::clicked, this, [=]() {
@@ -659,6 +673,9 @@ void VisionApp::initAlgoHeight3Page()
 			}
 			ui.label_algoStatus->setText(status);
 		});
+
+	//last: every section's contents are configured by now, so their heights are meaningful
+	fitAlgoH3Sections();
 }
 
 /*
@@ -711,6 +728,10 @@ void VisionApp::configureAlgoH3Ranges()
 	setI(ui.spinBox_algoH3PreprocessClosingKernelSize, 3, 99);
 
 	// ── section 2 ──
+	//deliberately NOT constrained to even values: the box holds um, and what has to be even
+	//is the PIXEL count, which the scale conversion decides. Rounded up in doSegment instead.
+	setD(ui.doubleSpinBox_algoH3SegCanvasWidthUm, 0.0, 10000000.0, 2);
+	setD(ui.doubleSpinBox_algoH3SegCanvasHeightUm, 0.0, 10000000.0, 2);
 	setD(ui.doubleSpinBox_algoH3SegMinWidthUm, 0.0, 10000000.0, 2);
 	setD(ui.doubleSpinBox_algoH3SegMaxWidthUm, 0.0, 10000000.0, 2);
 	setD(ui.doubleSpinBox_algoH3SegMinHeightUm, 0.0, 10000000.0, 2);
@@ -734,6 +755,84 @@ void VisionApp::configureAlgoH3Ranges()
 	// ── section 7 ──
 	setI(ui.spinBox_algoH3OverallMaxCount, 0, 1000000);
 	setD(ui.doubleSpinBox_algoH3OverallMaxRate, 0.0, 100.0, 2);
+}
+
+/*
+* Let each toolbox section be as tall as its contents instead of scrolling inside itself.
+*
+* QToolBox gives every page its OWN QScrollArea. Qt creates them internally - the V3 page
+* declares none in the .ui - so each section could scroll independently of the algo page's
+* outer scroll area, and the operator got a second, hidden scrollbar for one column of
+* settings. The outer bar already handles a tall page; the inner one just buried the bottom
+* of a section behind a scroll nobody expects.
+*
+* Turning the bar off is NOT enough on its own. A QScrollArea is a size firewall - its own
+* minimumSizeHint is deliberately tiny, which is exactly what stops a page's height from
+* reaching the outer layout (the same trick shields the whole AlgoSetupPage). With the bar
+* off and no minimum, the content would CLIP rather than expand, which is worse than the
+* scrollbar was. Pushing the minimum height up from the page's sizeHint is what actually
+* makes the section grow and hands the scrolling to the outer area where it belongs.
+*
+* Re-run whenever a section's height can change: opening a different section, or switching
+* the preprocessing method to a taller parameter page.
+*/
+void VisionApp::fitAlgoH3Sections()
+{
+	auto* tb = ui.toolBox_algoH3Sections;
+	if (!tb) return;
+
+	//direct children only - these are the per-page areas QToolBox owns, never one that a
+	//page might contain itself
+	const QList<QScrollArea*> areas =
+		tb->findChildren<QScrollArea*>(QString(), Qt::FindDirectChildrenOnly);
+
+	for (QScrollArea* sa : areas) {
+		QWidget* page = sa->widget();
+		if (!page) continue;
+
+		//horizontal is left alone on purpose: width minimums on this page are driven from
+		//elsewhere (see the notes on the right panel's bars), and forcing it off here would
+		//clip a wide row instead of letting it scroll
+		sa->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		sa->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+		sa->setMinimumHeight(page->sizeHint().height());
+	}
+}
+
+/*
+* Show what the canvas actually becomes in pixels.
+*
+* The operator types um, but the part frame is pixels, and the two are related by the X/Y
+* scale plus a round UP to an even count. Without this the rounding is invisible and the
+* size of the frame every ROI lives in has to be worked out by hand.
+*/
+void VisionApp::updateAlgoH3CanvasPxLabel()
+{
+	if (!ui.lineEdit_algoH3SegCanvasPx) return;
+
+	const double wUm = ui.doubleSpinBox_algoH3SegCanvasWidthUm->value();
+	const double hUm = ui.doubleSpinBox_algoH3SegCanvasHeightUm->value();
+	const double sx = ui.doubleSpinBox_algoH3InputXScaleUmPx->value();
+	const double sy = ui.doubleSpinBox_algoH3InputYScaleUmPx->value();
+
+	if (wUm <= 0.0 || hUm <= 0.0) {
+		ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("not set"));
+		return;
+	}
+	if (sx <= 0.0 || sy <= 0.0) {
+		ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("set the X/Y scale first"));
+		return;
+	}
+
+	//same rounding doSegment uses - keep the two in step
+	auto evenPx = [](double um, double umPerPx) {
+		int px = (int)std::lround(um / umPerPx);
+		if (px < 2) px = 2;
+		if (px % 2) px++;
+		return px;
+	};
+	ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("%1 x %2 px")
+		.arg(evenPx(wUm, sx)).arg(evenPx(hUm, sy)));
 }
 
 // =============================================================================
@@ -1534,6 +1633,8 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 
 	// ── section 2 ──
 	p.segMethod = (AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex();
+	p.segCanvasWidthUm = ui.doubleSpinBox_algoH3SegCanvasWidthUm->value();
+	p.segCanvasHeightUm = ui.doubleSpinBox_algoH3SegCanvasHeightUm->value();
 	p.segCheckWidth = ui.checkBox_algoH3SegEnableWidthCheck->isChecked();
 	p.segMinWidthUm = ui.doubleSpinBox_algoH3SegMinWidthUm->value();
 	p.segMaxWidthUm = ui.doubleSpinBox_algoH3SegMaxWidthUm->value();
@@ -1661,6 +1762,8 @@ void VisionApp::refreshAlgoHeight3Page()
 	// ── section 2 ──
 	{
 		QSignalBlocker b0(ui.comboBox_algoH3SegMethod);
+		QSignalBlocker bc1(ui.doubleSpinBox_algoH3SegCanvasWidthUm);
+		QSignalBlocker bc2(ui.doubleSpinBox_algoH3SegCanvasHeightUm);
 		QSignalBlocker b1(ui.checkBox_algoH3SegEnableWidthCheck);
 		QSignalBlocker b2(ui.doubleSpinBox_algoH3SegMinWidthUm);
 		QSignalBlocker b3(ui.doubleSpinBox_algoH3SegMaxWidthUm);
@@ -1674,6 +1777,9 @@ void VisionApp::refreshAlgoHeight3Page()
 		const int sm = (int)p.segMethod;
 		ui.comboBox_algoH3SegMethod->setCurrentIndex(
 			(sm >= 0 && sm < ui.comboBox_algoH3SegMethod->count()) ? sm : 0);
+		ui.doubleSpinBox_algoH3SegCanvasWidthUm->setValue(p.segCanvasWidthUm);
+		ui.doubleSpinBox_algoH3SegCanvasHeightUm->setValue(p.segCanvasHeightUm);
+		updateAlgoH3CanvasPxLabel();
 		ui.checkBox_algoH3SegEnableWidthCheck->setChecked(p.segCheckWidth);
 		ui.doubleSpinBox_algoH3SegMinWidthUm->setValue(p.segMinWidthUm);
 		ui.doubleSpinBox_algoH3SegMaxWidthUm->setValue(p.segMaxWidthUm);

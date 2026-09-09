@@ -408,6 +408,8 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 
 		// ── section 2 ──
 		p.segMethod = (AlgoH3SegMethod)jsonHelper::getInteger(h, "seg_method", 0);
+		p.segCanvasWidthUm = jsonHelper::getDouble(h, "seg_canvas_width_um", 0.0);
+		p.segCanvasHeightUm = jsonHelper::getDouble(h, "seg_canvas_height_um", 0.0);
 		p.segCheckWidth = jsonHelper::getBool(h, "seg_check_width", false);
 		p.segMinWidthUm = jsonHelper::getDouble(h, "seg_min_width_um", 0.0);
 		p.segMaxWidthUm = jsonHelper::getDouble(h, "seg_max_width_um", 0.0);
@@ -490,6 +492,9 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		p.preprocess = AlgoH3Preprocess::None;
 	if ((int)p.segMethod < 0 || (int)p.segMethod >= kAlgoH3SegMethodCount)
 		p.segMethod = AlgoH3SegMethod::LargestRegion;
+	//negative is meaningless; 0 stays 0 because it means "not set" and must keep refusing
+	if (p.segCanvasWidthUm < 0.0) p.segCanvasWidthUm = 0.0;
+	if (p.segCanvasHeightUm < 0.0) p.segCanvasHeightUm = 0.0;
 	if ((int)p.datumMethod < 0 || (int)p.datumMethod > (int)AlgoH3DatumMethod::PcaSvd)
 		p.datumMethod = AlgoH3DatumMethod::LeastSquares;
 	if (!algoH3MethodValid(p.methodId)) p.methodId = 0;
@@ -531,6 +536,8 @@ QJsonObject AlgoManager::height3ToJson() const
 	h.insert("closing_kernel", p.closingKernel);
 
 	h.insert("seg_method", (int)p.segMethod);
+	h.insert("seg_canvas_width_um", p.segCanvasWidthUm);
+	h.insert("seg_canvas_height_um", p.segCanvasHeightUm);
 	h.insert("seg_check_width", p.segCheckWidth);
 	h.insert("seg_min_width_um", p.segMinWidthUm);
 	h.insert("seg_max_width_um", p.segMaxWidthUm);

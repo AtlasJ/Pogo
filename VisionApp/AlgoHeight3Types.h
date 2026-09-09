@@ -183,6 +183,21 @@ struct AlgoHeight3Params {
 
 	// ── section 2: segmentation ──
 	AlgoH3SegMethod segMethod = AlgoH3SegMethod::LargestRegion;
+	/*
+	* The FIXED part frame. Segmentation rotates the part upright and places it at the
+	* CENTRE of a canvas of exactly this size: a smaller part is padded with 0 (which every
+	* stage already treats as a dropout), a larger one is cropped and reported.
+	*
+	* This is what keeps a taught ROI meaning the same thing on every unit. Sizing the frame
+	* to the part's own measured extent instead - which is what it used to do - meant that
+	* any change in extent moved the frame, and every ROI moved with it.
+	*
+	* 0 = not set, and segmentation REFUSES rather than guessing - a guessed frame would be
+	* sized to one unit, which is the very thing this exists to stop. It still measures and
+	* reports the part before refusing, so there is a number to choose the canvas from.
+	*/
+	double segCanvasWidthUm = 0.0;
+	double segCanvasHeightUm = 0.0;
 	bool segCheckWidth = false;
 	double segMinWidthUm = 0.0, segMaxWidthUm = 0.0;
 	bool segCheckHeight = false;
@@ -257,9 +272,10 @@ struct AlgoHeight3Output {
 	AlgoH3StageResult overall;
 
 	// ── segmentation ──
-	double segWidthUm = 0.0;
+	double segWidthUm = 0.0;      //the part as MEASURED, never the canvas
 	double segHeightUm = 0.0;
 	double segAngleDeg = 0.0;
+	bool segOversized = false;    //part did not fit the canvas, so its edges were cropped
 	QRectF segRectMap;          //axis-aligned bounds of the part in MAP px (for the overlay)
 	QVector<QPointF> segCorners;//the four rotated-rect corners in MAP px
 	int cropWidthPx = 0;

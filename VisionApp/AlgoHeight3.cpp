@@ -53,6 +53,9 @@ QString algoH3RunSummary(const AlgoHeight3Output& out)
 	QString s = QStringLiteral("%1/%2 pins passed").arg(out.passedPins).arg(out.totalPins);
 	if (!out.overallPass && !out.overall.failReason.isEmpty())
 		s += QStringLiteral(" - ") + out.overall.failReason;
+	//a unit whose part outgrew the canvas passed on the pins that were still in frame, which
+	//is not the same thing as passing - say so on the production line too, not just the page
+	if (out.segOversized) s += QStringLiteral(" [OVERSIZED: ") + out.segment.note + QLatin1Char(']');
 	return s;
 }
 
@@ -411,6 +414,7 @@ void AlgoHeight3Pipeline::invalidateFrom(AlgoH3Stage stage)
 		m_cropIntensity = cv::Mat();
 		m_out.segment = AlgoH3StageResult();
 		m_out.segWidthUm = m_out.segHeightUm = m_out.segAngleDeg = 0.0;
+		m_out.segOversized = false;
 		m_out.segRectMap = QRectF();
 		m_out.segCorners.clear();
 		m_out.cropWidthPx = m_out.cropHeightPx = 0;
@@ -703,19 +707,21 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	for (int guard = 0; ang > 45.0 && guard < 8; guard++) { ang -= 90.0; std::swap(sz.width, sz.height); }
 	for (int guard = 0; ang <= -45.0 && guard < 8; guard++) { ang += 90.0; std::swap(sz.width, sz.height); }
 
-	const int cropW = (int)std::lround(sz.width);
-	const int cropH = (int)std::lround(sz.height);
-	if (cropW < 2 || cropH < 2)
+	if (sz.width < 2.0f || sz.height < 2.0f)
 		return fail(QStringLiteral("Segmented part is smaller than 2 px"));
-	//a corrupt map can produce an absurd rectangle; refuse rather than try to allocate it
-	if ((qint64)cropW * (qint64)cropH > 400000000LL)
-		return fail(QStringLiteral("Segmented part is unreasonably large"));
 
+	/*
+	* MEASURE AND PUBLISH BEFORE REFUSING ANYTHING.
+	*
+	* The canvas below is mandatory, and the only way to choose one is to know how big the
+	* part actually is - so a stage that bailed out before filling these in would leave a
+	* fresh recipe with no way to find out. Measuring first costs nothing and breaks that
+	* circle: run once, read the size off Measured Width/Height or out of the message, type
+	* a round number comfortably above it.
+	*/
 	m_out.segWidthUm = sz.width * p.xScaleUmPx;
 	m_out.segHeightUm = sz.height * p.yScaleUmPx;
 	m_out.segAngleDeg = ang;
-	m_out.cropWidthPx = cropW;
-	m_out.cropHeightPx = cropH;
 
 	{
 		cv::Point2f pts[4];
@@ -724,6 +730,55 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 		for (int i = 0; i < 4; i++) m_out.segCorners.append(QPointF(pts[i].x, pts[i].y));
 		const cv::Rect br = rr.boundingRect();
 		m_out.segRectMap = QRectF(br.x, br.y, br.width, br.height);
+	}
+
+	/*
+	* ── the FIXED canvas ──
+	*
+	* The part frame is a constant of the recipe, not a property of this particular unit.
+	* That is the whole point: a taught ROI has to mean the same thing on every part, and it
+	* cannot if the frame is sized to whatever this one happened to measure.
+	*/
+	if (p.segCanvasWidthUm <= 0.0 || p.segCanvasHeightUm <= 0.0) {
+		return fail(QStringLiteral(
+			"Canvas size is not set. This part measured %1 x %2 um - set a canvas "
+			"comfortably larger than the biggest part the line will see.")
+			.arg(m_out.segWidthUm, 0, 'f', 1).arg(m_out.segHeightUm, 0, 'f', 1));
+	}
+
+	//round UP to an even number of pixels so the centre lands on a pixel boundary rather
+	//than half way across one. Enforced here and not in the spin box: the box holds um, and
+	//the scale conversion breaks any relationship between an even um value and an even pixel
+	//count (50002 um at 5 um/px is 10000 px, 50000 um is 10000 px too).
+	auto toEvenPx = [](double um, double umPerPx) {
+		int px = (int)std::lround(um / umPerPx);
+		if (px < 2) px = 2;
+		if (px % 2) px++;
+		return px;
+	};
+	const int cropW = toEvenPx(p.segCanvasWidthUm, p.xScaleUmPx);
+	const int cropH = toEvenPx(p.segCanvasHeightUm, p.yScaleUmPx);
+
+	//a corrupt map or an absurd canvas could ask for an allocation that will not fit
+	if ((qint64)cropW * (qint64)cropH > 400000000LL)
+		return fail(QStringLiteral("Canvas is unreasonably large (%1 x %2 px)")
+			.arg(cropW).arg(cropH));
+
+	m_out.cropWidthPx = cropW;
+	m_out.cropHeightPx = cropH;
+
+	/*
+	* Bigger than the canvas: the outer part is cropped away. Reported rather than silent -
+	* a part that has outgrown its frame is a real anomaly (a double unit, a mis-load, a
+	* mis-segmentation), and it must not look identical to a good one in the log. It does not
+	* fail the unit on its own; the width/height checks below are what decide that.
+	*/
+	if (sz.width > cropW + 0.5f || sz.height > cropH + 0.5f) {
+		m_out.segOversized = true;
+		res.note = QStringLiteral(
+			"Part %1 x %2 um is larger than the %3 x %4 um canvas - the outer part was cropped")
+			.arg(m_out.segWidthUm, 0, 'f', 1).arg(m_out.segHeightUm, 0, 'f', 1)
+			.arg(p.segCanvasWidthUm, 0, 'f', 1).arg(p.segCanvasHeightUm, 0, 'f', 1);
 	}
 
 	// ── the checks the operator enabled ──
@@ -741,8 +796,13 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	if (!reasons.isEmpty()) return fail(reasons.join(QStringLiteral("; ")));
 
 	/*
-	* Build the straightened crop in ONE warp - rotate about the part centre and land the
-	* part in a cropW x cropH canvas - so a 60 MB map is never rotated whole.
+	* Build the straightened crop in ONE warp - rotate about the part centre and land that
+	* centre at the centre of the canvas - so a 60 MB map is never rotated whole.
+	*
+	* The centring is what the two translation terms already did; they now target a FIXED
+	* canvas instead of one sized to this part. Anything the part does not cover is filled
+	* with BORDER_CONSTANT 0, and 0 is already "dropout" to the mask, the plane fit and the
+	* measurement - so the letterboxing needs no special handling anywhere downstream.
 	*
 	* INTER_NEAREST is not a performance choice, it is a correctness one: interpolating
 	* two height samples invents a height that was never measured, and blending a real
