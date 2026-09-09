@@ -1340,6 +1340,7 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 	p.closingKernel = ui.spinBox_algoH3PreprocessClosingKernelSize->value();
 
 	// ── section 2 ──
+	p.segMethod = (AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex();
 	p.segCheckWidth = ui.checkBox_algoH3SegEnableWidthCheck->isChecked();
 	p.segMinWidthUm = ui.doubleSpinBox_algoH3SegMinWidthUm->value();
 	p.segMaxWidthUm = ui.doubleSpinBox_algoH3SegMaxWidthUm->value();
@@ -1468,6 +1469,7 @@ void VisionApp::refreshAlgoHeight3Page()
 
 	// ── section 2 ──
 	{
+		QSignalBlocker b0(ui.comboBox_algoH3SegMethod);
 		QSignalBlocker b1(ui.checkBox_algoH3SegEnableWidthCheck);
 		QSignalBlocker b2(ui.doubleSpinBox_algoH3SegMinWidthUm);
 		QSignalBlocker b3(ui.doubleSpinBox_algoH3SegMaxWidthUm);
@@ -1478,6 +1480,9 @@ void VisionApp::refreshAlgoHeight3Page()
 		QSignalBlocker b8(ui.doubleSpinBox_algoH3SegMinAngleDeg);
 		QSignalBlocker b9(ui.doubleSpinBox_algoH3SegMaxAngleDeg);
 
+		const int sm = (int)p.segMethod;
+		ui.comboBox_algoH3SegMethod->setCurrentIndex(
+			(sm >= 0 && sm < ui.comboBox_algoH3SegMethod->count()) ? sm : 0);
 		ui.checkBox_algoH3SegEnableWidthCheck->setChecked(p.segCheckWidth);
 		ui.doubleSpinBox_algoH3SegMinWidthUm->setValue(p.segMinWidthUm);
 		ui.doubleSpinBox_algoH3SegMaxWidthUm->setValue(p.segMaxWidthUm);

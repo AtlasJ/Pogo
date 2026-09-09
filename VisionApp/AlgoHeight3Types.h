@@ -61,6 +61,20 @@ enum class AlgoH3Preprocess {
 	Closing
 };
 
+/*
+* Segmentation methods. Order matches comboBox_algoH3SegMethod, and the value is
+* PERSISTED as "seg_method", so only ever APPEND - inserting a method anywhere but
+* the end silently changes what every saved recipe means.
+*
+* There is deliberately no None: unlike preprocessing, segmentation MUST run. It is
+* what establishes the part frame every ROI, the datum plane and every height are
+* expressed in, so skipping it would leave the whole pipeline with no coordinates.
+*/
+enum class AlgoH3SegMethod {
+	LargestRegion = 0  //largest valid connected region, posed by its min-area rect
+};
+constexpr int kAlgoH3SegMethodCount = 1;
+
 //order matches comboBox_algoH3DatumMethod
 enum class AlgoH3DatumMethod {
 	LeastSquares = 0, //vertical (z) error, the QAlgoHeightMeasurement fit
@@ -126,6 +140,7 @@ struct AlgoHeight3Params {
 	int closingKernel = 3;
 
 	// ── section 2: segmentation ──
+	AlgoH3SegMethod segMethod = AlgoH3SegMethod::LargestRegion;
 	bool segCheckWidth = false;
 	double segMinWidthUm = 0.0, segMaxWidthUm = 0.0;
 	bool segCheckHeight = false;

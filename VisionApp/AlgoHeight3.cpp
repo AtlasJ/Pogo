@@ -545,6 +545,51 @@ bool AlgoHeight3Pipeline::doPreprocess(const AlgoHeight3Params& p)
 * The same rectangle then defines the PART FRAME - the straightened crop every later
 * stage works in.
 */
+namespace {
+
+/*
+* Segmentation method 0 - the largest connected region of valid pixels, posed by the
+* min-area rect of its outer contour.
+*
+* RETR_EXTERNAL matters: the laser cannot see the sides of the pins, so ~19% of this
+* part's own rectangle is interior dropout. External contours ignore those holes, so
+* the pose comes from the part's outline and nothing else.
+*
+* EVERY segmentation method ends the same way - producing ONE cv::RotatedRect for the
+* unit. Everything after the dispatch in doSegment (angle folding, crop sizing, the
+* warpAffine straighten, the operator's checks) is deliberately method-agnostic, so a
+* new method is one function plus one enum value plus one combo item, and never a
+* change to doSegment's tail.
+*/
+static bool h3SegLargestRegion(const cv::Mat& src, const AlgoHeight3Params& p,
+	cv::RotatedRect& out, QString& why)
+{
+	const cv::Mat mask = validMaskOf(src, p.minValidRaw, p.maxValidRaw);
+
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+	if (contours.empty()) {
+		why = QStringLiteral("No region found inside the valid raw range");
+		return false;
+	}
+
+	int best = -1;
+	double bestArea = 0.0;
+	for (int i = 0; i < (int)contours.size(); i++) {
+		const double a = cv::contourArea(contours[i]);
+		if (a > bestArea) { bestArea = a; best = i; }
+	}
+	if (best < 0 || bestArea < 4.0) {
+		why = QStringLiteral("Largest region is too small to be a part");
+		return false;
+	}
+
+	out = cv::minAreaRect(contours[best]);
+	return true;
+}
+
+} //namespace
+
 bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 {
 	invalidateFrom(AlgoH3Stage::Segment);
@@ -565,23 +610,18 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	if (p.xScaleUmPx <= 0.0 || p.yScaleUmPx <= 0.0)
 		return fail(QStringLiteral("X and Y scale must be greater than 0"));
 
-	const cv::Mat mask = validMaskOf(src, p.minValidRaw, p.maxValidRaw);
-
-	std::vector<std::vector<cv::Point>> contours;
-	cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-	if (contours.empty())
-		return fail(QStringLiteral("No region found inside the valid raw range"));
-
-	int best = -1;
-	double bestArea = 0.0;
-	for (int i = 0; i < (int)contours.size(); i++) {
-		const double a = cv::contourArea(contours[i]);
-		if (a > bestArea) { bestArea = a; best = i; }
+	//── which method finds the part ──
+	cv::RotatedRect rr;
+	QString segWhy;
+	switch (p.segMethod) {
+	case AlgoH3SegMethod::LargestRegion:
+		if (!h3SegLargestRegion(src, p, rr, segWhy)) return fail(segWhy);
+		break;
+	default:
+		//loadRecipeConfig clamps seg_method, so this can only fire if an enum value was
+		//added without its case here - say so rather than silently running method 0
+		return fail(QStringLiteral("Unknown segmentation method %1").arg((int)p.segMethod));
 	}
-	if (best < 0 || bestArea < 4.0)
-		return fail(QStringLiteral("Largest region is too small to be a part"));
-
-	cv::RotatedRect rr = cv::minAreaRect(contours[best]);
 
 	/*
 	* Normalise to the SMALLEST rotation that straightens the part, in (-45, 45].
