@@ -63,6 +63,10 @@ void VisionApp::connectMachineController()
 		switch (e)
 		{
 		case MachineEvent::START_BTN:
+			//the physical start always lands the operator on the production page first -
+			//a run started while another page is open would otherwise run out of sight
+			if (ui.stackedWidgetViewSelection->currentIndex() != 6 || !ui.page_23->isVisible())
+				showProductionPage();
 			startProduction();
 			break;
 		case MachineEvent::STOP_BTN:
