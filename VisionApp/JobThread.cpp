@@ -4131,10 +4131,8 @@ bool JobThread::acquireBarcodeAndOcr()
 		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
 			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
 				ct::logger::info("[Acq] Unit (%d, %d)", ix + 1, iy + 1);
-				acquireBarcodeAndOcrAt(
-					sd._pitchP1x + ix * sd._pitchX,
-					sd._pitchP1y + iy * sd._pitchY,
-					sd._pitchP1z,
+				const em::V2d p = pitchUnitPoint(ix, iy); //fiducial-compensated
+				acquireBarcodeAndOcrAt(p.x(), p.y(), sd._pitchP1z,
 					QString("X%1Y%2").arg(ix + 1).arg(iy + 1));
 			}
 		}
@@ -4499,6 +4497,56 @@ std::deque<QString> JobThread::build3DOpticsSeq()
 	return opticsSeq;
 }
 
+/*
+* The taught pitch grid (point 1 + pitch steps) describes the BOARD, not the machine: the
+* points were taught relative to where the fiducials sat at teach time. When production
+* locates the fiducials somewhere else (board loaded shifted or rotated), every unit point
+* must follow - getShiftedPoint applies the located-vs-learnt transform (both fiducials:
+* offset + rotation about fid1; one fiducial: offset only). Identity until a run has
+* located anything, so teach-time and fiducial-disabled flows are unaffected.
+*/
+em::V2d JobThread::pitchUnitPoint(int ix, int iy)
+{
+	auto& sd = SystemData::instance();
+	em::V2d p(sd._pitchP1x + ix * sd._pitchX, sd._pitchP1y + iy * sd._pitchY);
+	if (!m_enableFiducial) return p;
+
+	em::V2d shifted = p;
+	const int mask = sd._pitchFidRefMask;
+	const bool haveRef = mask
+		&& ((mask & 1) == 0 || m_fiducialAlgo->isSet(0))
+		&& ((mask & 2) == 0 || m_fiducialAlgo->isSet(1));
+
+	if (haveRef) {
+		//compensation relative to the TEACH-TIME reference: where the fiducials are now
+		//vs where they sat when P1 was set. An unmoved board gives a zero offset, and
+		//re-teaching P1 rebases the grid without touching the fiducial teach.
+		Fiducial rel;
+		if (mask & 1) {
+			rel.setLearntFid(0, em::V2d(sd._pitchFidRef1x, sd._pitchFidRef1y));
+			rel.setShiftedFid(0, m_fiducialAlgo->getShiftedFid(0));
+		}
+		if (mask & 2) {
+			rel.setLearntFid(1, em::V2d(sd._pitchFidRef2x, sd._pitchFidRef2y));
+			rel.setShiftedFid(1, m_fiducialAlgo->getShiftedFid(1));
+		}
+		rel.compute();
+		shifted = rel.getShiftedPoint(p);
+	}
+	else {
+		//no reference captured (P1 taught before this feature, or no locate had run at
+		//teach time): compensate against the fiducial learn pose as before
+		shifted = fiducialForPoint(p.x(), p.y())->getShiftedPoint(p);
+	}
+
+	if (ix == 0 && iy == 0) {
+		ct::logger::info("[Acq] Fiducial compensation (%s): unit X1Y1 %.3f/%.3f -> %.3f/%.3f",
+			haveRef ? "vs P1 teach pose" : "vs learn pose",
+			p.x(), p.y(), shifted.x(), shifted.y());
+	}
+	return shifted;
+}
+
 //one unit's 3D scan: recipe scan length centered on the unit, along the linescan axis
 void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
 {
@@ -4506,8 +4554,10 @@ void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
 	const bool scanAlongY = sd.isLineScanAxisY();
 	const double halfLen = std::max(0.1, sd._pitchScanLen_mm.load()) / 2.0;
 
-	const double baseX = sd._pitchP1x + ix * sd._pitchX;
-	const double baseY = sd._pitchP1y + iy * sd._pitchY;
+	//fiducial-compensated center; the scan still runs along the machine axis
+	const em::V2d base = pitchUnitPoint(ix, iy);
+	const double baseX = base.x();
+	const double baseY = base.y();
 
 	dat::WorldCoordinate start, end;
 	start.wx = end.wx = baseX;
@@ -4594,11 +4644,8 @@ void JobThread::acquire2D3DAlternatePitch()
 
 			if (sd._pitchEnableBarcode) {
 				ct::logger::info("[Acq] Unit (%d, %d): barcode/OCR", ix + 1, iy + 1);
-				acquireBarcodeAndOcrAt(
-					sd._pitchP1x + ix * sd._pitchX,
-					sd._pitchP1y + iy * sd._pitchY,
-					sd._pitchP1z,
-					unitID);
+				const em::V2d p = pitchUnitPoint(ix, iy); //fiducial-compensated
+				acquireBarcodeAndOcrAt(p.x(), p.y(), sd._pitchP1z, unitID);
 			}
 
 			if (m_stopRun) break;

@@ -235,7 +235,8 @@ private:
 	bool locateFiducial(int index, int fidIndex, InspStatus::FiducialDetail& fDetail, bool saveImg,const dat::WorldCoordinate & curCoordinate, int crossFinderScore = 85, Fiducial* algo = nullptr);
 	void searchFiducial();
 	void searchDoubleFiducial();
-	Fiducial* fiducialForPoint(double x, double y);   // routes a target point to the nearest island's transform
+	Fiducial* fiducialForPoint(double x, double y);
+	em::V2d pitchUnitPoint(int ix, int iy); //taught grid point, fiducial-compensated when enabled   // routes a target point to the nearest island's transform
 	void saveFiducialResult();
 
 	//barcode
