@@ -665,7 +665,22 @@ QDragBox* VisionApp::makeAlgoH3Box(const QRectF& sceneRect, const QColor& color,
 {
 	auto* box = new QDragBox();
 	_pGraphicsSceneFOV->addItem(box);
-	box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
+
+	/*
+	* The barrier is the CROP, never "whatever happens to be on screen".
+	*
+	* These boxes live in part-frame coordinates, so the crop rect IS the space they are
+	* confined to. Taking it from the scene rect instead meant that rebuilding the boxes
+	* while a 3D view was showing handed every box the 1200x900 projection canvas as its
+	* barrier - and QDragBox::itemChange clamps to that barrier, so every ROI at a large
+	* x/y was silently dragged toward the origin and capture then wrote the wreckage back
+	* into the recipe. Pressing Run in any stage while in a 3D view destroyed the teach.
+	*/
+	const QRectF barrier = (_algoH3BoxCropW > 0 && _algoH3BoxCropH > 0)
+		? QRectF(0, 0, _algoH3BoxCropW, _algoH3BoxCropH)
+		: _pGraphicsSceneFOV->sceneRect();
+	box->setOutterBarrier(barrier);
+
 	box->setup(sceneRect, color, name);
 	box->setDragable(true);
 	box->setZValue((int)UIHierarchy::DRAGGABLES);
@@ -1068,6 +1083,20 @@ void VisionApp::refreshAlgoH3Overlay()
 	if (!isPage(UIPage::ALGO_SETUP)) return;
 	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return;
 
+	/*
+	* Nothing in the overlay means anything on a 3D projection. Every item here is placed
+	* in map or crop coordinates - the segmentation outline, the per-ROI labels, the
+	* overall pass/fail rects - and the 3D canvas is neither of those spaces, so they would
+	* land at arbitrary spots on the render. Take the overlay down instead of drawing it.
+	*
+	* Handled once here rather than per branch, so a future overlay item cannot forget to
+	* opt out and leak onto the 3D view.
+	*/
+	if (h3IsSurfaceMode(algoH3DisplayMode())) {
+		renderAlgoOverlay({});
+		return;
+	}
+
 	const int section = algoH3CurrentSection();
 	const bool segmented = (section >= SEC_DATUM) && AlgoManager::instance().height3SegmentReady();
 
@@ -1079,8 +1108,8 @@ void VisionApp::refreshAlgoH3Overlay()
 		for (const auto& pt : _algoH3Output.segCorners) poly << pt;
 		overlay.append(AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127)));
 	}
-	else if (section == SEC_OVERALL && _algoH3Output.measure.ran
-		&& _algoH3BoxCropW > 0 && algoH3DisplayMode() != AlgoH3Display::Surface3D) {
+	else if (section == SEC_OVERALL && _algoH3Output.measure.ran && _algoH3BoxCropW > 0) {
+		//no flat-view test needed any more: the 3D early-return above covers it
 		//the overall section draws the ROIs itself, as overlay - see the note on the function
 		appendAlgoH3OverallRois(overlay);
 	}
