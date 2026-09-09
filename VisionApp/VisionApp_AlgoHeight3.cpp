@@ -1213,8 +1213,20 @@ bool VisionApp::algoH3HandleViewMouse(QObject* obj, QEvent* ev)
 		const QPoint d = me->pos() - _algoH3DragFrom;
 		_algoH3DragFrom = me->pos();
 
+		/*
+		* Drag GRABS THE OBJECT, it does not fly the camera. Pull the mouse up and the far
+		* side lifts toward you (the view goes edge-on); push it down and the part lays
+		* flat under you (top-down).
+		*
+		* pitchDeg is a camera ELEVATION - 89 is straight down, 2 is edge-on - so tilting
+		* the object up means DECREASING it. Mouse-up gives a negative d.y(), so the sign
+		* here is +, and it deliberately differs from the yaw line above: for yaw the two
+		* conventions are indistinguishable (spinning the camera left and pushing the
+		* object left look the same), for pitch they are exact opposites. Do not "fix"
+		* this to match the line above.
+		*/
 		_algoH3Yaw = std::fmod(_algoH3Yaw - d.x() * 0.4, 360.0);
-		_algoH3Pitch = std::max(2.0, std::min(89.0, _algoH3Pitch - d.y() * 0.4));
+		_algoH3Pitch = std::max(2.0, std::min(89.0, _algoH3Pitch + d.y() * 0.4));
 		updateAlgoH3Surface();
 		return true;
 	}
