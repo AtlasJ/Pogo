@@ -164,6 +164,17 @@ public:
 	std::atomic<bool> _setupRegionPitchMode = false;
 	std::atomic<bool> _pitchP1Set = false;
 	std::atomic<double> _pitchP1x = 0.0, _pitchP1y = 0.0, _pitchP1z = 0.0;
+
+	/*
+	* Pitch fiducial reference: the LOCATED fiducial positions captured when pitch point 1
+	* was set. Run-time compensation applies where the fiducials are NOW relative to THESE,
+	* so re-teaching P1 rebases the grid to the board pose at teach time - zero offset until
+	* the board actually moves, and no fiducial re-teach needed. Mask 0 = none captured:
+	* compensation falls back to the fiducial learn pose (pre-feature recipes).
+	*/
+	std::atomic<int> _pitchFidRefMask = 0; //bit0 = fid slot 0 captured, bit1 = slot 1
+	std::atomic<double> _pitchFidRef1x = 0.0, _pitchFidRef1y = 0.0;
+	std::atomic<double> _pitchFidRef2x = 0.0, _pitchFidRef2y = 0.0;
 	std::atomic<double> _pitchX = 0.0, _pitchY = 0.0; //signed, direction from point 1 to point 2
 	std::atomic<int> _unitsX = 1, _unitsY = 1;
 	std::string _currentUnitID = "board"; //unit currently in the barcode/OCR flow (written by JobThread)

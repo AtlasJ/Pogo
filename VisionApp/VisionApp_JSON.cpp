@@ -1388,6 +1388,11 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("pitchP1x"), SystemData::instance()._pitchP1x.load());
 	obj.insert(QStringLiteral("pitchP1y"), SystemData::instance()._pitchP1y.load());
 	obj.insert(QStringLiteral("pitchP1z"), SystemData::instance()._pitchP1z.load());
+	obj.insert(QStringLiteral("pitchFidRefMask"), (int)SystemData::instance()._pitchFidRefMask);
+	obj.insert(QStringLiteral("pitchFidRef1x"), SystemData::instance()._pitchFidRef1x.load());
+	obj.insert(QStringLiteral("pitchFidRef1y"), SystemData::instance()._pitchFidRef1y.load());
+	obj.insert(QStringLiteral("pitchFidRef2x"), SystemData::instance()._pitchFidRef2x.load());
+	obj.insert(QStringLiteral("pitchFidRef2y"), SystemData::instance()._pitchFidRef2y.load());
 	obj.insert(QStringLiteral("pitchX"), SystemData::instance()._pitchX.load());
 	obj.insert(QStringLiteral("pitchY"), SystemData::instance()._pitchY.load());
 	obj.insert(QStringLiteral("unitsX"), (int)SystemData::instance()._unitsX);
@@ -1985,6 +1990,11 @@ bool VisionApp::loadRecipeConfig()
 		//setup region pitch mode (per recipe)
 		SystemData::instance()._setupRegionPitchMode = jsonHelper::getBool(root, QStringLiteral("setupRegionPitchMode"), false);
 		SystemData::instance()._pitchP1Set = jsonHelper::getBool(root, QStringLiteral("pitchP1Set"), false);
+		SystemData::instance()._pitchFidRefMask = jsonHelper::getInteger(root, QStringLiteral("pitchFidRefMask"), 0);
+		SystemData::instance()._pitchFidRef1x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1x"), 0.0);
+		SystemData::instance()._pitchFidRef1y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1y"), 0.0);
+		SystemData::instance()._pitchFidRef2x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef2x"), 0.0);
+		SystemData::instance()._pitchFidRef2y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef2y"), 0.0);
 		SystemData::instance()._pitchP1x = jsonHelper::getDouble(root, QStringLiteral("pitchP1x"), 0.0);
 		SystemData::instance()._pitchP1y = jsonHelper::getDouble(root, QStringLiteral("pitchP1y"), 0.0);
 		SystemData::instance()._pitchP1z = jsonHelper::getDouble(root, QStringLiteral("pitchP1z"), 0.0);

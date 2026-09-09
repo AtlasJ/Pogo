@@ -1686,6 +1686,34 @@ void VisionApp::connectSignalAndSlot()
 			sd._pitchP1y = wy;
 			sd._pitchP1z = wz;
 			sd._pitchP1Set = true;
+
+			//rebase the fiducial reference to the board's pose right now: run-time
+			//compensation becomes relative to THIS teach, so the offset is zero until the
+			//board moves and the fiducials never need re-teaching. Needs a locate this
+			//session (a production run, or the fiducial test) to know the current pose.
+			int fidMask = 0;
+			if (_fiducial.isSet(0)) {
+				const auto f = _fiducial.getShiftedFid(0);
+				sd._pitchFidRef1x = f.x(); sd._pitchFidRef1y = f.y();
+				fidMask |= 1;
+			}
+			if (_fiducial.isSet(1)) {
+				const auto f = _fiducial.getShiftedFid(1);
+				sd._pitchFidRef2x = f.x(); sd._pitchFidRef2y = f.y();
+				fidMask |= 2;
+			}
+			sd._pitchFidRefMask = fidMask;
+			if (fidMask) {
+				ct::logger::info("[Pitch] P1 set - fiducial reference rebased (mask %d: %.3f/%.3f, %.3f/%.3f)",
+					fidMask, sd._pitchFidRef1x.load(), sd._pitchFidRef1y.load(),
+					sd._pitchFidRef2x.load(), sd._pitchFidRef2y.load());
+			}
+			else {
+				ct::logger::warn("[Pitch] P1 set with NO fiducials located this session - run-time "
+					"compensation will be relative to the fiducial LEARN pose. Run once (or run the "
+					"fiducial test) and set P1 again to rebase.");
+			}
+
 			refreshPitchLabels();
 			saveRecipeConfig();
 			AuditLog::instance().log(QStringLiteral("PITCH_SET_P1"));
