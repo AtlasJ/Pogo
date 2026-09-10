@@ -3520,9 +3520,11 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 	const dat::WorldCoordinate origin = settledCoordinate();
 	const double sign = positiveDir ? 1.0 : -1.0;
 
-	// scan() hardcodes a POSITIVE 6 mm overshoot, so a -X scan there stops 6 mm short and the
-	// batch can never fill. Here the overshoot follows the direction. Its purpose is to
-	// guarantee the batch fills before the move ends, which is why it is past the end point.
+	// The overshoot guarantees the batch fills before the move ends, which is why the move
+	// target sits past the scan end. It follows the direction of travel, so a negative scan
+	// overshoots backwards. scan() does the same now through its own scanDir (see the note
+	// above setScanLength there) - the hardcoded positive 6 mm that used to leave a reverse
+	// scan 6 mm short, unable to fill the batch at any speed, has since been fixed.
 	const double overshoot_mm = 6.0;
 	const double endX = origin.wx + sign * distance_mm;
 	const double targetX = endX + sign * overshoot_mm;
@@ -6646,6 +6648,31 @@ void JobThread::jogBasedOnFiducial(double x, double y, double z, QString type, b
 	jog(x, y, z, type);
 }
 
+bool JobThread::jogRelative(int axis, double mm)
+{
+	if (MotionController::instance().relative_move(m_motionID, axis, mm)) return true;
+
+	/*
+	* Two causes, and the operator needs to be told them apart:
+	*
+	*  - motion gated off: the machine is not homed, or an error other than a limit hit is
+	*    active. Nothing else says anything at all in this case.
+	*  - a soft limit refusal: is_safe() has already raised the *_SOFT_LIMIT_HIT warning and
+	*    logged the out-of-bound target, so only the log line is added here.
+	*/
+	if (!MotionController::instance().motionEnabled()) {
+		ct::logger::warn("[Motion] Jog refused: motion is disabled (axis %d, %.3f mm)", axis, mm);
+		emit promptMsg(QStringLiteral(
+			"Motion is disabled, so the machine did not move.\n\n"
+			"Home the machine, or clear the active error, and try again."));
+	}
+	else {
+		ct::logger::warn("[Motion] Jog refused by the soft limit (axis %d, %.3f mm)", axis, mm);
+	}
+
+	return false;
+}
+
 void JobThread::jogLeft(double mm, const OpticsInfo& optic)
 {
 	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished
@@ -6653,7 +6680,7 @@ void JobThread::jogLeft(double mm, const OpticsInfo& optic)
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::X;
-	MotionController::instance().relative_move(m_motionID, axis, -mm);
+	jogRelative(axis, -mm);
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axis);
 	m_timeLogger.log_duration("[Motion] Jog left");
@@ -6668,7 +6695,7 @@ void JobThread::jogRight(double mm, const OpticsInfo& optic)
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::X;
-	MotionController::instance().relative_move(m_motionID, axis, mm);
+	jogRelative(axis, mm);
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axis);
 	m_timeLogger.log_duration("[Motion] Jog right");
@@ -6683,7 +6710,7 @@ void JobThread::jogBack(double mm, const OpticsInfo& optic)
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Y;
-	MotionController::instance().relative_move(m_motionID, axis, -mm);
+	jogRelative(axis, -mm);
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axis);
 	m_timeLogger.log_duration("[Motion] Jog back");
@@ -6698,7 +6725,7 @@ void JobThread::jogFront(double mm, const OpticsInfo& optic)
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Y;
-	MotionController::instance().relative_move(m_motionID, axis, mm);
+	jogRelative(axis, mm);
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axis);
 	m_timeLogger.log_duration("[Motion] Jog front");
@@ -6713,7 +6740,7 @@ void JobThread::jogUp(double mm, const OpticsInfo& optic)
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Z;
-	MotionController::instance().relative_move(m_motionID, axis, mm);
+	jogRelative(axis, mm);
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axis);
 	m_timeLogger.log_duration("[Motion] Jog up");
@@ -6728,7 +6755,7 @@ void JobThread::jogDown(double mm, const OpticsInfo& optic)
 	MachineController::instance().trackTime("Jog 2D");
 	m_timeLogger.reset_timer();
 	auto axis = (int)im390::Axis::Z;
-	MotionController::instance().relative_move(m_motionID, axis, -mm);
+	jogRelative(axis, -mm);
 	os_tool::doNothing(m_motionReadDelay_ms);
 	waitAxis(axis);
 	m_timeLogger.log_duration("[Motion] Jog down");
@@ -6823,7 +6850,17 @@ void JobThread::homeXYZ()
 	if (!MachineController::instance().isServoOn(Axis::Y)) MachineController::instance().notifyError(MachineError::Y_SERVO_OFF);
 	if (!MachineController::instance().isServoOn(Axis::Z)) MachineController::instance().notifyError(MachineError::Z_SERVO_OFF);
 
-	if (MachineController::instance().getMachineState() == MachineState::S_ERROR) return;
+	/*
+	* Homing IS the recovery action for a limit hit, so it must not be blocked by one. Refusing
+	* here was a deadlock: the limit puts the machine in S_ERROR, S_ERROR disables motion, the
+	* axis cannot leave the switch, so the error never clears and nothing in the software could
+	* get the machine back. Every other error still refuses.
+	*
+	* Note the single-axis homeX/homeY/homeZ have never had this guard, which is why pressing
+	* Home X individually was the only way out before this.
+	*/
+	if (MachineController::instance().getMachineState() == MachineState::S_ERROR
+		&& !MachineController::instance().limitRecoveryOnly()) return;
 
 	MachineController::instance().notifyEvent(MachineEvent::HOMING);
 
@@ -6860,7 +6897,9 @@ void JobThread::homeAll()
 	if (!MachineController::instance().isServoOn(Axis::Z)) MachineController::instance().notifyError(MachineError::Z_SERVO_OFF);
 
 
-	if (MachineController::instance().getMachineState() == MachineState::S_ERROR) return;
+	//Same limit-hit exemption as homeXYZ() - see the note there.
+	if (MachineController::instance().getMachineState() == MachineState::S_ERROR
+		&& !MachineController::instance().limitRecoveryOnly()) return;
 
 	MachineController::instance().notifyEvent(MachineEvent::HOMING);
 

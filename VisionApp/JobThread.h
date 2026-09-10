@@ -359,6 +359,13 @@ public slots:
 	void jogUp(double mm, const OpticsInfo& optic);
 	void jogDown(double mm, const OpticsInfo& optic);
 
+	/*
+	* One step of a UI jog, with the refusal reported. relative_move() returns false for two
+	* very different reasons and every jog handler used to discard it, so a jog that did nothing
+	* looked exactly like one that worked - same log lines, and it still snapped an image.
+	*/
+	bool jogRelative(int axis, double mm);
+
 	void homeX();
 	void homeY();
 	void homeZ();

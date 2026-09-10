@@ -93,6 +93,11 @@ void VisionApp::initMotion() {
 		bool gantryState = true;
 		bool gantryKnown = false; //true once at least one axis answered - unreadable is NOT green
 
+		//Hard limit state per axis, used below to gray out the jog direction that cannot move.
+		//Left false when an axis does not answer, so an unreadable axis never locks the
+		//operator out of jogging - the move itself is still refused by software and the drive.
+		bool xPel = false, xNel = false, yPel = false, yNel = false, zPel = false, zNel = false;
+
 		auto optional_axisX =  MotionController::instance().get_motion_io_status(_motionID, (int)Axis::X);
 		if (optional_axisX.has_value()) {
 			auto motion_io = optional_axisX.value();
@@ -109,6 +114,8 @@ void VisionApp::initMotion() {
 			nvs::set_background_color(ui.toolButton_EMXA_X_SVON, motion_io[Motion_APS::SVON] ? Qt::green : Qt::red);
 			gantryState &= motion_io[Motion_APS::SVON];
 			gantryKnown = true;
+			xPel = motion_io[Motion_APS::PEL];
+			xNel = motion_io[Motion_APS::NEL];
 		}
 
 		auto optional_axisY =  MotionController::instance().get_motion_io_status(_motionID, (int)Axis::Y);
@@ -126,6 +133,8 @@ void VisionApp::initMotion() {
 			nvs::set_background_color(ui.toolButton_EMXA_Y_INP, motion_io[Motion_APS::INP] ? Qt::green : Qt::red);
 			nvs::set_background_color(ui.toolButton_EMXA_Y_SVON, motion_io[Motion_APS::SVON] ? Qt::green : Qt::red);
 			gantryState &= motion_io[Motion_APS::SVON];
+			yPel = motion_io[Motion_APS::PEL];
+			yNel = motion_io[Motion_APS::NEL];
 		}
 
 		auto optional_axisZ =  MotionController::instance().get_motion_io_status(_motionID, (int)Axis::Z);
@@ -143,9 +152,45 @@ void VisionApp::initMotion() {
 			nvs::set_background_color(ui.toolButton_EMXA_Z_INP, motion_io[Motion_APS::INP] ? Qt::green : Qt::red);
 			nvs::set_background_color(ui.toolButton_EMXA_Z_SVON, motion_io[Motion_APS::SVON] ? Qt::green : Qt::red);
 			gantryState &= motion_io[Motion_APS::SVON];
+			zPel = motion_io[Motion_APS::PEL];
+			zNel = motion_io[Motion_APS::NEL];
 		}
 
 		nvs::set_background_color(ui.toolButton_gantryStatus, (gantryKnown && gantryState) ? Qt::green : Qt::red);
+
+		/*
+		* Gray out the jog direction that is already against a limit switch, so the operator
+		* cannot even attempt the one move the drive is guaranteed to refuse. The opposite
+		* direction stays live - that is the one that recovers the axis.
+		*
+		* Which button faces which switch depends on the SIGN of pulse_per_mm, because
+		* to_pulse() is mm * pulse_per_mm: a negative scale puts the positive-millimetre button
+		* against the NEGATIVE end limit. Read it instead of assuming, or a machine configured
+		* the other way round would have its recovery button greyed and the useless one live.
+		*
+		* The captions are crossed on Y and Z - toolButton_jogBack emits jogFront (+Y) and
+		* toolButton_jogBottom emits jogUp (+Z) - so the pairs below follow the sign of the
+		* move, never the wording on the button.
+		*/
+		auto gateJogButton = [&](QToolButton* b, bool blocked) {
+			if (!b) return;
+			const bool wantEnabled = !blocked;
+			if (b->isEnabled() == wantEnabled) return; //only touch it on a change
+			b->setEnabled(wantEnabled);
+			b->setToolTip(wantEnabled ? QString()
+				: tr("Limit switch reached - jog the opposite direction to recover."));
+		};
+
+		const bool xFlip = MotionController::instance().pulse_per_mm(_motionID, (int)Axis::X) < 0.0;
+		const bool yFlip = MotionController::instance().pulse_per_mm(_motionID, (int)Axis::Y) < 0.0;
+		const bool zFlip = MotionController::instance().pulse_per_mm(_motionID, (int)Axis::Z) < 0.0;
+
+		gateJogButton(ui.toolButton_jogRight,  xFlip ? xNel : xPel); //+X
+		gateJogButton(ui.toolButton_jogLeft,   xFlip ? xPel : xNel); //-X
+		gateJogButton(ui.toolButton_jogBack,   yFlip ? yNel : yPel); //+Y, caption is crossed
+		gateJogButton(ui.toolButton_jogFront,  yFlip ? yPel : yNel); //-Y, caption is crossed
+		gateJogButton(ui.toolButton_jogBottom, zFlip ? zNel : zPel); //+Z, caption is crossed
+		gateJogButton(ui.toolButton_jogTop,    zFlip ? zPel : zNel); //-Z, caption is crossed
 
 		auto optional_EMXA_DIs =  MotionController::instance().get_all_DI(_motionID, 0);
 		if (optional_EMXA_DIs.has_value()) {
