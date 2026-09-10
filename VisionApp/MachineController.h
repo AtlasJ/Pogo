@@ -111,8 +111,28 @@ public:
     void enable(bool enable);
 
     bool turnOnBrake();
+    void silenceBuzzer(); //drive Y106 low - inert when offline, callable from any thread
     bool safelyReleaseBrake(int servoWaitMs = 3000);
     bool servoOnAllAxes(); //servo X/Y/Z on, wait for SVON, clear servo errors, release Z brake
+
+    /*
+    * Full drive recovery behind the physical reset button: brake, clear the drives' latched
+    * alarms, then servoOnAllAxes(). The alarm reset is the step that used to force the operator
+    * onto the Motion page - set_servo() will not take on a drive that is still alarmed, so
+    * without it no number of reset presses brings the machine back.
+    */
+    bool recoverDrives();
+
+    /*
+    * True when at least one error is active and EVERY active one is a hard limit hit.
+    *
+    * That combination is special because it is self-inflicted and self-curable: the axis is
+    * parked on a switch, and the only way off is to move. Blocking motion there is a deadlock -
+    * motion disabled, so the axis cannot leave the switch, so the error never clears. The drive
+    * itself refuses to travel further into a tripped limit (ADLINK built-in, confirmed with CS
+    * Tan), so letting software move at all is bounded by hardware in the dangerous direction.
+    */
+    bool limitRecoveryOnly() const;
 
     bool resetAlarm();
     bool curtainTripped() const { return m_curtainTripped; } //latched curtain break, cleared by reset
@@ -184,9 +204,18 @@ private:
 
     QSet<int> m_errorStatuses;
 
+    //Kept in step with m_errorStatuses so limitRecoveryOnly() can be answered from another
+    //thread (JobThread asks before homing) without walking a set the poll loop is mutating.
+    //assessError() is the only writer of all three.
+    std::atomic<int> m_limitErrorCount{0};
+    std::atomic<int> m_nonLimitErrorCount{0};
+
     bool m_startBtnPressed = false;
     bool m_stopBtnPressed = false;
     bool m_resetBtnPressed = false;
+    //Set by the reset button, acted on at the END of handleAxisState so resetAlarm() is judged
+    //against an error set that has been refreshed this cycle rather than the previous one.
+    bool m_resetRequested = false;
 
     //Both e-stop buttons (X103/X104), NC so high = not pressed. Read in handleDIA but
     //assessed in handleAxisState together with the drive EMG input, because all three
@@ -197,6 +226,11 @@ private:
     bool m_trolleyGuardOn = false; //last trolley guard DI state - the OFF->ON edge auto-locks
     bool m_limitWasHit = false;    //a soft/hard limit raised the current error - self-clears off the switch
     QTimer* m_redTowerTimer = nullptr;
+
+    //Cleared SYNCHRONOUSLY by setTowerLight() before it writes a new colour. stopRedTowerLight()
+    //is a QUEUED call and cannot run until the blink lambda returns - and that lambda holds its
+    //own thread for a full second - so the timer alone cannot stop the blink in time.
+    std::atomic<bool> m_blinkActive{false};
 
     //Time
     QHash<QString, std::chrono::time_point<std::chrono::system_clock>> m_timer;
