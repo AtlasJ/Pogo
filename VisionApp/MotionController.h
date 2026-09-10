@@ -18,6 +18,11 @@ public:
     void enable(bool enable);
     void enable_motion(bool enable);
 
+    //Whether commanded moves are currently allowed through. Only the move functions consult
+    //this - home(), set_servo() and the IO calls deliberately ignore it, or you could never
+    //home your way out of the very state that disables motion.
+    bool motionEnabled() const { return m_enableMotion; }
+
     //quiet validity check: same answer as valid() but never logs - for pollers
     //that need to know whether the controller is worth talking to at all
     bool available(QString id) const;
@@ -35,6 +40,10 @@ public:
 
     // Config
     bool set_pulse_per_mm(QString id, int axis, double scale);
+
+    //Signed - negative means a positive mm command travels towards the NEGATIVE end limit.
+    //Quiet (uses available(), not valid()) because a UI poll asks it several times a second.
+    double pulse_per_mm(QString id, int axis) const;
     bool set_positive_limit_mm(QString id, int axis, double limit);
     bool set_negative_limit_mm(QString id, int axis, double limit);
 

@@ -3,6 +3,7 @@
 #include "APS Library/Include/type_def.h"
 #include <unordered_map>
 #include <chrono>
+#include <mutex>
 
 namespace nvs {
 	namespace motion {
@@ -18,6 +19,19 @@ namespace nvs {
 			//ran past the end of the vector - benign with MSVC's whole-word std::vector<bool>
 			//allocation, but undefined, and a trap for anyone changing either loop.
 			const int MAX_DO = 16;
+
+			/*
+			* set_DO() is a READ-MODIFY-WRITE of a whole 8-bit group, not a single-bit write:
+			* it reads every output back off the card, changes one bit, and writes the group.
+			* Group 0 alone carries the three button LEDs, all three tower lights, the buzzer
+			* and the trolley lock - and those are written from four different threads (the
+			* tower blink timer, the IO poll loop, whichever thread changed the machine state,
+			* and the Motion page's manual buttons). Without this lock, two overlapping writes
+			* each build their mask from a snapshot taken before the other's write and the
+			* later one silently reverts it. That is what made a green tower light come up
+			* amber, or not at all, after homing.
+			*/
+			mutable std::mutex m_doMutex;
 
 			int get_group(int bit) const;
 			const char* get_code(int ret) const;
@@ -66,6 +80,7 @@ namespace nvs {
 
 			//Config
 			bool set_pulse_per_mm(int axis, double scale);
+			double get_pulse_per_mm(int axis) const override;
 			bool set_positive_limit_mm(int axis, double limit);
 			bool set_negative_limit_mm(int axis, double limit);
 			bool set_home_mode(int axis, int mode);

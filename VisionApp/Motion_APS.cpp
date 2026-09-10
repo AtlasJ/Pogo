@@ -387,6 +387,13 @@ bool nvs::motion::Motion_APS::set_negative_limit_mm(int axis, double limit)
 	return true;
 }
 
+double nvs::motion::Motion_APS::get_pulse_per_mm(int axis) const
+{
+	auto it = m_axisInfos.find(axis);
+	if (it == m_axisInfos.end()) return 1.0; //unknown axis: assume the usual positive convention
+	return it->second.pulse_per_mm;
+}
+
 bool nvs::motion::Motion_APS::set_home_mode(int axis, int mode)
 {
 	auto ret = APS_set_axis_param(axis, Param::HOME_MODE, mode); //home mode
@@ -492,6 +499,9 @@ bool Motion_APS::set_DO(int cardID, int bit, bool state)
 	const int group = bit / 8;
 	const int bit_in_group = bit % 8;
 
+	//The read and the write below are one indivisible operation - see m_doMutex in the header.
+	std::lock_guard<std::mutex> lock(m_doMutex);
+
 	auto opt_DOs = get_all_DO(cardID);
 	if (!opt_DOs)
 		return false;
@@ -521,6 +531,10 @@ bool Motion_APS::set_all_DO(int cardID, const std::vector<bool>& states)
 		ct::logger::error("[Motion_APS] Failed to write all DO: States received more than max capacity of %d", MAX_DO);
 		return false;
 	}
+
+	//No callers today, but it writes the same registers set_DO() does - hold the same lock so a
+	//future caller cannot race a read-modify-write half way through.
+	std::lock_guard<std::mutex> lock(m_doMutex);
 
 	const int CHANNELS_PER_GROUP = 8;
 	const int totalGroups = (states.size() + CHANNELS_PER_GROUP - 1) / CHANNELS_PER_GROUP;
@@ -714,6 +728,58 @@ bool nvs::motion::Motion_APS::is_safe(int axis, double position_mm)
 
 	if (positive_limit < position_mm) safe = false;
 	if (negative_limit > position_mm) safe = false;
+
+	/*
+	* Recovery out of an already-violated limit.
+	*
+	* The test above is purely a DESTINATION test, so an axis that is already sitting outside
+	* its soft limits refuses every move - including the ones that bring it back. Parked at -40
+	* against a -30 limit, a +1 jog was refused because -39 is still outside, leaving nothing
+	* but the hardware switches to get out of it.
+	*
+	* So when the axis is ALREADY out of range, also allow a move that travels TOWARDS the
+	* allowed band without shooting past the limit at the far end, and keep refusing anything
+	* heading further out. With lo = -30, hi = 100 and the axis at -40:
+	*
+	*     -1     refused - away from the band
+	*     +1     allowed - towards it, even though -39 is still outside
+	*     +20    allowed - lands inside anyway, so the test above already passed it
+	*     +1000  refused - towards it, but 960 is past the positive limit
+	*
+	* This can only ever widen what is allowed, and only while the axis is out of range: an
+	* in-range axis never reaches this block, so normal operation is unchanged. Every move it
+	* newly permits strictly reduces the violation.
+	*
+	* Guarded on a real position read, and on there being a real band to travel towards. The
+	* comparison is STRICT on purpose: motion.json can be missing "positive_limit(mm)" and
+	* "negative_limit(mm)" entirely, in which case both read 0.0 and the band collapses to a
+	* single point. That is a broken config, not a tight machine, and it must keep refusing
+	* everything the way it did before this block existed - not quietly permit creeping
+	* towards zero.
+	*/
+	if (!safe && negative_limit < positive_limit) {
+		const int cardID = (axis > 4) ? 1 : 0; //same derivation relative_move() uses
+		const auto opt_current = get_position_mm(cardID, axis);
+
+		if (opt_current.has_value()) {
+			const double current = opt_current.value();
+
+			if (current < negative_limit) {
+				//below the band: must move up, and must not overshoot the far side
+				if (position_mm > current && position_mm <= positive_limit) safe = true;
+			}
+			else if (current > positive_limit) {
+				//above the band: mirror image
+				if (position_mm < current && position_mm >= negative_limit) safe = true;
+			}
+
+			if (safe) {
+				ct::logger::warn("[Motion_APS] Axis %d is outside its soft limits at %.2f - allowing "
+					"a move to %.2f because it travels back towards %.2f..%.2f",
+					axis, current, position_mm, negative_limit, positive_limit);
+			}
+		}
+	}
 
 	if (!safe) {
 		if (axis == (int)Axis::X) MachineController::instance().notifyWarning(MachineWarning::X_SOFT_LIMIT_HIT);

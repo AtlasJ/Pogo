@@ -255,6 +255,12 @@ bool MotionController::set_pulse_per_mm(QString id, int axis, double scale)
 	return m_motion[id]->set_pulse_per_mm(axis, scale);
 }
 
+double MotionController::pulse_per_mm(QString id, int axis) const
+{
+	if (!available(id)) return 1.0;
+	return m_motion[id]->get_pulse_per_mm(axis);
+}
+
 bool MotionController::set_positive_limit_mm(QString id, int axis, double limit)
 {
 	if (!valid(id)) return false;

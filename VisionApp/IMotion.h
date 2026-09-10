@@ -92,6 +92,14 @@ namespace nvs {
 
             // Config
             virtual bool set_pulse_per_mm(int axis, double scale) = 0;
+
+            /*
+            * The SIGN matters as much as the magnitude: to_pulse() is mm * pulse_per_mm, so a
+            * negative scale means a positive millimetre command travels towards the NEGATIVE
+            * end limit. Anything deciding which switch a direction approaches has to ask rather
+            * than assume. Non-pure with a positive default so no other backend must implement it.
+            */
+            virtual double get_pulse_per_mm(int axis) const { return 1.0; }
             virtual bool set_positive_limit_mm(int axis, double limit) = 0;
             virtual bool set_negative_limit_mm(int axis, double limit) = 0;
 
