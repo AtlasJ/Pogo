@@ -141,6 +141,36 @@ bool AlgoManager::height3UseLastScan(QString& error)
 	return true;
 }
 
+/*
+* The production path's way in. Differs from height3UseLastScan in two ways that matter:
+* it takes the buffers of the frame actually being inspected rather than whatever the GUI
+* thread stored last, and a mismatched intensity map is DROPPED rather than treated as an
+* error - the pipeline never measures from intensity, so failing a unit over a display-only
+* map would be wrong. An unusable HEIGHT map is still a hard failure.
+*/
+bool AlgoManager::height3SetSourceMaps(mtrx::SharedMilID heightMap,
+	mtrx::SharedMilID intensityMap, QString& note)
+{
+	const cv::Mat height = milToMatCopy(heightMap);
+	if (height.empty()) {
+		note = QStringLiteral("the frame carried no usable height map");
+		return false;
+	}
+
+	cv::Mat intensity = milToMatCopy(intensityMap);
+	if (!intensity.empty() && intensity.size() != height.size()) {
+		note = QStringLiteral("intensity map %1 x %2 does not match the height map %3 x %4 - ignored")
+			.arg(intensity.cols).arg(intensity.rows).arg(height.cols).arg(height.rows);
+		intensity = cv::Mat();
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_height3Mutex);
+		m_height3.setSourceMaps(height, intensity);
+	}
+	return true;
+}
+
 bool AlgoManager::height3LoadHeightFile(const QString& path, QString& error)
 {
 	if (!QFile::exists(path)) { error = "File not found: " + path; return false; }
@@ -283,15 +313,31 @@ QImage AlgoManager::height3Image(bool intensity, bool preprocessed, bool segment
 }
 
 QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
-	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize) const
+	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
+	AlgoH3SurfaceStyle style) const
 {
 	const AlgoHeight3Params p = height3Params();
 
 	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
 	if (!lock.owns_lock()) return QImage();
 
+	//the texture has to come from the SAME segmentation state as the geometry, or a
+	//straightened crop would be painted with the uncropped map and slide off the part
 	return algoH3RenderSurface3D(m_height3.heightForDisplay(preprocessed, segmented),
-		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize);
+		m_height3.intensityForDisplay(segmented),
+		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style);
+}
+
+QImage AlgoManager::height3Relief(bool preprocessed, bool segmented,
+	double zExaggeration, bool colorMapped) const
+{
+	const AlgoHeight3Params p = height3Params();
+
+	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
+	if (!lock.owns_lock()) return QImage();
+
+	return algoH3RenderRelief2D(m_height3.heightForDisplay(preprocessed, segmented),
+		p.minValidRaw, p.maxValidRaw, zExaggeration, colorMapped);
 }
 
 // =============================================================================
@@ -361,6 +407,9 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		p.closingKernel = jsonHelper::getInteger(h, "closing_kernel", p.closingKernel);
 
 		// ── section 2 ──
+		p.segMethod = (AlgoH3SegMethod)jsonHelper::getInteger(h, "seg_method", 0);
+		p.segCanvasWidthUm = jsonHelper::getDouble(h, "seg_canvas_width_um", 0.0);
+		p.segCanvasHeightUm = jsonHelper::getDouble(h, "seg_canvas_height_um", 0.0);
 		p.segCheckWidth = jsonHelper::getBool(h, "seg_check_width", false);
 		p.segMinWidthUm = jsonHelper::getDouble(h, "seg_min_width_um", 0.0);
 		p.segMaxWidthUm = jsonHelper::getDouble(h, "seg_max_width_um", 0.0);
@@ -395,6 +444,16 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 			if (QColor::isValidColor(colorName)) t.color = QColor(colorName);
 			t.minUm = jsonHelper::getDouble(o, "min_um", 0.0);
 			t.maxUm = jsonHelper::getDouble(o, "max_um", 0.0);
+			/*
+			* MIGRATION: before this key existed, "max > min" was what turned the height
+			* criterion on. Defaulting a missing key to false would silently stop checking
+			* every type in every recipe already out there, so fall back to the old rule.
+			*/
+			t.checkHeight = o.contains("check_height")
+				? jsonHelper::getBool(o, "check_height", false)
+				: (t.maxUm > t.minUm);
+			t.checkOffset = jsonHelper::getBool(o, "check_offset", false);
+			t.maxOffsetUm = jsonHelper::getDouble(o, "max_offset_um", 0.0);
 			t.methodId = jsonHelper::getInteger(o, "method_id", 0);
 			p.roiTypes.append(t);
 		}
@@ -431,6 +490,11 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 	if (p.percentile > 100.0) p.percentile = 100.0;
 	if ((int)p.preprocess < 0 || (int)p.preprocess > (int)AlgoH3Preprocess::Closing)
 		p.preprocess = AlgoH3Preprocess::None;
+	if ((int)p.segMethod < 0 || (int)p.segMethod >= kAlgoH3SegMethodCount)
+		p.segMethod = AlgoH3SegMethod::LargestRegion;
+	//negative is meaningless; 0 stays 0 because it means "not set" and must keep refusing
+	if (p.segCanvasWidthUm < 0.0) p.segCanvasWidthUm = 0.0;
+	if (p.segCanvasHeightUm < 0.0) p.segCanvasHeightUm = 0.0;
 	if ((int)p.datumMethod < 0 || (int)p.datumMethod > (int)AlgoH3DatumMethod::PcaSvd)
 		p.datumMethod = AlgoH3DatumMethod::LeastSquares;
 	if (!algoH3MethodValid(p.methodId)) p.methodId = 0;
@@ -471,6 +535,9 @@ QJsonObject AlgoManager::height3ToJson() const
 	h.insert("opening_kernel", p.openingKernel);
 	h.insert("closing_kernel", p.closingKernel);
 
+	h.insert("seg_method", (int)p.segMethod);
+	h.insert("seg_canvas_width_um", p.segCanvasWidthUm);
+	h.insert("seg_canvas_height_um", p.segCanvasHeightUm);
 	h.insert("seg_check_width", p.segCheckWidth);
 	h.insert("seg_min_width_um", p.segMinWidthUm);
 	h.insert("seg_max_width_um", p.segMaxWidthUm);
@@ -496,8 +563,11 @@ QJsonObject AlgoManager::height3ToJson() const
 		QJsonObject o;
 		o.insert("name", t.name);
 		o.insert("color", t.color.name(QColor::HexRgb));
+		o.insert("check_height", t.checkHeight);
 		o.insert("min_um", t.minUm);
 		o.insert("max_um", t.maxUm);
+		o.insert("check_offset", t.checkOffset);
+		o.insert("max_offset_um", t.maxOffsetUm);
 		o.insert("method_id", t.methodId);
 		types.append(o);
 	}

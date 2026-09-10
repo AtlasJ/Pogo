@@ -86,6 +86,15 @@ public:
 	// ── 3D Height Measurement 3 (AlgoHeight3Pipeline) ──
 	//sources: either the last scan's pair, or files loaded on the page for offline work
 	bool height3UseLastScan(QString& error);
+
+	/*
+	* Production entry point: take V3's source maps straight from the frame being inspected.
+	* Deliberately NOT height3UseLastScan() - that reads whatever the GUI thread last stored,
+	* which is a race against the next unit's scan. `note` carries a non-fatal remark (e.g. a
+	* mismatched intensity map that was dropped); false means the height map was unusable.
+	*/
+	bool height3SetSourceMaps(mtrx::SharedMilID heightMap, mtrx::SharedMilID intensityMap,
+		QString& note);
 	bool height3LoadHeightFile(const QString& path, QString& error);
 	bool height3LoadIntensityFile(const QString& path, QString& error);
 	void height3Clear();
@@ -100,7 +109,10 @@ public:
 	//display renders, taken under the same lock the worker writes under
 	QImage height3Image(bool intensity, bool preprocessed, bool segmented, bool colorMapped) const;
 	QImage height3Surface(bool preprocessed, bool segmented,
-		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize) const;
+		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
+		AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled) const;
+	QImage height3Relief(bool preprocessed, bool segmented,
+		double zExaggeration, bool colorMapped) const;
 
 	//── runs (queued to the worker thread; results come by signal) ──
 	void runOcr(const QImage& fov);

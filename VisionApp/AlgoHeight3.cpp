@@ -36,6 +36,29 @@ QString algoH3MethodName(int methodId)
 	}
 }
 
+/*
+* A Run All stops at the first stage that fails, so the useful summary is the name of that
+* stage plus its own reason. Only when every stage passed is the pin tally meaningful - and
+* the tally is what gets reported rather than a list of heights, because a part here has
+* hundreds of pins and a comma-joined list of them is not a result anyone can read.
+*/
+QString algoH3RunSummary(const AlgoHeight3Output& out)
+{
+	if (!out.preprocess.ran) return QStringLiteral("did not run");
+	if (!out.preprocess.pass) return QStringLiteral("preprocessing failed: ") + out.preprocess.failReason;
+	if (!out.segment.pass)    return QStringLiteral("segmentation failed: ") + out.segment.failReason;
+	if (!out.datum.pass)      return QStringLiteral("plane fit failed: ") + out.datum.failReason;
+	if (!out.measure.pass)    return QStringLiteral("measurement failed: ") + out.measure.failReason;
+
+	QString s = QStringLiteral("%1/%2 pins passed").arg(out.passedPins).arg(out.totalPins);
+	if (!out.overallPass && !out.overall.failReason.isEmpty())
+		s += QStringLiteral(" - ") + out.overall.failReason;
+	//a unit whose part outgrew the canvas passed on the pins that were still in frame, which
+	//is not the same thing as passing - say so on the production line too, not just the page
+	if (out.segOversized) s += QStringLiteral(" [OVERSIZED: ") + out.segment.note + QLatin1Char(']');
+	return s;
+}
+
 bool algoH3MethodValid(int methodId)
 {
 	return methodId >= 0 && methodId < kAlgoH3MethodCount;
@@ -231,6 +254,72 @@ static bool validStats(const cv::Mat& height16, const cv::Mat& mask,
 	return cv::countNonZero(mask) > 0;
 }
 
+/*
+* Median over the VALID neighbours only.
+*
+* cv::medianBlur has no concept of a mask, so on a height map it ranks the dropout
+* zeros as if they were real measurements: a window that is majority-dropout returns
+* 0 - turning measured pixels into dropouts - and even a minority of zeros drags the
+* rank down. That matters here because the laser cannot see the sides of the pins, so
+* ~19% of the part's own rectangle is interior dropout and every pin has a halo.
+* Measured on 20260828_193223 at k=5: 28,551 valid pixels destroyed outright, 51,960
+* wrong by more than 100 um, worst case 25 mm. Median was the only method in
+* doPreprocess that was not dropout-aware; Gaussian, Bilateral and the morphology
+* branches all already are.
+*
+* Where every pixel in the window is valid this returns exactly what cv::medianBlur
+* returns - verified over 14,449,859 such pixels on that map, 100.00% identical - so
+* it is a strict repair, not a different filter.
+*
+* On an even number of valid neighbours this takes the upper middle sample rather
+* than averaging the middle two, because averaging would invent a height that no
+* pixel actually measured. Same reason doPreprocess re-imposes the mask at the end.
+*
+* Doing it by hand also removes OpenCV's 3-or-5 aperture limit for 16-bit input: any
+* odd kernel up to kMaxMedianK works. The 3/5 cap is kept at the call site so saved
+* recipes keep their meaning - lifting it is a separate, deliberate decision.
+*/
+static const int kMaxMedianK = 11;
+
+static void maskedMedian16(const cv::Mat& src, const cv::Mat& mask, int k, cv::Mat& dst)
+{
+	CV_Assert(src.type() == CV_16U && mask.type() == CV_8U && src.size() == mask.size());
+	CV_Assert(k >= 1 && k <= kMaxMedianK && (k % 2) == 1);
+
+	const int r = k / 2;
+	const int rows = src.rows, cols = src.cols;
+	dst.create(src.size(), CV_16U);
+
+	cv::parallel_for_(cv::Range(0, rows), [&](const cv::Range& band) {
+		//fixed buffer: no allocation per pixel, and k is bounded by kMaxMedianK
+		unsigned short buf[kMaxMedianK * kMaxMedianK];
+
+		for (int y = band.start; y < band.end; y++) {
+			const unsigned char* mRow = mask.ptr<unsigned char>(y);
+			unsigned short* dRow = dst.ptr<unsigned short>(y);
+			const int y0 = std::max(0, y - r), y1 = std::min(rows - 1, y + r);
+
+			for (int x = 0; x < cols; x++) {
+				//a dropout stays a dropout: no filter is allowed to invent a measurement
+				if (!mRow[x]) { dRow[x] = 0; continue; }
+
+				const int x0 = std::max(0, x - r), x1 = std::min(cols - 1, x + r);
+				int n = 0;
+				for (int yy = y0; yy <= y1; yy++) {
+					const unsigned short* s = src.ptr<unsigned short>(yy);
+					const unsigned char* m = mask.ptr<unsigned char>(yy);
+					for (int xx = x0; xx <= x1; xx++)
+						if (m[xx]) buf[n++] = s[xx];
+				}
+				//the centre pixel is valid, so n >= 1 always
+				const int mid = n / 2;
+				std::nth_element(buf, buf + mid, buf + n);
+				dRow[x] = buf[mid];
+			}
+		}
+	});
+}
+
 } //namespace
 
 // =============================================================================
@@ -325,6 +414,7 @@ void AlgoHeight3Pipeline::invalidateFrom(AlgoH3Stage stage)
 		m_cropIntensity = cv::Mat();
 		m_out.segment = AlgoH3StageResult();
 		m_out.segWidthUm = m_out.segHeightUm = m_out.segAngleDeg = 0.0;
+		m_out.segOversized = false;
 		m_out.segRectMap = QRectF();
 		m_out.segCorners.clear();
 		m_out.cropWidthPx = m_out.cropHeightPx = 0;
@@ -425,11 +515,14 @@ bool AlgoHeight3Pipeline::doPreprocess(const AlgoHeight3Params& p)
 		break;
 
 	case AlgoH3Preprocess::Median: {
-		//OpenCV's 16-bit medianBlur accepts an aperture of 3 or 5 only - refuse loudly
-		//rather than silently filtering with a different kernel than the one on screen
+		//masked: the median is taken over the valid neighbours only, so a pin's dropout
+		//halo cannot drag its top down or zero it out. See maskedMedian16.
+		//The kernel stays capped at 3 or 5 so saved recipes keep their meaning, even
+		//though maskedMedian16 itself has no such limit - refuse loudly rather than
+		//silently filtering with a different kernel than the one on screen.
 		if (p.medianKernel > 5)
-			return fail(QStringLiteral("Median on a 16-bit map supports kernel 3 or 5 only"));
-		cv::medianBlur(m_height, dst, oddKernel(p.medianKernel, 3, 5));
+			return fail(QStringLiteral("Median kernel must be 3 or 5"));
+		maskedMedian16(m_height, mask, oddKernel(p.medianKernel, 3, 5), dst);
 		break;
 	}
 
@@ -525,6 +618,51 @@ bool AlgoHeight3Pipeline::doPreprocess(const AlgoHeight3Params& p)
 * The same rectangle then defines the PART FRAME - the straightened crop every later
 * stage works in.
 */
+namespace {
+
+/*
+* Segmentation method 0 - the largest connected region of valid pixels, posed by the
+* min-area rect of its outer contour.
+*
+* RETR_EXTERNAL matters: the laser cannot see the sides of the pins, so ~19% of this
+* part's own rectangle is interior dropout. External contours ignore those holes, so
+* the pose comes from the part's outline and nothing else.
+*
+* EVERY segmentation method ends the same way - producing ONE cv::RotatedRect for the
+* unit. Everything after the dispatch in doSegment (angle folding, crop sizing, the
+* warpAffine straighten, the operator's checks) is deliberately method-agnostic, so a
+* new method is one function plus one enum value plus one combo item, and never a
+* change to doSegment's tail.
+*/
+static bool h3SegLargestRegion(const cv::Mat& src, const AlgoHeight3Params& p,
+	cv::RotatedRect& out, QString& why)
+{
+	const cv::Mat mask = validMaskOf(src, p.minValidRaw, p.maxValidRaw);
+
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+	if (contours.empty()) {
+		why = QStringLiteral("No region found inside the valid raw range");
+		return false;
+	}
+
+	int best = -1;
+	double bestArea = 0.0;
+	for (int i = 0; i < (int)contours.size(); i++) {
+		const double a = cv::contourArea(contours[i]);
+		if (a > bestArea) { bestArea = a; best = i; }
+	}
+	if (best < 0 || bestArea < 4.0) {
+		why = QStringLiteral("Largest region is too small to be a part");
+		return false;
+	}
+
+	out = cv::minAreaRect(contours[best]);
+	return true;
+}
+
+} //namespace
+
 bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 {
 	invalidateFrom(AlgoH3Stage::Segment);
@@ -545,23 +683,18 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	if (p.xScaleUmPx <= 0.0 || p.yScaleUmPx <= 0.0)
 		return fail(QStringLiteral("X and Y scale must be greater than 0"));
 
-	const cv::Mat mask = validMaskOf(src, p.minValidRaw, p.maxValidRaw);
-
-	std::vector<std::vector<cv::Point>> contours;
-	cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-	if (contours.empty())
-		return fail(QStringLiteral("No region found inside the valid raw range"));
-
-	int best = -1;
-	double bestArea = 0.0;
-	for (int i = 0; i < (int)contours.size(); i++) {
-		const double a = cv::contourArea(contours[i]);
-		if (a > bestArea) { bestArea = a; best = i; }
+	//── which method finds the part ──
+	cv::RotatedRect rr;
+	QString segWhy;
+	switch (p.segMethod) {
+	case AlgoH3SegMethod::LargestRegion:
+		if (!h3SegLargestRegion(src, p, rr, segWhy)) return fail(segWhy);
+		break;
+	default:
+		//loadRecipeConfig clamps seg_method, so this can only fire if an enum value was
+		//added without its case here - say so rather than silently running method 0
+		return fail(QStringLiteral("Unknown segmentation method %1").arg((int)p.segMethod));
 	}
-	if (best < 0 || bestArea < 4.0)
-		return fail(QStringLiteral("Largest region is too small to be a part"));
-
-	cv::RotatedRect rr = cv::minAreaRect(contours[best]);
 
 	/*
 	* Normalise to the SMALLEST rotation that straightens the part, in (-45, 45].
@@ -574,19 +707,21 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	for (int guard = 0; ang > 45.0 && guard < 8; guard++) { ang -= 90.0; std::swap(sz.width, sz.height); }
 	for (int guard = 0; ang <= -45.0 && guard < 8; guard++) { ang += 90.0; std::swap(sz.width, sz.height); }
 
-	const int cropW = (int)std::lround(sz.width);
-	const int cropH = (int)std::lround(sz.height);
-	if (cropW < 2 || cropH < 2)
+	if (sz.width < 2.0f || sz.height < 2.0f)
 		return fail(QStringLiteral("Segmented part is smaller than 2 px"));
-	//a corrupt map can produce an absurd rectangle; refuse rather than try to allocate it
-	if ((qint64)cropW * (qint64)cropH > 400000000LL)
-		return fail(QStringLiteral("Segmented part is unreasonably large"));
 
+	/*
+	* MEASURE AND PUBLISH BEFORE REFUSING ANYTHING.
+	*
+	* The canvas below is mandatory, and the only way to choose one is to know how big the
+	* part actually is - so a stage that bailed out before filling these in would leave a
+	* fresh recipe with no way to find out. Measuring first costs nothing and breaks that
+	* circle: run once, read the size off Measured Width/Height or out of the message, type
+	* a round number comfortably above it.
+	*/
 	m_out.segWidthUm = sz.width * p.xScaleUmPx;
 	m_out.segHeightUm = sz.height * p.yScaleUmPx;
 	m_out.segAngleDeg = ang;
-	m_out.cropWidthPx = cropW;
-	m_out.cropHeightPx = cropH;
 
 	{
 		cv::Point2f pts[4];
@@ -595,6 +730,55 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 		for (int i = 0; i < 4; i++) m_out.segCorners.append(QPointF(pts[i].x, pts[i].y));
 		const cv::Rect br = rr.boundingRect();
 		m_out.segRectMap = QRectF(br.x, br.y, br.width, br.height);
+	}
+
+	/*
+	* ── the FIXED canvas ──
+	*
+	* The part frame is a constant of the recipe, not a property of this particular unit.
+	* That is the whole point: a taught ROI has to mean the same thing on every part, and it
+	* cannot if the frame is sized to whatever this one happened to measure.
+	*/
+	if (p.segCanvasWidthUm <= 0.0 || p.segCanvasHeightUm <= 0.0) {
+		return fail(QStringLiteral(
+			"Canvas size is not set. This part measured %1 x %2 um - set a canvas "
+			"comfortably larger than the biggest part the line will see.")
+			.arg(m_out.segWidthUm, 0, 'f', 1).arg(m_out.segHeightUm, 0, 'f', 1));
+	}
+
+	//round UP to an even number of pixels so the centre lands on a pixel boundary rather
+	//than half way across one. Enforced here and not in the spin box: the box holds um, and
+	//the scale conversion breaks any relationship between an even um value and an even pixel
+	//count (50002 um at 5 um/px is 10000 px, 50000 um is 10000 px too).
+	auto toEvenPx = [](double um, double umPerPx) {
+		int px = (int)std::lround(um / umPerPx);
+		if (px < 2) px = 2;
+		if (px % 2) px++;
+		return px;
+	};
+	const int cropW = toEvenPx(p.segCanvasWidthUm, p.xScaleUmPx);
+	const int cropH = toEvenPx(p.segCanvasHeightUm, p.yScaleUmPx);
+
+	//a corrupt map or an absurd canvas could ask for an allocation that will not fit
+	if ((qint64)cropW * (qint64)cropH > 400000000LL)
+		return fail(QStringLiteral("Canvas is unreasonably large (%1 x %2 px)")
+			.arg(cropW).arg(cropH));
+
+	m_out.cropWidthPx = cropW;
+	m_out.cropHeightPx = cropH;
+
+	/*
+	* Bigger than the canvas: the outer part is cropped away. Reported rather than silent -
+	* a part that has outgrown its frame is a real anomaly (a double unit, a mis-load, a
+	* mis-segmentation), and it must not look identical to a good one in the log. It does not
+	* fail the unit on its own; the width/height checks below are what decide that.
+	*/
+	if (sz.width > cropW + 0.5f || sz.height > cropH + 0.5f) {
+		m_out.segOversized = true;
+		res.note = QStringLiteral(
+			"Part %1 x %2 um is larger than the %3 x %4 um canvas - the outer part was cropped")
+			.arg(m_out.segWidthUm, 0, 'f', 1).arg(m_out.segHeightUm, 0, 'f', 1)
+			.arg(p.segCanvasWidthUm, 0, 'f', 1).arg(p.segCanvasHeightUm, 0, 'f', 1);
 	}
 
 	// ── the checks the operator enabled ──
@@ -612,8 +796,13 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	if (!reasons.isEmpty()) return fail(reasons.join(QStringLiteral("; ")));
 
 	/*
-	* Build the straightened crop in ONE warp - rotate about the part centre and land the
-	* part in a cropW x cropH canvas - so a 60 MB map is never rotated whole.
+	* Build the straightened crop in ONE warp - rotate about the part centre and land that
+	* centre at the centre of the canvas - so a 60 MB map is never rotated whole.
+	*
+	* The centring is what the two translation terms already did; they now target a FIXED
+	* canvas instead of one sized to this part. Anything the part does not cover is filled
+	* with BORDER_CONSTANT 0, and 0 is already "dropout" to the mask, the plane fit and the
+	* measurement - so the letterboxing needs no special handling anywhere downstream.
 	*
 	* INTER_NEAREST is not a performance choice, it is a correctness one: interpolating
 	* two height samples invents a height that was never measured, and blending a real
@@ -858,9 +1047,8 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 
 		r.valid = true;
 
-		//max <= min means the type carries no criteria, so the ROI simply reports
-		const bool criteriaActive = (type.maxUm > type.minUm);
-		if (!criteriaActive) {
+		//an unchecked type simply reports its height without judging it
+		if (!type.checkHeight) {
 			r.pass = true;
 		}
 		else if (r.heightUm < type.minUm) {
@@ -881,6 +1069,24 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 	m_measureDone = true;
 	res.pass = true;   //the stage itself succeeded; individual ROIs carry their own verdict
 	res.failReason.clear();
+
+	/*
+	* The XY offset criterion exists in the recipe but nothing measures an offset yet. Say so
+	* loudly: a check the operator has ticked and which quietly does nothing is the worst
+	* kind of dead setting, because the recipe claims a guarantee the machine is not giving.
+	* Remove this the moment doMeasure learns to compute an offset.
+	*/
+	{
+		QStringList pending;
+		for (const auto& t : p.roiTypes)
+			if (t.checkOffset) pending << t.name;
+		if (!pending.isEmpty()) {
+			res.note = QStringLiteral(
+				"XY offset check is enabled on %1 but offset measurement is not implemented "
+				"yet - that criterion is NOT being applied").arg(pending.join(", "));
+		}
+	}
+
 	res.elapsedMs = t.elapsed();
 	return true;
 }
@@ -1034,6 +1240,18 @@ struct H3Quad {
 	QRgb color = 0;
 };
 
+/*
+* A fixed "headlight" for the shaded mesh: upper-left and angled toward the viewer.
+* It lives in VIEW space, not model space, so the light stays put as the part is spun -
+* which is what lets a drag read as rotating a lit object rather than a sliding texture.
+* Unit length (sum of squares = 1.00004), so the diffuse dot product needs no rescale.
+* Screen y grows DOWNWARD, hence the negative y for a light coming from above.
+*/
+const double kMeshLightX = -0.3990;
+const double kMeshLightY = -0.6484;
+const double kMeshLightZ = 0.6484;
+const double kMeshAmbient = 0.32;   //floor, so a facet facing away is dim but never black
+
 } //namespace
 
 /*
@@ -1045,9 +1263,18 @@ struct H3Quad {
 * Downsampled to a fixed grid budget: a drag has to stay responsive, and this is a
 * viewing aid - nothing is ever measured from it.
 */
-QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxValidRaw,
-	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize)
+QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
+	int minValidRaw, int maxValidRaw,
+	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
+	AlgoH3SurfaceStyle style)
 {
+	const bool mesh = (style == AlgoH3SurfaceStyle::ShadedMesh);
+	const bool wire = (style == AlgoH3SurfaceStyle::Wireframe);
+	const bool points = (style == AlgoH3SurfaceStyle::PointCloud);
+	const bool textured = (style == AlgoH3SurfaceStyle::Textured);
+	//every style except the original flat one is lit by the facet normal
+	const bool lit = (style != AlgoH3SurfaceStyle::Filled && !wire && !points);
+
 	const QSize size = (outSize.width() >= 64 && outSize.height() >= 64) ? outSize : QSize(900, 700);
 
 	QImage img(size, QImage::Format_RGB888);
@@ -1058,8 +1285,20 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxVa
 	if (height16.type() == CV_16U) src = height16;
 	else height16.convertTo(src, CV_16U);
 
-	// ── downsample to a grid we can rotate interactively ──
-	constexpr int kGridBudget = 150;
+	/*
+	* Downsample to a grid we can still rotate interactively. Budget per style, because
+	* they cost very different amounts per cell: at the filled view's 150 a 1.27 mm pin on
+	* a 10000 px map is under 4 cells wide and simply is not there, but a wireframe at 400
+	* is an unreadable ball of lines. Points are the cheapest thing to draw, so they get
+	* the most. Filled keeps 150 so that mode renders exactly as it always has.
+	*/
+	const int kGridBudget =
+		(style == AlgoH3SurfaceStyle::Filled)       ? 150 :
+		(style == AlgoH3SurfaceStyle::ShadedMesh)   ? 240 :
+		(style == AlgoH3SurfaceStyle::SmoothShaded) ? 420 :
+		(style == AlgoH3SurfaceStyle::Wireframe)    ? 170 :
+		(style == AlgoH3SurfaceStyle::PointCloud)   ? 380 :
+		/* Textured */                                420;
 	const double shrink = std::min(1.0,
 		(double)kGridBudget / (double)std::max(src.cols, src.rows));
 	const int gw = std::max(2, (int)std::lround(src.cols * shrink));
@@ -1067,6 +1306,19 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxVa
 
 	cv::Mat grid;
 	cv::resize(src, grid, cv::Size(gw, gh), 0, 0, cv::INTER_NEAREST);
+
+	//the intensity texture rides the SAME grid, so a cell's colour and its geometry come
+	//from the same place on the part. INTER_AREA here, not NEAREST: this one is a picture,
+	//not a measurement, so averaging is what we want when shrinking it hard.
+	cv::Mat gtex;
+	const bool haveTex = textured && !intensity8.empty()
+		&& intensity8.size() == height16.size();
+	if (haveTex) {
+		cv::Mat tex8;
+		if (intensity8.type() == CV_8U) tex8 = intensity8;
+		else intensity8.convertTo(tex8, CV_8U);
+		cv::resize(tex8, gtex, cv::Size(gw, gh), 0, 0, cv::INTER_AREA);
+	}
 
 	const cv::Mat gmask = validMaskOf(grid, minValidRaw, maxValidRaw);
 	double zMin = 0, zMax = 0;
@@ -1132,8 +1384,46 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxVa
 		return QPointF(offX + (px[idx] - minX) * s, offY + (py[idx] - minY) * s);
 	};
 
-	// ── build the quads, skipping any cell with a dropout corner ──
 	const QRgb* lut = jetTable();
+
+	/*
+	* Point cloud: no surface at all, one dot per surviving sample. It is the only style
+	* that shows the data the way the profiler actually delivers it - every dropout is a
+	* visible gap rather than a quad that was quietly skipped - and it is the only one that
+	* stays honest where the surface is too broken to triangulate. Dots are drawn far-first
+	* so nearer samples cover farther ones, which is all the occlusion a cloud needs.
+	*/
+	if (points) {
+		struct H3Dot { QPointF at; double depth; QRgb color; };
+		std::vector<H3Dot> dots;
+		dots.reserve((size_t)gw * gh);
+
+		for (size_t idx = 0; idx < (size_t)gw * gh; idx++) {
+			if (!ok[idx]) continue;
+			dots.push_back({ toScreen(idx), pd[idx], lut[shade[idx]] });
+		}
+		if (dots.empty()) return img;
+
+		std::sort(dots.begin(), dots.end(),
+			[](const H3Dot& l, const H3Dot& r) { return l.depth < r.depth; });
+
+		//size the dot to the cell pitch so the cloud reads as a surface when dense and as
+		//separate samples when sparse, instead of always being a fixed speck
+		const double pitch = s * 2.0 * ax / std::max(1, gw - 1);
+		const double r = std::max(0.6, std::min(2.6, pitch * 0.62));
+
+		QPainter painter(&img);
+		painter.setRenderHint(QPainter::Antialiasing, true);
+		painter.setPen(Qt::NoPen);
+		for (const auto& d : dots) {
+			painter.setBrush(QColor(d.color));
+			painter.drawEllipse(d.at, r, r);
+		}
+		painter.end();
+		return img;
+	}
+
+	// ── build the quads, skipping any cell with a dropout corner ──
 	std::vector<H3Quad> quads;
 	quads.reserve((size_t)(gw - 1) * (gh - 1));
 
@@ -1150,6 +1440,48 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxVa
 			q.depth = 0.25 * (pd[a] + pd[b] + pd[c] + pd[d]);
 			const int level = (int)((shade[a] + shade[b] + shade[c] + shade[d]) / 4);
 			q.color = lut[std::max(0, std::min(255, level))];
+
+			if (haveTex) {
+				//the real surface appearance instead of a false-colour ramp: the JET ramp
+				//answers "how high", the texture answers "what does it look like", and on a
+				//part with hundreds of identical pins the second is often the useful one
+				const int t = (int)((gtex.at<uchar>(j, i) + gtex.at<uchar>(j, i + 1)
+					+ gtex.at<uchar>(j + 1, i) + gtex.at<uchar>(j + 1, i + 1)) / 4);
+				q.color = qRgb(t, t, t);
+			}
+
+			if (lit) {
+				/*
+				* Light the facet by its own normal. Height alone cannot convey shape:
+				* two facets at the same height but different slopes get the same colour,
+				* which is exactly why the filled view reads flat. The cross product is
+				* taken in view space (px, py, depth), so it is already oriented to the
+				* camera and no separate model-to-view transform is needed.
+				*/
+				const double e1x = px[b] - px[a], e1y = py[b] - py[a], e1z = pd[b] - pd[a];
+				const double e2x = px[c] - px[a], e2y = py[c] - py[a], e2z = pd[c] - pd[a];
+				double nx = e1y * e2z - e1z * e2y;
+				double ny = e1z * e2x - e1x * e2z;
+				double nz = e1x * e2y - e1y * e2x;
+
+				const double len = std::sqrt(nx * nx + ny * ny + nz * nz);
+				if (len > 1e-12) {
+					nx /= len; ny /= len; nz /= len;
+					//fabs, not max(0,...): these quads are never back-face culled, so a
+					//facet turned away from the light must still be shaded rather than
+					//dropping to pure ambient and punching a hole in the surface
+					const double diff = std::fabs(nx * kMeshLightX + ny * kMeshLightY
+						+ nz * kMeshLightZ);
+					const double lit = kMeshAmbient
+						+ (1.0 - kMeshAmbient) * std::min(1.0, diff);
+
+					const QRgb base = q.color;
+					q.color = qRgb(
+						std::min(255, (int)std::lround(qRed(base) * lit)),
+						std::min(255, (int)std::lround(qGreen(base) * lit)),
+						std::min(255, (int)std::lround(qBlue(base) * lit)));
+				}
+			}
 			quads.push_back(std::move(q));
 		}
 	}
@@ -1163,14 +1495,118 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, int minValidRaw, int maxVa
 	QPainter painter(&img);
 	painter.setRenderHint(QPainter::Antialiasing, false);
 
+	const QColor bg(24, 26, 32);
 	for (const auto& q : quads) {
 		const QColor c(q.color);
-		//the pen closes the hairline seams rounding leaves between neighbouring quads
-		painter.setPen(QPen(c, 1));
-		painter.setBrush(c);
+		if (wire) {
+			/*
+			* HIDDEN-LINE wireframe, not a see-through one. Filling each cell with the
+			* background before stroking it means a nearer facet erases the lines behind
+			* it, so the lattice actually describes a solid. A transparent wireframe on a
+			* surface this dense collapses into noise - every far line shows through every
+			* near one and the shape disappears.
+			*/
+			painter.setPen(QPen(c, 1));
+			painter.setBrush(bg);
+		}
+		else {
+			//A darker edge of the facet's OWN colour, not a fixed black lattice: at a few
+			//px per cell a black grid swamps the surface, while this reads as a mesh and
+			//still carries the height colour. The smooth style has cells about a pixel
+			//wide, so it strokes in the fill colour and shows no grid at all - which is
+			//what makes it read as one continuous surface.
+			painter.setPen(QPen(mesh ? c.darker(165) : c, 1));
+			painter.setBrush(c);
+		}
 		painter.drawPolygon(q.poly);
 	}
 
 	painter.end();
+	return img;
+}
+
+QImage algoH3RenderRelief2D(const cv::Mat& height16, int minValidRaw, int maxValidRaw,
+	double zExaggeration, bool colorMapped)
+{
+	if (height16.empty()) return QImage();
+
+	cv::Mat src;
+	if (height16.type() == CV_16U) src = height16;
+	else height16.convertTo(src, CV_16U);
+
+	const cv::Mat mask = validMaskOf(src, minValidRaw, maxValidRaw);
+	if (cv::countNonZero(mask) == 0) return QImage();
+
+	double zMin = 0, zMax = 0;
+	cv::minMaxLoc(src, &zMin, &zMax, nullptr, nullptr, mask);
+	if (zMax <= zMin) zMax = zMin + 1.0;
+
+	/*
+	* Dropouts are 0, and a 0 beside a real height is a cliff that would dominate every
+	* gradient near a pin - the relief would show the holes instead of the surface. Fill
+	* them with the valid midpoint before differentiating, then paint them out again at
+	* the end so nothing invented ever reaches the screen.
+	*/
+	cv::Mat f;
+	src.convertTo(f, CV_32F);
+	f.setTo(cv::Scalar(0.5 * (zMin + zMax)), ~mask);
+
+	cv::Mat gx, gy;
+	cv::Sobel(f, gx, CV_32F, 1, 0, 3);
+	cv::Sobel(f, gy, CV_32F, 0, 1, 3);
+
+	//normalise slope by the height range, so a part spanning 200 um and one spanning 6 mm
+	//are lit the same way and the operator's Z exaggeration is what drives the relief
+	const double gscale = std::max(0.05, std::min(2.0, zExaggeration)) * 6.0
+		/ std::max(1.0, zMax - zMin);
+
+	QImage img(src.cols, src.rows, QImage::Format_RGB888);
+	const QRgb* lut = jetTable();
+
+	//row pointers computed by hand: QImage::scanLine() detaches, which is not something to
+	//do from several worker threads at once
+	uchar* base = img.bits();
+	const int stride = img.bytesPerLine();
+	const double zRange = zMax - zMin;
+
+	cv::parallel_for_(cv::Range(0, src.rows), [&](const cv::Range& band) {
+		for (int y = band.start; y < band.end; y++) {
+			const float* gxr = gx.ptr<float>(y);
+			const float* gyr = gy.ptr<float>(y);
+			const ushort* sr = src.ptr<ushort>(y);
+			const uchar* mr = mask.ptr<uchar>(y);
+			uchar* out = base + (size_t)y * stride;
+
+			for (int x = 0; x < src.cols; x++) {
+				if (!mr[x]) {   //same near-black the 3D views use for "no data"
+					out[3 * x + 0] = 20; out[3 * x + 1] = 21; out[3 * x + 2] = 26;
+					continue;
+				}
+
+				//normal of a height field is (-dz/dx, -dz/dy, 1); the light is the same
+				//fixed one the 3D mesh uses, so the two views agree on where "up" is
+				const double nx = -(double)gxr[x] * gscale;
+				const double ny = -(double)gyr[x] * gscale;
+				const double len = std::sqrt(nx * nx + ny * ny + 1.0);
+				const double diff = (nx * kMeshLightX + ny * kMeshLightY + kMeshLightZ) / len;
+				const double lit = kMeshAmbient
+					+ (1.0 - kMeshAmbient) * std::max(0.0, std::min(1.0, diff));
+
+				if (colorMapped) {
+					const int lvl = (int)std::lround(
+						((double)sr[x] - zMin) / zRange * 255.0);
+					const QRgb c = lut[std::max(0, std::min(255, lvl))];
+					out[3 * x + 0] = (uchar)std::min(255, (int)std::lround(qRed(c) * lit));
+					out[3 * x + 1] = (uchar)std::min(255, (int)std::lround(qGreen(c) * lit));
+					out[3 * x + 2] = (uchar)std::min(255, (int)std::lround(qBlue(c) * lit));
+				}
+				else {
+					const uchar g = (uchar)std::min(255, (int)std::lround(lit * 255.0));
+					out[3 * x + 0] = g; out[3 * x + 1] = g; out[3 * x + 2] = g;
+				}
+			}
+		}
+	});
+
 	return img;
 }

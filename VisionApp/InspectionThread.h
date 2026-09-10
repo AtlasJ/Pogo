@@ -7,6 +7,7 @@
 #include <atomic>
 #include "FrameInfo.h"
 #include "AlgoSetupTypes.h"
+#include "AlgoHeight3Types.h" //AlgoHeight3Output - V3 runs the production height path
 
 /*
 * Production inspection worker.
@@ -73,6 +74,8 @@ private:
 	QWaitCondition m_resCv;
 	bool m_ocrDone = false;
 	bool m_heightDone = false;
+	bool m_height3Done = false;
 	AlgoOcrOutput m_ocrOutput;
 	AlgoHeightOutput m_heightOutput;
+	AlgoHeight3Output m_height3Output;
 };

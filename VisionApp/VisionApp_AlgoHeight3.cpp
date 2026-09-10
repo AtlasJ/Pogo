@@ -34,6 +34,9 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
+#include <QScrollArea>
 #include <QSpinBox>
 #include <QTableWidgetItem>
 #include <QToolButton>
@@ -92,6 +95,32 @@ static H3RoiOwner h3SectionOwner(int section)
 	return H3RoiOwner::None;
 }
 
+/*
+* Is the page showing a 3D projection rather than a flat map?
+*
+* The two 3D modes differ ONLY in how the render is painted. Everything else about them
+* is identical: no ROI drag boxes, no overlays, and drag-to-spin. Six separate places
+* used to compare against Surface3D by name; ask this instead, so adding a third 3D
+* style is one enum value and not another six-way edit that one site will be missed in.
+*/
+static bool h3IsSurfaceMode(AlgoH3Display m)
+{
+	return algoH3IsSurfaceDisplay(m);
+}
+
+//which paint style each 3D mode asks the one shared renderer for
+static AlgoH3SurfaceStyle h3StyleFor(AlgoH3Display m)
+{
+	switch (m) {
+	case AlgoH3Display::Mesh3D:       return AlgoH3SurfaceStyle::ShadedMesh;
+	case AlgoH3Display::Smooth3D:     return AlgoH3SurfaceStyle::SmoothShaded;
+	case AlgoH3Display::Wireframe3D:  return AlgoH3SurfaceStyle::Wireframe;
+	case AlgoH3Display::PointCloud3D: return AlgoH3SurfaceStyle::PointCloud;
+	case AlgoH3Display::Textured3D:   return AlgoH3SurfaceStyle::Textured;
+	default:                          return AlgoH3SurfaceStyle::Filled;
+	}
+}
+
 //what an ROI's label reads, shared by the measurement sections and the overall section so
 //the same measurement never appears formatted two different ways
 static QString h3RoiLabelText(const AlgoH3RoiResult& r)
@@ -129,7 +158,13 @@ static void h3ShowStage(QLineEdit* result, QLineEdit* reason, QLineEdit* time,
 	const AlgoH3StageResult& s)
 {
 	h3ShowVerdict(result, s.ran, s.pass);
-	if (reason) reason->setText(s.ran ? s.failReason : QString());
+	if (reason) {
+		//a stage that passed clears failReason, so the note is the only thing left to show -
+		//and a part cropped to fit the canvas has to be visible, not just logged
+		QString text = s.failReason;
+		if (text.isEmpty() && !s.note.isEmpty()) text = QStringLiteral("Note: ") + s.note;
+		reason->setText(s.ran ? text : QString());
+	}
 	if (time) time->setText(s.ran ? QString::number(s.elapsedMs) : QString());
 }
 
@@ -137,6 +172,18 @@ static void h3ShowNumber(QLineEdit* le, bool have, double v, int decimals)
 {
 	if (!le) return;
 	le->setText(have ? QString::number(v, 'f', decimals) : QStringLiteral("-"));
+}
+
+//a small filled square, so the type combo says which colour a type is without being opened
+static QIcon h3ColorIcon(const QColor& c)
+{
+	QPixmap pm(14, 14);
+	pm.fill(c);
+	QPainter pr(&pm);
+	pr.setPen(QColor(80, 80, 80));
+	pr.drawRect(0, 0, 13, 13);
+	pr.end();
+	return QIcon(pm);
 }
 
 } //namespace
@@ -154,6 +201,7 @@ void VisionApp::initAlgoHeight3Page()
 		"lineEdit_algoH3InputLoadHeightStatus", "lineEdit_algoH3InputLoadIntensityStatus",
 		"lineEdit_algoH3InputUseLastScanStatus",
 		"lineEdit_algoH3PreprocessResult", "lineEdit_algoH3PreprocessFailReason", "lineEdit_algoH3PreprocessTimeMs",
+		"lineEdit_algoH3SegCanvasPx",
 		"lineEdit_algoH3SegMeasuredWidthUm", "lineEdit_algoH3SegMeasuredHeightUm", "lineEdit_algoH3SegMeasuredAngleDeg",
 		"lineEdit_algoH3SegResult", "lineEdit_algoH3SegFailReason", "lineEdit_algoH3SegTimeMs",
 		"lineEdit_algoH3DatumRoiCount", "lineEdit_algoH3DatumCoeffA", "lineEdit_algoH3DatumCoeffB",
@@ -188,6 +236,9 @@ void VisionApp::initAlgoHeight3Page()
 		updateAlgoH3Display();
 		updateAlgoH3RoiVisibility();
 		refreshAlgoH3ResultSection();
+		//the newly opened section decides the height now, and a stacked sub-page may have
+		//changed since it was last measured
+		fitAlgoH3Sections();
 	});
 
 	// ── section 0: input ──
@@ -257,6 +308,8 @@ void VisionApp::initAlgoHeight3Page()
 			//one parameter page per method, in the same order as the combo
 			if (index >= 0 && index < ui.stackedWidget_algoH3Preprocess->count())
 				ui.stackedWidget_algoH3Preprocess->setCurrentIndex(index);
+			//a taller parameter page needs a taller section
+			fitAlgoH3Sections();
 		});
 
 	connect(ui.toolButton_algoH3PreprocessRun, &QToolButton::clicked, this, [=]() {
@@ -267,6 +320,14 @@ void VisionApp::initAlgoHeight3Page()
 	connect(ui.toolButton_algoH3SegRun, &QToolButton::clicked, this, [=]() {
 		algoH3RunStage(AlgoH3Stage::Segment);
 	});
+
+	//the px readout is the only place the um -> even-px conversion is visible
+	connect(ui.doubleSpinBox_algoH3SegCanvasWidthUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+		this, [=](double) { updateAlgoH3CanvasPxLabel(); });
+	connect(ui.doubleSpinBox_algoH3SegCanvasHeightUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+		this, [=](double) { updateAlgoH3CanvasPxLabel(); });
 
 	// ── section 3: datum plane ──
 	connect(ui.toolButton_algoH3DatumAddRoi, &QToolButton::clicked, this, [=]() {
@@ -318,14 +379,71 @@ void VisionApp::initAlgoHeight3Page()
 		});
 
 	// ── section 5: ROI types and ROIs ──
+
+	/*
+	* The per-type method list is built from algoH3MethodName() rather than typed into the
+	* .ui, so it can never drift from the AlgoH3Method enum - the index IS the Method ID,
+	* which is the number stored in the recipe.
+	*/
+	for (int m = 0; m < kAlgoH3MethodCount; m++)
+		ui.comboBox_algoH3RoiTypeMethod->addItem(
+			QStringLiteral("%1 - %2").arg(m).arg(algoH3MethodName(m)));
+
+	//switching type commits the one being left BEFORE loading the new one - capture keys
+	//off _algoH3TypeIndex, which still points at the outgoing type at this moment
+	connect(ui.comboBox_algoH3RoiType, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) {
+			if (_algoH3Updating) return;
+			captureAlgoH3ParamsFromUI();
+			loadAlgoH3TypeFields();
+		});
+
+	connect(ui.toolButton_algoH3RoiTypeColor, &QToolButton::clicked, this, [=]() {
+		if (_algoH3TypeIndex < 0) return;
+		const QColor picked = QColorDialog::getColor(algoH3SelectedTypeColor(), this,
+			"ROI Type Colour");
+		if (!picked.isValid()) return;
+
+		const QString typeName = ui.comboBox_algoH3RoiType->currentText();
+		ui.toolButton_algoH3RoiTypeColor->setProperty(kH3ColorProp, picked);
+		ui.toolButton_algoH3RoiTypeColor->setStyleSheet(QStringLiteral(
+			"QToolButton { background:%1; border:1px solid #777; }").arg(picked.name()));
+		//and the swatch in the list, so the combo still tells the truth when it is closed
+		ui.comboBox_algoH3RoiType->setItemIcon(
+			ui.comboBox_algoH3RoiType->currentIndex(), h3ColorIcon(picked));
+
+		//recolour this type's ROIs immediately - the colour is how the operator tells one
+		//type from another on the image
+		for (auto* b : _algoH3RoiBoxes) {
+			if (!b || b->getTag() != typeName) continue;
+			b->setBorderColor(picked);
+			b->update();
+		}
+		algoSettingsTouched();
+	});
+
+	//the three value widgets belong to the SELECTED type, so an edit is a recipe change
+	connect(ui.doubleSpinBox_algoH3RoiTypeMinUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=](double) {
+			if (!_algoH3Updating) algoSettingsTouched();
+		});
+	connect(ui.doubleSpinBox_algoH3RoiTypeMaxUm,
+		QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=](double) {
+			if (!_algoH3Updating) algoSettingsTouched();
+		});
+	connect(ui.comboBox_algoH3RoiTypeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) {
+			if (!_algoH3Updating) algoSettingsTouched();
+		});
+
 	connect(ui.toolButton_algoH3RoiAddType, &QToolButton::clicked, this, [=]() {
 		bool ok = false;
 		const QString name = QInputDialog::getText(this, "Add ROI Type",
 			"Type name:", QLineEdit::Normal, QString(), &ok).trimmed();
 		if (!ok || name.isEmpty()) return;
 
-		//capture first: the table's cell widgets are the truth for the existing types,
-		//and appending to a stale copy would throw away whatever was just edited
+		//capture first: the per-type widgets are the truth for the type on screen, and
+		//appending to a stale copy would throw away whatever was just edited
 		captureAlgoH3ParamsFromUI();
 		AlgoHeight3Params p = AlgoManager::instance().height3Params();
 
@@ -345,19 +463,24 @@ void VisionApp::initAlgoHeight3Page()
 		p.roiTypes.append(t);
 		AlgoManager::instance().setHeight3Params(p);
 
-		refreshAlgoH3TypeTable();
-		ui.tableWidget_algoH3RoiTypes->selectRow(p.roiTypes.size() - 1);
+		refreshAlgoH3TypeList();
+		//select what was just added, by name - the list is rebuilt, so an index would be
+		//a guess about ordering that refreshAlgoH3TypeList does not promise
+		{
+			QSignalBlocker b(ui.comboBox_algoH3RoiType);
+			ui.comboBox_algoH3RoiType->setCurrentIndex(
+				ui.comboBox_algoH3RoiType->findText(name));
+		}
+		loadAlgoH3TypeFields();
 		algoSettingsTouched();
 	});
 
 	connect(ui.toolButton_algoH3RoiDeleteType, &QToolButton::clicked, this, [=]() {
-		auto* tbl = ui.tableWidget_algoH3RoiTypes;
-		const int row = tbl->currentRow();
-		if (row < 0 || row >= tbl->rowCount() || !tbl->item(row, 0)) {
-			showMsg("Select an ROI type row first.");
+		const QString name = ui.comboBox_algoH3RoiType->currentText();
+		if (name.isEmpty()) {
+			showMsg("Select an ROI type first.");
 			return;
 		}
-		const QString name = tbl->item(row, 0)->text();
 
 		//count the ROIs that would go with it - deleting a type has to take its ROIs too,
 		//otherwise the recipe would carry ROIs with no criteria and no method
@@ -388,12 +511,13 @@ void VisionApp::initAlgoHeight3Page()
 			if (p.rois[i].typeName == name) p.rois.remove(i);
 		AlgoManager::instance().setHeight3Params(p);
 
-		refreshAlgoH3TypeTable();
+		refreshAlgoH3TypeList();
 		//ROI ids shift when one is removed, so the boxes have to be renamed
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++)
 			_algoH3RoiBoxes[i]->setName(QStringLiteral("R%1 %2").arg(i + 1).arg(_algoH3RoiBoxes[i]->getTag()));
 
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+		updateAlgoH3TypeStatus();
 		_algoH3Output.roiResults.clear();
 		refreshAlgoH3ResultSection();
 		algoSettingsTouched();
@@ -404,21 +528,14 @@ void VisionApp::initAlgoHeight3Page()
 			showMsg("Run segmentation first - an ROI is positioned relative to the segmented part.");
 			return;
 		}
-		auto* tbl = ui.tableWidget_algoH3RoiTypes;
-		const int row = tbl->currentRow();
-		if (row < 0 || row >= tbl->rowCount() || !tbl->item(row, 0)) {
+		const QString typeName = ui.comboBox_algoH3RoiType->currentText();
+		if (typeName.isEmpty()) {
 			//an ROI with no type would have no criteria and no method, so there is
 			//nothing sensible to do with it - require the type up front
-			showMsg("Select exactly one ROI type first - a new ROI is created with that type.");
+			showMsg("Add an ROI type first - a new ROI is created with the selected type.");
 			return;
 		}
-
-		const QString typeName = tbl->item(row, 0)->text();
-		QColor color(0, 200, 0);
-		if (auto* btn = qobject_cast<QToolButton*>(tbl->cellWidget(row, 1))) {
-			const QVariant v = btn->property(kH3ColorProp);
-			if (v.canConvert<QColor>()) color = v.value<QColor>();
-		}
+		const QColor color = algoH3SelectedTypeColor();
 
 		const int n = _algoH3RoiBoxes.size();
 		const QSize crop = AlgoManager::instance().height3CropSize();
@@ -429,6 +546,7 @@ void VisionApp::initAlgoHeight3Page()
 		_algoH3RoiBoxes.append(box);
 
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+		updateAlgoH3TypeStatus();
 		updateAlgoH3RoiVisibility();
 		algoSettingsTouched();
 	});
@@ -450,24 +568,19 @@ void VisionApp::initAlgoHeight3Page()
 			_algoH3RoiBoxes[i]->setName(QStringLiteral("R%1 %2").arg(i + 1).arg(_algoH3RoiBoxes[i]->getTag()));
 
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+		updateAlgoH3TypeStatus();
 		_algoH3Output.roiResults.clear();
 		refreshAlgoH3ResultSection();
 		algoSettingsTouched();
 	});
 
 	connect(ui.toolButton_algoH3RoiAssignType, &QToolButton::clicked, this, [=]() {
-		auto* tbl = ui.tableWidget_algoH3RoiTypes;
-		const int row = tbl->currentRow();
-		if (row < 0 || row >= tbl->rowCount() || !tbl->item(row, 0)) {
+		const QString typeName = ui.comboBox_algoH3RoiType->currentText();
+		if (typeName.isEmpty()) {
 			showMsg("Select the ROI type to assign to first.");
 			return;
 		}
-		const QString typeName = tbl->item(row, 0)->text();
-		QColor color(0, 200, 0);
-		if (auto* btn = qobject_cast<QToolButton*>(tbl->cellWidget(row, 1))) {
-			const QVariant v = btn->property(kH3ColorProp);
-			if (v.canConvert<QColor>()) color = v.value<QColor>();
-		}
+		const QColor color = algoH3SelectedTypeColor();
 
 		int changed = 0;
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
@@ -560,6 +673,9 @@ void VisionApp::initAlgoHeight3Page()
 			}
 			ui.label_algoStatus->setText(status);
 		});
+
+	//last: every section's contents are configured by now, so their heights are meaningful
+	fitAlgoH3Sections();
 }
 
 /*
@@ -612,6 +728,10 @@ void VisionApp::configureAlgoH3Ranges()
 	setI(ui.spinBox_algoH3PreprocessClosingKernelSize, 3, 99);
 
 	// ── section 2 ──
+	//deliberately NOT constrained to even values: the box holds um, and what has to be even
+	//is the PIXEL count, which the scale conversion decides. Rounded up in doSegment instead.
+	setD(ui.doubleSpinBox_algoH3SegCanvasWidthUm, 0.0, 10000000.0, 2);
+	setD(ui.doubleSpinBox_algoH3SegCanvasHeightUm, 0.0, 10000000.0, 2);
 	setD(ui.doubleSpinBox_algoH3SegMinWidthUm, 0.0, 10000000.0, 2);
 	setD(ui.doubleSpinBox_algoH3SegMaxWidthUm, 0.0, 10000000.0, 2);
 	setD(ui.doubleSpinBox_algoH3SegMinHeightUm, 0.0, 10000000.0, 2);
@@ -619,6 +739,12 @@ void VisionApp::configureAlgoH3Ranges()
 	//the reported angle is folded into (-45, 45], so the limits match that range
 	setD(ui.doubleSpinBox_algoH3SegMinAngleDeg, -45.0, 45.0, 3);
 	setD(ui.doubleSpinBox_algoH3SegMaxAngleDeg, -45.0, 45.0, 3);
+
+	// ── section 5: the per-type criteria ──
+	setD(ui.doubleSpinBox_algoH3RoiTypeMinUm, -1000000.0, 1000000.0, 2);
+	setD(ui.doubleSpinBox_algoH3RoiTypeMaxUm, -1000000.0, 1000000.0, 2);
+	//an offset is a magnitude, so it starts at 0 rather than going negative
+	setD(ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm, 0.0, 1000000.0, 2);
 
 	// ── section 3 ──
 	setD(ui.doubleSpinBox_algoH3DatumMaxTiltDeg, 0.0, 90.0, 3);
@@ -631,6 +757,84 @@ void VisionApp::configureAlgoH3Ranges()
 	setD(ui.doubleSpinBox_algoH3OverallMaxRate, 0.0, 100.0, 2);
 }
 
+/*
+* Let each toolbox section be as tall as its contents instead of scrolling inside itself.
+*
+* QToolBox gives every page its OWN QScrollArea. Qt creates them internally - the V3 page
+* declares none in the .ui - so each section could scroll independently of the algo page's
+* outer scroll area, and the operator got a second, hidden scrollbar for one column of
+* settings. The outer bar already handles a tall page; the inner one just buried the bottom
+* of a section behind a scroll nobody expects.
+*
+* Turning the bar off is NOT enough on its own. A QScrollArea is a size firewall - its own
+* minimumSizeHint is deliberately tiny, which is exactly what stops a page's height from
+* reaching the outer layout (the same trick shields the whole AlgoSetupPage). With the bar
+* off and no minimum, the content would CLIP rather than expand, which is worse than the
+* scrollbar was. Pushing the minimum height up from the page's sizeHint is what actually
+* makes the section grow and hands the scrolling to the outer area where it belongs.
+*
+* Re-run whenever a section's height can change: opening a different section, or switching
+* the preprocessing method to a taller parameter page.
+*/
+void VisionApp::fitAlgoH3Sections()
+{
+	auto* tb = ui.toolBox_algoH3Sections;
+	if (!tb) return;
+
+	//direct children only - these are the per-page areas QToolBox owns, never one that a
+	//page might contain itself
+	const QList<QScrollArea*> areas =
+		tb->findChildren<QScrollArea*>(QString(), Qt::FindDirectChildrenOnly);
+
+	for (QScrollArea* sa : areas) {
+		QWidget* page = sa->widget();
+		if (!page) continue;
+
+		//horizontal is left alone on purpose: width minimums on this page are driven from
+		//elsewhere (see the notes on the right panel's bars), and forcing it off here would
+		//clip a wide row instead of letting it scroll
+		sa->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		sa->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+		sa->setMinimumHeight(page->sizeHint().height());
+	}
+}
+
+/*
+* Show what the canvas actually becomes in pixels.
+*
+* The operator types um, but the part frame is pixels, and the two are related by the X/Y
+* scale plus a round UP to an even count. Without this the rounding is invisible and the
+* size of the frame every ROI lives in has to be worked out by hand.
+*/
+void VisionApp::updateAlgoH3CanvasPxLabel()
+{
+	if (!ui.lineEdit_algoH3SegCanvasPx) return;
+
+	const double wUm = ui.doubleSpinBox_algoH3SegCanvasWidthUm->value();
+	const double hUm = ui.doubleSpinBox_algoH3SegCanvasHeightUm->value();
+	const double sx = ui.doubleSpinBox_algoH3InputXScaleUmPx->value();
+	const double sy = ui.doubleSpinBox_algoH3InputYScaleUmPx->value();
+
+	if (wUm <= 0.0 || hUm <= 0.0) {
+		ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("not set"));
+		return;
+	}
+	if (sx <= 0.0 || sy <= 0.0) {
+		ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("set the X/Y scale first"));
+		return;
+	}
+
+	//same rounding doSegment uses - keep the two in step
+	auto evenPx = [](double um, double umPerPx) {
+		int px = (int)std::lround(um / umPerPx);
+		if (px < 2) px = 2;
+		if (px % 2) px++;
+		return px;
+	};
+	ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("%1 x %2 px")
+		.arg(evenPx(wUm, sx)).arg(evenPx(hUm, sy)));
+}
+
 // =============================================================================
 // ROI boxes
 // =============================================================================
@@ -639,7 +843,22 @@ QDragBox* VisionApp::makeAlgoH3Box(const QRectF& sceneRect, const QColor& color,
 {
 	auto* box = new QDragBox();
 	_pGraphicsSceneFOV->addItem(box);
-	box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
+
+	/*
+	* The barrier is the CROP, never "whatever happens to be on screen".
+	*
+	* These boxes live in part-frame coordinates, so the crop rect IS the space they are
+	* confined to. Taking it from the scene rect instead meant that rebuilding the boxes
+	* while a 3D view was showing handed every box the 1200x900 projection canvas as its
+	* barrier - and QDragBox::itemChange clamps to that barrier, so every ROI at a large
+	* x/y was silently dragged toward the origin and capture then wrote the wreckage back
+	* into the recipe. Pressing Run in any stage while in a 3D view destroyed the teach.
+	*/
+	const QRectF barrier = (_algoH3BoxCropW > 0 && _algoH3BoxCropH > 0)
+		? QRectF(0, 0, _algoH3BoxCropW, _algoH3BoxCropH)
+		: _pGraphicsSceneFOV->sceneRect();
+	box->setOutterBarrier(barrier);
+
 	box->setup(sceneRect, color, name);
 	box->setDragable(true);
 	box->setZValue((int)UIHierarchy::DRAGGABLES);
@@ -687,6 +906,7 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 		_algoH3BoxCropH = 0;
 		ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(p.datumRois.size()));
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(p.rois.size()));
+		updateAlgoH3TypeStatus();
 		return;
 	}
 
@@ -715,6 +935,7 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 
 	ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(_algoH3DatumBoxes.size()));
 	ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+	updateAlgoH3TypeStatus();
 	updateAlgoH3RoiVisibility();
 }
 
@@ -869,6 +1090,7 @@ void VisionApp::algoH3PasteRois()
 
 	ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(_algoH3DatumBoxes.size()));
 	ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
+	updateAlgoH3TypeStatus();
 
 	/*
 	* VISIBILITY FIRST, THEN SELECTION, and the order is not cosmetic:
@@ -913,7 +1135,7 @@ void VisionApp::updateAlgoH3RoiVisibility()
 		&& (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3);
 
 	//the 3D view is a projection - an ROI dragged on it would not mean anything
-	const bool flatView = (algoH3DisplayMode() != AlgoH3Display::Surface3D);
+	const bool flatView = !h3IsSurfaceMode(algoH3DisplayMode());
 	const bool cropOnScreen = onPage && flatView && (_algoH3BoxCropW > 0);
 	const int section = algoH3CurrentSection();
 
@@ -943,7 +1165,7 @@ AlgoH3Display VisionApp::algoH3DisplayMode() const
 
 	const int i = ui.comboBox_algoH3Display->currentIndex();
 	if (i < static_cast<int>(AlgoH3Display::HeightColor)
-		|| i > static_cast<int>(AlgoH3Display::Surface3D)) {
+		|| i >= kAlgoH3DisplayCount) {
 		return AlgoH3Display::HeightColor;
 	}
 	return static_cast<AlgoH3Display>(i);
@@ -957,19 +1179,35 @@ void VisionApp::updateAlgoH3Display()
 	auto& mgr = AlgoManager::instance();
 	const int section = algoH3CurrentSection();
 
-	//sections 0 and 1 look at the raw map; 2 onwards look at the filtered one; 3 onwards
-	//look at the straightened crop - but only once there actually is one
-	const bool preprocessed = (section >= SEC_SEG);
+	//section 0 looks at the raw map; 1 onwards look at the FILTERED one - the preprocessing
+	//section is where the filter and kernel are chosen, so it is the one place the cleaned
+	//result has to be visible to judge them; 3 onwards look at the straightened crop.
+	//Each only takes effect once that map exists: heightForDisplay falls back to the raw
+	//map while m_work is empty, so nothing special is needed before the stage has run.
+	//KEEP IN SYNC with updateAlgoH3Surface() - the 2D and 3D views must show the same map.
+	const bool preprocessed = (section >= SEC_PREPROCESS);
 	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
 
 	const AlgoH3Display mode = algoH3DisplayMode();
-	if (mode != AlgoH3Display::Surface3D) _algoH3Dragging = false;
+	if (!h3IsSurfaceMode(mode)) _algoH3Dragging = false;
 
 	QImage img;
 	switch (mode) {
+	//every 3D mode is the same projection; only the paint style differs
 	case AlgoH3Display::Surface3D:
+	case AlgoH3Display::Mesh3D:
+	case AlgoH3Display::Smooth3D:
+	case AlgoH3Display::Wireframe3D:
+	case AlgoH3Display::PointCloud3D:
+	case AlgoH3Display::Textured3D:
 		img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
-			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas);
+			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
+		break;
+
+	//lit but flat, and rendered at full resolution - so unlike the 3D views this one is
+	//still a map: the ROI boxes and overlays sit on it exactly where they belong
+	case AlgoH3Display::Relief2D:
+		img = mgr.height3Relief(preprocessed, segmented, _algoH3ZExaggeration, true);
 		break;
 
 	case AlgoH3Display::Intensity:
@@ -1026,6 +1264,20 @@ void VisionApp::refreshAlgoH3Overlay()
 	if (!isPage(UIPage::ALGO_SETUP)) return;
 	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return;
 
+	/*
+	* Nothing in the overlay means anything on a 3D projection. Every item here is placed
+	* in map or crop coordinates - the segmentation outline, the per-ROI labels, the
+	* overall pass/fail rects - and the 3D canvas is neither of those spaces, so they would
+	* land at arbitrary spots on the render. Take the overlay down instead of drawing it.
+	*
+	* Handled once here rather than per branch, so a future overlay item cannot forget to
+	* opt out and leak onto the 3D view.
+	*/
+	if (h3IsSurfaceMode(algoH3DisplayMode())) {
+		renderAlgoOverlay({});
+		return;
+	}
+
 	const int section = algoH3CurrentSection();
 	const bool segmented = (section >= SEC_DATUM) && AlgoManager::instance().height3SegmentReady();
 
@@ -1037,8 +1289,8 @@ void VisionApp::refreshAlgoH3Overlay()
 		for (const auto& pt : _algoH3Output.segCorners) poly << pt;
 		overlay.append(AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127)));
 	}
-	else if (section == SEC_OVERALL && _algoH3Output.measure.ran
-		&& _algoH3BoxCropW > 0 && algoH3DisplayMode() != AlgoH3Display::Surface3D) {
+	else if (section == SEC_OVERALL && _algoH3Output.measure.ran && _algoH3BoxCropW > 0) {
+		//no flat-view test needed any more: the 3D early-return above covers it
 		//the overall section draws the ROIs itself, as overlay - see the note on the function
 		appendAlgoH3OverallRois(overlay);
 	}
@@ -1121,18 +1373,20 @@ void VisionApp::appendAlgoH3RoiLabels(QVector<AlgoOverlayItem>& overlay) const
 //re-render just the 3D surface, throttled, so a drag stays smooth without queueing frames
 void VisionApp::updateAlgoH3Surface()
 {
-	if (algoH3DisplayMode() != AlgoH3Display::Surface3D) return;
+	const AlgoH3Display mode = algoH3DisplayMode();
+	if (!h3IsSurfaceMode(mode)) return;
 
 	if (_algoH3DragClock.isValid() && _algoH3DragClock.elapsed() < 40) return;
 	_algoH3DragClock.restart();
 
 	auto& mgr = AlgoManager::instance();
 	const int section = algoH3CurrentSection();
-	const bool preprocessed = (section >= SEC_SEG);
+	//KEEP IN SYNC with updateAlgoH3Display() - same rule, or 2D and 3D disagree
+	const bool preprocessed = (section >= SEC_PREPROCESS);
 	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
 
 	const QImage img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
-		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas);
+		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
 	if (img.isNull()) return;
 
 	//the canvas size never changes, so the pixmap can be swapped in place - going through
@@ -1152,7 +1406,7 @@ bool VisionApp::algoH3HandleViewMouse(QObject* obj, QEvent* ev)
 	if (!ui.graphicsViewFOV || obj != ui.graphicsViewFOV->viewport()) return false;
 	if (!isPage(UIPage::ALGO_SETUP)) return false;
 	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return false;
-	if (algoH3DisplayMode() != AlgoH3Display::Surface3D) { _algoH3Dragging = false; return false; }
+	if (!h3IsSurfaceMode(algoH3DisplayMode())) { _algoH3Dragging = false; return false; }
 
 	switch (ev->type()) {
 	case QEvent::MouseButtonPress: {
@@ -1169,8 +1423,20 @@ bool VisionApp::algoH3HandleViewMouse(QObject* obj, QEvent* ev)
 		const QPoint d = me->pos() - _algoH3DragFrom;
 		_algoH3DragFrom = me->pos();
 
+		/*
+		* Drag GRABS THE OBJECT, it does not fly the camera. Pull the mouse up and the far
+		* side lifts toward you (the view goes edge-on); push it down and the part lays
+		* flat under you (top-down).
+		*
+		* pitchDeg is a camera ELEVATION - 89 is straight down, 2 is edge-on - so tilting
+		* the object up means DECREASING it. Mouse-up gives a negative d.y(), so the sign
+		* here is +, and it deliberately differs from the yaw line above: for yaw the two
+		* conventions are indistinguishable (spinning the camera left and pushing the
+		* object left look the same), for pitch they are exact opposites. Do not "fix"
+		* this to match the line above.
+		*/
 		_algoH3Yaw = std::fmod(_algoH3Yaw - d.x() * 0.4, 360.0);
-		_algoH3Pitch = std::max(2.0, std::min(89.0, _algoH3Pitch - d.y() * 0.4));
+		_algoH3Pitch = std::max(2.0, std::min(89.0, _algoH3Pitch + d.y() * 0.4));
 		updateAlgoH3Surface();
 		return true;
 	}
@@ -1218,96 +1484,122 @@ void VisionApp::updateAlgoH3Enables()
 // ROI type table
 // =============================================================================
 
-void VisionApp::refreshAlgoH3TypeTable()
+//the colour button's property is the single source both capture and Add ROI read, exactly
+//as the table's cell widget used to be
+QColor VisionApp::algoH3SelectedTypeColor() const
 {
-	auto* tbl = ui.tableWidget_algoH3RoiTypes;
-	if (!tbl) return;
+	const QVariant v = ui.toolButton_algoH3RoiTypeColor->property(kH3ColorProp);
+	return v.canConvert<QColor>() ? v.value<QColor>() : QColor(0, 200, 0);
+}
+
+int VisionApp::algoH3RoiCountForType(const QString& name) const
+{
+	//the boxes are the live truth while a crop is on screen; before segmentation there are
+	//no boxes at all and the recipe is all there is
+	if (_algoH3BoxCropW > 0) {
+		int n = 0;
+		for (auto* b : _algoH3RoiBoxes) if (b && b->getTag() == name) n++;
+		return n;
+	}
+	int n = 0;
+	for (const auto& r : AlgoManager::instance().height3Params().rois)
+		if (r.typeName == name) n++;
+	return n;
+}
+
+void VisionApp::updateAlgoH3TypeStatus()
+{
+	if (!ui.lineEdit_algoH3RoiTypeStatus) return;
+
+	const QString name = ui.comboBox_algoH3RoiType->currentText();
+	ui.lineEdit_algoH3RoiTypeCount->setText(
+		name.isEmpty() ? QString() : QString::number(algoH3RoiCountForType(name)));
+
+	//say the next useful thing rather than a fixed caption - this line is the only place
+	//left to explain a section that no longer has a table to read
+	QString msg;
+	if (ui.comboBox_algoH3RoiType->count() == 0)
+		msg = QStringLiteral("Add an ROI type first - every ROI belongs to one.");
+	else if (!AlgoManager::instance().height3SegmentReady())
+		msg = QStringLiteral("Run segmentation before adding ROIs.");
+	else
+		msg = QStringLiteral("Add ROI creates one of '%1'. Select ROIs on the image to "
+			"re-assign, copy (Ctrl+C) or delete them.").arg(name);
+
+	ui.lineEdit_algoH3RoiTypeStatus->setText(msg);
+}
+
+void VisionApp::loadAlgoH3TypeFields()
+{
+	const AlgoHeight3Params p = AlgoManager::instance().height3Params();
+	const int i = ui.comboBox_algoH3RoiType->currentIndex();
+	_algoH3TypeIndex = (i >= 0 && i < p.roiTypes.size()) ? i : -1;
+
+	const bool have = (_algoH3TypeIndex >= 0);
+	ui.toolButton_algoH3RoiTypeColor->setEnabled(have);
+	ui.checkBox_algoH3RoiTypeEnableHeightCheck->setEnabled(have);
+	ui.doubleSpinBox_algoH3RoiTypeMinUm->setEnabled(have);
+	ui.doubleSpinBox_algoH3RoiTypeMaxUm->setEnabled(have);
+	ui.checkBox_algoH3RoiTypeEnableOffsetCheck->setEnabled(have);
+	ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->setEnabled(have);
+	ui.comboBox_algoH3RoiTypeMethod->setEnabled(have);
+
+	_algoH3Updating = true;
+	{
+		//every one of these is also wired to the generic auto-save sweep in
+		//VisionApp_AlgoSetup, which does not know about _algoH3Updating - blocking is what
+		//stops merely SHOWING a type from marking the recipe dirty
+		QSignalBlocker b1(ui.doubleSpinBox_algoH3RoiTypeMinUm);
+		QSignalBlocker b2(ui.doubleSpinBox_algoH3RoiTypeMaxUm);
+		QSignalBlocker b3(ui.comboBox_algoH3RoiTypeMethod);
+		QSignalBlocker b4(ui.checkBox_algoH3RoiTypeEnableHeightCheck);
+		QSignalBlocker b5(ui.checkBox_algoH3RoiTypeEnableOffsetCheck);
+		QSignalBlocker b6(ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm);
+
+		const AlgoH3RoiType t = have ? p.roiTypes[_algoH3TypeIndex] : AlgoH3RoiType();
+		ui.checkBox_algoH3RoiTypeEnableHeightCheck->setChecked(have && t.checkHeight);
+		ui.doubleSpinBox_algoH3RoiTypeMinUm->setValue(have ? t.minUm : 0.0);
+		ui.doubleSpinBox_algoH3RoiTypeMaxUm->setValue(have ? t.maxUm : 0.0);
+		ui.checkBox_algoH3RoiTypeEnableOffsetCheck->setChecked(have && t.checkOffset);
+		ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->setValue(have ? t.maxOffsetUm : 0.0);
+		ui.comboBox_algoH3RoiTypeMethod->setCurrentIndex(
+			(t.methodId >= 0 && t.methodId < ui.comboBox_algoH3RoiTypeMethod->count())
+			? t.methodId : 0);
+
+		//the colour lives on the button as a property, the way it used to live on the
+		//table's cell widget - it is the single source capture and Add ROI both read
+		ui.toolButton_algoH3RoiTypeColor->setProperty(kH3ColorProp, t.color);
+		ui.toolButton_algoH3RoiTypeColor->setStyleSheet(have
+			? QStringLiteral("QToolButton { background:%1; border:1px solid #777; }").arg(t.color.name())
+			: QString());
+	}
+	_algoH3Updating = false;
+
+	updateAlgoH3TypeStatus();
+}
+
+void VisionApp::refreshAlgoH3TypeList()
+{
+	auto* cb = ui.comboBox_algoH3RoiType;
+	if (!cb) return;
 
 	const AlgoHeight3Params p = AlgoManager::instance().height3Params();
 
+	//keep the selection by NAME, not by index: deleting a type shifts every index after it
+	const QString keep = cb->currentText();
+
 	_algoH3Updating = true;
-	const int keepRow = tbl->currentRow();
+	{
+		QSignalBlocker b(cb);
+		cb->clear();
+		for (const auto& t : p.roiTypes) cb->addItem(h3ColorIcon(t.color), t.name);
 
-	//setRowCount(0) first: QTableWidget owns the cell widgets, and this is what deletes
-	//the previous set. clearContents() would leave them behind, connected and orphaned.
-	tbl->setRowCount(0);
-	tbl->setColumnCount(5);
-	tbl->setHorizontalHeaderLabels({ "Type", "Color", "Min (um)", "Max (um)", "Method ID" });
-	tbl->verticalHeader()->setVisible(false);
-	tbl->setSelectionBehavior(QAbstractItemView::SelectRows);
-	tbl->setSelectionMode(QAbstractItemView::SingleSelection);
-	tbl->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-	for (int c = 1; c < 5; c++)
-		tbl->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
-
-	tbl->setRowCount(p.roiTypes.size());
-
-	for (int row = 0; row < p.roiTypes.size(); row++) {
-		const AlgoH3RoiType& t = p.roiTypes[row];
-
-		//the name is the key ROIs refer to, so it is fixed once the type is created
-		auto* nameItem = new QTableWidgetItem(t.name);
-		nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
-		tbl->setItem(row, 0, nameItem);
-
-		auto* colorBtn = new QToolButton();
-		colorBtn->setProperty(kH3ColorProp, t.color);
-		colorBtn->setMinimumWidth(48);
-		colorBtn->setToolTip(QStringLiteral("Click to choose the ROI colour for '%1'").arg(t.name));
-		colorBtn->setStyleSheet(QStringLiteral(
-			"QToolButton { background:%1; border:1px solid #777; }").arg(t.color.name()));
-		const QString typeName = t.name;
-		connect(colorBtn, &QToolButton::clicked, this, [this, colorBtn, typeName]() {
-			const QVariant v = colorBtn->property(kH3ColorProp);
-			const QColor current = v.canConvert<QColor>() ? v.value<QColor>() : QColor(0, 200, 0);
-			const QColor picked = QColorDialog::getColor(current, this, "ROI Type Colour");
-			if (!picked.isValid()) return;
-
-			colorBtn->setProperty(kH3ColorProp, picked);
-			colorBtn->setStyleSheet(QStringLiteral(
-				"QToolButton { background:%1; border:1px solid #777; }").arg(picked.name()));
-
-			//recolour the ROIs of this type immediately - the colour is how the operator
-			//tells one type from another on the image
-			for (auto* b : _algoH3RoiBoxes) {
-				if (!b || b->getTag() != typeName) continue;
-				b->setBorderColor(picked);
-				b->update();
-			}
-			algoSettingsTouched();
-		});
-		tbl->setCellWidget(row, 1, colorBtn);
-
-		auto makeDouble = [&](double value) {
-			auto* sb = new QDoubleSpinBox();
-			sb->setDecimals(2);
-			sb->setRange(-1000000.0, 1000000.0);
-			sb->setKeyboardTracking(false);
-			sb->setValue(value);
-			connect(sb, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double) {
-				if (_algoH3Updating) return;
-				algoSettingsTouched();
-			});
-			return sb;
-		};
-
-		tbl->setCellWidget(row, 2, makeDouble(t.minUm));
-		tbl->setCellWidget(row, 3, makeDouble(t.maxUm));
-
-		auto* methodSpin = new QSpinBox();
-		methodSpin->setRange(0, kAlgoH3MethodCount - 1);
-		methodSpin->setKeyboardTracking(false);
-		methodSpin->setValue(t.methodId);
-		methodSpin->setToolTip(QStringLiteral("Method ID from the Height Measurement Settings section"));
-		connect(methodSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
-			if (_algoH3Updating) return;
-			algoSettingsTouched();
-		});
-		tbl->setCellWidget(row, 4, methodSpin);
+		const int at = cb->findText(keep);
+		cb->setCurrentIndex(at >= 0 ? at : (cb->count() > 0 ? 0 : -1));
 	}
-
-	if (keepRow >= 0 && keepRow < tbl->rowCount()) tbl->selectRow(keepRow);
 	_algoH3Updating = false;
+
+	loadAlgoH3TypeFields();
 }
 
 // =============================================================================
@@ -1340,6 +1632,9 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 	p.closingKernel = ui.spinBox_algoH3PreprocessClosingKernelSize->value();
 
 	// ── section 2 ──
+	p.segMethod = (AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex();
+	p.segCanvasWidthUm = ui.doubleSpinBox_algoH3SegCanvasWidthUm->value();
+	p.segCanvasHeightUm = ui.doubleSpinBox_algoH3SegCanvasHeightUm->value();
 	p.segCheckWidth = ui.checkBox_algoH3SegEnableWidthCheck->isChecked();
 	p.segMinWidthUm = ui.doubleSpinBox_algoH3SegMinWidthUm->value();
 	p.segMaxWidthUm = ui.doubleSpinBox_algoH3SegMaxWidthUm->value();
@@ -1359,26 +1654,24 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 	p.methodId = ui.comboBox_algoH3Method->currentIndex();
 	p.percentile = ui.doubleSpinBox_algoH3MethodPercentileValue->value();
 
-	// ── section 5: types come from the table's cell widgets ──
-	auto* tbl = ui.tableWidget_algoH3RoiTypes;
-	if (tbl && tbl->columnCount() >= 5) {
-		QVector<AlgoH3RoiType> types;
-		for (int row = 0; row < tbl->rowCount(); row++) {
-			auto* nameItem = tbl->item(row, 0);
-			if (!nameItem || nameItem->text().isEmpty()) continue;
-
-			AlgoH3RoiType t;
-			t.name = nameItem->text();
-			if (auto* btn = qobject_cast<QToolButton*>(tbl->cellWidget(row, 1))) {
-				const QVariant v = btn->property(kH3ColorProp);
-				if (v.canConvert<QColor>()) t.color = v.value<QColor>();
-			}
-			if (auto* sb = qobject_cast<QDoubleSpinBox*>(tbl->cellWidget(row, 2))) t.minUm = sb->value();
-			if (auto* sb = qobject_cast<QDoubleSpinBox*>(tbl->cellWidget(row, 3))) t.maxUm = sb->value();
-			if (auto* sb = qobject_cast<QSpinBox*>(tbl->cellWidget(row, 4))) t.methodId = sb->value();
-			types.append(t);
-		}
-		p.roiTypes = types;
+	/*
+	* ── section 5: only ONE type is on screen, so only that one can be written back ──
+	*
+	* The others are left exactly as the recipe holds them. This is why _algoH3TypeIndex
+	* exists rather than reading the combo: currentIndexChanged fires AFTER the index has
+	* moved, so a capture triggered by switching types has to write the type the widgets
+	* still hold - the OUTGOING one - or it would stamp its values onto the incoming type.
+	*/
+	if (_algoH3TypeIndex >= 0 && _algoH3TypeIndex < p.roiTypes.size()) {
+		AlgoH3RoiType& t = p.roiTypes[_algoH3TypeIndex];
+		//the name is the key ROIs refer to and is never editable, so it is not touched here
+		t.color = algoH3SelectedTypeColor();
+		t.checkHeight = ui.checkBox_algoH3RoiTypeEnableHeightCheck->isChecked();
+		t.minUm = ui.doubleSpinBox_algoH3RoiTypeMinUm->value();
+		t.maxUm = ui.doubleSpinBox_algoH3RoiTypeMaxUm->value();
+		t.checkOffset = ui.checkBox_algoH3RoiTypeEnableOffsetCheck->isChecked();
+		t.maxOffsetUm = ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->value();
+		t.methodId = ui.comboBox_algoH3RoiTypeMethod->currentIndex();
 	}
 
 	/*
@@ -1468,6 +1761,9 @@ void VisionApp::refreshAlgoHeight3Page()
 
 	// ── section 2 ──
 	{
+		QSignalBlocker b0(ui.comboBox_algoH3SegMethod);
+		QSignalBlocker bc1(ui.doubleSpinBox_algoH3SegCanvasWidthUm);
+		QSignalBlocker bc2(ui.doubleSpinBox_algoH3SegCanvasHeightUm);
 		QSignalBlocker b1(ui.checkBox_algoH3SegEnableWidthCheck);
 		QSignalBlocker b2(ui.doubleSpinBox_algoH3SegMinWidthUm);
 		QSignalBlocker b3(ui.doubleSpinBox_algoH3SegMaxWidthUm);
@@ -1478,6 +1774,12 @@ void VisionApp::refreshAlgoHeight3Page()
 		QSignalBlocker b8(ui.doubleSpinBox_algoH3SegMinAngleDeg);
 		QSignalBlocker b9(ui.doubleSpinBox_algoH3SegMaxAngleDeg);
 
+		const int sm = (int)p.segMethod;
+		ui.comboBox_algoH3SegMethod->setCurrentIndex(
+			(sm >= 0 && sm < ui.comboBox_algoH3SegMethod->count()) ? sm : 0);
+		ui.doubleSpinBox_algoH3SegCanvasWidthUm->setValue(p.segCanvasWidthUm);
+		ui.doubleSpinBox_algoH3SegCanvasHeightUm->setValue(p.segCanvasHeightUm);
+		updateAlgoH3CanvasPxLabel();
 		ui.checkBox_algoH3SegEnableWidthCheck->setChecked(p.segCheckWidth);
 		ui.doubleSpinBox_algoH3SegMinWidthUm->setValue(p.segMinWidthUm);
 		ui.doubleSpinBox_algoH3SegMaxWidthUm->setValue(p.segMaxWidthUm);
@@ -1527,7 +1829,7 @@ void VisionApp::refreshAlgoHeight3Page()
 		ui.doubleSpinBox_algoH3OverallMaxRate->setValue(p.overallMaxRatePct);
 	}
 
-	refreshAlgoH3TypeTable();
+	refreshAlgoH3TypeList();
 	refreshAlgoH3RoiBoxes();
 
 	//a freshly opened recipe has run nothing yet

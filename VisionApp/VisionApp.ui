@@ -22648,7 +22648,37 @@ Selecting this section shows the image with no ROIs.</string>
                                  </item>
                                  <item>
                                   <property name="text">
+                                   <string>2D Relief (Shaded)</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
                                    <string>3D Surface View</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Mesh View</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Shaded (Smooth)</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Wireframe</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Point Cloud</string>
+                                  </property>
+                                 </item>
+                                 <item>
+                                  <property name="text">
+                                   <string>3D Textured (Intensity)</string>
                                   </property>
                                  </item>
                                 </widget>
@@ -23149,13 +23179,87 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Seg">
                                  <item row="0" column="0">
+                                  <widget class="QLabel" name="label_algoH3SegMethod">
+                                   <property name="text">
+                                    <string>Segmentation Method</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="0" column="1">
+                                  <widget class="QComboBox" name="comboBox_algoH3SegMethod">
+                                   <item>
+                                    <property name="text">
+                                     <string>Largest Connected Region (Min-Area Rect)</string>
+                                    </property>
+                                   </item>
+                                  </widget>
+                                 </item>
+                                 <item row="1" column="0">
+                                  <widget class="QLabel" name="label_algoH3SegCanvas">
+                                   <property name="text">
+                                    <string>Canvas Size (um)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="1" column="1">
+                                  <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegCanvas">
+                                   <item>
+                                    <widget class="QLabel" name="label_algoH3SegCanvasWidthUm">
+                                     <property name="text">
+                                      <string>W:</string>
+                                     </property>
+                                    </widget>
+                                   </item>
+                                   <item>
+                                    <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3SegCanvasWidthUm"/>
+                                   </item>
+                                   <item>
+                                    <widget class="QLabel" name="label_algoH3SegCanvasHeightUm">
+                                     <property name="text">
+                                      <string>H:</string>
+                                     </property>
+                                    </widget>
+                                   </item>
+                                   <item>
+                                    <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3SegCanvasHeightUm"/>
+                                   </item>
+                                   <item>
+                                    <spacer name="horizontalSpacer_algoH3SegCanvas">
+                                     <property name="orientation">
+                                      <enum>Qt::Horizontal</enum>
+                                     </property>
+                                     <property name="sizeHint" stdset="0">
+                                      <size>
+                                       <width>40</width>
+                                       <height>20</height>
+                                      </size>
+                                     </property>
+                                    </spacer>
+                                   </item>
+                                  </layout>
+                                 </item>
+                                 <item row="2" column="0">
+                                  <widget class="QLabel" name="label_algoH3SegCanvasPx">
+                                   <property name="text">
+                                    <string>Canvas (pixels)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="1">
+                                  <widget class="QLineEdit" name="lineEdit_algoH3SegCanvasPx">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableWidthCheck">
                                    <property name="text">
                                     <string>Enable Width Check (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="0" column="1">
+                                 <item row="3" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegWidth">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinWidthUm">
@@ -23192,14 +23296,14 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="1" column="0">
+                                 <item row="4" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableHeightCheck">
                                    <property name="text">
                                     <string>Enable Height Check (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="1" column="1">
+                                 <item row="4" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegHeight">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinHeightUm">
@@ -23236,14 +23340,14 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="2" column="0">
+                                 <item row="5" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableAngleCheck">
                                    <property name="text">
                                     <string>Enable Angle Check (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="2" column="1">
+                                 <item row="5" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegAngle">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinAngleDeg">
@@ -23280,91 +23384,91 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="3" column="0">
+                                 <item row="6" column="0">
                                   <widget class="QToolButton" name="toolButton_algoH3SegRun">
                                    <property name="text">
                                     <string>Run Segmentation</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="0">
+                                 <item row="7" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredWidthUm">
                                    <property name="text">
                                     <string>Measured Width (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="1">
+                                 <item row="7" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredWidthUm">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="5" column="0">
+                                 <item row="8" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredHeightUm">
                                    <property name="text">
                                     <string>Measured Height (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="5" column="1">
+                                 <item row="8" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredHeightUm">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="6" column="0">
+                                 <item row="9" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredAngleDeg">
                                    <property name="text">
                                     <string>Measured Angle (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="6" column="1">
+                                 <item row="9" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredAngleDeg">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="0">
+                                 <item row="10" column="0">
                                   <widget class="QLabel" name="label_algoH3SegResult">
                                    <property name="text">
                                     <string>Result (Pass/Fail)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="1">
+                                 <item row="10" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegResult">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="0">
+                                 <item row="11" column="0">
                                   <widget class="QLabel" name="label_algoH3SegFailReason">
                                    <property name="text">
                                     <string>Fail Reason</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="1">
+                                 <item row="11" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegFailReason">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="9" column="0">
+                                 <item row="12" column="0">
                                   <widget class="QLabel" name="label_algoH3SegTimeMs">
                                    <property name="text">
                                     <string>Time Taken (ms)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="9" column="1">
+                                 <item row="12" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegTimeMs">
                                    <property name="readOnly">
                                     <bool>true</bool>
@@ -23954,35 +24058,6 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="0" colspan="2">
-                                  <widget class="QTableWidget" name="tableWidget_algoH3RoiTypes">
-                                   <column>
-                                    <property name="text">
-                                     <string>ROI Type</string>
-                                    </property>
-                                   </column>
-                                   <column>
-                                    <property name="text">
-                                     <string>Color</string>
-                                    </property>
-                                   </column>
-                                   <column>
-                                    <property name="text">
-                                     <string>Min (um)</string>
-                                    </property>
-                                   </column>
-                                   <column>
-                                    <property name="text">
-                                     <string>Max (um)</string>
-                                    </property>
-                                   </column>
-                                   <column>
-                                    <property name="text">
-                                     <string>Method ID</string>
-                                    </property>
-                                   </column>
-                                  </widget>
-                                 </item>
                                  <item row="0" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3RoiTypeButtons">
                                    <item>
@@ -24040,7 +24115,7 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    <item>
                                     <widget class="QToolButton" name="toolButton_algoH3RoiAssignType">
                                      <property name="text">
-                                      <string>Assign Selected ROI to Selected Type</string>
+                                      <string>Assign Selected ROI to Current Type</string>
                                      </property>
                                     </widget>
                                    </item>
@@ -24068,6 +24143,179 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  </item>
                                  <item row="2" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3RoiCount">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeStatus">
+                                   <property name="text">
+                                    <string>Status</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="1">
+                                  <widget class="QLineEdit" name="lineEdit_algoH3RoiTypeStatus">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="4" column="0" colspan="2">
+                                  <spacer name="verticalSpacer_algoH3RoiGroup">
+                                   <property name="orientation">
+                                    <enum>Qt::Vertical</enum>
+                                   </property>
+                                   <property name="sizeType">
+                                    <enum>QSizePolicy::Fixed</enum>
+                                   </property>
+                                   <property name="sizeHint" stdset="0">
+                                    <size>
+                                     <width>20</width>
+                                     <height>14</height>
+                                    </size>
+                                   </property>
+                                  </spacer>
+                                 </item>
+                                 <item row="5" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiType">
+                                   <property name="text">
+                                    <string>ROI Type</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="5" column="1">
+                                  <widget class="QComboBox" name="comboBox_algoH3RoiType"/>
+                                 </item>
+                                 <item row="6" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeColor">
+                                   <property name="text">
+                                    <string>Color</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="6" column="1">
+                                  <layout class="QHBoxLayout" name="horizontalLayout_algoH3RoiTypeColor">
+                                   <item>
+                                    <widget class="QToolButton" name="toolButton_algoH3RoiTypeColor">
+                                     <property name="text">
+                                      <string/>
+                                     </property>
+                                    </widget>
+                                   </item>
+                                   <item>
+                                    <spacer name="horizontalSpacer_algoH3RoiTypeColor">
+                                     <property name="orientation">
+                                      <enum>Qt::Horizontal</enum>
+                                     </property>
+                                     <property name="sizeHint" stdset="0">
+                                      <size>
+                                       <width>40</width>
+                                       <height>20</height>
+                                      </size>
+                                     </property>
+                                    </spacer>
+                                   </item>
+                                  </layout>
+                                 </item>
+                                                                  <item row="7" column="0">
+                                  <widget class="QCheckBox" name="checkBox_algoH3RoiTypeEnableHeightCheck">
+                                   <property name="text">
+                                    <string>Enable Height Check</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="7" column="1">
+                                  <layout class="QHBoxLayout" name="horizontalLayout_algoH3RoiTypeHeight">
+                                   <item>
+                                    <widget class="QLabel" name="label_algoH3RoiTypeMinUm">
+                                     <property name="text">
+                                      <string>Min (um)</string>
+                                     </property>
+                                    </widget>
+                                   </item>
+                                   <item>
+                                    <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypeMinUm"/>
+                                   </item>
+                                   <item>
+                                    <widget class="QLabel" name="label_algoH3RoiTypeMaxUm">
+                                     <property name="text">
+                                      <string>Max (um)</string>
+                                     </property>
+                                    </widget>
+                                   </item>
+                                   <item>
+                                    <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypeMaxUm"/>
+                                   </item>
+                                   <item>
+                                    <spacer name="horizontalSpacer_algoH3RoiTypeHeight">
+                                     <property name="orientation">
+                                      <enum>Qt::Horizontal</enum>
+                                     </property>
+                                     <property name="sizeHint" stdset="0">
+                                      <size>
+                                       <width>40</width>
+                                       <height>20</height>
+                                      </size>
+                                     </property>
+                                    </spacer>
+                                   </item>
+                                  </layout>
+                                 </item>
+                                 <item row="8" column="0">
+                                  <widget class="QCheckBox" name="checkBox_algoH3RoiTypeEnableOffsetCheck">
+                                   <property name="text">
+                                    <string>Enable Offset Check</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="8" column="1">
+                                  <layout class="QHBoxLayout" name="horizontalLayout_algoH3RoiTypeOffset">
+                                   <item>
+                                    <widget class="QLabel" name="label_algoH3RoiTypeMaxOffsetUm">
+                                     <property name="text">
+                                      <string>Max (um)</string>
+                                     </property>
+                                    </widget>
+                                   </item>
+                                   <item>
+                                    <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypeMaxOffsetUm"/>
+                                   </item>
+                                   <item>
+                                    <spacer name="horizontalSpacer_algoH3RoiTypeOffset">
+                                     <property name="orientation">
+                                      <enum>Qt::Horizontal</enum>
+                                     </property>
+                                     <property name="sizeHint" stdset="0">
+                                      <size>
+                                       <width>40</width>
+                                       <height>20</height>
+                                      </size>
+                                     </property>
+                                    </spacer>
+                                   </item>
+                                  </layout>
+                                 </item>
+                                 <item row="9" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeMethod">
+                                   <property name="text">
+                                    <string>Method</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="9" column="1">
+                                  <widget class="QComboBox" name="comboBox_algoH3RoiTypeMethod"/>
+                                 </item>
+                                 <item row="10" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeCount">
+                                   <property name="text">
+                                    <string>ROI Count</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="10" column="1">
+                                  <widget class="QLineEdit" name="lineEdit_algoH3RoiTypeCount">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>

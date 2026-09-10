@@ -48,7 +48,35 @@ enum class AlgoH3Display {
 	HeightColor = 0,
 	HeightGray,
 	Intensity,
-	Surface3D
+	Relief2D,      //top-down, but lit - full resolution, and ROIs still line up on it
+	Surface3D,
+	Mesh3D,
+	Smooth3D,
+	Wireframe3D,
+	PointCloud3D,
+	Textured3D
+};
+constexpr int kAlgoH3DisplayCount = 10;
+
+//is this mode a spinnable 3D projection? Relief2D is lit but flat, so it is NOT one.
+inline bool algoH3IsSurfaceDisplay(AlgoH3Display m)
+{
+	return m >= AlgoH3Display::Surface3D && m <= AlgoH3Display::Textured3D;
+}
+
+/*
+* How algoH3RenderSurface3D paints the projected mesh. Every style shares the whole
+* projection, downsample, quad-build and painter's-algorithm path - they differ only in
+* grid density and in how a facet is drawn - so this is one renderer with a style, not
+* six renderers to keep in step.
+*/
+enum class AlgoH3SurfaceStyle {
+	Filled = 0,   //flat quads coloured by height alone: the original 3D Surface view
+	ShadedMesh,   //diffuse lighting from each facet's normal, plus a visible wireframe
+	SmoothShaded, //the same lighting on a much finer grid, no wireframe: reads as solid
+	Wireframe,    //hidden-line lattice: stroked in colour, filled with the background
+	PointCloud,   //one dot per sample - the data as the profiler actually measured it
+	Textured      //lit facets coloured by the INTENSITY map instead of by height
 };
 
 //order matches comboBox_algoH3PreprocessMethod and stackedWidget_algoH3Preprocess
@@ -60,6 +88,20 @@ enum class AlgoH3Preprocess {
 	Opening,
 	Closing
 };
+
+/*
+* Segmentation methods. Order matches comboBox_algoH3SegMethod, and the value is
+* PERSISTED as "seg_method", so only ever APPEND - inserting a method anywhere but
+* the end silently changes what every saved recipe means.
+*
+* There is deliberately no None: unlike preprocessing, segmentation MUST run. It is
+* what establishes the part frame every ROI, the datum plane and every height are
+* expressed in, so skipping it would leave the whole pipeline with no coordinates.
+*/
+enum class AlgoH3SegMethod {
+	LargestRegion = 0  //largest valid connected region, posed by its min-area rect
+};
+constexpr int kAlgoH3SegMethodCount = 1;
 
 //order matches comboBox_algoH3DatumMethod
 enum class AlgoH3DatumMethod {
@@ -92,8 +134,22 @@ bool algoH3MethodValid(int methodId);
 struct AlgoH3RoiType {
 	QString name;                        //unique, chosen once at Add time, never edited after
 	QColor color = QColor(0, 200, 0);
-	double minUm = 0.0;                  //criteria band; max <= min means "no limit"
+
+	/*
+	* Z height band. The enable flag is explicit, matching the segmentation checks - it used
+	* to be inferred from "max > min", which could not tell "no criteria" apart from a band
+	* somebody had typed backwards. A recipe saved before the flag existed is migrated on
+	* load from that old sentinel, so nothing silently stops being checked.
+	*/
+	bool checkHeight = false;
+	double minUm = 0.0;
 	double maxUm = 0.0;
+
+	//XY offset from where the ROI was taught. A magnitude, so there is a maximum and no
+	//minimum - "within 50 um of where it should be" has no lower bound to speak of.
+	bool checkOffset = false;
+	double maxOffsetUm = 0.0;
+
 	int methodId = (int)AlgoH3Method::Mean;
 };
 
@@ -126,6 +182,22 @@ struct AlgoHeight3Params {
 	int closingKernel = 3;
 
 	// ── section 2: segmentation ──
+	AlgoH3SegMethod segMethod = AlgoH3SegMethod::LargestRegion;
+	/*
+	* The FIXED part frame. Segmentation rotates the part upright and places it at the
+	* CENTRE of a canvas of exactly this size: a smaller part is padded with 0 (which every
+	* stage already treats as a dropout), a larger one is cropped and reported.
+	*
+	* This is what keeps a taught ROI meaning the same thing on every unit. Sizing the frame
+	* to the part's own measured extent instead - which is what it used to do - meant that
+	* any change in extent moved the frame, and every ROI moved with it.
+	*
+	* 0 = not set, and segmentation REFUSES rather than guessing - a guessed frame would be
+	* sized to one unit, which is the very thing this exists to stop. It still measures and
+	* reports the part before refusing, so there is a number to choose the canvas from.
+	*/
+	double segCanvasWidthUm = 0.0;
+	double segCanvasHeightUm = 0.0;
 	bool segCheckWidth = false;
 	double segMinWidthUm = 0.0, segMaxWidthUm = 0.0;
 	bool segCheckHeight = false;
@@ -165,6 +237,10 @@ struct AlgoH3StageResult {
 	bool ran = false;         //false = never attempted since the last invalidation
 	bool pass = false;
 	QString failReason;
+	//something worth saying that is NOT a failure - a part cropped to fit the canvas, say.
+	//A stage that passes still clears failReason, so without this there is nowhere to put a
+	//remark the operator needs to see and the fact would be lost.
+	QString note;
 	qint64 elapsedMs = 0;
 };
 
@@ -196,9 +272,10 @@ struct AlgoHeight3Output {
 	AlgoH3StageResult overall;
 
 	// ── segmentation ──
-	double segWidthUm = 0.0;
+	double segWidthUm = 0.0;      //the part as MEASURED, never the canvas
 	double segHeightUm = 0.0;
 	double segAngleDeg = 0.0;
+	bool segOversized = false;    //part did not fit the canvas, so its edges were cropped
 	QRectF segRectMap;          //axis-aligned bounds of the part in MAP px (for the overlay)
 	QVector<QPointF> segCorners;//the four rotated-rect corners in MAP px
 	int cropWidthPx = 0;
@@ -225,5 +302,13 @@ struct AlgoHeight3Output {
 
 	const AlgoH3RoiResult* roiById(int id) const;
 };
+
+/*
+* One readable line describing a Run All: which stage stopped it, or the pin tally when it
+* got all the way through. Lives here rather than in the page because production reports the
+* same thing to the inspection log, and a unit's verdict must not be described two different
+* ways depending on who is looking.
+*/
+QString algoH3RunSummary(const AlgoHeight3Output& out);
 
 Q_DECLARE_METATYPE(AlgoHeight3Output)
