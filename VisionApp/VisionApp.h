@@ -966,6 +966,21 @@ private:
 	void applyProductionModeDI();
 	void setUiLockedToProduction(bool lock);
 
+	/*
+	* Production page Reset button. Mirrors the panel button: its text pulses while the machine
+	* is in S_ERROR (exactly when the panel LED blinks) and it greys out while a recovery is in
+	* flight. _machineInError is a GUI-thread copy fed by signalMachineState, so none of this has
+	* to read controller state across a thread. _resetRequestSeq lets the watchdog tell its own
+	* request apart from a later one.
+	*/
+	QTimer* _resetPulseTimer = nullptr;
+	bool _resetPulseOn = false;
+	bool _resetBusy = false;
+	bool _machineInError = false;
+	int _resetRequestSeq = 0;
+	void updateResetButtonState();
+	void applyResetButtonStyle();
+
 	//helper
 	TimeLogger _timer;
 	bool _runGrr = false;

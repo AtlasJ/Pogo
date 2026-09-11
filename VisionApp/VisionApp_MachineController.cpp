@@ -73,7 +73,14 @@ void VisionApp::connectMachineController()
 			stopRun();
 			break;
 		case MachineEvent::RESET_BTN:
-			//Already handled inside machine controller
+			/*
+			* The recovery itself is handled inside the machine controller. This event is emitted
+			* once the attempt has RETURNED - for a panel press and an on-screen one alike - so it
+			* is the honest edge on which to stop showing the button as busy. Whether the machine
+			* actually came back is reported separately by signalMachineState.
+			*/
+			_resetBusy = false;
+			updateResetButtonState();
 			break;
 		default:
 			break;
@@ -82,6 +89,20 @@ void VisionApp::connectMachineController()
 
 	QObject::connect(&MachineController::instance(), &MachineController::signalMachineState, this, [=](MachineState state) {
 		ct::logger::info("Machine State: %d", (int)state);
+
+		/*
+		* Mirror the panel reset LED, which blinks exactly while the state is S_ERROR - the blink
+		* lambda in MachineController::run() drives Y102 alongside the tower bit, in debug mode
+		* too (only the TOWER colour swaps to amber there). Keyed off the CONDITION rather than
+		* those writes on purpose: the lambda runs on the controller thread and widgets are
+		* main-thread only, so following it would mean a queued signal per blink edge.
+		*
+		* Edge-driven for free: setMachineState() returns early on an unchanged state, and while
+		* S_ERROR still has errors outstanding, so this arrives once going in and once coming out.
+		*/
+		_machineInError = (state == MachineState::S_ERROR);
+		updateResetButtonState();
+
 		switch (state)
 		{
 		case MachineState::NOT_READY:
@@ -256,7 +277,14 @@ void VisionApp::connectMachineController()
 			//do nothing
 		}
 		else if (state == MachineState::S_ERROR || state == MachineState::WARNING) {
-			MachineController::instance().resetAlarm();
+			/*
+			* Full recovery, same as the panel button - not the bare acknowledge this used to do.
+			* resetAlarm() refuses while any error is still latched, and after an e-stop or a
+			* curtain trip the drives stay alarmed until recoverDrives() clears them, so on its
+			* own this button could never bring the machine back. It matters that it works:
+			* setUiLockedToProduction() deliberately keeps this button enabled in production mode.
+			*/
+			MachineController::instance().requestReset();
 		}
 		else if (state == MachineState::NOT_READY) {
 			emit homeXYZ();

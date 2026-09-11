@@ -144,17 +144,48 @@ bool MachineController::resetAlarm()
 
     //std::lock_guard<std::mutex> lock(m_mutex);
 
+    //Read-and-clear, before either branch can return: a suppression that outlived this call
+    //would silence the next reset from anywhere, including the Motion page's own button.
+    const bool reasonAlreadyGiven = m_resetReasonPrompted.exchange(false);
+
     if (m_errorStatuses.isEmpty()) {
         ct::logger::info("[MachineController] Reset alarm");
         setMachineState(m_readyState);
         return true;
     }
     else {
-        emit signalPromptMsg("Failed to reset alarm, machine is still in error state.");
+        /*
+        * The log line is unconditional - the dialog is not. When handleDIA() has just refused
+        * with a specific reason ("an e-stop is still active", "the curtain is still triggered")
+        * this generic message adds nothing and actively harms: showMsg() reuses one shared
+        * QMessageBox and setWindowFlags() hides it when already visible, so this prompt would
+        * hide the useful one mid-exec() and the operator sees a dialog flash and vanish.
+        */
+        if (!reasonAlreadyGiven) {
+            emit signalPromptMsg("Failed to reset alarm, machine is still in error state.");
+        }
         ct::logger::error("[MachineController] Failed to reset alarm as machine is still in error state.");
     }
 
     return false;
+}
+
+bool MachineController::requestReset()
+{
+    //Offline: run() never executed, so nothing polls the flag and no recovery can happen.
+    //Say so rather than latch a request that will be discarded as stale later.
+    if (!m_enable) {
+        ct::logger::warn("[MachineController] Reset requested from the UI but the controller is not enabled");
+        return false;
+    }
+
+    //Order matters: the timestamp must be readable before the flag is visible to the poll
+    //thread, or handleDIA() could measure the age against whatever m_virtualResetAt held last.
+    m_virtualResetAt = std::chrono::steady_clock::now();
+    m_virtualResetRequested = true;
+
+    ct::logger::info("[MachineController] Reset requested from the UI");
+    return true;
 }
 
 void MachineController::notifyWarning(MachineWarning w)
@@ -441,9 +472,52 @@ void MachineController::handleDIA()
     }
 
     auto reset_btn = io[(int)DIA::RESET_BTN];
-    if (reset_btn && !m_resetBtnPressed) {
+
+    const bool physicalPress = reset_btn && !m_resetBtnPressed;
+
+    /*
+    * A Reset clicked on screen enters the SAME block below as the panel button, so there is one
+    * set of safety guards, one recovery and one deferred resetAlarm() rather than a second copy
+    * to keep in step. Consumed one-shot, so a remote operator clicking repeatedly over a laggy
+    * link gets one recovery, not a queue of them.
+    *
+    * Discarded once stale: poolStates() skips handleDIA() entirely while polling is parked for a
+    * motion reconnect (up to ~20 s) and while the card is unavailable, so an untimed flag would
+    * fire the instant polling resumed - releasing the brake long after the operator gave up on
+    * the click. Three seconds is generous next to the 10 ms poll and still far short of any
+    * pause worth worrying about.
+    */
+    bool virtualPress = false;
+    if (m_virtualResetRequested.exchange(false)) {
+        const auto age = std::chrono::steady_clock::now() - m_virtualResetAt.load();
+        if (age <= std::chrono::seconds(3)) {
+            virtualPress = true;
+            ct::logger::info("[MachineController] Acting on a reset requested from the UI");
+        }
+        else {
+            ct::logger::warn("[MachineController] Discarded a stale UI reset request (%lld ms old)",
+                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(age).count());
+        }
+    }
+
+    /*
+    * The panel LED tracks the panel button being HELD - Y102 high on the press edge, low on the
+    * release - so it follows the physical button only. A click has no hold to represent, and
+    * during an alarm the blink lambda owns Y102 anyway (it writes it twice a second alongside
+    * the tower bit), so anything written here for a virtual press would be overwritten inside
+    * 500 ms. Kept as its own if/else so the release edge is never skipped by a click that
+    * happens to land in the same 10 ms cycle.
+    */
+    if (physicalPress) {
         m_resetBtnPressed = true;
         MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, true);
+    }
+    else if (!reset_btn && m_resetBtnPressed) {
+        m_resetBtnPressed = false;
+        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, false);
+    }
+
+    if (physicalPress || virtualPress) {
 
         //after a curtain trip the drives are off: reset turns all three servo axes
         //back on first (only once the curtain is clear), then clears the alarm
@@ -478,8 +552,23 @@ void MachineController::handleDIA()
             const bool estopClear = io[(int)DIA::ESTOP_1] && io[(int)DIA::ESTOP_2]
                 && io[(int)DIA::ESTOP_SAFETY_RELAY];                       //NC: high = healthy
 
+            /*
+            * Both refusals below prompt for a CLICK only, never for a panel press.
+            *
+            * Someone at the machine can see the curtain and the e-stop, so the log line has
+            * always been enough for them; someone on a remote desktop has no other way to
+            * learn why the button did nothing. And the physical path must not gain a dialog:
+            * showMsg() is modal on a single shared QMessageBox (VisionApp.cpp), so a mashed
+            * panel button would stack nested event loops. This keeps the tested physical
+            * behaviour byte-for-byte as it is.
+            */
             if (!curtainClear) {
                 ct::logger::warn("[MachineController] Reset pressed but the curtain sensor is still triggered.");
+                if (virtualPress) {
+                    emit signalPromptMsg("Light curtain is still triggered.\n\n"
+                        "Clear the beam, then press Reset again.");
+                    m_resetReasonPrompted = true;
+                }
             }
             else if (!estopClear) {
                 /*
@@ -495,6 +584,20 @@ void MachineController::handleDIA()
                 ct::logger::warn("[MachineController] Reset pressed but an e-stop is still active - "
                     "servo power and the Z brake stay off. Press reset again once the safety "
                     "relay has closed.");
+
+                /*
+                * The one thing a click genuinely cannot do, so say it plainly: the PHYSICAL
+                * reset button is wired into the e-stop safety relay circuit, and no digital
+                * output exists that could close it (DOA has no such bit). Until someone at the
+                * machine releases the e-stop and presses the panel button, there is no servo
+                * power to recover - a mushroom e-stop needs a hand on it regardless.
+                */
+                if (virtualPress) {
+                    emit signalPromptMsg("An emergency stop is still active.\n\n"
+                        "Release it and press the PHYSICAL reset button on the machine to close "
+                        "the safety relay. Servo power and the Z brake stay off until then.");
+                    m_resetReasonPrompted = true;
+                }
             }
             else if (recoverDrives()) {
                 if (m_curtainTripped) {
@@ -520,11 +623,14 @@ void MachineController::handleDIA()
         * fully refreshed error set, 10 ms later. Invisible to the operator.
         */
         m_resetRequested = true;
+
+        /*
+        * Emitted for a panel press and a click alike, AFTER the recovery attempt has returned,
+        * so the UI can treat it as "the attempt is finished" and stop showing the button as
+        * busy. It is not a success report - resetAlarm() has not even run yet - which is
+        * correct: whether the machine actually came back is told by signalMachineState().
+        */
         emit signalMachineEvent(MachineEvent::RESET_BTN);
-    }
-    else if (!reset_btn && m_resetBtnPressed) {
-        m_resetBtnPressed = false;
-        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, false);
     }
 
     //Check estop triggers, NC: high = good. Both buttons are combined into one flag here and

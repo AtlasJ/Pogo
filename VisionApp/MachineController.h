@@ -135,6 +135,20 @@ public:
     bool limitRecoveryOnly() const;
 
     bool resetAlarm();
+
+    /*
+    * A Reset pressed on screen. Recovers nothing itself - it raises a flag that handleDIA()
+    * consumes as a synthetic X102 edge, so the on-screen button takes the SAME path as the
+    * panel button: same safety guards, same recoverDrives(), same deferred resetAlarm(). Two
+    * reasons not to call recoverDrives() from the GUI thread instead: it blocks for seconds
+    * (the RDY wait alone is bounded at 3 s), and it would race the poll thread that owns the
+    * drives and the digital output group.
+    *
+    * Returns false when the controller is not enabled (machine offline), so a caller can say
+    * so rather than leave a button waiting on a reply that is never coming.
+    */
+    bool requestReset();
+
     bool curtainTripped() const { return m_curtainTripped; } //latched curtain break, cleared by reset
     bool pauseStatePolling(bool pause); //park the state poll loop (for motion reconnect)
     void notifyEvent(MachineEvent e);
@@ -216,6 +230,30 @@ private:
     //Set by the reset button, acted on at the END of handleAxisState so resetAlarm() is judged
     //against an error set that has been refreshed this cycle rather than the previous one.
     bool m_resetRequested = false;
+
+    /*
+    * An on-screen reset waiting for handleDIA() to pick it up. Timestamped because
+    * poolStates() skips handleDIA() entirely while polling is parked for a motion reconnect,
+    * and while the card is unavailable - an untimed flag would fire the moment polling
+    * resumed, so a click the operator had already given up on could release the brake
+    * seconds later. The panel button cannot do this: its edge is only ever read live.
+    */
+    std::atomic<bool> m_virtualResetRequested{ false };
+    std::atomic<std::chrono::steady_clock::time_point> m_virtualResetAt;
+
+    /*
+    * Set when handleDIA() has already told the operator, in words, WHY a reset was refused - so
+    * the deferred resetAlarm() a few microseconds later does not put a second dialog on top of
+    * it saying the same thing less usefully.
+    *
+    * It has to be suppression rather than two prompts, because showMsg() reuses one shared
+    * QMessageBox and calls setWindowFlags() on it, which HIDES an already-visible box: the
+    * second prompt therefore kills the first mid-exec() instead of queueing behind it.
+    *
+    * Read-and-cleared at the top of resetAlarm() so a suppression can never linger onto the
+    * Motion page's own call.
+    */
+    std::atomic<bool> m_resetReasonPrompted{ false };
 
     //Both e-stop buttons (X103/X104), NC so high = not pressed. Read in handleDIA but
     //assessed in handleAxisState together with the drive EMG input, because all three

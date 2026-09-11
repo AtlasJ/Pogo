@@ -327,14 +327,117 @@ void VisionApp::initProductionUI() {
 		}
 	});
 
+	/*
+	* Reset button feedback, APPENDED to the stylesheet Designer already gives this button rather
+	* than replacing it. setStyleSheet() is wholesale: building a fresh string here would drop the
+	* border-radius, the padding and the :pressed / :hover rules, and they would have to be
+	* restored byte-for-byte on every blink. Two extra rules plus a dynamic property leave all of
+	* that alone - and leave VisionApp.ui untouched.
+	*
+	* Neither existing rule sets "color", so the alert rule cannot fight them. The :disabled rule
+	* is needed because the base rule sets color unconditionally, so Qt would NOT grey the text on
+	* its own; it is last so it wins if it ever overlaps the alert state.
+	*/
+	ui.toolButton_resetProduction->setProperty("alert", false);
+	ui.toolButton_resetProduction->setStyleSheet(
+		ui.toolButton_resetProduction->styleSheet() +
+		"\n\nQToolButton[alert=\"true\"] {\n  color: #FFE723;\n}"
+		"\n\nQToolButton:disabled {\n  color: #9AA3B5;\n  background-color: #3A4767;\n}");
+
+	/*
+	* 500 ms to match the panel LED's cadence (the blink lambda in MachineController::run()).
+	* Deliberately NOT phase-locked to it: that lambda sleeps half a second at a time on the
+	* controller thread, so syncing would cost a queued signal per blink edge to buy a difference
+	* nobody can perceive. The two drift in and out of phase and that is fine.
+	*/
+	_resetPulseTimer = new QTimer(this);
+	_resetPulseTimer->setInterval(500);
+	connect(_resetPulseTimer, &QTimer::timeout, this, [=]() {
+		_resetPulseOn = !_resetPulseOn;
+		applyResetButtonStyle();
+	});
+
 	connect(ui.toolButton_resetProduction, &QToolButton::clicked, this, [=]() {
-		//handle error and alarm here
 		AuditLog::instance().log(QStringLiteral("RESET_ALARM"));
-		MachineController::instance().resetAlarm();
+
+		/*
+		* Same path as the panel button: the request is consumed by handleDIA() on the poll
+		* thread, which owns the safety guards and recoverDrives(). Deliberately NOT calling
+		* recoverDrives() from here - it blocks for seconds and this is the GUI thread.
+		*/
+		if (!MachineController::instance().requestReset()) {
+			showMsg("The machine controller is not running, so Reset has nothing to do.\n\n"
+				"This is expected when the software is started with no motion hardware.");
+			return;
+		}
 
 		SystemData::instance()._Machine_Ready = true;
 
+		const int seq = ++_resetRequestSeq;
+		_resetBusy = true;
+		updateResetButtonState();
+
+		/*
+		* Watchdog. Nothing else re-enables the button if the request is never acted on - the
+		* poll loop parked long enough for it to go stale, or the controller stopped between the
+		* request and the pickup. 10 s clears recoverDrives()' own worst case (~7 s) with margin.
+		* The sequence check keeps a stale watchdog from re-enabling a NEWER request's button.
+		*/
+		QTimer::singleShot(10000, this, [=]() {
+			if (!_resetBusy || seq != _resetRequestSeq) return;
+			ct::logger::warn("[Production] Reset request drew no response in 10 s - re-enabling the button");
+			_resetBusy = false;
+			updateResetButtonState();
+		});
 	});
+}
+
+/*
+* Paint the Reset button for the current pulse phase. Split out from updateResetButtonState()
+* because the 500 ms timer needs only this half - re-running the whole decision twice a second
+* would restart the very timer that called it.
+*/
+void VisionApp::applyResetButtonStyle()
+{
+	auto* btn = ui.toolButton_resetProduction;
+	if (!btn) return;
+
+	btn->setProperty("alert", _resetPulseOn);
+
+	//A dynamic property is not re-evaluated until the widget is repolished.
+	btn->style()->unpolish(btn);
+	btn->style()->polish(btn);
+}
+
+/*
+* The one place that decides how the production Reset button looks, so its three inputs - machine
+* in error, a recovery in flight, the blink phase - cannot disagree with each other.
+*
+* Busy WINS over the pulse: "press me" and "working, wait" are different messages and must not
+* alternate. That is also why the pulse resumes from here when a recovery finishes with the
+* machine still in error: after an e-stop the first press only closes the safety relay, and a
+* button that goes back to pulsing is what tells the operator to press it again.
+*/
+void VisionApp::updateResetButtonState()
+{
+	auto* btn = ui.toolButton_resetProduction;
+	if (!btn || !_resetPulseTimer) return;
+
+	const bool pulse = _machineInError && !_resetBusy;
+
+	if (pulse) {
+		if (!_resetPulseTimer->isActive()) {
+			_resetPulseOn = true; //start lit, so a fault shows immediately and not 500 ms late
+			_resetPulseTimer->start();
+		}
+	}
+	else {
+		_resetPulseTimer->stop();
+		_resetPulseOn = false;
+	}
+
+	btn->setEnabled(!_resetBusy);
+	applyResetButtonStyle();
 }
 
 //Production-mode selector (DI X108), same behaviour as 6DF:
