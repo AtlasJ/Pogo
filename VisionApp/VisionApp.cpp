@@ -9934,6 +9934,29 @@ bool VisionApp::saveJson(const QString& fileName, const QJsonDocument& doc)
 
 void VisionApp::showMsg(const QString& msg, QMessageBox::StandardButtons buttons)
 {
+	//Logged so a prompt that flashes past the operator can still be read afterwards, and so the
+	//log shows how many prompts a single action produced.
+	ct::logger::info("[UI] Prompt: %s", qPrintable(QString(msg).simplified()));
+
+	/*
+	* RE-ENTRANCY GUARD. _msg is ONE shared box, and setWindowFlags() below HIDES a widget that
+	* is already visible - which makes the exec() already running return, so the first message
+	* vanishes the instant a second one arrives. Prompts landing microseconds apart are normal
+	* here: a reset refusal followed by its own follow-up, or two axes tripping soft limits
+	* together, all arrive as separate queued signals.
+	*
+	* Appended rather than dropped, so the operator still sees every reason, in order, in one
+	* box - and the caller does not block a second time behind a dialog that is already up.
+	* Capped so a repeating error cannot grow the box off the screen.
+	*/
+	if (_msg.isVisible()) {
+		const QString existing = _msg.text();
+		if (existing.length() < 1200 && !existing.contains(msg)) {
+			_msg.setText(existing + "\n\n" + msg);
+		}
+		return;
+	}
+
 	_msg.setText(msg);
 	_msg.setStandardButtons(buttons);
 	_msg.setDefaultButton(QMessageBox::Ok);
@@ -9956,7 +9979,26 @@ void VisionApp::showMsg(const QString& msg, QMessageBox::StandardButtons buttons
 	//setMessageBoxTitleColor(_msg, Qt::red);
 	//updateMsgBoxBorder();
 	//emit updateMsgBoxBorderSignal();
-	_msg.exec();
+
+	/*
+	* Timed and logged on purpose. A prompt that closes on its own is invisible in a screenshot
+	* and hard to describe, but it is unmistakable here: a dialog dismissed in a few ms was not
+	* dismissed by a person. That distinguishes the two ways this box can vanish - something
+	* hiding it (the guard above), versus a stray press landing on its OK button, which happens
+	* when the box opens under the pointer or a touch.
+	*/
+	const auto promptShownAt = std::chrono::steady_clock::now();
+	const int answer = _msg.exec();
+	const auto promptMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now() - promptShownAt).count();
+
+	if (promptMs < 250) {
+		ct::logger::warn("[UI] Prompt closed after only %lld ms (button=%d) - it was almost "
+			"certainly not dismissed by the operator", (long long)promptMs, answer);
+	}
+	else {
+		ct::logger::info("[UI] Prompt closed after %lld ms (button=%d)", (long long)promptMs, answer);
+	}
 
 
 }
