@@ -471,6 +471,28 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 
 	FrameInfo info;
 
+	/*
+	* Clear the measurement members FIRST, before any path can return.
+	*
+	* They are members so that reporting them costs production nothing, but members survive the
+	* call - so a scan that bails out early used to leave the PREVIOUS run's counters, positions
+	* and valid-flags in place, and the Production Scan Check then printed them as if they
+	* belonged to the run that failed. Seen on 2026-09-11: a run that travelled 6.699 mm and
+	* never scanned reported a 65.001 mm move and "8.5% headroom", because both came from the
+	* run before it.
+	*
+	* Profiler_Keyence::start() clears m_lastProfiles for exactly this reason, with a comment
+	* saying so. Any function that reports through members and has more than one exit has to do
+	* this, or a failure silently inherits the last success.
+	*/
+	m_scanCountersValid = false;
+	m_scanTrigDelta = 0;
+	m_scanEncDelta = 0;
+	m_scanPosValid = false;
+	m_scanPosStart = 0.0;
+	m_scanPosEnd = 0.0;
+	m_scanAbortReason.clear();
+
 	ct::logger::trace("Start set laser config");
 	ProfilerManager::instance().stop(m_profilerID);
 	ProfilerManager::instance().enableIntensityMap(m_profilerID, optic.intensity);
@@ -618,6 +640,10 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 				"Move the line scan further inside travel, or check the laser offset.")
 				.arg(id).arg(over, 0, 'f', 3).arg(scanAlongY ? "Y" : "X"));
 
+			m_scanAbortReason = QStringLiteral(
+				"refused before moving: the scan start is %1 mm outside the %2 soft limit once "
+				"the laser offset is applied").arg(over, 0, 'f', 3).arg(scanAlongY ? "Y" : "X");
+
 			stopRun();
 			return info;
 		}
@@ -664,6 +690,21 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 		m_extraMoveLog.append("\n");
 	}
 
+	/*
+	* No settle before arming, and that is a tested decision rather than an oversight.
+	*
+	* The theory was that arming straight after the jog above - which is large, carries the
+	* laser offset (~97 mm in Y on this machine) and travels the OPPOSITE way along the scan
+	* axis to the scan itself - caught an axis that had not stopped moving, losing the early
+	* encoder counts. A settledCoordinate() wait was added here on 2026-09-11 and measured over
+	* ten runs: the trigger yield stayed at 5.57-5.90 um per trigger, exactly where it was
+	* without the settle (5.55-5.59). It recovered nothing and cost ~500 ms on every unit, so it
+	* was removed.
+	*
+	* The ~10% gap against the Profiler Scan Test - which sees 5.03 um per trigger over the same
+	* distance - is therefore still unexplained. It is covered, not cured, by kScanOvershootMm.
+	*/
+
 	/*if (!waitImage) {
 		ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT);
 		ct::logger::info("Done wait for laser");
@@ -671,26 +712,134 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 
 
 	if (!ProfilerManager::instance().start(m_profilerID)) {
-		ct::logger::error("Failed to start scanning");
+		ct::logger::error("Failed to start scanning: %s",
+			qPrintable(ProfilerManager::instance().errorMsg(m_profilerID)));
 		emit promptMsg("Failed to start scanning");
+
+		//Nothing moved and nothing was armed, so the gantry stays where the jog to the start
+		//left it - which is why such a run shows only the laser offset as its travel.
+		m_scanAbortReason = QStringLiteral("the profiler would not arm: %1")
+			.arg(ProfilerManager::instance().errorMsg(m_profilerID));
+
 		stopRun();
 		return info;
 	}
 
-	//overshoot follows the direction of travel - see the note above setScanLength
-	const double overshoot = (6.0 + SystemData::instance().m_extraMoveFor3DLaser) * scanDir;
+	/*
+	* Trigger and encoder counters, captured INSIDE this window on purpose.
+	*
+	* They have to be read after start() and before the move, because start() re-arms the
+	* controller and its counters do not survive that - a read taken before scan() was called
+	* spans the reset and yields a delta that can even come out negative. This window covers
+	* exactly the move the batch is sized for, and nothing else: not the jog to the start, not
+	* the laser offset, not the settle afterwards.
+	*
+	* Recorded on members rather than returned, so production is completely unaffected - only
+	* a diagnostic that wants them goes looking.
+	*/
+	IProfiler* scanProfiler = ProfilerManager::instance().keys().contains(m_profilerID)
+		? ProfilerManager::instance().profiler(m_profilerID) : nullptr;
+	quint32 scanTrig0 = 0, scanTrig1 = 0;
+	qint32  scanEnc0 = 0, scanEnc1 = 0;
+	m_scanCountersValid = scanProfiler && scanProfiler->getCounters(scanTrig0, scanEnc0);
+	m_scanTrigDelta = 0;
+	m_scanEncDelta = 0;
+
+	//Position from the card, not the polled coordinate, and taken here so it pairs exactly with
+	//the counter read above - the scan move has not started yet, so this IS where it begins.
+	const int scanAxisIdx = scanAlongY ? (int)Axis::Y : (int)Axis::X;
+	const auto posAtArm = MotionController::instance().get_position_mm(m_motionID, 0, scanAxisIdx);
+	m_scanPosValid = posAtArm.has_value();
+	m_scanPosStart = m_scanPosValid ? posAtArm.value() : 0.0;
+	m_scanPosEnd = m_scanPosStart;
+
+	/*
+	* Overshoot follows the direction of travel - see the note above setScanLength.
+	*
+	* The magnitude was a bare 6.0 until 2026-09-11, sized as "about 12% of a 50 mm scan". It
+	* was not 12%: measured over five runs, scan() delivered 9775-10093 triggers against a batch
+	* needing exactly 10000, i.e. ZERO margin, and three of the five failed. The batch count and
+	* the travel are derived from the SAME pitch figure, so the overshoot is the only thing
+	* covering the gap between that figure and what the axis actually delivers - and 6 mm did
+	* not cover it.
+	*
+	* kScanOvershootMm is 15.0, ~16% margin at the rate measured on this machine. It costs about
+	* 0.25 s per mm at 4 mm/s on every unit, so it is worth lowering again if the settle above
+	* recovers the missing counts - watch 'um per trigger' in the Production Scan Check report.
+	*/
+	const double overshoot = (kScanOvershootMm + SystemData::instance().m_extraMoveFor3DLaser) * scanDir;
 	if (scanAlongY) jogLaser(end.wx, end.wy + overshoot, start.wz, "3D");
 	else jogLaser(end.wx + overshoot, end.wy, start.wz, "3D");
 	//jogLaser(end.wx + 10 + SystemData::instance().m_extraMoveFor3DLaser, end.wy, start.wz, "3D");
 
-	if (!ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT)) {
+	const bool acquired = ProfilerManager::instance().waitAcquisition(m_profilerID, PROFILER_TIMEOUT);
+
+	/*
+	* Counters and position closed HERE - before any failure handling - so the message below can
+	* say what actually went wrong instead of guessing. Taken on the timeout path too; that is
+	* the case these numbers exist to explain.
+	*/
+	if (m_scanCountersValid && scanProfiler->getCounters(scanTrig1, scanEnc1)) {
+		m_scanTrigDelta = (qint64)scanTrig1 - (qint64)scanTrig0;
+		m_scanEncDelta = (qint64)scanEnc1 - (qint64)scanEnc0;
+	}
+	else {
+		m_scanCountersValid = false;
+	}
+
+	if (m_scanPosValid) {
+		const auto posAtEnd = MotionController::instance().get_position_mm(m_motionID, 0, scanAxisIdx);
+		if (posAtEnd.has_value()) m_scanPosEnd = posAtEnd.value();
+		else m_scanPosValid = false;
+	}
+
+	if (!acquired) {
 		if (!ProfilerManager::instance().stop(m_profilerID)) {
 			ct::logger::error("Failed to stop scanning");
 			emit promptMsg("Failed to stop scanning");
 			stopRun();
 			return info;
 		}
-		emit promptMsg("3D Profiler is not responding. Please restart the 3D Profiler.");
+
+		/*
+		* Say which fault this actually was.
+		*
+		* This used to read "3D Profiler is not responding. Please restart the 3D Profiler." for
+		* every timeout, and on 2026-09-11 that was wrong in every observed case: the sensor was
+		* healthy and the batch simply never filled because the move delivered fewer encoder
+		* triggers than the scan length was sized for. The message sent a whole day of
+		* investigation at the sensor. The counters read above can tell the two apart, so they do.
+		*/
+		const double linePitchUm = ProfilerManager::instance().getLinePitchUm();
+		const qint64 needed = (linePitchUm > 0.0)
+			? (qint64)std::ceil(fixedLength * 1000.0 / linePitchUm) : 0;
+
+		if (m_scanCountersValid && needed > 0 && m_scanTrigDelta < needed) {
+			ct::logger::error("[Acq] Scan timed out SHORT ON TRIGGERS: %lld received, %lld needed "
+				"for %.3f mm at %.3f um per profile",
+				(long long)m_scanTrigDelta, (long long)needed, fixedLength, linePitchUm);
+
+			emit promptMsg(QStringLiteral(
+				"The 3D scan did not complete.\n\n"
+				"The profiler received %1 encoder triggers, but this scan needs %2 to fill its "
+				"batch, so it could never complete and had to time out.\n\n"
+				"This is a motion or encoder problem, NOT the sensor - a laser that saw nothing "
+				"would still have produced a full batch. Check that the axis travelled the whole "
+				"scan length plus its overshoot.")
+				.arg(m_scanTrigDelta).arg(needed));
+		}
+		else {
+			ct::logger::error("[Acq] Scan timed out with no trigger shortfall (%lld triggers "
+				"against %lld needed) - the profiler did not deliver a batch",
+				(long long)m_scanTrigDelta, (long long)needed);
+
+			emit promptMsg(QStringLiteral(
+				"The 3D profiler did not deliver a batch within %1 seconds, and the encoder "
+				"triggers it received were enough to fill one.\n\n"
+				"This one does look like the sensor: check it is connected, then restart it.")
+				.arg(PROFILER_TIMEOUT / 1000));
+		}
+
 		stopRun();
 		auto error = MachineController::instance().getErrorStatus();
 		if(!error.contains((int)MachineError::ESTOP_PRESSED))unloadBoard();
@@ -3161,6 +3310,18 @@ void JobThread::productionScanTest(double distance_mm)
 		pending->stitchID = QString();
 	}
 
+	/*
+	* Counters and batch size, read either side of the scan.
+	*
+	* Until this was added the report carried only 'Elapsed', so a batch that never filled and
+	* an image that never arrived looked identical and had to be told apart by arithmetic on the
+	* elapsed time. The Profiler Scan Test has printed these numbers since it was written, and
+	* that is the only reason its failures were ever diagnosable - this closes the gap between
+	* the two reports so they can be compared run for run.
+	*/
+	IProfiler* profiler = ProfilerManager::instance().keys().contains(m_profilerID)
+		? ProfilerManager::instance().profiler(m_profilerID) : nullptr;
+
 	QElapsedTimer timer; timer.start();
 	FrameInfo info = scan(QStringLiteral("psc"), start, end, *optic, true);
 	const qint64 elapsed = timer.elapsed();
@@ -3173,11 +3334,136 @@ void JobThread::productionScanTest(double distance_mm)
 		<< "  Y=" << QString::number(landed.wy, 'f', 3) << "\n";
 	out << "  Gantry travel   : " << QString::number(
 		scanAlongY ? std::abs(landed.wy - origin.wy) : std::abs(landed.wx - origin.wx), 'f', 3) << " mm\n";
+	out << "                    (measured from the pre-jog origin, so it EXCLUDES the laser\n";
+	out << "                    offset that scan()'s move to the start applies. The distance the\n";
+	out << "                    batch is actually filled over is the move length reported under\n";
+	out << "                    ACQUISITION below - use that, not this number)\n";
+
+	/*
+	* Printed BEFORE the height-map check on purpose: a failed run is exactly when these numbers
+	* matter, and the old code returned before reaching anything but 'Elapsed'.
+	*/
+	int profiles = 0, pointsPerProfile = 0;
+	const bool haveBatch = profiler && profiler->getLastBatchSize(profiles, pointsPerProfile);
+
+	const double linePitchUm = ProfilerManager::instance().getLinePitchUm();
+	const qint64 needed = (linePitchUm > 0.0)
+		? (qint64)std::ceil(distance_mm * 1000.0 / linePitchUm) : 0;
+
+	out << "\nACQUISITION\n-----------\n";
+
+	/*
+	* A run that gave up before measuring says so, and prints nothing else. Anything here would
+	* be the PREVIOUS run's numbers - see the note at the top of scan() - and a plausible-looking
+	* headroom figure on a scan that never happened is worse than no figure at all.
+	*/
+	if (!m_scanAbortReason.isEmpty()) {
+		out << "  NOT MEASURED - scan() gave up before the move.\n";
+		out << "  Reason: " << m_scanAbortReason << "\n";
+		out << "\n  No triggers, encoder counts or travel were captured for this run, so none are\n";
+		out << "  shown. The gantry will have stopped wherever the jog to the start left it.\n";
+
+		say(QStringLiteral("Scan aborted: %1").arg(m_scanAbortReason));
+		finish(true, QStringLiteral("FAILED - %1").arg(m_scanAbortReason));
+		return;
+	}
+
+	if (haveBatch) {
+		out << "  Batch received  : " << profiles << " profiles x " << pointsPerProfile
+			<< " points   (raw, before any resize)\n";
+	}
+	if (needed > 0) {
+		out << "  Batch required  : " << needed << " profiles   ("
+			<< QString::number(distance_mm, 'f', 3) << " mm at "
+			<< QString::number(linePitchUm, 'f', 3) << " um per profile)\n";
+	}
+
+	if (m_scanCountersValid) {
+		const qint64 trigDelta = m_scanTrigDelta;
+		const qint64 encDelta = m_scanEncDelta;
+
+		out << "  Triggers taken  : " << trigDelta << "   (measured inside scan(), from arming to\n";
+		out << "                    the end of the acquisition wait - so it covers the scan move\n";
+		out << "                    only, not the jog to the start)\n";
+		out << "  Encoder counts  : " << encDelta << "\n";
+
+		/*
+		* THE ATTRIBUTION NUMBERS, and the reason the position is now measured rather than
+		* inferred.
+		*
+		* Travel used to be taken as distance + overshoot, which assumes the move both started
+		* and finished exactly where it was told. Measured against the counters on 2026-09-11
+		* that assumption produced 909 counts/mm here against 998 on the Profiler Scan Test for
+		* what should be the same axis - a gap big enough to be either lost pulses or simply a
+		* shorter move than intended, with no way to tell which. Both ends now come off the
+		* motion card at the same instants as the counters, so this is one consistent window.
+		*
+		* Read them together: counts/mm near the Profiler Scan Test's ~998 means the encoder is
+		* fine and any shortfall is travel; well below it means pulses really are being lost.
+		*/
+		const double measuredMm = m_scanPosValid ? std::abs(m_scanPosEnd - m_scanPosStart) : 0.0;
+		const double nominalMm = distance_mm + kScanOvershootMm;
+
+		if (m_scanPosValid) {
+			out << "  Scan move       : " << QString::number(m_scanPosStart, 'f', 3) << " -> "
+				<< QString::number(m_scanPosEnd, 'f', 3) << " mm   = "
+				<< QString::number(measuredMm, 'f', 3) << " mm travelled\n";
+			out << "                    (from the motion card at the same two instants as the\n";
+			out << "                    counters; nominal was " << QString::number(nominalMm, 'f', 3)
+				<< " mm = " << QString::number(distance_mm, 'f', 3) << " scan + "
+				<< QString::number(kScanOvershootMm, 'f', 3) << " overshoot)\n";
+
+			if (std::abs(measuredMm - nominalMm) > 0.5) {
+				out << "  WARNING: the move travelled " << QString::number(measuredMm - nominalMm, 'f', 3)
+					<< " mm more/less than it was asked to. Everything derived from\n";
+				out << "  distance below is measured against what ACTUALLY happened, not what was asked.\n";
+			}
+		}
+
+		const double travelForRates = measuredMm > 0.0 ? measuredMm : nominalMm;
+		if (trigDelta > 0 && travelForRates > 0.0) {
+			out << "  Trigger yield   : " << QString::number(1000.0 * travelForRates / double(trigDelta), 'f', 3)
+				<< " um per trigger   (configured " << QString::number(linePitchUm, 'f', 3) << ")\n";
+		}
+		if (encDelta != 0 && travelForRates > 0.0) {
+			out << "  Encoder density : " << QString::number(std::abs(double(encDelta)) / travelForRates, 'f', 1)
+				<< " counts per mm   (Profiler Scan Test measures ~998 on this machine)\n";
+		}
+
+		if (trigDelta != 0) {
+			out << "  Ratio           : " << QString::number(double(encDelta) / double(trigDelta), 'f', 3)
+				<< " encoder counts per trigger   (expected = the divider)\n";
+		}
+
+		/*
+		* The decisive line, and the reason this section exists.
+		*
+		* The batch fills on TRIGGERS, not on valid measurements - an invalid profile is still a
+		* profile - so a run that falls short here never had enough encoder motion, whatever the
+		* laser did or did not see. That separates a motion/encoder fault from a sensor fault,
+		* which the 'profiler is not responding' message this path ends in cannot do.
+		*/
+		if (needed > 0 && trigDelta < needed) {
+			out << "\n  SHORT BY " << (needed - trigDelta) << " TRIGGERS - the batch could not fill.\n";
+			out << "  The move delivered " << trigDelta << " triggers against the " << needed << " the batch\n";
+			out << "  was sized for, so acquisition had to time out. This is a motion or encoder\n";
+			out << "  problem, NOT the sensor: a laser that saw nothing would still have returned a\n";
+			out << "  full batch of invalid profiles. Check the travel actually achieved, and the\n";
+			out << "  encoder pulses behind it (3D Optics page -> Profiler Hardware).\n";
+		}
+		else if (needed > 0) {
+			out << "  Triggers vs need: " << trigDelta << " against " << needed << "   ("
+				<< QString::number(100.0 * double(trigDelta - needed) / double(needed), 'f', 1)
+				<< "% headroom)\n";
+		}
+	}
 
 	if (!info.pHeightMap) {
 		out << "\n  NO HEIGHT MAP. scan() returned an empty frame.\n";
-		out << "  The batch either never filled or the image was never built - check the log for\n";
-		out << "  the ImageManager thread and for a waitAcquisition timeout.\n";
+		out << "  Read the ACQUISITION block above before the log: if the trigger count fell short\n";
+		out << "  of the batch requirement, the batch never filled and the 60 s acquisition timeout\n";
+		out << "  is the whole story. If the triggers were sufficient, the batch did arrive and the\n";
+		out << "  image was never built - that one is the ImageManager thread, in the log.\n";
 		say(QStringLiteral("No height map. Report: %1").arg(reportPath));
 		finish(true, QStringLiteral("FAILED - scan() produced no height map"));
 		return;
@@ -3193,10 +3479,7 @@ void JobThread::productionScanTest(double distance_mm)
 	}
 
 	const HeightStats hs = rawHeightStats(mH);
-	double zPitch = 0.0;
-	if (ProfilerManager::instance().keys().contains(m_profilerID)) {
-		if (IProfiler* p = ProfilerManager::instance().profiler(m_profilerID)) zPitch = p->getZPitchUm();
-	}
+	const double zPitch = profiler ? profiler->getZPitchUm() : 0.0;
 
 	if (hs.ok && hs.valid > 0 && zPitch > 0.0) {
 		auto um = [&](int grey) { return (double(grey) - 32768.0) * zPitch; };

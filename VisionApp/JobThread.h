@@ -176,6 +176,37 @@ private:
 
 	QHash<QString, RGBOffset> m_rgbOverrides;
 
+	/*
+	* Extra travel past the scan end so the batch can always fill. See the long note at its use
+	* in scan(); in short, 6.0 mm was measured on 2026-09-11 to deliver ZERO margin, so the run
+	* passed or failed on ~1% of natural variation.
+	*/
+	static constexpr double kScanOvershootMm = 15.0;
+
+	/*
+	* Trigger/encoder counter deltas from the last scan(), measured between arming and the end
+	* of the acquisition wait. Written by scan(), read by the Production Scan Check report.
+	* Kept here rather than returned so production carries no extra cost and no extra argument.
+	*/
+	bool   m_scanCountersValid = false;
+	qint64 m_scanTrigDelta = 0;
+	qint64 m_scanEncDelta = 0;
+
+	/*
+	* Scan-axis position read from the motion card at the SAME two instants as the counters
+	* above, so counts-per-mm comes out of one consistent window instead of being inferred from
+	* the taught points and the laser offset. That inference is what left the actual travel
+	* unknown on 2026-09-11 - the reports gave a pre-jog origin and a landing point, and the
+	* position the scan actually started from was never recorded by anything.
+	*/
+	bool   m_scanPosValid = false;
+	double m_scanPosStart = 0.0;
+	double m_scanPosEnd = 0.0;
+
+	//Why scan() gave up before it ever measured anything, empty when it did not. Without this a
+	//report could only say "no height map" and leave the reader to find the cause in the log.
+	QString m_scanAbortReason;
+
 	std::thread m_thread;
 	int m_snapDelay_ms = 0;
 	std::atomic<bool> m_stopZstack = false;
