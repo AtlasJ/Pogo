@@ -1383,6 +1383,48 @@ void VisionApp::connectSignalAndSlot()
 	});
 
 
+	/*
+	* Idle auto-logout. Only Admin and Engineer sessions are dropped: Operator is already the
+	* least-privileged level, and logging an operator out mid-run would leave an unattended
+	* machine sitting on the login page instead of the production page. Combo index -> minutes,
+	* 0 = Never. The countdown is reset from eventFilter() on any real user input.
+	*/
+	static const int kAutoLogoutMin[] = { 1, 5, 10, 30, 60, 0 };
+	_idleLogoutTimer = new QTimer(this);
+	_idleLogoutTimer->setSingleShot(true);
+	connect(_idleLogoutTimer, &QTimer::timeout, this, [this]() {
+		const auto lvl = _curUserAccInfo.accessLevel;
+		if (_autoLogoutMinutes <= 0 || _curUserAccInfo.userName.isEmpty()) return;
+		if (lvl != AccessLevel::ADMIN && lvl != AccessLevel::ENGINEER) return;
+
+		ct::logger::info("[AutoLogout] Idle %d min - logging out %s",
+			_autoLogoutMinutes, _curUserAccInfo.userName.toStdString().c_str());
+		AuditLog::instance().log(QStringLiteral("AUTO_LOGOUT"),
+			QStringLiteral("%1 min idle").arg(_autoLogoutMinutes));
+
+		const int mins = _autoLogoutMinutes;
+		loginMode();
+		//loginMode() clears this label, so the notice goes on AFTER it
+		ui.labelLoginStatus->setText(QStringLiteral("Logged out after %1 min idle").arg(mins));
+	});
+
+	connect(ui.comboBox_autoLogout, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+		_autoLogoutMinutes = (idx >= 0 && idx < 6) ? kAutoLogoutMin[idx] : 0;
+		jsonHelper::setJsonValue(_systemObj, "Auto_Logout_Minutes", _autoLogoutMinutes);
+		updateSystemInfo(_systemObj);
+		AuditLog::instance().log(QStringLiteral("AUTO_LOGOUT_PERIOD"),
+			_autoLogoutMinutes > 0 ? QStringLiteral("%1 min").arg(_autoLogoutMinutes) : QStringLiteral("Never"));
+		if (_autoLogoutMinutes > 0) _idleLogoutTimer->start(_autoLogoutMinutes * 60000);
+		else _idleLogoutTimer->stop();
+	});
+
+	//readSystemInfo() runs before this connect exists, so adopt whatever it restored
+	{
+		const int idx = ui.comboBox_autoLogout->currentIndex();
+		_autoLogoutMinutes = (idx >= 0 && idx < 6) ? kAutoLogoutMin[idx] : 0;
+		if (_autoLogoutMinutes > 0) _idleLogoutTimer->start(_autoLogoutMinutes * 60000);
+	}
+
 	connect(ui.checkBox_machineDebugMode, &QCheckBox::stateChanged, this, [=](int state) {
 		SystemData::instance()._machineDebugMode = state;
 		jsonHelper::setJsonValue(_systemObj, "Machine_Debug_Mode", (bool)SystemData::instance()._machineDebugMode);
@@ -4620,6 +4662,13 @@ void VisionApp::setUserEnvironment(AccessLevel accessLevel)
 	ui.toolButtonSelectMode->setVisible(mainUIVisibility);
 	ui.toolButtonDrawVisionObjMode->setVisible(mainUIVisibility);
 
+	//the logout period is a security setting: Admin and Engineer set it, Operator only sees it
+	const bool maySetAutoLogout = (accessLevel == AccessLevel::ADMIN || accessLevel == AccessLevel::ENGINEER);
+	ui.comboBox_autoLogout->setEnabled(maySetAutoLogout);
+	ui.comboBox_autoLogout->setToolTip(maySetAutoLogout
+		? QString()
+		: tr("Only Admin and Engineer can change the auto logout period."));
+
 	//handle adaptive resolution
 	if (g_viewMode == (int)ViewMode::PLANE) {
 		ui.frame_leftTab->hide();
@@ -5352,6 +5401,19 @@ VisionApp::~VisionApp()
 
 bool VisionApp::eventFilter(QObject * obj, QEvent * event)
 {
+	//Any real user input anywhere in the app restarts the auto-logout countdown. Kept at the
+	//very top: everything below this can return early, and an idle timer that only resets on
+	//some paths would log the user out while they are working.
+	if (_idleLogoutTimer && _autoLogoutMinutes > 0) {
+		switch (event->type()) {
+		case QEvent::MouseMove: case QEvent::MouseButtonPress: case QEvent::MouseButtonDblClick:
+		case QEvent::KeyPress: case QEvent::Wheel: case QEvent::TouchBegin:
+			_idleLogoutTimer->start(_autoLogoutMinutes * 60000);
+			break;
+		default: break;
+		}
+	}
+
 	/*
 	* Ctrl+C / Ctrl+V used to be handled here and it NEVER RAN. Qt fires the QShortcuts
 	* registered in VisionApp_Shortcuts.cpp before a KeyPress event exists, so this branch
@@ -8721,6 +8783,18 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			? jsonHelper::getBool(_systemObj, "Bypass_Inspection_Mode", false)
 			: (systemObj.insert("Bypass_Inspection_Mode", false), false);
 		ui.checkBox_bypassInspectionMode->setChecked(SystemData::instance()._bypassInspection);
+
+		//Auto logout period. Setting the combo fires the connect above once it exists; at startup
+		//this runs first, so the constructor re-reads the combo afterwards to arm the timer.
+		{
+			const int mins = systemObj.contains("Auto_Logout_Minutes")
+				? jsonHelper::getInteger(_systemObj, "Auto_Logout_Minutes", 0)
+				: (systemObj.insert("Auto_Logout_Minutes", 0), 0);
+			static const int kAutoLogoutMin[] = { 1, 5, 10, 30, 60, 0 };
+			int idx = 5; //Never
+			for (int i = 0; i < 6; i++) if (kAutoLogoutMin[i] == mins) { idx = i; break; }
+			ui.comboBox_autoLogout->setCurrentIndex(idx);
+		}
 
 		SystemData::instance()._enableFiducialRotate = systemObj.contains("Enable_Fiducial_Rotate")
 			? jsonHelper::getBool(_systemObj, "Enable_Fiducial_Rotate", true)

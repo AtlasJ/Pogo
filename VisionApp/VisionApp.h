@@ -541,6 +541,8 @@ private:
 	void addLogLine(const QString& line);
 	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
 	void updateProductionSummary(); //recount good/bad/total from the production table
+	QTimer* _idleLogoutTimer = nullptr; //idle auto-logout (Admin/Engineer sessions only)
+	int _autoLogoutMinutes = 0;         //0 = Never
 	void clearErrorLogs();
 	void setXAxisVelocity();
 
