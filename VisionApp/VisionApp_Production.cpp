@@ -8,6 +8,8 @@
 #include "AuditLog.h"
 #include "AlgoManager.h"
 #include "MbufPoolManager.h"
+#include "ImageSavingThread.h"
+#include <QDir>
 
 void VisionApp::initProductionUI() {
 	//NOTE: for hardware side, user can only turn on in this production page
@@ -27,6 +29,9 @@ void VisionApp::initProductionUI() {
 		}
 	});
 	connect(&_jobThread, &JobThread::acquisitionDone, this, [=]() {
+		if (_processType == ProcessType::PRODUCTION && ui.checkBox_saveFailedOnly->isChecked()) {
+			prunePassedUnitImages();
+		}
 		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._autoLockTrolley) {
 			//end of the production run: release the trolley lock automatically
 			MotionController::instance().set_DO(_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, false);
@@ -222,6 +227,7 @@ void VisionApp::initProductionUI() {
 				rItem->setForeground(QBrush(Qt::green));
 				rItem->setData(Qt::UserRole + 1, 0);
 				updateProductionSummary();
+				if (ui.checkBox_saveFailedOnly->isChecked()) discardUnitImages(unitID);
 			}
 		}, Qt::QueuedConnection);
 
@@ -293,6 +299,19 @@ void VisionApp::initProductionUI() {
 
 	//trolley auto-lock: MachineController engages the lock on the guard's OFF->ON edge,
 	//the run's end (or Stop) releases it. Off = the lock only moves via the button below.
+	/*
+	* "Save Failed Images Only" prunes rather than skips: the images are captured and written
+	* exactly as before, and a unit's files are deleted once it PASSES. Skipping the write
+	* instead is not possible here - a unit's images are captured well before its algos have
+	* run, so at write time there is no verdict to decide on yet.
+	*/
+	connect(ui.checkBox_saveFailedOnly, &QCheckBox::toggled, this, [=](bool on) {
+		jsonHelper::setJsonValue(_systemObj, "Save_Failed_Images_Only", on);
+		updateSystemInfo(_systemObj);
+		AuditLog::instance().log(QStringLiteral("SAVE_FAILED_IMAGES_ONLY"),
+			on ? QStringLiteral("ON") : QStringLiteral("OFF"));
+	});
+
 	connect(ui.checkBox_autoLockTrolley, &QCheckBox::toggled, this, [=](bool on) {
 		SystemData::instance()._autoLockTrolley = on;
 		saveRecipeConfig();
@@ -700,6 +719,59 @@ void VisionApp::updateProductionSummary()
 	ui.label_prodSummaryYield->setText(done > 0
 		? QStringLiteral("Yield: %1%").arg(100.0 * good / done, 0, 'f', 1)
 		: QString());
+}
+
+/*
+* Delete one passed unit's saved images. The 3D scan is written by ImageSavingThread, so a
+* unit can reach its verdict before its height/intensity files exist - those are caught by
+* prunePassedUnitImages() at the end of the run rather than by waiting here, which would
+* stall the UI thread mid-run.
+*/
+void VisionApp::discardUnitImages(const QString& unitID)
+{
+	if (unitID.isEmpty()) return;
+
+	const QString root = Common::Directory::getProductionImageSetPath();
+	const QStringList suffixes = {
+		QStringLiteral("_reader1.jpg"), QStringLiteral("_reader2.jpg"),
+		QStringLiteral("_height.tiff"), QStringLiteral("_intensity.jpg")
+	};
+
+	int removed = 0;
+	for (const QString& s : suffixes) {
+		const QString path = root + unitID + s;
+		if (QFile::exists(path) && QFile::remove(path)) removed++;
+	}
+
+	if (removed > 0)
+		ct::logger::info("[Production] %s passed - %d image(s) discarded (Save Failed Images Only)",
+			unitID.toStdString().c_str(), removed);
+}
+
+/*
+* End-of-run sweep: re-delete every PASS unit's images once the save queue has drained, so
+* files written after a unit's verdict (the async 3D scan write) do not survive the prune.
+*/
+void VisionApp::prunePassedUnitImages()
+{
+	//bounded wait - a stuck save queue must not hang the end of a run
+	QElapsedTimer drain;
+	drain.start();
+	while (ImageSavingThread::instance().size() > 0 && drain.elapsed() < 10000)
+		QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 50);
+
+	auto* t = ui.tableWidget_prodStatus;
+	int units = 0;
+	for (int r = 0; r < t->rowCount(); r++) {
+		auto* verdict = t->item(r, 4);
+		auto* idItem = t->item(r, 0);
+		if (!verdict || !idItem) continue;
+		if (verdict->text() != QLatin1String("PASS")) continue;
+		discardUnitImages(idItem->data(Qt::UserRole).toString());
+		units++;
+	}
+
+	ct::logger::info("[Production] Save Failed Images Only: swept %d passed unit(s)", units);
 }
 
 void VisionApp::clearInspectionLogs()

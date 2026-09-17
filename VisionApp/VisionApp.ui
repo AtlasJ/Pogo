@@ -4541,6 +4541,24 @@ QToolButton:hover {
                            </property>
                           </widget>
                          </item>
+                         <item row="4" column="0" colspan="2">
+                          <widget class="QCheckBox" name="checkBox_saveFailedOnly">
+                           <property name="font">
+                            <font>
+                             <pointsize>11</pointsize>
+                            </font>
+                           </property>
+                           <property name="styleSheet">
+                            <string notr="true">color:#F0F0F0;</string>
+                           </property>
+                           <property name="toolTip">
+                            <string>Keep only the images of units that FAIL. Images are still captured and written as usual, then a unit's images are deleted once it passes - so the run keeps working exactly as before and only the storage is pruned. Needs Save Inspection Images to be on.</string>
+                           </property>
+                           <property name="text">
+                            <string>Save Failed Images Only</string>
+                           </property>
+                          </widget>
+                         </item>
                          <item row="3" column="0" colspan="2">
                           <widget class="QCheckBox" name="checkBox_autoLockTrolley">
                            <property name="font">

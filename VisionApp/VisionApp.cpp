@@ -8784,6 +8784,16 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			: (systemObj.insert("Bypass_Inspection_Mode", false), false);
 		ui.checkBox_bypassInspectionMode->setChecked(SystemData::instance()._bypassInspection);
 
+		//Only-failed image retention. Sibling of Save_Inspection_Image, so it lives in the same
+		//file rather than in the recipe - it is a storage policy for the machine, not the part.
+		{
+			const bool failedOnly = systemObj.contains("Save_Failed_Images_Only")
+				? jsonHelper::getBool(_systemObj, "Save_Failed_Images_Only", false)
+				: (systemObj.insert("Save_Failed_Images_Only", false), false);
+			QSignalBlocker b(ui.checkBox_saveFailedOnly);
+			ui.checkBox_saveFailedOnly->setChecked(failedOnly);
+		}
+
 		//Auto logout period. Setting the combo fires the connect above once it exists; at startup
 		//this runs first, so the constructor re-reads the combo afterwards to arm the timer.
 		{
@@ -15258,6 +15268,7 @@ void VisionApp::enableSaveInspectionImage(bool enable)
 
 	_saveInspImg = enable;
 	SystemData::instance()._saveInspImages = enable;
+	ui.checkBox_saveFailedOnly->setEnabled(enable); //nothing to prune when nothing is saved
 	jsonHelper::setJsonValue(_systemObj, "Save_Inspection_Image", _saveInspImg);
 	updateSystemInfo(_systemObj);
 }

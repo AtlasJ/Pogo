@@ -541,6 +541,8 @@ private:
 	void addLogLine(const QString& line);
 	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
 	void updateProductionSummary(); //recount good/bad/total from the production table
+	void discardUnitImages(const QString& unitID); //remove a passed unit's saved images
+	void prunePassedUnitImages();                  //end-of-run sweep for late writes
 	QTimer* _idleLogoutTimer = nullptr; //idle auto-logout (Admin/Engineer sessions only)
 	int _autoLogoutMinutes = 0;         //0 = Never
 	void clearErrorLogs();
