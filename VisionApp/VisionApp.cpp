@@ -13,7 +13,10 @@
 #include "QJsonHelper.h"
 #include "QJsonFile.h"
 #include <QItemSelectionModel>
+#include <QLabel>
+#include <QStatusBar>
 #include <QStorageInfo>
+#include <QTime>
 #include <QtCharts/QPieSeries>
 #include <QtCharts/QPieSlice>
 #include <chrono>
@@ -134,6 +137,25 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	Onnx::InferenceEngine _infer; // initialize to see if onnx working
 
 	ui.setupUi(this);
+
+	/*
+	* Status-bar clock (12-hour), pinned to the bottom right - same as 6DF. Permanent
+	* widgets are right-aligned and are NOT overwritten by showMessage(), which this app
+	* uses for the px/mm readout and for transient status text.
+	*/
+	{
+		auto* clock = new QLabel(this);
+		clock->setStyleSheet(QStringLiteral("color:#F0F0F0; padding-right: 8px;"));
+		statusBar()->addPermanentWidget(clock);
+		auto* clockTimer = new QTimer(this);
+		auto tick = [clock]() {
+			clock->setText(QTime::currentTime().toString(QStringLiteral("h:mm:ss AP")));
+		};
+		connect(clockTimer, &QTimer::timeout, this, tick);
+		clockTimer->start(1000);
+		tick();
+	}
+
 	std::signal(SIGSEGV, &VisionApp::terminated); //link: https://stackoverflow.com/questions/343219/is-it-possible-to-use-signal-inside-a-c-class
 	std::signal(SIGINT, &VisionApp::terminated);
 	std::signal(SIGILL, &VisionApp::terminated);
