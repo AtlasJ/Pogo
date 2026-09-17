@@ -87,6 +87,7 @@ void VisionApp::initProductionUI() {
 
 		t->setItem(row, 4, rItem);
 
+		updateProductionSummary();
 		t->scrollToBottom();
 	}, Qt::QueuedConnection);
 
@@ -206,6 +207,7 @@ void VisionApp::initProductionUI() {
 				rItem->setText("FAIL");
 				rItem->setForeground(QBrush(Qt::red));
 				rItem->setData(Qt::UserRole + 1, 0);
+				updateProductionSummary();
 				return;
 			}
 
@@ -219,6 +221,7 @@ void VisionApp::initProductionUI() {
 				rItem->setText("PASS");
 				rItem->setForeground(QBrush(Qt::green));
 				rItem->setData(Qt::UserRole + 1, 0);
+				updateProductionSummary();
 			}
 		}, Qt::QueuedConnection);
 
@@ -512,6 +515,7 @@ void VisionApp::startProduction()
 
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
+	updateProductionSummary();
 	clearErrorLogs();
 	clearInspectionLogs();
 
@@ -585,6 +589,7 @@ void VisionApp::startProductionS()
 
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
+	updateProductionSummary();
 	clearErrorLogs();
 	clearInspectionLogs();
 
@@ -664,6 +669,39 @@ void VisionApp::unloadBoard()
 
 //production start wipes the previous run's [Inspection] lines from the machine
 //status log; errors and other lines stay (clearErrorLogs handles errors)
+/*
+* Good / bad / total for the run, recounted from the table itself rather than kept in
+* counters - the table is already the single source of truth for a unit's verdict (a unit
+* can go PASS then FAIL as its second algo lands), and a recount cannot drift out of sync
+* with it. Units still inspecting are counted in the total but are neither good nor bad,
+* so good + bad < total while the run is in flight.
+*/
+void VisionApp::updateProductionSummary()
+{
+	auto* t = ui.tableWidget_prodStatus;
+	int good = 0, bad = 0;
+
+	for (int r = 0; r < t->rowCount(); r++) {
+		auto* item = t->item(r, 4);
+		if (!item) continue;
+		const QString verdict = item->text();
+		if (verdict == QLatin1String("PASS")) good++;
+		else if (verdict == QLatin1String("FAIL")) bad++;
+	}
+
+	const int total = t->rowCount();
+	ui.label_prodSummaryGood->setText(QStringLiteral("Good: %1").arg(good));
+	ui.label_prodSummaryBad->setText(QStringLiteral("Bad: %1").arg(bad));
+	ui.label_prodSummaryTotal->setText(QStringLiteral("Total: %1").arg(total));
+
+	//yield over units that actually finished - showing it against the total would read
+	//as a falling yield while units are still being inspected
+	const int done = good + bad;
+	ui.label_prodSummaryYield->setText(done > 0
+		? QStringLiteral("Yield: %1%").arg(100.0 * good / done, 0, 'f', 1)
+		: QString());
+}
+
 void VisionApp::clearInspectionLogs()
 {
 	for (int i = m_logStatus.size() - 1; i >= 0; --i) {

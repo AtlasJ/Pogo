@@ -540,6 +540,7 @@ private:
 	QStringList m_logStatus;
 	void addLogLine(const QString& line);
 	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
+	void updateProductionSummary(); //recount good/bad/total from the production table
 	void clearErrorLogs();
 	void setXAxisVelocity();
 
