@@ -13,6 +13,7 @@
 #include "QJsonHelper.h"
 #include "QJsonFile.h"
 #include <QItemSelectionModel>
+#include <QStorageInfo>
 #include <QtCharts/QPieSeries>
 #include <QtCharts/QPieSlice>
 #include <chrono>
@@ -8704,9 +8705,50 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			: (systemObj.insert("Enable_Fiducial_Rotate", true), true);
 		ui.checkBox_enableFiducialRotate->setChecked(SystemData::instance()._enableFiducialRotate);
 
-		Common::Directory::ProductionDrive = systemObj.contains("Setup_Production_Drive")
-			? jsonHelper::getString(_systemObj, "Setup_Production_Drive", "C:\\")
-			: (systemObj.insert("Setup_Production_Drive", "C:\\"), "C:\\");
+		/*
+		* Production data - Images, Results and Defects all hang off Directory::ProductionPath() -
+		* belongs on the D drive by default, and falls back to C when D is not there. "Not there"
+		* deliberately means more than missing: a drive letter can exist and still be unwritable
+		* (an optical drive with a disc in it answers as D: on plenty of machines), and production
+		* would then fail per-file mid-run instead of once at startup.
+		*
+		* Setup_Production_Drive still pins a drive for a machine that needs a different one. The
+		* one-time migration exists because the OLD default wrote "C:\" into every existing
+		* system.json, so honouring the file alone would leave every installed machine on C and
+		* this default would never take effect anywhere.
+		*/
+		const QString kProdDriveDefault = QStringLiteral("D:\\");
+		const QString kProdDriveFallback = QStringLiteral("C:\\");
+
+		auto driveUsable = [](const QString& drive) -> bool {
+			if (drive.isEmpty() || !QDir(drive).exists()) return false;
+			const QStorageInfo vol(drive);
+			//an unrecognised volume still counts - QDir::exists already proved the path resolves
+			return !vol.isValid() || (vol.isReady() && !vol.isReadOnly());
+		};
+
+		QString prodDrive = systemObj.contains("Setup_Production_Drive")
+			? jsonHelper::getString(_systemObj, "Setup_Production_Drive", kProdDriveDefault)
+			: kProdDriveDefault;
+
+		if (!systemObj.contains("Setup_Production_Drive_Migrated")) {
+			if (prodDrive.compare(kProdDriveFallback, Qt::CaseInsensitive) == 0) {
+				ct::logger::info("[Setup] Production drive: migrating the old C default to %s",
+					kProdDriveDefault.toStdString().c_str());
+				prodDrive = kProdDriveDefault;
+			}
+			systemObj.insert("Setup_Production_Drive_Migrated", true);
+		}
+
+		if (!driveUsable(prodDrive)) {
+			ct::logger::warn("[Setup] Production drive %s is not available (missing, not mounted or "
+				"read-only) - falling back to %s",
+				prodDrive.toStdString().c_str(), kProdDriveFallback.toStdString().c_str());
+			prodDrive = kProdDriveFallback;
+		}
+
+		systemObj.insert("Setup_Production_Drive", prodDrive);
+		Common::Directory::ProductionDrive = prodDrive;
 		ct::logger::warn(QStringLiteral("ProductionPath: %1").arg(Common::Directory::ProductionPath()).toStdString().c_str());
 
 		Common::Directory::LearningImageDrive = systemObj.contains("Setup_Learning_Image_Drive")
