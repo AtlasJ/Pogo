@@ -612,6 +612,20 @@ void MachineController::handleDIA()
                     //clear the latched error NOW - resetAlarm below refuses while any
                     //error is still active, and the poll only re-assesses next cycle
                     assessError(true, MachineError::CURTAIN_RELAY_FAULT);
+
+                    /*
+                    * Someone broke the beam, and the drives have just been powered back up -
+                    * say so before anything commands motion.
+                    *
+                    * Prompted for a PANEL press as well as a click, unlike the refusal messages
+                    * above. The rule they follow exists because a mashed panel button would emit
+                    * one prompt per press and stack nested modal loops; this one cannot, because
+                    * it sits inside the branch that clears m_curtainTripped, so it fires exactly
+                    * once per curtain trip however many times reset is pressed. The person at the
+                    * machine is precisely who needs to check nobody is inside it.
+                    */
+                    emit signalPromptMsg("Curtain sensor has been triggered!\n\n"
+                        "Ensure nobody is inside before proceeding to move machine.");
                 }
             }
         }
