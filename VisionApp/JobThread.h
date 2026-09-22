@@ -262,7 +262,7 @@ private:
 
 	//fiducial
 	bool fiducialExists(int index);
-	em::V2d getFiducialPointInMM(int index, int x_px, int y_px);
+	em::V2d getFiducialPointInMM(int index, double x_px, double y_px); //px are sub-pixel, never round them
 	bool locateFiducial(int index, int fidIndex, InspStatus::FiducialDetail& fDetail, bool saveImg,const dat::WorldCoordinate & curCoordinate, int crossFinderScore = 85, Fiducial* algo = nullptr);
 	void searchFiducial();
 	void searchDoubleFiducial();

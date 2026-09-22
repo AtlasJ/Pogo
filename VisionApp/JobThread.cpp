@@ -1108,7 +1108,15 @@ bool JobThread::fiducialExists(int index)
 	return fidInfo[index].hasTeachPoint;
 }
 
-em::V2d JobThread::getFiducialPointInMM(int index, int x_px, int y_px)
+/*
+* Fiducial pixel -> machine mm, anchored at the fiducial's teach point (searchFiducial jogs
+* there before snapping, so that position IS the image origin).
+*
+* x_px/y_px are DOUBLE on purpose. They used to be int, which truncated the sub-pixel match
+* position every finder returns - up to a whole pixel, always toward zero, on the single
+* measurement the entire board offset is built from.
+*/
+em::V2d JobThread::getFiducialPointInMM(int index, double x_px, double y_px)
 {
 	auto& fidInfo = *m_fiducialInfos;
 
@@ -1256,6 +1264,8 @@ bool JobThread::locateFiducial(int index, int fidIndex, InspStatus::FiducialDeta
 		else
 		{
 			ret = 1;
+			output.cx = circle.cx; //sub-pixel centre: find_circle reports it, this branch dropped it
+			output.cy = circle.cy;
 			output.x = circle.cx - circle.radius;
 			output.y = circle.cy - circle.radius;
 			output.w = circle.radius * 2;
@@ -1273,6 +1283,8 @@ bool JobThread::locateFiducial(int index, int fidIndex, InspStatus::FiducialDeta
 		else
 		{
 			ret = 1;
+			output.cx = cross.cx; //sub-pixel centre, as above
+			output.cy = cross.cy;
 			output.x = cross.x;
 			output.y = cross.y;
 			output.w = cross.width;
@@ -1287,8 +1299,23 @@ bool JobThread::locateFiducial(int index, int fidIndex, InspStatus::FiducialDeta
 		auto locatedPoint = QRectF(sr_x + output.x, sr_y + output.y, output.w, output.h);
 		emit locatedFiducial(locatedPoint);
 
+		/*
+		* Both sides are CENTRES measured the same way, so nothing one-sided survives the subtraction.
+		*
+		* The located centre is the finder's own sub-pixel result (output.cx/cy, search-region
+		* relative). It used to be rebuilt from the ROUNDED top-left as x + w/2 + 1, which reduces
+		* to "sub-pixel centre + 1.0 px" - +1.5 px when the model bounding box is odd, because
+		* find_pattern floors nWidth/2 with integer division. That hand-tuned +1 had no counterpart
+		* on the learnt side, so it did not cancel in located - learnt and biased every compensated
+		* position by about a pixel in both axes.
+		*/
 		auto learnt = getFiducialPointInMM(index, fidInfo[index].inspect_region.cx, fidInfo[index].inspect_region.cy);
-		auto located = getFiducialPointInMM(index, locatedPoint.x() + (output.w / 2 + 1), locatedPoint.y() + (output.h / 2 + 1)); //center the point with additional 1px, tested with direct learn and inspect. 
+		auto located = getFiducialPointInMM(index, sr_x + output.cx, sr_y + output.cy);
+
+		ct::logger::info("[Fid] %d: located px (%.2f, %.2f) vs taught px (%d, %d) -> offset %.4f, %.4f mm",
+			index, sr_x + output.cx, sr_y + output.cy,
+			fidInfo[index].inspect_region.cx, fidInfo[index].inspect_region.cy,
+			located.x() - learnt.x(), located.y() - learnt.y());
 		fid->setLearntFid(fidIndex, learnt);
 		fid->setShiftedFid(fidIndex, located);
 		fid->compute();
@@ -1672,6 +1699,8 @@ void JobThread::testFiducial(int index, bool online)
 		}
 		else
 		{
+			output.cx = circle.cx; //sub-pixel centre: find_circle reports it, this branch dropped it
+			output.cy = circle.cy;
 			output.x = circle.cx - circle.radius;
 			output.y = circle.cy - circle.radius;
 			output.w = circle.radius * 2;
@@ -1687,6 +1716,8 @@ void JobThread::testFiducial(int index, bool online)
 		}
 		else
 		{
+			output.cx = cross.cx; //sub-pixel centre, as above
+			output.cy = cross.cy;
 			output.x = cross.x;
 			output.y = cross.y;
 			output.w = cross.width;
@@ -1699,8 +1730,10 @@ void JobThread::testFiducial(int index, bool online)
 
 	auto locatedPoint = QRectF(sr_x + output.x, sr_y + output.y, output.w, output.h);
 	
+	//measured exactly as locateFiducial() does - a test reporting a different offset than the
+	//one production applies would be worse than no test at all
 	auto learnt = getFiducialPointInMM(index, fidInfos[index].inspect_region.cx, fidInfos[index].inspect_region.cy);
-	auto fid = getFiducialPointInMM(index, locatedPoint.x() + (output.w / 2 + 1), locatedPoint.y() + (output.h / 2 + 1));
+	auto fid = getFiducialPointInMM(index, sr_x + output.cx, sr_y + output.cy);
 	ct::logger::debug("Learnt point(mm): %f, %f", learnt.x(), learnt.y());
 	ct::logger::debug("Located point(mm): %f, %f", fid.x(), fid.y());
 	
