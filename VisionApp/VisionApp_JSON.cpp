@@ -1,4 +1,5 @@
 #include "VisionApp.h"
+#include <QJsonArray>
 #include "CommonDir.h"
 #include "AuditLog.h"
 #include "TemplateLibraryTab.h"
@@ -1384,23 +1385,36 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("homeOnStartup"), (bool)SystemData::instance()._homeOnStartup);
 
 	obj.insert(QStringLiteral("setupRegionPitchMode"), (bool)SystemData::instance()._setupRegionPitchMode);
-	obj.insert(QStringLiteral("pitchP1Set"), (bool)SystemData::instance()._pitchP1Set);
-	obj.insert(QStringLiteral("pitchP2Set"), (bool)SystemData::instance()._pitchP2Set);
-	obj.insert(QStringLiteral("pitchP2x"), SystemData::instance()._pitchP2x.load());
-	obj.insert(QStringLiteral("pitchP2y"), SystemData::instance()._pitchP2y.load());
-	obj.insert(QStringLiteral("pitchP2z"), SystemData::instance()._pitchP2z.load());
-	obj.insert(QStringLiteral("pitchP1x"), SystemData::instance()._pitchP1x.load());
-	obj.insert(QStringLiteral("pitchP1y"), SystemData::instance()._pitchP1y.load());
-	obj.insert(QStringLiteral("pitchP1z"), SystemData::instance()._pitchP1z.load());
-	obj.insert(QStringLiteral("pitchFidRefMask"), (int)SystemData::instance()._pitchFidRefMask);
-	obj.insert(QStringLiteral("pitchFidRef1x"), SystemData::instance()._pitchFidRef1x.load());
-	obj.insert(QStringLiteral("pitchFidRef1y"), SystemData::instance()._pitchFidRef1y.load());
-	obj.insert(QStringLiteral("pitchFidRef2x"), SystemData::instance()._pitchFidRef2x.load());
-	obj.insert(QStringLiteral("pitchFidRef2y"), SystemData::instance()._pitchFidRef2y.load());
-	obj.insert(QStringLiteral("pitchX"), SystemData::instance()._pitchX.load());
-	obj.insert(QStringLiteral("pitchY"), SystemData::instance()._pitchY.load());
-	obj.insert(QStringLiteral("unitsX"), (int)SystemData::instance()._unitsX);
-	obj.insert(QStringLiteral("unitsY"), (int)SystemData::instance()._unitsY);
+	/*
+	* Pitch regions as an array. The old flat pitchP1x/pitchX/unitsX keys are NOT written any
+	* more - they described exactly one grid, and there is no honest way to represent several in
+	* them. Reading them is still supported (see the loader) so existing recipes migrate.
+	*/
+	{
+		QJsonArray regionsArr;
+		for (const auto& r : SystemData::instance().pitchRegions()) {
+			QJsonObject ro;
+			ro.insert(QStringLiteral("p1Set"), r.p1Set);
+			ro.insert(QStringLiteral("p1x"), r.p1x);
+			ro.insert(QStringLiteral("p1y"), r.p1y);
+			ro.insert(QStringLiteral("p1z"), r.p1z);
+			ro.insert(QStringLiteral("p2Set"), r.p2Set);
+			ro.insert(QStringLiteral("p2x"), r.p2x);
+			ro.insert(QStringLiteral("p2y"), r.p2y);
+			ro.insert(QStringLiteral("p2z"), r.p2z);
+			ro.insert(QStringLiteral("pitchX"), r.pitchX);
+			ro.insert(QStringLiteral("pitchY"), r.pitchY);
+			ro.insert(QStringLiteral("unitsX"), r.unitsX);
+			ro.insert(QStringLiteral("unitsY"), r.unitsY);
+			ro.insert(QStringLiteral("fidRefMask"), r.fidRefMask);
+			ro.insert(QStringLiteral("fidRef1x"), r.fidRef1x);
+			ro.insert(QStringLiteral("fidRef1y"), r.fidRef1y);
+			ro.insert(QStringLiteral("fidRef2x"), r.fidRef2x);
+			ro.insert(QStringLiteral("fidRef2y"), r.fidRef2y);
+			regionsArr.append(ro);
+		}
+		obj.insert(QStringLiteral("pitchRegions"), regionsArr);
+	}
 	obj.insert(QStringLiteral("pitchEnableBarcode"), (bool)SystemData::instance()._pitchEnableBarcode);
 	obj.insert(QStringLiteral("pitchEnable3D"), (bool)SystemData::instance()._pitchEnable3D);
 	obj.insert(QStringLiteral("pitchScanLen_mm"), SystemData::instance()._pitchScanLen_mm.load());
@@ -1993,23 +2007,63 @@ bool VisionApp::loadRecipeConfig()
 
 		//setup region pitch mode (per recipe)
 		SystemData::instance()._setupRegionPitchMode = jsonHelper::getBool(root, QStringLiteral("setupRegionPitchMode"), false);
-		SystemData::instance()._pitchP1Set = jsonHelper::getBool(root, QStringLiteral("pitchP1Set"), false);
-		SystemData::instance()._pitchP2Set = jsonHelper::getBool(root, QStringLiteral("pitchP2Set"), false);
-		SystemData::instance()._pitchP2x = jsonHelper::getDouble(root, QStringLiteral("pitchP2x"), 0.0);
-		SystemData::instance()._pitchP2y = jsonHelper::getDouble(root, QStringLiteral("pitchP2y"), 0.0);
-		SystemData::instance()._pitchP2z = jsonHelper::getDouble(root, QStringLiteral("pitchP2z"), 0.0);
-		SystemData::instance()._pitchFidRefMask = jsonHelper::getInteger(root, QStringLiteral("pitchFidRefMask"), 0);
-		SystemData::instance()._pitchFidRef1x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1x"), 0.0);
-		SystemData::instance()._pitchFidRef1y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1y"), 0.0);
-		SystemData::instance()._pitchFidRef2x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef2x"), 0.0);
-		SystemData::instance()._pitchFidRef2y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef2y"), 0.0);
-		SystemData::instance()._pitchP1x = jsonHelper::getDouble(root, QStringLiteral("pitchP1x"), 0.0);
-		SystemData::instance()._pitchP1y = jsonHelper::getDouble(root, QStringLiteral("pitchP1y"), 0.0);
-		SystemData::instance()._pitchP1z = jsonHelper::getDouble(root, QStringLiteral("pitchP1z"), 0.0);
-		SystemData::instance()._pitchX = jsonHelper::getDouble(root, QStringLiteral("pitchX"), 0.0);
-		SystemData::instance()._pitchY = jsonHelper::getDouble(root, QStringLiteral("pitchY"), 0.0);
-		SystemData::instance()._unitsX = std::max(1, jsonHelper::getInteger(root, QStringLiteral("unitsX"), 1));
-		SystemData::instance()._unitsY = std::max(1, jsonHelper::getInteger(root, QStringLiteral("unitsY"), 1));
+		/*
+		* Pitch regions. A recipe written before regions existed has no "pitchRegions" array, only
+		* the old flat keys - those are read into a single region so nothing has to be re-taught.
+		*/
+		{
+			std::vector<SystemData::PitchRegion> regions;
+
+			if (root.contains(QStringLiteral("pitchRegions"))) {
+				for (const auto& v : root.value(QStringLiteral("pitchRegions")).toArray()) {
+					const QJsonObject ro = v.toObject();
+					SystemData::PitchRegion r;
+					r.p1Set = jsonHelper::getBool(ro, QStringLiteral("p1Set"), false);
+					r.p1x = jsonHelper::getDouble(ro, QStringLiteral("p1x"), 0.0);
+					r.p1y = jsonHelper::getDouble(ro, QStringLiteral("p1y"), 0.0);
+					r.p1z = jsonHelper::getDouble(ro, QStringLiteral("p1z"), 0.0);
+					r.p2Set = jsonHelper::getBool(ro, QStringLiteral("p2Set"), false);
+					r.p2x = jsonHelper::getDouble(ro, QStringLiteral("p2x"), 0.0);
+					r.p2y = jsonHelper::getDouble(ro, QStringLiteral("p2y"), 0.0);
+					r.p2z = jsonHelper::getDouble(ro, QStringLiteral("p2z"), 0.0);
+					r.pitchX = jsonHelper::getDouble(ro, QStringLiteral("pitchX"), 0.0);
+					r.pitchY = jsonHelper::getDouble(ro, QStringLiteral("pitchY"), 0.0);
+					r.unitsX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsX"), 1));
+					r.unitsY = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsY"), 1));
+					r.fidRefMask = jsonHelper::getInteger(ro, QStringLiteral("fidRefMask"), 0);
+					r.fidRef1x = jsonHelper::getDouble(ro, QStringLiteral("fidRef1x"), 0.0);
+					r.fidRef1y = jsonHelper::getDouble(ro, QStringLiteral("fidRef1y"), 0.0);
+					r.fidRef2x = jsonHelper::getDouble(ro, QStringLiteral("fidRef2x"), 0.0);
+					r.fidRef2y = jsonHelper::getDouble(ro, QStringLiteral("fidRef2y"), 0.0);
+					regions.push_back(r);
+				}
+			}
+			else {
+				SystemData::PitchRegion r;
+				r.p1Set = jsonHelper::getBool(root, QStringLiteral("pitchP1Set"), false);
+				r.p1x = jsonHelper::getDouble(root, QStringLiteral("pitchP1x"), 0.0);
+				r.p1y = jsonHelper::getDouble(root, QStringLiteral("pitchP1y"), 0.0);
+				r.p1z = jsonHelper::getDouble(root, QStringLiteral("pitchP1z"), 0.0);
+				r.p2Set = jsonHelper::getBool(root, QStringLiteral("pitchP2Set"), false);
+				r.p2x = jsonHelper::getDouble(root, QStringLiteral("pitchP2x"), 0.0);
+				r.p2y = jsonHelper::getDouble(root, QStringLiteral("pitchP2y"), 0.0);
+				r.p2z = jsonHelper::getDouble(root, QStringLiteral("pitchP2z"), 0.0);
+				r.pitchX = jsonHelper::getDouble(root, QStringLiteral("pitchX"), 0.0);
+				r.pitchY = jsonHelper::getDouble(root, QStringLiteral("pitchY"), 0.0);
+				r.unitsX = std::max(1, jsonHelper::getInteger(root, QStringLiteral("unitsX"), 1));
+				r.unitsY = std::max(1, jsonHelper::getInteger(root, QStringLiteral("unitsY"), 1));
+				r.fidRefMask = jsonHelper::getInteger(root, QStringLiteral("pitchFidRefMask"), 0);
+				r.fidRef1x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1x"), 0.0);
+				r.fidRef1y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1y"), 0.0);
+				r.fidRef2x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef2x"), 0.0);
+				r.fidRef2y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef2y"), 0.0);
+				regions.push_back(r);
+				ct::logger::info("[Recipe] Pitch: migrated the single taught grid into region 1");
+			}
+
+			SystemData::instance().setPitchRegions(regions);
+			SystemData::instance()._pitchRegionSel = 0;
+		}
 		SystemData::instance()._pitchEnableBarcode = jsonHelper::getBool(root, QStringLiteral("pitchEnableBarcode"), true);
 		SystemData::instance()._pitchEnable3D = jsonHelper::getBool(root, QStringLiteral("pitchEnable3D"), true);
 		SystemData::instance()._pitchScanLen_mm = jsonHelper::getDouble(root, QStringLiteral("pitchScanLen_mm"), 10.0);
@@ -2025,18 +2079,12 @@ bool VisionApp::loadRecipeConfig()
 		}
 		{
 			QSignalBlocker b0(ui.comboBox_setupRegionMode);
-			QSignalBlocker b1(ui.lineEdit_pitchX);
-			QSignalBlocker b2(ui.lineEdit_pitchY);
-			QSignalBlocker b3(ui.lineEdit_unitsX);
-			QSignalBlocker b4(ui.lineEdit_unitsY);
 			QSignalBlocker b5(ui.checkBox_pitchBarcode);
 			QSignalBlocker b6(ui.checkBox_pitch3D);
 			QSignalBlocker b7(ui.lineEdit_pitchScanLen);
 			ui.comboBox_setupRegionMode->setCurrentIndex(SystemData::instance()._setupRegionPitchMode ? 1 : 0);
-			ui.lineEdit_pitchX->setText(QString::number(SystemData::instance()._pitchX.load(), 'f', 3));
-			ui.lineEdit_pitchY->setText(QString::number(SystemData::instance()._pitchY.load(), 'f', 3));
-			ui.lineEdit_unitsX->setText(QString::number((int)SystemData::instance()._unitsX));
-			ui.lineEdit_unitsY->setText(QString::number((int)SystemData::instance()._unitsY));
+			//pitch, units and the P1/P2 labels all belong to the selected region and are filled by
+			//_refreshPitchLabels() below - writing them here too would only be a second, staler copy
 			ui.checkBox_pitchBarcode->setChecked(SystemData::instance()._pitchEnableBarcode);
 			ui.checkBox_pitch3D->setChecked(SystemData::instance()._pitchEnable3D);
 			ui.lineEdit_pitchScanLen->setText(QString::number(SystemData::instance()._pitchScanLen_mm.load()));

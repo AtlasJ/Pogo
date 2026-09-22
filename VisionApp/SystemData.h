@@ -162,30 +162,51 @@ public:
 	//setup region pitch mode (recipe): barcode flow iterates a unit grid from
 	//point 1 (top left) using the taught XY pitch, instead of the 3D mid point
 	std::atomic<bool> _setupRegionPitchMode = false;
-	std::atomic<bool> _pitchP1Set = false;
-	std::atomic<double> _pitchP1x = 0.0, _pitchP1y = 0.0, _pitchP1z = 0.0;
-
 	/*
-	* Point 2 is only ever consumed as the pitch it implies (_pitchX/_pitchY, computed when it
-	* is taught), so it used to live nowhere but its label - and a label is not persisted, which
-	* is why P2 read "not set" after every restart while P1 came back. Stored so the teach
-	* survives, and so the operator can see WHICH point produced the current pitch.
+	* A board can carry several separate arrays - a 3x4 block here, another 3x4 block somewhere
+	* else - so the grid is a LIST of regions, each taught independently with its own point 1,
+	* point 2, pitch and unit counts. A single region behaves exactly like the old flat grid,
+	* which is what a recipe saved before this existed loads as.
 	*/
-	std::atomic<bool> _pitchP2Set = false;
-	std::atomic<double> _pitchP2x = 0.0, _pitchP2y = 0.0, _pitchP2z = 0.0;
+	struct PitchRegion {
+		bool p1Set = false;
+		double p1x = 0.0, p1y = 0.0, p1z = 0.0;
 
-	/*
-	* Pitch fiducial reference: the LOCATED fiducial positions captured when pitch point 1
-	* was set. Run-time compensation applies where the fiducials are NOW relative to THESE,
-	* so re-teaching P1 rebases the grid to the board pose at teach time - zero offset until
-	* the board actually moves, and no fiducial re-teach needed. Mask 0 = none captured:
-	* compensation falls back to the fiducial learn pose (pre-feature recipes).
-	*/
-	std::atomic<int> _pitchFidRefMask = 0; //bit0 = fid slot 0 captured, bit1 = slot 1
-	std::atomic<double> _pitchFidRef1x = 0.0, _pitchFidRef1y = 0.0;
-	std::atomic<double> _pitchFidRef2x = 0.0, _pitchFidRef2y = 0.0;
-	std::atomic<double> _pitchX = 0.0, _pitchY = 0.0; //signed, direction from point 1 to point 2
-	std::atomic<int> _unitsX = 1, _unitsY = 1;
+		/*
+		* Point 2 is only ever consumed as the pitch it implies (pitchX/pitchY, computed when it is
+		* taught), so it used to live nowhere but its label - and a label is not persisted, which is
+		* why P2 read "not set" after every restart while P1 came back. Stored so the teach survives,
+		* and so the operator can see WHICH point produced the current pitch.
+		*/
+		bool p2Set = false;
+		double p2x = 0.0, p2y = 0.0, p2z = 0.0;
+
+		double pitchX = 0.0, pitchY = 0.0; //signed, direction from point 1 to point 2
+		int unitsX = 1, unitsY = 1;
+
+		/*
+		* Fiducial reference: the LOCATED fiducial positions captured when THIS region's point 1 was
+		* set. Run-time compensation applies where the fiducials are NOW relative to these, so
+		* re-teaching P1 rebases the region to the board pose at teach time - zero offset until the
+		* board actually moves, and no fiducial re-teach needed. Mask 0 = none captured: compensation
+		* falls back to the fiducial learn pose (recipes predating the feature).
+		*/
+		int fidRefMask = 0; //bit0 = fid slot 0 captured, bit1 = slot 1
+		double fidRef1x = 0.0, fidRef1y = 0.0;
+		double fidRef2x = 0.0, fidRef2y = 0.0;
+	};
+
+	//written only while teaching, read by the worker threads during a run
+	int pitchRegionCount() const;
+	PitchRegion pitchRegion(int index) const;    //out of range yields a default region
+	void setPitchRegion(int index, const PitchRegion& r);
+	int addPitchRegion(const PitchRegion& r);    //returns the new index
+	void removePitchRegion(int index);
+	void setPitchRegions(const std::vector<PitchRegion>& regions);
+	std::vector<PitchRegion> pitchRegions() const;
+	int totalPitchUnits() const;                 //units summed over every region
+
+	std::atomic<int> _pitchRegionSel = 0;        //region the teach UI is editing
 	std::string _currentUnitID = "board"; //unit currently in the barcode/OCR flow (written by JobThread)
 	std::atomic<bool> _saveInspImages = false; //mirror of the Save Inspection Images toggle for worker threads
 	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow
@@ -222,6 +243,11 @@ public:
 	double m_extraMoveFor3DLaser = 0.00;
 
 	QDateTime StartInspectionTimer;
+
+private:
+	//after PitchRegion, so the element type is complete at this point
+	mutable std::shared_mutex mtx_pitchRegions;
+	std::vector<PitchRegion> m_pitchRegions;
 
 
 };

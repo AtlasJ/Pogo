@@ -1,4 +1,5 @@
 #include "SystemData.h"
+#include <algorithm>
 #include "CommonDir.h"
 #include "QJsonHelper.h"
 #include "QHostInfo.h"
@@ -411,3 +412,73 @@ bool SystemData::saveLaserType(QString laser)
 	return ret;
 }
 
+
+/*
+* Pitch regions. Written only while teaching (UI thread) and read during a run by JobThread,
+* so every accessor hands back a COPY under a shared lock rather than a reference into the
+* vector - a region must not change shape underneath a scan loop that is halfway through it.
+*
+* The list is never empty: an absent region 0 would mean the teach page had nothing to edit,
+* so a default one is materialised on first access.
+*/
+int SystemData::pitchRegionCount() const
+{
+	std::shared_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	return std::max<int>(1, (int)m_pitchRegions.size());
+}
+
+SystemData::PitchRegion SystemData::pitchRegion(int index) const
+{
+	std::shared_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	if (index < 0 || index >= (int)m_pitchRegions.size()) return PitchRegion();
+	return m_pitchRegions[index];
+}
+
+void SystemData::setPitchRegion(int index, const PitchRegion& r)
+{
+	std::unique_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	if (index < 0) return;
+	if (index >= (int)m_pitchRegions.size()) m_pitchRegions.resize(index + 1);
+	m_pitchRegions[index] = r;
+}
+
+int SystemData::addPitchRegion(const PitchRegion& r)
+{
+	std::unique_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	m_pitchRegions.push_back(r);
+	return (int)m_pitchRegions.size() - 1;
+}
+
+void SystemData::removePitchRegion(int index)
+{
+	std::unique_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	if (index < 0 || index >= (int)m_pitchRegions.size()) return;
+	if (m_pitchRegions.size() <= 1) {
+		m_pitchRegions[0] = PitchRegion(); //clear rather than leave the list empty
+		return;
+	}
+	m_pitchRegions.erase(m_pitchRegions.begin() + index);
+}
+
+void SystemData::setPitchRegions(const std::vector<PitchRegion>& regions)
+{
+	std::unique_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	m_pitchRegions = regions;
+	if (m_pitchRegions.empty()) m_pitchRegions.push_back(PitchRegion());
+}
+
+std::vector<SystemData::PitchRegion> SystemData::pitchRegions() const
+{
+	std::shared_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	if (m_pitchRegions.empty()) return { PitchRegion() };
+	return m_pitchRegions;
+}
+
+int SystemData::totalPitchUnits() const
+{
+	std::shared_lock<std::shared_mutex> lock(mtx_pitchRegions);
+	int total = 0;
+	for (const auto& r : m_pitchRegions)
+		total += std::max(1, r.unitsX) * std::max(1, r.unitsY);
+	return std::max(1, total);
+}

@@ -80,7 +80,7 @@ void VisionApp::inspect2D3D()
 	if (sd._setupRegionPitchMode) {
 		//pitch mode: one step per unit for the barcode cycle, its OCR result,
 		//the 3D scan, and its height result (skipped steps are credited by the flow)
-		const int units = std::max(1, (int)sd._unitsX) * std::max(1, (int)sd._unitsY);
+		const int units = sd.totalPitchUnits(); //summed over every taught region
 		if (sd._pitchEnableBarcode) numView += units * 2;
 		if (sd._pitchEnable3D) numView += units * 2;
 		if (numView == 0) numView = 1;

@@ -1735,61 +1735,149 @@ void VisionApp::connectSignalAndSlot()
 			AuditLog::instance().log(QStringLiteral("SETUP_REGION_MODE"), index == 1 ? QStringLiteral("PITCH") : QStringLiteral("PLANE"));
 		});
 
+		/*
+		* Everything on this page edits ONE region - the one picked in the Region combo. The regions
+		* themselves live in SystemData; this refresh pulls the selected one into the widgets, and
+		* each teach/edit writes straight back to it. Nothing is mirrored into a second copy, so
+		* there is no path where the page and the stored region can disagree.
+		*/
+		auto selectedRegion = []() -> int {
+			auto& sd = SystemData::instance();
+			return std::max(0, std::min(sd._pitchRegionSel.load(), sd.pitchRegionCount() - 1));
+		};
+
 		auto refreshPitchLabels = [=]() {
 			auto& sd = SystemData::instance();
-			ui.label_pitchP1->setText(sd._pitchP1Set
-				? QString("P1: %1, %2, %3").arg(sd._pitchP1x.load(), 0, 'f', 3).arg(sd._pitchP1y.load(), 0, 'f', 3).arg(sd._pitchP1z.load(), 0, 'f', 3)
+			const auto r = sd.pitchRegion(selectedRegion());
+
+			ui.label_pitchP1->setText(r.p1Set
+				? QString("P1: %1, %2, %3").arg(r.p1x, 0, 'f', 3).arg(r.p1y, 0, 'f', 3).arg(r.p1z, 0, 'f', 3)
 				: QStringLiteral("P1: not set"));
-			ui.label_pitchP2->setText(sd._pitchP2Set
-				? QString("P2: %1, %2, %3").arg(sd._pitchP2x.load(), 0, 'f', 3).arg(sd._pitchP2y.load(), 0, 'f', 3).arg(sd._pitchP2z.load(), 0, 'f', 3)
+			ui.label_pitchP2->setText(r.p2Set
+				? QString("P2: %1, %2, %3").arg(r.p2x, 0, 'f', 3).arg(r.p2y, 0, 'f', 3).arg(r.p2z, 0, 'f', 3)
 				: QStringLiteral("P2: not set"));
+
+			{
+				QSignalBlocker b1(ui.lineEdit_pitchX);
+				QSignalBlocker b2(ui.lineEdit_pitchY);
+				QSignalBlocker b3(ui.lineEdit_unitsX);
+				QSignalBlocker b4(ui.lineEdit_unitsY);
+				ui.lineEdit_pitchX->setText(QString::number(r.pitchX, 'f', 3));
+				ui.lineEdit_pitchY->setText(QString::number(r.pitchY, 'f', 3));
+				ui.lineEdit_unitsX->setText(QString::number(std::max(1, r.unitsX)));
+				ui.lineEdit_unitsY->setText(QString::number(std::max(1, r.unitsY)));
+			}
+
+			//rebuild the combo only when the region COUNT changed - repopulating on every refresh
+			//would fight the user's selection while they are typing in the fields below
+			const int count = sd.pitchRegionCount();
+			if (ui.comboBox_pitchRegion->count() != count) {
+				QSignalBlocker b(ui.comboBox_pitchRegion);
+				ui.comboBox_pitchRegion->clear();
+				for (int i = 0; i < count; i++)
+					ui.comboBox_pitchRegion->addItem(QStringLiteral("Region %1").arg(i + 1));
+			}
+			if (ui.comboBox_pitchRegion->currentIndex() != selectedRegion()) {
+				QSignalBlocker b(ui.comboBox_pitchRegion);
+				ui.comboBox_pitchRegion->setCurrentIndex(selectedRegion());
+			}
+
+			ui.toolButton_removePitchRegion->setEnabled(count > 1);
 		};
 		_refreshPitchLabels = refreshPitchLabels;
+
+		connect(ui.comboBox_pitchRegion, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+			if (idx < 0) return;
+			SystemData::instance()._pitchRegionSel = idx;
+			refreshPitchLabels();
+		});
+
+		connect(ui.toolButton_addPitchRegion, &QToolButton::clicked, this, [=]() {
+			auto& sd = SystemData::instance();
+			//carry the current pitch and unit counts over: a second array of the same parts only
+			//needs its own P1/P2 taught, which is the whole point of adding a region
+			const auto cur = sd.pitchRegion(selectedRegion());
+			SystemData::PitchRegion fresh;
+			fresh.pitchX = cur.pitchX;
+			fresh.pitchY = cur.pitchY;
+			fresh.unitsX = cur.unitsX;
+			fresh.unitsY = cur.unitsY;
+
+			sd._pitchRegionSel = sd.addPitchRegion(fresh);
+			refreshPitchLabels();
+			saveRecipeConfig();
+			AuditLog::instance().log(QStringLiteral("PITCH_REGION_ADD"),
+				QStringLiteral("region %1").arg(sd._pitchRegionSel.load() + 1));
+		});
+
+		connect(ui.toolButton_removePitchRegion, &QToolButton::clicked, this, [=]() {
+			auto& sd = SystemData::instance();
+			const int idx = selectedRegion();
+			if (sd.pitchRegionCount() <= 1) {
+				showMsg("At least one region is required.");
+				return;
+			}
+			sd.removePitchRegion(idx);
+			sd._pitchRegionSel = std::max(0, std::min(idx, sd.pitchRegionCount() - 1));
+			//the combo shrinks, so force the rebuild the count check above relies on
+			{ QSignalBlocker b(ui.comboBox_pitchRegion); ui.comboBox_pitchRegion->clear(); }
+			refreshPitchLabels();
+			saveRecipeConfig();
+			AuditLog::instance().log(QStringLiteral("PITCH_REGION_REMOVE"), QStringLiteral("region %1").arg(idx + 1));
+		});
 
 		connect(ui.toolButton_setPitchP1, &QToolButton::clicked, this, [=]() {
 			double wx, wy, wz;
 			getCurrentPoint(wx, wy, wz);
 			auto& sd = SystemData::instance();
-			sd._pitchP1x = wx;
-			sd._pitchP1y = wy;
-			sd._pitchP1z = wz;
-			sd._pitchP1Set = true;
+			const int idx = selectedRegion();
+			auto r = sd.pitchRegion(idx);
+			r.p1x = wx;
+			r.p1y = wy;
+			r.p1z = wz;
+			r.p1Set = true;
 
-			//rebase the fiducial reference to the board's pose right now: run-time
-			//compensation becomes relative to THIS teach, so the offset is zero until the
-			//board moves and the fiducials never need re-teaching. Needs a locate this
-			//session (a production run, or the fiducial test) to know the current pose.
+			/*
+			* Rebase THIS region's fiducial reference to the board pose right now: run-time
+			* compensation becomes relative to this teach, so the offset is zero until the board
+			* moves and the fiducials never need re-teaching. Needs a locate this session (a
+			* production run, or the fiducial test) to know the current pose.
+			*/
 			int fidMask = 0;
 			if (_fiducial.isSet(0)) {
 				const auto f = _fiducial.getShiftedFid(0);
-				sd._pitchFidRef1x = f.x(); sd._pitchFidRef1y = f.y();
+				r.fidRef1x = f.x(); r.fidRef1y = f.y();
 				fidMask |= 1;
 			}
 			if (_fiducial.isSet(1)) {
 				const auto f = _fiducial.getShiftedFid(1);
-				sd._pitchFidRef2x = f.x(); sd._pitchFidRef2y = f.y();
+				r.fidRef2x = f.x(); r.fidRef2y = f.y();
 				fidMask |= 2;
 			}
-			sd._pitchFidRefMask = fidMask;
+			r.fidRefMask = fidMask;
+
+			sd.setPitchRegion(idx, r);
+
 			if (fidMask) {
-				ct::logger::info("[Pitch] P1 set - fiducial reference rebased (mask %d: %.3f/%.3f, %.3f/%.3f)",
-					fidMask, sd._pitchFidRef1x.load(), sd._pitchFidRef1y.load(),
-					sd._pitchFidRef2x.load(), sd._pitchFidRef2y.load());
+				ct::logger::info("[Pitch] Region %d P1 set - fiducial reference rebased (mask %d: %.3f/%.3f, %.3f/%.3f)",
+					idx + 1, fidMask, r.fidRef1x, r.fidRef1y, r.fidRef2x, r.fidRef2y);
 			}
 			else {
-				ct::logger::warn("[Pitch] P1 set with NO fiducials located this session - run-time "
+				ct::logger::warn("[Pitch] Region %d P1 set with NO fiducials located this session - run-time "
 					"compensation will be relative to the fiducial LEARN pose. Run once (or run the "
-					"fiducial test) and set P1 again to rebase.");
+					"fiducial test) and set P1 again to rebase.", idx + 1);
 			}
 
 			refreshPitchLabels();
 			saveRecipeConfig();
-			AuditLog::instance().log(QStringLiteral("PITCH_SET_P1"));
+			AuditLog::instance().log(QStringLiteral("PITCH_SET_P1"), QStringLiteral("region %1").arg(idx + 1));
 		});
 
 		connect(ui.toolButton_setPitchP2, &QToolButton::clicked, this, [=]() {
 			auto& sd = SystemData::instance();
-			if (!sd._pitchP1Set) {
+			const int idx = selectedRegion();
+			auto r = sd.pitchRegion(idx);
+			if (!r.p1Set) {
 				showMsg("Set point 1 (top left) first.");
 				return;
 			}
@@ -1798,42 +1886,46 @@ void VisionApp::connectSignalAndSlot()
 			getCurrentPoint(wx, wy, wz);
 
 			//point 2 is the diagonally adjacent unit toward bottom right: pitch is signed p2 - p1
-			sd._pitchX = wx - sd._pitchP1x;
-			sd._pitchY = wy - sd._pitchP1y;
-			sd._pitchP2x = wx;
-			sd._pitchP2y = wy;
-			sd._pitchP2z = wz;
-			sd._pitchP2Set = true;
+			r.pitchX = wx - r.p1x;
+			r.pitchY = wy - r.p1y;
+			r.p2x = wx;
+			r.p2y = wy;
+			r.p2z = wz;
+			r.p2Set = true;
+			sd.setPitchRegion(idx, r);
+
 			refreshPitchLabels();
-			{
-				QSignalBlocker b1(ui.lineEdit_pitchX);
-				QSignalBlocker b2(ui.lineEdit_pitchY);
-				ui.lineEdit_pitchX->setText(QString::number(sd._pitchX.load(), 'f', 3));
-				ui.lineEdit_pitchY->setText(QString::number(sd._pitchY.load(), 'f', 3));
-			}
 			saveRecipeConfig();
-			AuditLog::instance().log(QStringLiteral("PITCH_SET_P2"));
+			AuditLog::instance().log(QStringLiteral("PITCH_SET_P2"), QStringLiteral("region %1").arg(idx + 1));
 		});
 
-		connect(ui.lineEdit_pitchX, &QLineEdit::editingFinished, this, [=]() {
-			SystemData::instance()._pitchX = ui.lineEdit_pitchX->text().toDouble();
+		//pitch and unit counts belong to the SELECTED region, like P1/P2 above
+		auto editSelectedRegion = [=](std::function<void(SystemData::PitchRegion&)> apply) {
+			auto& sd = SystemData::instance();
+			const int idx = std::max(0, std::min(sd._pitchRegionSel.load(), sd.pitchRegionCount() - 1));
+			auto r = sd.pitchRegion(idx);
+			apply(r);
+			sd.setPitchRegion(idx, r);
 			saveRecipeConfig();
+		};
+
+		connect(ui.lineEdit_pitchX, &QLineEdit::editingFinished, this, [=]() {
+			const double v = ui.lineEdit_pitchX->text().toDouble();
+			editSelectedRegion([v](SystemData::PitchRegion& r) { r.pitchX = v; });
 		});
 		connect(ui.lineEdit_pitchY, &QLineEdit::editingFinished, this, [=]() {
-			SystemData::instance()._pitchY = ui.lineEdit_pitchY->text().toDouble();
-			saveRecipeConfig();
+			const double v = ui.lineEdit_pitchY->text().toDouble();
+			editSelectedRegion([v](SystemData::PitchRegion& r) { r.pitchY = v; });
 		});
 		connect(ui.lineEdit_unitsX, &QLineEdit::editingFinished, this, [=]() {
-			int v = std::max(1, ui.lineEdit_unitsX->text().toInt());
+			const int v = std::max(1, ui.lineEdit_unitsX->text().toInt());
 			ui.lineEdit_unitsX->setText(QString::number(v));
-			SystemData::instance()._unitsX = v;
-			saveRecipeConfig();
+			editSelectedRegion([v](SystemData::PitchRegion& r) { r.unitsX = v; });
 		});
 		connect(ui.lineEdit_unitsY, &QLineEdit::editingFinished, this, [=]() {
-			int v = std::max(1, ui.lineEdit_unitsY->text().toInt());
+			const int v = std::max(1, ui.lineEdit_unitsY->text().toInt());
 			ui.lineEdit_unitsY->setText(QString::number(v));
-			SystemData::instance()._unitsY = v;
-			saveRecipeConfig();
+			editSelectedRegion([v](SystemData::PitchRegion& r) { r.unitsY = v; });
 		});
 
 		connect(ui.checkBox_pitchBarcode, &QCheckBox::toggled, this, [=](bool checked) {

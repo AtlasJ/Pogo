@@ -4436,22 +4436,32 @@ bool JobThread::acquireBarcodeAndOcr()
 	//Pitch mode: iterate the taught unit grid - base per unit = point 1 (top
 	//left) + unit index * pitch. The line scan mid point is not used.
 	if (sd._setupRegionPitchMode) {
-		if (!sd._pitchP1Set) {
-			ct::logger::error("[Acq] Pitch mode: point 1 not taught - cannot run barcode flow");
+		const auto regions = sd.pitchRegions();
+		if (std::none_of(regions.begin(), regions.end(), [](const SystemData::PitchRegion& r) { return r.p1Set; })) {
+			ct::logger::error("[Acq] Pitch mode: no region has point 1 taught - cannot run barcode flow");
 			return false;
 		}
 
-		const int unitsX = std::max(1, (int)sd._unitsX);
-		const int unitsY = std::max(1, (int)sd._unitsY);
-		ct::logger::info("[Acq] Pitch mode: %dx%d units, pitch %.3f / %.3f mm",
-			unitsX, unitsY, sd._pitchX.load(), sd._pitchY.load());
+		for (size_t ri = 0; ri < regions.size() && !m_stopRun; ri++) {
+			const auto& r = regions[ri];
+			if (!r.p1Set) {
+				ct::logger::warn("[Acq] Region %d has no point 1 - skipped", (int)ri + 1);
+				continue;
+			}
 
-		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
-			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
-				ct::logger::info("[Acq] Unit (%d, %d)", ix + 1, iy + 1);
-				const em::V2d p = pitchUnitPoint(ix, iy); //fiducial-compensated
-				acquireBarcodeAndOcrAt(p.x(), p.y(), sd._pitchP1z,
-					QString("X%1Y%2").arg(ix + 1).arg(iy + 1));
+			const int unitsX = std::max(1, r.unitsX);
+			const int unitsY = std::max(1, r.unitsY);
+			ct::logger::info("[Acq] Region %d: %dx%d units, pitch %.3f / %.3f mm",
+				(int)ri + 1, unitsX, unitsY, r.pitchX, r.pitchY);
+
+			for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
+				for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+					const QString unitID = pitchUnitID(r, ix, iy);
+					ct::logger::info("[Acq] Region %d unit (%d, %d) -> %s",
+						(int)ri + 1, ix + 1, iy + 1, unitID.toStdString().c_str());
+					const em::V2d p = pitchUnitPoint(r, ix, iy); //fiducial-compensated
+					acquireBarcodeAndOcrAt(p.x(), p.y(), r.p1z, unitID);
+				}
 			}
 		}
 
@@ -4823,14 +4833,13 @@ std::deque<QString> JobThread::build3DOpticsSeq()
 * offset + rotation about fid1; one fiducial: offset only). Identity until a run has
 * located anything, so teach-time and fiducial-disabled flows are unaffected.
 */
-em::V2d JobThread::pitchUnitPoint(int ix, int iy)
+em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int iy)
 {
-	auto& sd = SystemData::instance();
-	em::V2d p(sd._pitchP1x + ix * sd._pitchX, sd._pitchP1y + iy * sd._pitchY);
+	em::V2d p(r.p1x + ix * r.pitchX, r.p1y + iy * r.pitchY);
 	if (!m_enableFiducial) return p;
 
 	em::V2d shifted = p;
-	const int mask = sd._pitchFidRefMask;
+	const int mask = r.fidRefMask;
 	const bool haveRef = mask
 		&& ((mask & 1) == 0 || m_fiducialAlgo->isSet(0))
 		&& ((mask & 2) == 0 || m_fiducialAlgo->isSet(1));
@@ -4841,11 +4850,11 @@ em::V2d JobThread::pitchUnitPoint(int ix, int iy)
 		//re-teaching P1 rebases the grid without touching the fiducial teach.
 		Fiducial rel;
 		if (mask & 1) {
-			rel.setLearntFid(0, em::V2d(sd._pitchFidRef1x, sd._pitchFidRef1y));
+			rel.setLearntFid(0, em::V2d(r.fidRef1x, r.fidRef1y));
 			rel.setShiftedFid(0, m_fiducialAlgo->getShiftedFid(0));
 		}
 		if (mask & 2) {
-			rel.setLearntFid(1, em::V2d(sd._pitchFidRef2x, sd._pitchFidRef2y));
+			rel.setLearntFid(1, em::V2d(r.fidRef2x, r.fidRef2y));
 			rel.setShiftedFid(1, m_fiducialAlgo->getShiftedFid(1));
 		}
 		rel.compute();
@@ -4858,29 +4867,58 @@ em::V2d JobThread::pitchUnitPoint(int ix, int iy)
 	}
 
 	if (ix == 0 && iy == 0) {
-		ct::logger::info("[Acq] Fiducial compensation (%s): unit X1Y1 %.3f/%.3f -> %.3f/%.3f",
+		ct::logger::info("[Acq] Fiducial compensation (%s): region origin %.3f/%.3f -> %.3f/%.3f",
 			haveRef ? "vs P1 teach pose" : "vs learn pose",
 			p.x(), p.y(), shifted.x(), shifted.y());
 	}
 	return shifted;
 }
 
+/*
+* Unit ID, continuous across every region.
+*
+* Region 1's point 1 is the board origin and its pitch defines the lattice, so a unit is named
+* by WHERE IT SITS rather than by its position inside its own region: a second array placed two
+* pitches to the right of a 3-wide first array carries on at X6, not back at X1. That keeps one
+* flat X#Y# namespace for saved images and the production table however the regions are taught.
+*
+* Falls back to the region's own indices when region 1 has no usable pitch (nothing taught yet,
+* or a zero pitch), which is also what a single-region recipe gets - identical to the old naming.
+*/
+QString JobThread::pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy)
+{
+	const auto origin = SystemData::instance().pitchRegion(0);
+
+	int col = ix + 1;
+	int row = iy + 1;
+
+	if (origin.p1Set && std::abs(origin.pitchX) > 1e-6 && std::abs(origin.pitchY) > 1e-6) {
+		const double x = r.p1x + ix * r.pitchX;
+		const double y = r.p1y + iy * r.pitchY;
+		//signed pitch: dividing by it keeps the index positive whichever way the axes run
+		col = (int)std::lround((x - origin.p1x) / origin.pitchX) + 1;
+		row = (int)std::lround((y - origin.p1y) / origin.pitchY) + 1;
+	}
+
+	return QString("X%1Y%2").arg(col).arg(row);
+}
+
 //one unit's 3D scan: recipe scan length centered on the unit, along the linescan axis
-void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
+void JobThread::scan3DUnit(const SystemData::PitchRegion& r, int ix, int iy, const std::deque<QString>& opticsSeq)
 {
 	auto& sd = SystemData::instance();
 	const bool scanAlongY = sd.isLineScanAxisY();
 	const double halfLen = std::max(0.1, sd._pitchScanLen_mm.load()) / 2.0;
 
 	//fiducial-compensated center; the scan still runs along the machine axis
-	const em::V2d base = pitchUnitPoint(ix, iy);
+	const em::V2d base = pitchUnitPoint(r, ix, iy);
 	const double baseX = base.x();
 	const double baseY = base.y();
 
 	dat::WorldCoordinate start, end;
 	start.wx = end.wx = baseX;
 	start.wy = end.wy = baseY;
-	start.wz = end.wz = sd._pitchP1z;
+	start.wz = end.wz = r.p1z;
 
 	if (scanAlongY) {
 		start.wy = baseY - halfLen;
@@ -4891,7 +4929,7 @@ void JobThread::scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq)
 		end.wx = baseX + halfLen;
 	}
 
-	const QString unitID = QString("X%1Y%2").arg(ix + 1).arg(iy + 1);
+	const QString unitID = pitchUnitID(r, ix, iy);
 	ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
 		scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
 
@@ -4919,18 +4957,26 @@ void JobThread::acquire3DImagesPitch()
 	MachineController::instance().trackTime("3D Acquisition");
 
 	auto& sd = SystemData::instance();
-	if (!sd._pitchP1Set) {
-		ct::logger::error("[Acq] Pitch mode: point 1 not taught - 3D scan skipped");
+	const auto regions = sd.pitchRegions();
+	if (std::none_of(regions.begin(), regions.end(), [](const SystemData::PitchRegion& r) { return r.p1Set; })) {
+		ct::logger::error("[Acq] Pitch mode: no region has point 1 taught - 3D scan skipped");
 		return;
 	}
 
-	const int unitsX = std::max(1, (int)sd._unitsX);
-	const int unitsY = std::max(1, (int)sd._unitsY);
 	const auto opticsSeq = build3DOpticsSeq();
 
-	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
-		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
-			scan3DUnit(ix, iy, opticsSeq);
+	for (size_t ri = 0; ri < regions.size() && !m_stopRun; ri++) {
+		const auto& r = regions[ri];
+		if (!r.p1Set) continue;
+
+		const int unitsX = std::max(1, r.unitsX);
+		const int unitsY = std::max(1, r.unitsY);
+		ct::logger::info("[Acq] Region %d: 3D scan of %dx%d units", (int)ri + 1, unitsX, unitsY);
+
+		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
+			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+				scan3DUnit(r, ix, iy, opticsSeq);
+			}
 		}
 	}
 
@@ -4944,30 +4990,37 @@ void JobThread::acquire2D3DAlternatePitch()
 	ScopedTimeLogger Stimer("[Acq] Total 2D+3D Acquisition Time (alternate)");
 
 	auto& sd = SystemData::instance();
-	if (!sd._pitchP1Set) {
-		ct::logger::error("[Acq] Pitch mode: point 1 not taught - run skipped");
+	const auto regions = sd.pitchRegions();
+	if (std::none_of(regions.begin(), regions.end(), [](const SystemData::PitchRegion& r) { return r.p1Set; })) {
+		ct::logger::error("[Acq] Pitch mode: no region has point 1 taught - run skipped");
 		return;
 	}
 
-	const int unitsX = std::max(1, (int)sd._unitsX);
-	const int unitsY = std::max(1, (int)sd._unitsY);
 	const auto opticsSeq = sd._pitchEnable3D ? build3DOpticsSeq() : std::deque<QString>();
 
-	ct::logger::info("[Acq] Alternate sequence: %dx%d units (barcode %s, 3D %s)",
-		unitsX, unitsY, sd._pitchEnableBarcode ? "on" : "off", sd._pitchEnable3D ? "on" : "off");
+	for (size_t ri = 0; ri < regions.size() && !m_stopRun; ri++) {
+		const auto& r = regions[ri];
+		if (!r.p1Set) continue;
 
-	for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
-		for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
-			const QString unitID = QString("X%1Y%2").arg(ix + 1).arg(iy + 1);
+		const int unitsX = std::max(1, r.unitsX);
+		const int unitsY = std::max(1, r.unitsY);
+		ct::logger::info("[Acq] Alternate sequence, region %d: %dx%d units (barcode %s, 3D %s)",
+			(int)ri + 1, unitsX, unitsY, sd._pitchEnableBarcode ? "on" : "off", sd._pitchEnable3D ? "on" : "off");
 
-			if (sd._pitchEnableBarcode) {
-				ct::logger::info("[Acq] Unit (%d, %d): barcode/OCR", ix + 1, iy + 1);
-				const em::V2d p = pitchUnitPoint(ix, iy); //fiducial-compensated
-				acquireBarcodeAndOcrAt(p.x(), p.y(), sd._pitchP1z, unitID);
+		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
+			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+				const QString unitID = pitchUnitID(r, ix, iy);
+
+				if (sd._pitchEnableBarcode) {
+					ct::logger::info("[Acq] Region %d unit (%d, %d) -> %s: barcode/OCR",
+						(int)ri + 1, ix + 1, iy + 1, unitID.toStdString().c_str());
+					const em::V2d p = pitchUnitPoint(r, ix, iy); //fiducial-compensated
+					acquireBarcodeAndOcrAt(p.x(), p.y(), r.p1z, unitID);
+				}
+
+				if (m_stopRun) break;
+				if (sd._pitchEnable3D) scan3DUnit(r, ix, iy, opticsSeq);
 			}
-
-			if (m_stopRun) break;
-			if (sd._pitchEnable3D) scan3DUnit(ix, iy, opticsSeq);
 		}
 	}
 }

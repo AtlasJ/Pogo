@@ -11122,7 +11122,47 @@ QToolButton:hover {
 QLabel { color: #F0F0F0; }</string>
                        </property>
                        <layout class="QGridLayout" name="gridLayout_pitchSetup">
-                        <item row="0" column="0">
+                         <item row="0" column="0">
+                          <widget class="QLabel" name="label_pitchRegion">
+                           <property name="styleSheet">
+                            <string notr="true">color:#F0F0F0;</string>
+                           </property>
+                           <property name="toolTip">
+                            <string>Each region is its own array, taught with its own P1, P2, pitch and unit counts. Units are still named X#Y# continuously across regions, counted from region 1's P1.</string>
+                           </property>
+                           <property name="text">
+                            <string>Region</string>
+                           </property>
+                          </widget>
+                         </item>
+                         <item row="0" column="1">
+                          <layout class="QHBoxLayout" name="hl_pitchRegion">
+                           <item>
+                            <widget class="QComboBox" name="comboBox_pitchRegion"/>
+                           </item>
+                           <item>
+                            <widget class="QToolButton" name="toolButton_addPitchRegion">
+                             <property name="toolTip">
+                              <string>Add a region, copying the current one's pitch and unit counts so only P1 and P2 need teaching.</string>
+                             </property>
+                             <property name="text">
+                              <string>+</string>
+                             </property>
+                            </widget>
+                           </item>
+                           <item>
+                            <widget class="QToolButton" name="toolButton_removePitchRegion">
+                             <property name="toolTip">
+                              <string>Remove the selected region. The last remaining region is cleared rather than removed.</string>
+                             </property>
+                             <property name="text">
+                              <string>-</string>
+                             </property>
+                            </widget>
+                           </item>
+                          </layout>
+                         </item>
+                        <item row="1" column="0">
                          <widget class="QToolButton" name="toolButton_setPitchP1">
                           <property name="minimumSize">
                            <size>
@@ -11135,7 +11175,7 @@ QLabel { color: #F0F0F0; }</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="0" column="1">
+                        <item row="1" column="1">
                          <widget class="QToolButton" name="toolButton_setPitchP2">
                           <property name="minimumSize">
                            <size>
@@ -11148,77 +11188,77 @@ QLabel { color: #F0F0F0; }</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="1" column="0">
+                        <item row="2" column="0">
                          <widget class="QLabel" name="label_pitchP1">
                           <property name="text">
                            <string>P1: not set</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="1" column="1">
+                        <item row="2" column="1">
                          <widget class="QLabel" name="label_pitchP2">
                           <property name="text">
                            <string>P2: not set</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="2" column="0">
+                        <item row="3" column="0">
                          <widget class="QLabel" name="label_pitchXCap">
                           <property name="text">
                            <string>Pitch X (mm)</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="2" column="1">
+                        <item row="3" column="1">
                          <widget class="QLineEdit" name="lineEdit_pitchX">
                           <property name="text">
                            <string>0</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="3" column="0">
+                        <item row="4" column="0">
                          <widget class="QLabel" name="label_pitchYCap">
                           <property name="text">
                            <string>Pitch Y (mm)</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="3" column="1">
+                        <item row="4" column="1">
                          <widget class="QLineEdit" name="lineEdit_pitchY">
                           <property name="text">
                            <string>0</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="4" column="0">
+                        <item row="5" column="0">
                          <widget class="QLabel" name="label_unitsXCap">
                           <property name="text">
                            <string>X Units</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="4" column="1">
+                        <item row="5" column="1">
                          <widget class="QLineEdit" name="lineEdit_unitsX">
                           <property name="text">
                            <string>1</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="5" column="0">
+                        <item row="6" column="0">
                          <widget class="QLabel" name="label_unitsYCap">
                           <property name="text">
                            <string>Y Units</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="5" column="1">
+                        <item row="6" column="1">
                          <widget class="QLineEdit" name="lineEdit_unitsY">
                           <property name="text">
                            <string>1</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="6" column="0">
+                        <item row="7" column="0">
                          <widget class="QCheckBox" name="checkBox_pitchBarcode">
                           <property name="text">
                            <string>Barcode</string>
@@ -11228,7 +11268,7 @@ QLabel { color: #F0F0F0; }</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="6" column="1">
+                        <item row="7" column="1">
                          <widget class="QCheckBox" name="checkBox_pitch3D">
                           <property name="text">
                            <string>3D</string>
@@ -11238,14 +11278,14 @@ QLabel { color: #F0F0F0; }</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="7" column="0">
+                        <item row="8" column="0">
                          <widget class="QLabel" name="label_pitchScanLenCap">
                           <property name="text">
                            <string>Scan Length (mm)</string>
                           </property>
                          </widget>
                         </item>
-                        <item row="7" column="1">
+                        <item row="8" column="1">
                          <widget class="QLineEdit" name="lineEdit_pitchScanLen">
                           <property name="text">
                            <string>10</string>

@@ -267,7 +267,8 @@ private:
 	void searchFiducial();
 	void searchDoubleFiducial();
 	Fiducial* fiducialForPoint(double x, double y);
-	em::V2d pitchUnitPoint(int ix, int iy); //taught grid point, fiducial-compensated when enabled   // routes a target point to the nearest island's transform
+	em::V2d pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int iy); //fiducial-compensated grid point
+	QString pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy);    //continuous X#Y# across all regions
 	void saveFiducialResult();
 
 	//barcode
@@ -313,7 +314,7 @@ private:
 	void acquire3DImagesPitch(); //pitch mode: one scan of the recipe scan length centered on each unit
 	void acquire2D3DAlternatePitch(); //pitch mode, Alternate sequence: barcode/OCR then 3D per unit
 	std::deque<QString> build3DOpticsSeq(); //intensity-carrying optic first, same rule everywhere
-	void scan3DUnit(int ix, int iy, const std::deque<QString>& opticsSeq); //one unit's centered scan
+	void scan3DUnit(const SystemData::PitchRegion& r, int ix, int iy, const std::deque<QString>& opticsSeq); //one unit's centered scan
 	void acquire3DImages();
 	void collectPlane();
 
