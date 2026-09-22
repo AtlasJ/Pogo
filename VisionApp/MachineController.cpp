@@ -79,15 +79,22 @@ void MachineController::run()
             if (!m_blinkActive) return;
 
             int bit = (int)DOA::RED_TOWER_LIGHT;
-            if (SystemData::instance()._machineDebugMode) bit = (int)DOA::AMBER_TOWER_LIGHT;
-            //error state: blink the reset button LED together with the red tower light
+            const bool debug = SystemData::instance()._machineDebugMode;
+            if (debug) bit = (int)DOA::AMBER_TOWER_LIGHT;
+
+            //error state: the reset button LED and the buzzer both follow the red lamp, so the
+            //alarm pulses instead of sounding continuously. Debug mode blinks AMBER and stays
+            //silent, so the buzzer is only driven ON when not in debug - the OFF half below is
+            //unconditional, because switching debug on mid-alarm must not strand it sounding.
             MotionController::instance().set_DO(m_motionID, 0, bit, true);
             MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, true);
+            if (!debug) MotionController::instance().set_DO(m_motionID, 0, (int)DOA::BUZZER, true);
             os_tool::doNothing(500);
 
             if (!m_blinkActive) return; //the sleep above is the widest part of the window
             MotionController::instance().set_DO(m_motionID, 0, bit, false);
             MotionController::instance().set_DO(m_motionID, 0, (int)DOA::RESET_BTN_LED, false);
+            MotionController::instance().set_DO(m_motionID, 0, (int)DOA::BUZZER, false);
             os_tool::doNothing(500);
         });
     }
@@ -1140,22 +1147,15 @@ void MachineController::startRedTowerLight()
     m_redTowerTimer->start(500);
 
     /*
-    * The buzzer follows the red light: one write on here, one write off in
-    * stopRedTowerLight(). Deliberately NOT blinked with the lamp - the 500 ms cycle
-    * exists to make the lamp flash, and the buzzer has no visual duty to satisfy, so
-    * pulsing Y106 would only add two card writes a second for the length of the alarm.
+    * The buzzer is driven by the blink lambda in run(), in step with the red lamp, so it
+    * pulses for as long as the alarm lasts instead of sounding continuously. Nothing is
+    * written here: a single ON write would be overwritten by the lambda's next OFF half
+    * half a second later anyway.
     *
-    * Because nothing rewrites Y106 afterwards, the Motion page's DO7 button doubles as a
-    * manual silence during an alarm (admin only). The lamp rows cannot do that - the
-    * timer lambda overwrites them twice a second.
-    *
-    * Debug mode blinks AMBER instead of red (see the lambda in run()), so there is no red
-    * light to follow and the machine stays quiet while teaching. The guard is only on this
-    * ON write - see stopRedTowerLight() for why the OFF is unconditional.
+    * Consequence worth knowing: Y106 is now rewritten twice a second, so the Motion page's
+    * DO7 button no longer works as a manual silence during an alarm - exactly like the lamp
+    * rows, which the lambda has always overwritten. Clearing the alarm still silences it.
     */
-    if (!SystemData::instance()._machineDebugMode) {
-        MotionController::instance().set_DO(m_motionID, 0, (int)DOA::BUZZER, true);
-    }
 }
 
 void MachineController::stopRedTowerLight()
