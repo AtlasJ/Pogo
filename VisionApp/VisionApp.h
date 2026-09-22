@@ -28,6 +28,7 @@
 #include "FiducialInfo.h"
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
+#include "SafetyCheckTypes.h"
 #include "AlgoHeight3Types.h"
 #include "InspectionThread.h"
 #include "AlgoDefectResult.h"
@@ -152,7 +153,7 @@ enum class Direction {
 enum class UIPage {
 	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
-	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN
+	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK
 };
 
 enum class UIHierarchy {
@@ -559,6 +560,18 @@ private:
 	void initLSC();
 	void initMotion();
 	void initProductionUI();
+
+	//── safety check (VisionApp_SafetyCheck.cpp): feature-present gate before production
+	void initSafetyCheckPage();
+	void refreshSafetyCheckPage();
+	void captureSafetyCheckFromUI();
+	void showSafetyCheckResult(const SafetyCheckResult& res);
+	void learnSafetyPattern();
+	QString safetyPatternPath() const;
+	bool runSafetyCheck(const QImage& fov, SafetyCheckResult& res);
+	bool safetyCheckPassedForProduction();
+	SafetyCheckConfig _safetyCheck;
+	QDragBox* _safetyRoiBox = nullptr;
 	void updateOpticComboBoxUI();
 	void updateViewComboBoxUI();
 	void updateSegmentComboBoxUI();
@@ -1073,6 +1086,7 @@ private:
 
 public slots:
 	void algoSettingsTouched(); //any algo-setup edit: debounce then save
+	void safetyRoiTouched();   //safety-check ROI moved: capture and save
 	void refreshAlgoH3Overlay(); //V3's scene overlay only, without repainting the image
 
 	void enableFiducial(bool enable);

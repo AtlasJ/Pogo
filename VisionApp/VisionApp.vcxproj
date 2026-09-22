@@ -250,6 +250,7 @@
     <ClCompile Include="VisionApp_MachineController.cpp" />
     <ClCompile Include="VisionApp_Motion.cpp" />
     <ClCompile Include="VisionApp_Production.cpp" />
+    <ClCompile Include="VisionApp_SafetyCheck.cpp" />
     <ClCompile Include="VisionApp_Recipe.cpp" />
     <ClCompile Include="VisionApp_ServerComms.cpp" />
     <ClCompile Include="VisionApp_ViewEditor.cpp" />
@@ -262,6 +263,7 @@
     <ClInclude Include="AlgoHeight3.h" />
     <ClInclude Include="AlgoHeight3Types.h" />
     <ClInclude Include="AlgoSetupTypes.h" />
+    <ClInclude Include="SafetyCheckTypes.h" />
     <ClInclude Include="DryRunTableWidget.h" />
     <QtMoc Include="SRXFtpServer.h" />
     <QtMoc Include="SRXManager.h" />

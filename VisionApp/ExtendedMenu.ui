@@ -677,6 +677,31 @@ Tab</string>
                 </property>
                </widget>
               </item>
+              <item row="9" column="0">
+               <widget class="QToolButton" name="toolButtonSafetyCheck">
+                <property name="minimumSize">
+                 <size>
+                  <width>95</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Check that an expected feature is present before production starts.</string>
+                </property>
+                <property name="text">
+                 <string>Safety Check</string>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>60</width>
+                  <height>60</height>
+                 </size>
+                </property>
+                <property name="toolButtonStyle">
+                 <enum>Qt::ToolButtonTextUnderIcon</enum>
+                </property>
+               </widget>
+              </item>
              </layout>
             </widget>
            </widget>

@@ -1415,6 +1415,39 @@ bool VisionApp::saveRecipeConfig()
 		}
 		obj.insert(QStringLiteral("pitchRegions"), regionsArr);
 	}
+
+	//safety check: the feature belongs to the part, so it rides with the recipe
+	{
+		QJsonObject sc;
+		sc.insert(QStringLiteral("enabled"), _safetyCheck.enabled);
+		sc.insert(QStringLiteral("method"), _safetyCheck.method);
+		sc.insert(QStringLiteral("pointSet"), _safetyCheck.pointSet);
+		sc.insert(QStringLiteral("pointX"), _safetyCheck.pointX);
+		sc.insert(QStringLiteral("pointY"), _safetyCheck.pointY);
+		sc.insert(QStringLiteral("pointZ"), _safetyCheck.pointZ);
+		sc.insert(QStringLiteral("roiX"), _safetyCheck.roi.x());
+		sc.insert(QStringLiteral("roiY"), _safetyCheck.roi.y());
+		sc.insert(QStringLiteral("roiW"), _safetyCheck.roi.width());
+		sc.insert(QStringLiteral("roiH"), _safetyCheck.roi.height());
+		sc.insert(QStringLiteral("chromaThreshold"), _safetyCheck.chromaThreshold);
+		sc.insert(QStringLiteral("minBlobs"), _safetyCheck.minBlobs);
+		sc.insert(QStringLiteral("enableArea"), _safetyCheck.enableArea);
+		sc.insert(QStringLiteral("areaMin"), _safetyCheck.areaMin);
+		sc.insert(QStringLiteral("areaMax"), _safetyCheck.areaMax);
+		sc.insert(QStringLiteral("enableWidth"), _safetyCheck.enableWidth);
+		sc.insert(QStringLiteral("widthMin"), _safetyCheck.widthMin);
+		sc.insert(QStringLiteral("widthMax"), _safetyCheck.widthMax);
+		sc.insert(QStringLiteral("enableHeight"), _safetyCheck.enableHeight);
+		sc.insert(QStringLiteral("heightMin"), _safetyCheck.heightMin);
+		sc.insert(QStringLiteral("heightMax"), _safetyCheck.heightMax);
+		sc.insert(QStringLiteral("patternScore"), _safetyCheck.patternScore);
+
+		QJsonArray colorsArr;
+		for (bool on : _safetyCheck.colors) colorsArr.append(on);
+		sc.insert(QStringLiteral("colors"), colorsArr);
+
+		obj.insert(QStringLiteral("safetyCheck"), sc);
+	}
 	obj.insert(QStringLiteral("pitchEnableBarcode"), (bool)SystemData::instance()._pitchEnableBarcode);
 	obj.insert(QStringLiteral("pitchEnable3D"), (bool)SystemData::instance()._pitchEnable3D);
 	obj.insert(QStringLiteral("pitchScanLen_mm"), SystemData::instance()._pitchScanLen_mm.load());
@@ -2063,6 +2096,39 @@ bool VisionApp::loadRecipeConfig()
 
 			SystemData::instance().setPitchRegions(regions);
 			SystemData::instance()._pitchRegionSel = 0;
+		}
+
+		{
+			const QJsonObject sc = root.value(QStringLiteral("safetyCheck")).toObject();
+			_safetyCheck = SafetyCheckConfig(); //absent section = a clean, disabled check
+			_safetyCheck.enabled = jsonHelper::getBool(sc, QStringLiteral("enabled"), false);
+			_safetyCheck.method = jsonHelper::getInteger(sc, QStringLiteral("method"), 0);
+			_safetyCheck.pointSet = jsonHelper::getBool(sc, QStringLiteral("pointSet"), false);
+			_safetyCheck.pointX = jsonHelper::getDouble(sc, QStringLiteral("pointX"), 0.0);
+			_safetyCheck.pointY = jsonHelper::getDouble(sc, QStringLiteral("pointY"), 0.0);
+			_safetyCheck.pointZ = jsonHelper::getDouble(sc, QStringLiteral("pointZ"), 0.0);
+			_safetyCheck.roi = QRectF(jsonHelper::getDouble(sc, QStringLiteral("roiX"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("roiY"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("roiW"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("roiH"), 0.0));
+			_safetyCheck.chromaThreshold = jsonHelper::getInteger(sc, QStringLiteral("chromaThreshold"), 15);
+			_safetyCheck.minBlobs = std::max(1, jsonHelper::getInteger(sc, QStringLiteral("minBlobs"), 1));
+			_safetyCheck.enableArea = jsonHelper::getBool(sc, QStringLiteral("enableArea"), false);
+			_safetyCheck.areaMin = jsonHelper::getDouble(sc, QStringLiteral("areaMin"), 0.0);
+			_safetyCheck.areaMax = jsonHelper::getDouble(sc, QStringLiteral("areaMax"), 0.0);
+			_safetyCheck.enableWidth = jsonHelper::getBool(sc, QStringLiteral("enableWidth"), false);
+			_safetyCheck.widthMin = jsonHelper::getDouble(sc, QStringLiteral("widthMin"), 0.0);
+			_safetyCheck.widthMax = jsonHelper::getDouble(sc, QStringLiteral("widthMax"), 0.0);
+			_safetyCheck.enableHeight = jsonHelper::getBool(sc, QStringLiteral("enableHeight"), false);
+			_safetyCheck.heightMin = jsonHelper::getDouble(sc, QStringLiteral("heightMin"), 0.0);
+			_safetyCheck.heightMax = jsonHelper::getDouble(sc, QStringLiteral("heightMax"), 0.0);
+			_safetyCheck.patternScore = jsonHelper::getDouble(sc, QStringLiteral("patternScore"), 70.0);
+
+			const QJsonArray colorsArr = sc.value(QStringLiteral("colors")).toArray();
+			_safetyCheck.colors.clear();
+			for (const auto& v : colorsArr) _safetyCheck.colors.append(v.toBool());
+
+			refreshSafetyCheckPage();
 		}
 		SystemData::instance()._pitchEnableBarcode = jsonHelper::getBool(root, QStringLiteral("pitchEnableBarcode"), true);
 		SystemData::instance()._pitchEnable3D = jsonHelper::getBool(root, QStringLiteral("pitchEnable3D"), true);

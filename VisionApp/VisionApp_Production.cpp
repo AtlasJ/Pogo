@@ -526,6 +526,16 @@ void VisionApp::startProduction()
 		return;
 	}
 
+	/*
+	* Last gate before anything moves for real: jog to the taught position, look for the feature,
+	* and refuse the run if it is not there. Placed after the machine-state and selector checks so
+	* it only costs a move once the run would otherwise have started.
+	*/
+	if (!safetyCheckPassedForProduction()) {
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("safety check"));
+		return;
+	}
+
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
 
 	ui.lineEdit_inspectionTimeMain->clear();
@@ -598,6 +608,16 @@ void VisionApp::startProductionS()
 	//outside debug mode, production only starts with the production mode selector ON
 	if (!SystemData::instance()._machineDebugMode && !_diProductionMode) {
 		showMsg("Turn the production mode selector ON to start production!");
+		return;
+	}
+
+	/*
+	* Last gate before anything moves for real: jog to the taught position, look for the feature,
+	* and refuse the run if it is not there. Placed after the machine-state and selector checks so
+	* it only costs a move once the run would otherwise have started.
+	*/
+	if (!safetyCheckPassedForProduction()) {
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("safety check"));
 		return;
 	}
 

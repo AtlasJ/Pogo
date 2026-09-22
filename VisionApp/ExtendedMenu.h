@@ -27,4 +27,5 @@ signals:
 	void showPathTab();
 	void showNamingConvention();
 	void showUnitConfigTab();
+	void showSafetyCheckTab();
 };

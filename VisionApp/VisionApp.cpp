@@ -386,6 +386,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 
 	initImageFiltering();
 	initProductionUI();
+	initSafetyCheckPage();
 
 	ct::logger::info("Initializing Startup State...");
 	initStartupState();
@@ -1474,6 +1475,7 @@ void VisionApp::connectSignalAndSlot()
 	connect(_rightMenu, &ExtendedMenu::showPathTab, this, [=]() { 		toPage(UIPage::PATH); });
 	connect(_rightMenu, &ExtendedMenu::showNamingConvention, this, [=]() { toPage(UIPage::NAMING_CONVENTION); });
 	connect(_rightMenu, &ExtendedMenu::showUnitConfigTab, this, [=]() {toPage(UIPage::UNIT_CONFIG);});
+	connect(_rightMenu, &ExtendedMenu::showSafetyCheckTab, this, [=]() {toPage(UIPage::SAFETY_CHECK);});
 
 	//Top Menu Bar
 	connect(ui.toolButton_minimize, &QToolButton::clicked, this, [=]() {showMinimized(); });
@@ -6774,6 +6776,12 @@ bool VisionApp::toPage(UIPage page) {
 	case UIPage::DRY_RUN:
 		unlockAllROIs();
 		showRightTab((int)page, QStringLiteral("Open Dry Run"));
+		return true;
+	case UIPage::SAFETY_CHECK:
+		unlockAllROIs();
+		toggleFOVView(); //the check works on the single camera FOV, like algo setup
+		refreshSafetyCheckPage();
+		showRightTab((int)page, QStringLiteral("Open Safety Check"));
 		return true;
 	case UIPage::UNIT_CONFIG:
 		lockAllROIs();
