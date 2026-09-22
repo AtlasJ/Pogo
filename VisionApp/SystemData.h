@@ -166,6 +166,15 @@ public:
 	std::atomic<double> _pitchP1x = 0.0, _pitchP1y = 0.0, _pitchP1z = 0.0;
 
 	/*
+	* Point 2 is only ever consumed as the pitch it implies (_pitchX/_pitchY, computed when it
+	* is taught), so it used to live nowhere but its label - and a label is not persisted, which
+	* is why P2 read "not set" after every restart while P1 came back. Stored so the teach
+	* survives, and so the operator can see WHICH point produced the current pitch.
+	*/
+	std::atomic<bool> _pitchP2Set = false;
+	std::atomic<double> _pitchP2x = 0.0, _pitchP2y = 0.0, _pitchP2z = 0.0;
+
+	/*
 	* Pitch fiducial reference: the LOCATED fiducial positions captured when pitch point 1
 	* was set. Run-time compensation applies where the fiducials are NOW relative to THESE,
 	* so re-teaching P1 rebases the grid to the board pose at teach time - zero offset until

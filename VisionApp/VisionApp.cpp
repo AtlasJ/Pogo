@@ -1740,6 +1740,9 @@ void VisionApp::connectSignalAndSlot()
 			ui.label_pitchP1->setText(sd._pitchP1Set
 				? QString("P1: %1, %2, %3").arg(sd._pitchP1x.load(), 0, 'f', 3).arg(sd._pitchP1y.load(), 0, 'f', 3).arg(sd._pitchP1z.load(), 0, 'f', 3)
 				: QStringLiteral("P1: not set"));
+			ui.label_pitchP2->setText(sd._pitchP2Set
+				? QString("P2: %1, %2, %3").arg(sd._pitchP2x.load(), 0, 'f', 3).arg(sd._pitchP2y.load(), 0, 'f', 3).arg(sd._pitchP2z.load(), 0, 'f', 3)
+				: QStringLiteral("P2: not set"));
 		};
 		_refreshPitchLabels = refreshPitchLabels;
 
@@ -1797,7 +1800,11 @@ void VisionApp::connectSignalAndSlot()
 			//point 2 is the diagonally adjacent unit toward bottom right: pitch is signed p2 - p1
 			sd._pitchX = wx - sd._pitchP1x;
 			sd._pitchY = wy - sd._pitchP1y;
-			ui.label_pitchP2->setText(QString("P2: %1, %2, %3").arg(wx, 0, 'f', 3).arg(wy, 0, 'f', 3).arg(wz, 0, 'f', 3));
+			sd._pitchP2x = wx;
+			sd._pitchP2y = wy;
+			sd._pitchP2z = wz;
+			sd._pitchP2Set = true;
+			refreshPitchLabels();
 			{
 				QSignalBlocker b1(ui.lineEdit_pitchX);
 				QSignalBlocker b2(ui.lineEdit_pitchY);

@@ -1385,6 +1385,10 @@ bool VisionApp::saveRecipeConfig()
 
 	obj.insert(QStringLiteral("setupRegionPitchMode"), (bool)SystemData::instance()._setupRegionPitchMode);
 	obj.insert(QStringLiteral("pitchP1Set"), (bool)SystemData::instance()._pitchP1Set);
+	obj.insert(QStringLiteral("pitchP2Set"), (bool)SystemData::instance()._pitchP2Set);
+	obj.insert(QStringLiteral("pitchP2x"), SystemData::instance()._pitchP2x.load());
+	obj.insert(QStringLiteral("pitchP2y"), SystemData::instance()._pitchP2y.load());
+	obj.insert(QStringLiteral("pitchP2z"), SystemData::instance()._pitchP2z.load());
 	obj.insert(QStringLiteral("pitchP1x"), SystemData::instance()._pitchP1x.load());
 	obj.insert(QStringLiteral("pitchP1y"), SystemData::instance()._pitchP1y.load());
 	obj.insert(QStringLiteral("pitchP1z"), SystemData::instance()._pitchP1z.load());
@@ -1990,6 +1994,10 @@ bool VisionApp::loadRecipeConfig()
 		//setup region pitch mode (per recipe)
 		SystemData::instance()._setupRegionPitchMode = jsonHelper::getBool(root, QStringLiteral("setupRegionPitchMode"), false);
 		SystemData::instance()._pitchP1Set = jsonHelper::getBool(root, QStringLiteral("pitchP1Set"), false);
+		SystemData::instance()._pitchP2Set = jsonHelper::getBool(root, QStringLiteral("pitchP2Set"), false);
+		SystemData::instance()._pitchP2x = jsonHelper::getDouble(root, QStringLiteral("pitchP2x"), 0.0);
+		SystemData::instance()._pitchP2y = jsonHelper::getDouble(root, QStringLiteral("pitchP2y"), 0.0);
+		SystemData::instance()._pitchP2z = jsonHelper::getDouble(root, QStringLiteral("pitchP2z"), 0.0);
 		SystemData::instance()._pitchFidRefMask = jsonHelper::getInteger(root, QStringLiteral("pitchFidRefMask"), 0);
 		SystemData::instance()._pitchFidRef1x = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1x"), 0.0);
 		SystemData::instance()._pitchFidRef1y = jsonHelper::getDouble(root, QStringLiteral("pitchFidRef1y"), 0.0);
