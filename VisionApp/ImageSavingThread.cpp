@@ -1,6 +1,7 @@
 #include "ImageSavingThread.h"
 #include <mil.h>
 #include <filesystem>
+#include <fstream>
 #include <QFile>
 #include "Utilities.h"
 
@@ -115,6 +116,66 @@ void ImageSavingThread::enqueue(std::string filename, MIL_ID mbuf)
     m_cv.notify_one();
 }
 
+/*
+* Point-cloud export of a height map, written binary little-endian: the same scan as ASCII
+* would be tens of MB per unit, and every viewer (CloudCompare, MeshLab, Open3D) reads
+* binary. Geometry is real millimetres so a cloud can be measured directly:
+*   x = column * xPitchMm,  y = row * yPitchMm,  z = (grey - 32768) * zPitchUm / 1000
+* Grey 0 is the driver's "no data" marker (manual p.40) and those pixels are dropped, so the
+* vertex count has to be counted before the header is written.
+*/
+void ImageSavingThread::savePly(const ImageSaveInfo& task, const cv::Mat& height)
+{
+    if (height.empty() || height.type() != CV_16U) {
+        ct::logger::error("[ImageSavingThread] PLY skipped, height map is not 16-bit: %s",
+            task.plyPath.c_str());
+        return;
+    }
+
+    if (task.xPitchMm <= 0.0 || task.yPitchMm <= 0.0 || task.zPitchUm <= 0.0) {
+        //a cloud in the wrong units is worse than no cloud - it measures wrong silently
+        ct::logger::error("[ImageSavingThread] PLY skipped, scales unknown (x=%.4f y=%.4f mm, z=%.4f um): %s",
+            task.xPitchMm, task.yPitchMm, task.zPitchUm, task.plyPath.c_str());
+        return;
+    }
+
+    size_t valid = 0;
+    for (int r = 0; r < height.rows; r++) {
+        const ushort* row = height.ptr<ushort>(r);
+        for (int c = 0; c < height.cols; c++) if (row[c] != 0) valid++;
+    }
+
+    std::ofstream ofs(task.plyPath, std::ios::binary);
+    if (!ofs.is_open()) {
+        ct::logger::error("[ImageSavingThread] Failed to open PLY: %s", task.plyPath.c_str());
+        return;
+    }
+
+    ofs << "ply\n";
+    ofs << "format binary_little_endian 1.0\n";
+    ofs << "comment Pogo 3D scan, units millimetres\n";
+    ofs << "element vertex " << valid << "\n";
+    ofs << "property float x\nproperty float y\nproperty float z\n";
+    ofs << "end_header\n";
+
+    const double zScaleMm = task.zPitchUm / 1000.0;
+    for (int r = 0; r < height.rows; r++) {
+        const ushort* row = height.ptr<ushort>(r);
+        for (int c = 0; c < height.cols; c++) {
+            if (row[c] == 0) continue;
+            const float xyz[3] = {
+                static_cast<float>(c * task.xPitchMm),
+                static_cast<float>(r * task.yPitchMm),
+                static_cast<float>((static_cast<int>(row[c]) - 32768) * zScaleMm)
+            };
+            ofs.write(reinterpret_cast<const char*>(xyz), sizeof(xyz));
+        }
+    }
+
+    ofs.close();
+    ct::logger::info("[ImageSavingThread] Saved PLY: %s (%zu points)", task.plyPath.c_str(), valid);
+}
+
 void ImageSavingThread::workerLoop()
 {
     while (m_running) {
@@ -209,6 +270,8 @@ void ImageSavingThread::workerLoop()
             {
                 QFile::copy(task.heightPath.c_str(), task.copyPath.c_str());
             }
+
+            if (!task.plyPath.empty()) savePly(task, height);
         }
     }
 }

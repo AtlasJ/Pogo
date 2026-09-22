@@ -734,7 +734,8 @@ void VisionApp::discardUnitImages(const QString& unitID)
 	const QString root = Common::Directory::getProductionImageSetPath();
 	const QStringList suffixes = {
 		QStringLiteral("_reader1.jpg"), QStringLiteral("_reader2.jpg"),
-		QStringLiteral("_height.tiff"), QStringLiteral("_intensity.jpg")
+		QStringLiteral("_height.tiff"), QStringLiteral("_intensity.jpg"),
+		QStringLiteral("_height.ply")
 	};
 
 	int removed = 0;

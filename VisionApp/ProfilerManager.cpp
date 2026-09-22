@@ -171,6 +171,12 @@ bool ProfilerManager::stopLive(QString id)
 	return m_profilers[id]->stopLive();
 }
 
+double ProfilerManager::getZPitchUm(QString id) const
+{
+	if (!m_profilers.contains(id)) return 0.0;
+	return m_profilers[id]->getZPitchUm();
+}
+
 double ProfilerManager::liveXFovMm(QString id) const
 {
 	if (!m_profilers.contains(id)) return 0.0;

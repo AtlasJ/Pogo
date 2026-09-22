@@ -54,6 +54,7 @@ public:
 	bool snapShot(QString id);
 	bool startLive(QString id);
 	bool stopLive(QString id);
+	double getZPitchUm(QString id) const; //microns per height-map grey level
 	double liveXFovMm(QString id) const;
 	double liveZRangeMm(QString id) const;
 

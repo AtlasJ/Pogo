@@ -2325,6 +2325,22 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 				ImageSaveInfo task;
 				task.heightBuf = info.pHeightMap;
 				task.heightPath = (root + saveName + "_height.tiff").toStdString();
+
+				/*
+				* Point cloud of the same scan. The scales are read HERE, on the UI thread, while the
+				* profiler still describes the scan that produced this frame - the worker runs later, by
+				* which time the sensor may have moved on or disconnected. X comes from the head's
+				* lateral FOV spread across the map width; Y is the encoder line pitch.
+				*/
+				task.plyPath = (root + saveName + "_height.ply").toStdString();
+				{
+					auto& pm = ProfilerManager::instance();
+					const double xFovMm = pm.liveXFovMm(_profilerID);
+					const int mapW = info.pHeightMap ? (int)mtrx::get_width(info.pHeightMap->id()) : 0;
+					task.xPitchMm = (xFovMm > 0.0 && mapW > 0) ? xFovMm / mapW : 0.0;
+					task.yPitchMm = pm.getLinePitchUm() / 1000.0;
+					task.zPitchUm = pm.getZPitchUm(_profilerID);
+				}
 				if (info.pImage) {
 					task.imgBuf = info.pImage;
 					task.imgPath = (root + saveName + "_intensity.jpg").toStdString();
