@@ -232,6 +232,7 @@
     <ClCompile Include="AlgoManager.cpp" />
     <ClCompile Include="AlgoManager_Height3.cpp" />
     <ClCompile Include="AlgoTemplate.cpp" />
+    <ClCompile Include="External3DViewer.cpp" />
     <ClCompile Include="VisionApp_AlgoHeight3.cpp" />
     <ClCompile Include="VisionApp_AlgoSetup.cpp" />
     <ClCompile Include="VisionApp_DryRun.cpp" />
@@ -258,6 +259,7 @@
     <ClInclude Include="AlgoBuffers.h" />
     <ClInclude Include="AlgoTemplate.h" />
     <QtMoc Include="AlgoManager.h" />
+    <QtMoc Include="External3DViewer.h" />
     <QtMoc Include="InspectionThread.h" />
     <QtMoc Include="PaddleOcrClient.h" />
     <ClInclude Include="AlgoHeight3.h" />

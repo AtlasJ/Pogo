@@ -340,6 +340,18 @@ QImage AlgoManager::height3Relief(bool preprocessed, bool segmented,
 		p.minValidRaw, p.maxValidRaw, zExaggeration, colorMapped);
 }
 
+bool AlgoManager::height3CopyDisplayHeight(bool preprocessed, bool segmented, cv::Mat& out) const
+{
+	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
+	if (!lock.owns_lock()) return false;
+
+	//cloned UNDER the lock: heightForDisplay hands back a header onto the pipeline's own
+	//buffer, and the copy is what lets another thread own its map outright, whatever the
+	//pipeline does to its buffers next
+	out = m_height3.heightForDisplay(preprocessed, segmented).clone();
+	return true;
+}
+
 // =============================================================================
 // Runs
 // =============================================================================

@@ -27,6 +27,7 @@
 #include "VisionApp.h"
 #include "AlgoManager.h"
 #include "AuditLog.h"
+#include "External3DViewer.h"
 
 #include <QColorDialog>
 #include <QDoubleSpinBox>
@@ -36,10 +37,12 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
+#include <QProgressBar>
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QTableWidgetItem>
 #include <QToolButton>
+#include <QVBoxLayout>
 
 #include <cmath>
 
@@ -132,6 +135,47 @@ static QString h3RoiLabelText(const AlgoH3RoiResult& r)
 static const char* kH3RoiSectionHint =
 	"Open the Datum Plane section to work with datum ROIs, or ROI Types & Criteria / "
 	"Measurement Results for measurement ROIs.";
+
+/*
+* The please-wait box while the external 3D display opens or closes. The same look as
+* loadingBarSetup() - a moving bar, no Cancel, no close button - but its OWN instance: that
+* one is a single shared member driven by synchronous flows, and this job runs on a worker
+* while the GUI keeps going. APPLICATION MODAL, so nothing else can be clicked until ImageJ
+* is up or gone. Escape and Alt+F4 are swallowed: the job cannot be cancelled, so the box
+* must not look as if it can. Code takes it down with hide(), which sends no close event.
+*/
+class H3BusyDialog : public QDialog
+{
+public:
+	H3BusyDialog(const QString& text, QWidget* parent)
+		: QDialog(parent, Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowTitleHint)
+	{
+		setWindowTitle(QStringLiteral("External 3D Display"));
+		setWindowModality(Qt::ApplicationModal);
+
+		auto* layout = new QVBoxLayout(this);
+		m_label = new QLabel(text, this);
+		m_label->setMinimumWidth(420);
+		auto* bar = new QProgressBar(this);
+		bar->setRange(0, 0); //indeterminate: it keeps moving, which is the point
+		bar->setTextVisible(false);
+		layout->addWidget(m_label);
+		layout->addWidget(bar);
+	}
+
+	void setText(const QString& text) { m_label->setText(text); }
+
+protected:
+	void keyPressEvent(QKeyEvent* e) override
+	{
+		if (e->key() == Qt::Key_Escape) return; //QDialog would reject() and hide it
+		QDialog::keyPressEvent(e);
+	}
+	void closeEvent(QCloseEvent* e) override { e->ignore(); }
+
+private:
+	QLabel* m_label = nullptr;
+};
 
 const char* kH3ColorProp = "algoH3Color"; //QColor carried by a type row's colour button
 
@@ -231,6 +275,64 @@ void VisionApp::initAlgoHeight3Page()
 	// ── display mode + section: both decide what is on screen ──
 	connect(ui.comboBox_algoH3Display, QOverload<int>::of(&QComboBox::currentIndexChanged),
 		this, [=](int) { updateAlgoH3Display(); });
+
+	/*
+	* ── external 3D display: ImageJ's Interactive 3D Surface Plot, in a window of its own ──
+	* Open hands ImageJ the map the page is showing for the open section, through one temp
+	* TIFF that every open overwrites. Both jobs wait on another process for seconds, so they
+	* run on the viewer's worker and report back here; the two buttons stay disabled until
+	* they do. Close is always offered: ImageJ can outlive the plot window (closing the plot
+	* by hand leaves ImageJ running hidden), and Close is how that gets cleared up.
+	*/
+	_external3D = new External3DViewer(this);
+	connect(_external3D, &External3DViewer::progress, this, [=](QString text) {
+		if (_external3DBusy) static_cast<H3BusyDialog*>(_external3DBusy.data())->setText(text);
+	});
+	connect(_external3D, &External3DViewer::finished, this, [=](bool ok, QString message) {
+		//the box goes BEFORE any message: showMsg() is modal too, and should not sit under it
+		hideExternal3DBusy();
+		updateAlgoH3Enables(); //idle again - both buttons come back
+		if (ok) showStatus(message, 8000);
+		else showMsg(message);
+	});
+
+	connect(ui.toolButton_algoH3DisplayExternalOpen, &QToolButton::clicked, this, [=]() {
+		const QString exe = External3DViewer::imageJExe();
+		if (!QFileInfo::exists(exe)) {
+			showMsg(QStringLiteral("ImageJ was not found:\n%1").arg(exe));
+			return;
+		}
+
+		//the same map the 2D and 3D views are showing, so the external one agrees with them
+		bool preprocessed = false, segmented = false;
+		algoH3ShownStage(preprocessed, segmented);
+
+		cv::Mat height;
+		if (!AlgoManager::instance().height3CopyDisplayHeight(preprocessed, segmented, height)) {
+			showMsg(QStringLiteral("A stage is still running - open the external 3D display once it has finished."));
+			return;
+		}
+		if (height.empty()) {
+			showMsg("Load a height map first (Input section: Load Height Map, or Use Last Scan).");
+			return;
+		}
+
+		if (!_external3D->open(height)) return; //already working; the buttons say so
+		updateAlgoH3Enables();
+		showStatus(QStringLiteral("Opening the external 3D display..."), 0);
+		showExternal3DBusy(QStringLiteral("Opening the external 3D display..."));
+		AuditLog::instance().log(QStringLiteral("ALGO_H3_EXTERNAL_3D_OPEN"),
+			QStringLiteral("%1 x %2 %3").arg(height.cols).arg(height.rows)
+			.arg(segmented ? "crop" : preprocessed ? "preprocessed" : "raw"));
+	});
+
+	connect(ui.toolButton_algoH3DisplayExternalClose, &QToolButton::clicked, this, [=]() {
+		if (!_external3D->close()) return;
+		updateAlgoH3Enables();
+		showStatus(QStringLiteral("Closing the external 3D display..."), 0);
+		showExternal3DBusy(QStringLiteral("Closing the external 3D display..."));
+		AuditLog::instance().log(QStringLiteral("ALGO_H3_EXTERNAL_3D_CLOSE"));
+	});
 
 	connect(ui.toolBox_algoH3Sections, &QToolBox::currentChanged, this, [=](int) {
 		updateAlgoH3Display();
@@ -1171,22 +1273,34 @@ AlgoH3Display VisionApp::algoH3DisplayMode() const
 	return static_cast<AlgoH3Display>(i);
 }
 
+/*
+* Which map the page is showing. Section 0 looks at the raw map; 1 onwards at the FILTERED
+* one - the preprocessing section is where the filter and kernel are chosen, so it is the
+* one place the cleaned result has to be visible to judge them; 3 onwards at the
+* straightened crop. Each only takes effect once that map exists: heightForDisplay falls
+* back to the raw map while m_work is empty, so nothing special is needed before the stage
+* has run.
+*
+* ONE rule for every view - the 2D map, the 3D projection and the external 3D display. It
+* was written out twice under a "keep in sync" note until the external display needed a
+* third copy.
+*/
+void VisionApp::algoH3ShownStage(bool& preprocessed, bool& segmented) const
+{
+	const int section = algoH3CurrentSection();
+	preprocessed = (section >= SEC_PREPROCESS);
+	segmented = (section >= SEC_DATUM) && AlgoManager::instance().height3SegmentReady();
+}
+
 void VisionApp::updateAlgoH3Display()
 {
 	if (!isPage(UIPage::ALGO_SETUP)) return;
 	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return;
 
 	auto& mgr = AlgoManager::instance();
-	const int section = algoH3CurrentSection();
 
-	//section 0 looks at the raw map; 1 onwards look at the FILTERED one - the preprocessing
-	//section is where the filter and kernel are chosen, so it is the one place the cleaned
-	//result has to be visible to judge them; 3 onwards look at the straightened crop.
-	//Each only takes effect once that map exists: heightForDisplay falls back to the raw
-	//map while m_work is empty, so nothing special is needed before the stage has run.
-	//KEEP IN SYNC with updateAlgoH3Surface() - the 2D and 3D views must show the same map.
-	const bool preprocessed = (section >= SEC_PREPROCESS);
-	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
+	bool preprocessed = false, segmented = false;
+	algoH3ShownStage(preprocessed, segmented);
 
 	const AlgoH3Display mode = algoH3DisplayMode();
 	if (!h3IsSurfaceMode(mode)) _algoH3Dragging = false;
@@ -1380,10 +1494,9 @@ void VisionApp::updateAlgoH3Surface()
 	_algoH3DragClock.restart();
 
 	auto& mgr = AlgoManager::instance();
-	const int section = algoH3CurrentSection();
-	//KEEP IN SYNC with updateAlgoH3Display() - same rule, or 2D and 3D disagree
-	const bool preprocessed = (section >= SEC_PREPROCESS);
-	const bool segmented = (section >= SEC_DATUM) && mgr.height3SegmentReady();
+
+	bool preprocessed = false, segmented = false;
+	algoH3ShownStage(preprocessed, segmented);
 
 	const QImage img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
 		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
@@ -1478,6 +1591,37 @@ void VisionApp::updateAlgoH3Enables()
 	ui.toolButton_algoH3RoiAdd->setEnabled(!busy && segReady);
 	ui.toolButton_algoH3RoiDelete->setEnabled(!busy && segReady);
 	ui.toolButton_algoH3RoiAssignType->setEnabled(!busy && segReady);
+
+	//the external display shows whichever map is on screen, so Open needs one; while a job
+	//is running (it can take ~25 s) neither button may start a second
+	const bool extBusy = _external3D && _external3D->busy();
+	ui.toolButton_algoH3DisplayExternalOpen->setEnabled(!busy && haveHeight && !extBusy);
+	ui.toolButton_algoH3DisplayExternalClose->setEnabled(!extBusy);
+}
+
+/*
+* The external 3D display's please-wait box. Shown a beat AFTER the job starts, so a job
+* that is over at once - Close with nothing open - does not flash a box. The timer checks it
+* is still the current box before showing it: finished() can land inside that beat, and a
+* box taken down there must not pop up afterwards.
+*/
+void VisionApp::showExternal3DBusy(const QString& text)
+{
+	hideExternal3DBusy();
+
+	auto* dlg = new H3BusyDialog(text, this);
+	_external3DBusy = dlg;
+	QTimer::singleShot(300, dlg, [this, dlg]() {
+		if (_external3DBusy.data() == dlg) dlg->show();
+	});
+}
+
+void VisionApp::hideExternal3DBusy()
+{
+	if (!_external3DBusy) return;
+	_external3DBusy->hide();
+	_external3DBusy->deleteLater();
+	_external3DBusy = nullptr;
 }
 
 // =============================================================================
