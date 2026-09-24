@@ -284,7 +284,7 @@ struct AlgoHeight3Output {
 	// ── datum plane: z = a*x + b*y + c, raw grey levels, crop px ──
 	bool planeValid = false;
 	double planeA = 0.0, planeB = 0.0, planeC = 0.0;
-	double planeTiltDeg = 0.0;  //absolute angle between the plane normal and the map normal
+	double planeTiltDeg = 0.0;  //absolute angle between the plane normal and the map normal, from um/um slopes (a,b above are raw grey per px)
 	double planeRmsUm = 0.0;    //not shown on the page yet - kept for export
 	qint64 datumPoints = 0;
 

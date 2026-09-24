@@ -158,9 +158,20 @@ static H3Plane fitPlaneLeastSquares(const std::vector<H3Point>& pts)
 	return pl;
 }
 
-//orthogonal fit: the plane normal is the eigenvector of the covariance matrix with the
-//smallest eigenvalue (the direction the points vary in least)
-static H3Plane fitPlanePcaSvd(const std::vector<H3Point>& pts)
+/*
+* Orthogonal fit: the plane normal is the eigenvector of the covariance matrix with the
+* smallest eigenvalue (the direction the points vary in least).
+*
+* A PERPENDICULAR distance only means something with one unit on every axis, so the points
+* are taken to um first (sx, sy = um per px, sz = um per raw grey level). Fitted in raw
+* px/grey, a grey level (0.8 um) and a pixel (5 um) counted as the same length: heights were
+* stretched 6.25x and the "orthogonal" fit was not orthogonal in the real world. The plane is
+* handed back in raw grey per px, the units every caller works in.
+*
+* Least squares needs no such care - a VERTICAL fit comes out the same plane in any units,
+* only its coefficients change - which is why only this method takes the scales.
+*/
+static H3Plane fitPlanePcaSvd(const std::vector<H3Point>& pts, double sx, double sy, double sz)
 {
 	H3Plane pl;
 	const int n = (int)pts.size();
@@ -172,7 +183,7 @@ static H3Plane fitPlanePcaSvd(const std::vector<H3Point>& pts)
 
 	double cxx = 0, cxy = 0, cxz = 0, cyy = 0, cyz = 0, czz = 0;
 	for (const auto& p : pts) {
-		const double X = p.x - mx, Y = p.y - my, Z = p.z - mz;
+		const double X = (p.x - mx) * sx, Y = (p.y - my) * sy, Z = (p.z - mz) * sz;
 		cxx += X * X; cxy += X * Y; cxz += X * Z;
 		cyy += Y * Y; cyz += Y * Z; czz += Z * Z;
 	}
@@ -194,9 +205,10 @@ static H3Plane fitPlanePcaSvd(const std::vector<H3Point>& pts)
 	//a plane that is (near) vertical cannot be written as z = f(x,y) at all
 	if (std::abs(nz) < 1e-9) return pl;
 
-	pl.a = -nx / nz;
-	pl.b = -ny / nz;
-	pl.c = (nx * mx + ny * my + nz * mz) / nz;
+	//slopes come out in um per um; back to raw grey per px, through the same centroid
+	pl.a = (-nx / nz) * sx / sz;
+	pl.b = (-ny / nz) * sy / sz;
+	pl.c = mz - pl.a * mx - pl.b * my;
 	pl.valid = true;
 	return pl;
 }
@@ -855,6 +867,9 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	if (!segmentReady()) return fail(QStringLiteral("Run segmentation first"));
 	if (p.datumRois.isEmpty()) return fail(QStringLiteral("Add at least one datum ROI"));
 	if (p.zScaleRawPerUm <= 0.0) return fail(QStringLiteral("Z scale must be greater than 0"));
+	//the tilt and the PCA/SVD fit are both worked out in um, so they need the XY scale too
+	if (p.xScaleUmPx <= 0.0 || p.yScaleUmPx <= 0.0)
+		return fail(QStringLiteral("X and Y scale must be greater than 0"));
 
 	const int w = m_cropHeight.cols, h = m_cropHeight.rows;
 	const cv::Rect bounds(0, 0, w, h);
@@ -885,7 +900,7 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	if (pts.size() < 3) return fail(QStringLiteral("Fewer than 3 valid points in the datum ROIs"));
 
 	const H3Plane plane = (p.datumMethod == AlgoH3DatumMethod::PcaSvd)
-		? fitPlanePcaSvd(pts)
+		? fitPlanePcaSvd(pts, p.xScaleUmPx, p.yScaleUmPx, 1.0 / p.zScaleRawPerUm)
 		: fitPlaneLeastSquares(pts);
 
 	if (!plane.valid)
@@ -897,9 +912,20 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	m_out.planeC = plane.c;
 	m_out.datumPoints = (qint64)pts.size();
 
-	//absolute angle between the fitted plane and the map plane; a tilt has no sign that
-	//matters here, so the page asks for a maximum only
-	m_out.planeTiltDeg = qRadiansToDegrees(std::atan(std::sqrt(plane.a * plane.a + plane.b * plane.b)));
+	/*
+	* Absolute angle between the fitted plane and the map plane; a tilt has no sign that
+	* matters here, so the page asks for a maximum only.
+	*
+	* From the PHYSICAL slopes. a and b are raw grey levels per pixel, and a grey level is
+	* 1/zScale um while a pixel is x/yScale um, so each is taken to um per um first. Used
+	* raw, they treated a 0.8 um grey level and a 5 um pixel as the same length and read
+	* 6.25x too steep: 16.85 deg on 20260828_193223, whose substrate an independent fit of the
+	* raw map puts at 2.78 deg (a 2.4 mm fall over 50 mm; 16.85 deg would need ~15 mm, and the
+	* whole map spans only ~6 mm of height).
+	*/
+	const double slopeX = plane.a / (p.zScaleRawPerUm * p.xScaleUmPx);
+	const double slopeY = plane.b / (p.zScaleRawPerUm * p.yScaleUmPx);
+	m_out.planeTiltDeg = qRadiansToDegrees(std::atan(std::sqrt(slopeX * slopeX + slopeY * slopeY)));
 
 	double sumSq = 0.0;
 	for (const auto& pt : pts) {
