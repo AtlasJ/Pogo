@@ -22902,6 +22902,26 @@ Selecting this section shows the image with no ROIs.</string>
                                 </widget>
                                </item>
                                <item>
+                                <widget class="QToolButton" name="toolButton_algoH3DisplayExternalOpen">
+                                 <property name="toolTip">
+                                  <string>Open the external 3D display window</string>
+                                 </property>
+                                 <property name="text">
+                                  <string>Open External 3D</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <widget class="QToolButton" name="toolButton_algoH3DisplayExternalClose">
+                                 <property name="toolTip">
+                                  <string>Close the external 3D display window</string>
+                                 </property>
+                                 <property name="text">
+                                  <string>Close External 3D</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
                                 <spacer name="horizontalSpacer_algoH3Display">
                                  <property name="orientation">
                                   <enum>Qt::Horizontal</enum>
