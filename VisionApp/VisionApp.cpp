@@ -7170,8 +7170,13 @@ bool VisionApp::showRightTab(int index, QString status)
 	//without toPage) hides its page-scoped ROIs
 	if (index != (int)UIPage::ALGO_SETUP && _algoOcrRoi1Box) hideAlgoSetupRois();
 
-	//same for the safety check ROI - it belongs to that page and nothing else
-	if (index != (int)UIPage::SAFETY_CHECK && _safetyRoiBox) _safetyRoiBox->hide();
+	//same for the safety check ROI and the boxes drawn over the last test result - they
+	//belong to that page and nothing else
+	if (index != (int)UIPage::SAFETY_CHECK) {
+		if (_safetyRoiBox) _safetyRoiBox->hide();
+		if (_safetyLearnBox) _safetyLearnBox->hide();
+		clearSafetyMarks();
+	}
 
 	showStatus(status);
 	return propertyShown;
@@ -10271,12 +10276,8 @@ void VisionApp::showMsg(const QString& msg, QMessageBox::StandardButtons buttons
 
 	/*
 	* Operator prompts are read standing at the machine, not at the screen, so the message runs
-	* at five times the app font. Scaled off the running app font rather than a fixed point size
-	* so it follows the theme instead of fighting it.
-	*
-	* The BUTTONS are only doubled. At 5x they alone are wider than the panel, which pushes the
-	* dialog off screen on the 1080p machine display - and an unreachable OK is worse than a
-	* small one. Raise it here if the buttons need to be bigger too.
+	* at two and a half times the app font. Scaled off the running app font rather than a fixed
+	* point size so it follows the theme instead of fighting it.
 	*/
 	{
 		const int basePt = QApplication::font().pointSize() > 0 ? QApplication::font().pointSize() : 9;
@@ -10286,7 +10287,7 @@ void VisionApp::showMsg(const QString& msg, QMessageBox::StandardButtons buttons
 			"QMessageBox QPushButton{color:#F0F0F0; background-color:rgb(27,29,35);"
 			" border-radius:6px; padding:8px 22px; font-size:%2pt;}"
 			"QMessageBox QPushButton:hover{background-color:rgb(57,65,80);}")
-			.arg(basePt * 5).arg(basePt * 2));
+			.arg(basePt * 5 / 2).arg(basePt));
 	}
 	// Qt::FramelessWindowHint
 	//_msg.setStyleSheet(

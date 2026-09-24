@@ -1432,8 +1432,17 @@ bool VisionApp::saveRecipeConfig()
 		sc.insert(QStringLiteral("roiY"), _safetyCheck.roi.y());
 		sc.insert(QStringLiteral("roiW"), _safetyCheck.roi.width());
 		sc.insert(QStringLiteral("roiH"), _safetyCheck.roi.height());
+		sc.insert(QStringLiteral("learnRoiX"), _safetyCheck.learnRoi.x());
+		sc.insert(QStringLiteral("learnRoiY"), _safetyCheck.learnRoi.y());
+		sc.insert(QStringLiteral("learnRoiW"), _safetyCheck.learnRoi.width());
+		sc.insert(QStringLiteral("learnRoiH"), _safetyCheck.learnRoi.height());
+		sc.insert(QStringLiteral("learnRoiX"), _safetyCheck.learnRoi.x());
+		sc.insert(QStringLiteral("learnRoiY"), _safetyCheck.learnRoi.y());
+		sc.insert(QStringLiteral("learnRoiW"), _safetyCheck.learnRoi.width());
+		sc.insert(QStringLiteral("learnRoiH"), _safetyCheck.learnRoi.height());
 		sc.insert(QStringLiteral("chromaThreshold"), _safetyCheck.chromaThreshold);
 		sc.insert(QStringLiteral("minBlobs"), _safetyCheck.minBlobs);
+		sc.insert(QStringLiteral("showRender"), _safetyCheck.showRender);
 		sc.insert(QStringLiteral("enableArea"), _safetyCheck.enableArea);
 		sc.insert(QStringLiteral("areaMin"), _safetyCheck.areaMin);
 		sc.insert(QStringLiteral("areaMax"), _safetyCheck.areaMax);
@@ -2117,8 +2126,17 @@ bool VisionApp::loadRecipeConfig()
 				jsonHelper::getDouble(sc, QStringLiteral("roiY"), 0.0),
 				jsonHelper::getDouble(sc, QStringLiteral("roiW"), 0.0),
 				jsonHelper::getDouble(sc, QStringLiteral("roiH"), 0.0));
+			_safetyCheck.learnRoi = QRectF(jsonHelper::getDouble(sc, QStringLiteral("learnRoiX"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("learnRoiY"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("learnRoiW"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("learnRoiH"), 0.0));
+			_safetyCheck.learnRoi = QRectF(jsonHelper::getDouble(sc, QStringLiteral("learnRoiX"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("learnRoiY"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("learnRoiW"), 0.0),
+				jsonHelper::getDouble(sc, QStringLiteral("learnRoiH"), 0.0));
 			_safetyCheck.chromaThreshold = jsonHelper::getInteger(sc, QStringLiteral("chromaThreshold"), 15);
 			_safetyCheck.minBlobs = std::max(1, jsonHelper::getInteger(sc, QStringLiteral("minBlobs"), 1));
+			_safetyCheck.showRender = jsonHelper::getBool(sc, QStringLiteral("showRender"), false);
 			_safetyCheck.enableArea = jsonHelper::getBool(sc, QStringLiteral("enableArea"), false);
 			_safetyCheck.areaMin = jsonHelper::getDouble(sc, QStringLiteral("areaMin"), 0.0);
 			_safetyCheck.areaMax = jsonHelper::getDouble(sc, QStringLiteral("areaMax"), 0.0);

@@ -28,7 +28,19 @@ struct SafetyCheckConfig {
 	bool pointSet = false;
 	double pointX = 0.0, pointY = 0.0, pointZ = 0.0;
 
-	QRectF roi; //search region in FOV pixels; empty = whole image
+	/*
+	* Search region in FOV pixels; empty = whole image. Used by both methods.
+	*/
+	QRectF roi;
+
+	/*
+	* Pattern matching needs a SECOND region: the model is learnt from learnRoi, then looked for
+	* inside roi. One box cannot do both - a learn box tight around the feature makes the best
+	* model, while the search box has to be loose enough to still contain the feature after the
+	* trolley has moved. Empty learnRoi falls back to the search box, which is what a recipe
+	* taught before the split behaves like.
+	*/
+	QRectF learnRoi;
 
 	//── colour blobs
 	QVector<bool> colors;        //indexed by mtrx::Color, sized to Color::SIZE on load
@@ -37,6 +49,7 @@ struct SafetyCheckConfig {
 	bool enableWidth = false;  double widthMin = 0.0,  widthMax = 0.0;
 	bool enableHeight = false; double heightMin = 0.0, heightMax = 0.0;
 	int minBlobs = 1;            //blobs passing every enabled filter for the check to pass
+	bool showRender = false;     //display what the colour segmentation actually matched
 
 	//── pattern matching
 	double patternScore = 70.0;  //acceptance score, same scale as the fiducial finders
@@ -48,4 +61,5 @@ struct SafetyCheckResult {
 	int found = 0;               //blobs passing the filters, or 1/0 for a pattern
 	double score = 0.0;          //pattern score, unused for colour
 	QVector<QRectF> marks;       //what was found, FOV pixels, for the overlay
+	QImage render;              //colour segmentation view, FOV sized; null unless asked for
 };

@@ -572,7 +572,12 @@ private:
 	bool runSafetyCheck(const QImage& fov, SafetyCheckResult& res);
 	bool safetyCheckPassedForProduction();
 	SafetyCheckConfig _safetyCheck;
-	QDragBox* _safetyRoiBox = nullptr;
+	QDragBox* _safetyRoiBox = nullptr;       //search region (green)
+	QDragBox* _safetyLearnBox = nullptr;     //pattern learn region (blue)
+	QVector<QGraphicsItem*> _safetyMarkItems; //boxes drawn over what the last test found
+	void drawSafetyMarks(const SafetyCheckResult& res);
+	void clearSafetyMarks();
+	QImage buildSafetyRender(const QImage& fov, const QRect& roi, const cv::Mat& mask);
 	void updateOpticComboBoxUI();
 	void updateViewComboBoxUI();
 	void updateSegmentComboBoxUI();

@@ -15,8 +15,11 @@
 #include "Utilities.h"
 
 #include <QFile>
+#include <QGraphicsRectItem>
+#include <QPainter>
 
-static const QColor kSafetyRoiColor(0, 200, 0); //green, matching the 3D height ROIs
+static const QColor kSafetyRoiColor(0, 200, 0);    //search region: green
+static const QColor kSafetyLearnColor(66, 135, 245); //pattern learn region: blue
 
 void VisionApp::initSafetyCheckPage()
 {
@@ -28,12 +31,22 @@ void VisionApp::initSafetyCheckPage()
 	_safetyRoiBox->setZValue((int)UIHierarchy::DRAGGABLES);
 	_safetyRoiBox->hide();
 
+	_safetyLearnBox = new QDragBox();
+	_pGraphicsSceneFOV->addItem(_safetyLearnBox);
+	_safetyLearnBox->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
+	_safetyLearnBox->setup(QRectF(260, 260, 200, 150), kSafetyLearnColor, "Learn");
+	_safetyLearnBox->setDragable(true);
+	_safetyLearnBox->setZValue((int)UIHierarchy::DRAGGABLES);
+	_safetyLearnBox->hide();
+
 	//the two methods are mutually exclusive - showing both invites a config where it is not
 	//clear afterwards which settings actually decided the verdict
 	auto applyMethod = [=]() {
 		const bool colour = (ui.comboBox_scMethod->currentIndex() == 0);
 		ui.frame_scColour->setVisible(colour);
 		ui.frame_scPattern->setVisible(!colour);
+		//a blue box floating over a colour check would just be confusing
+		if (colour && _safetyLearnBox) _safetyLearnBox->hide();
 	};
 
 	auto touched = [=]() { captureSafetyCheckFromUI(); saveRecipeConfig(); };
@@ -55,6 +68,7 @@ void VisionApp::initSafetyCheckPage()
 	}
 	connect(ui.spinBox_scChroma, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int) { touched(); });
 	connect(ui.spinBox_scMinBlobs, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int) { touched(); });
+	connect(ui.checkBox_scShowRender, &QCheckBox::toggled, this, [=](bool) { touched(); });
 	for (auto* cb : { ui.checkBox_scArea, ui.checkBox_scWidth, ui.checkBox_scHeight })
 		connect(cb, &QCheckBox::toggled, this, [=](bool) { touched(); });
 	for (auto* sp : { ui.dspin_scAreaMin, ui.dspin_scAreaMax, ui.dspin_scWidthMin,
@@ -93,6 +107,15 @@ void VisionApp::initSafetyCheckPage()
 	});
 	connect(_safetyRoiBox, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(safetyRoiTouched()));
 	connect(_safetyRoiBox, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(safetyRoiTouched()));
+	connect(_safetyLearnBox, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(safetyRoiTouched()));
+	connect(_safetyLearnBox, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(safetyRoiTouched()));
+
+	connect(ui.toolButton_scShowLearnRoi, &QToolButton::clicked, this, [=]() {
+		if (!_safetyLearnBox) return;
+		const bool show = !_safetyLearnBox->isVisible();
+		if (show && !_safetyCheck.learnRoi.isEmpty()) _safetyLearnBox->setGeometry(_safetyCheck.learnRoi);
+		_safetyLearnBox->setVisible(show);
+	});
 
 	connect(ui.toolButton_scLearnPattern, &QToolButton::clicked, this, [=]() { learnSafetyPattern(); });
 
@@ -101,6 +124,19 @@ void VisionApp::initSafetyCheckPage()
 		SafetyCheckResult res;
 		runSafetyCheck(_imageFOV, res);
 		showSafetyCheckResult(res);
+
+		//the render replaces only what is DISPLAYED - _imageFOV stays the camera image, so the
+		//next test segments the original rather than a segmentation of the previous one
+		if (!res.render.isNull()) {
+			displayFOV(res.render);
+			ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
+		}
+		else if (!_imageFOV.isNull()) {
+			displayFOV(_imageFOV);
+			ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
+		}
+
+		drawSafetyMarks(res);
 	});
 
 	refreshSafetyCheckPage();
@@ -131,6 +167,7 @@ void VisionApp::captureSafetyCheckFromUI()
 
 	_safetyCheck.chromaThreshold = ui.spinBox_scChroma->value();
 	_safetyCheck.minBlobs = ui.spinBox_scMinBlobs->value();
+	_safetyCheck.showRender = ui.checkBox_scShowRender->isChecked();
 	_safetyCheck.enableArea = ui.checkBox_scArea->isChecked();
 	_safetyCheck.areaMin = ui.dspin_scAreaMin->value();
 	_safetyCheck.areaMax = ui.dspin_scAreaMax->value();
@@ -143,6 +180,7 @@ void VisionApp::captureSafetyCheckFromUI()
 	_safetyCheck.patternScore = ui.dspin_scPatternScore->value();
 
 	if (_safetyRoiBox) _safetyCheck.roi = _safetyRoiBox->getGeometry();
+	if (_safetyLearnBox) _safetyCheck.learnRoi = _safetyLearnBox->getGeometry();
 }
 
 void VisionApp::refreshSafetyCheckPage()
@@ -161,6 +199,7 @@ void VisionApp::refreshSafetyCheckPage()
 	QSignalBlocker b11(ui.dspin_scHeightMin);
 	QSignalBlocker b12(ui.dspin_scHeightMax);
 	QSignalBlocker b13(ui.dspin_scPatternScore);
+	QSignalBlocker b14(ui.checkBox_scShowRender);
 
 	ui.checkBox_scEnabled->setChecked(_safetyCheck.enabled);
 	ui.comboBox_scMethod->setCurrentIndex(_safetyCheck.method == 1 ? 1 : 0);
@@ -177,6 +216,7 @@ void VisionApp::refreshSafetyCheckPage()
 
 	ui.spinBox_scChroma->setValue(_safetyCheck.chromaThreshold);
 	ui.spinBox_scMinBlobs->setValue(std::max(1, _safetyCheck.minBlobs));
+	ui.checkBox_scShowRender->setChecked(_safetyCheck.showRender);
 	ui.checkBox_scArea->setChecked(_safetyCheck.enableArea);
 	ui.dspin_scAreaMin->setValue(_safetyCheck.areaMin);
 	ui.dspin_scAreaMax->setValue(_safetyCheck.areaMax);
@@ -197,6 +237,7 @@ void VisionApp::refreshSafetyCheckPage()
 		? QStringLiteral("Pattern learnt") : QStringLiteral("No pattern learnt"));
 
 	if (_safetyRoiBox && !_safetyCheck.roi.isEmpty()) _safetyRoiBox->setGeometry(_safetyCheck.roi);
+	if (_safetyLearnBox && !_safetyCheck.learnRoi.isEmpty()) _safetyLearnBox->setGeometry(_safetyCheck.learnRoi);
 }
 
 QString VisionApp::safetyPatternPath() const
@@ -211,8 +252,12 @@ void VisionApp::learnSafetyPattern()
 	captureSafetyCheckFromUI();
 
 	const QRect bounds(0, 0, _imageFOV.width(), _imageFOV.height());
-	const QRect roi = _safetyCheck.roi.isEmpty() ? bounds : (_safetyCheck.roi.toRect() & bounds);
-	if (roi.width() < 8 || roi.height() < 8) { showMsg("ROI is too small to learn."); return; }
+
+	//learnt from the blue learn box; an empty one falls back to the search box so a recipe
+	//taught before the two were split still learns from something sensible
+	const QRectF learnSrc = _safetyCheck.learnRoi.isEmpty() ? _safetyCheck.roi : _safetyCheck.learnRoi;
+	const QRect roi = learnSrc.isEmpty() ? bounds : (learnSrc.toRect() & bounds);
+	if (roi.width() < 8 || roi.height() < 8) { showMsg("Learn ROI is too small to learn from."); return; }
 
 	const QImage crop = _imageFOV.copy(roi).convertToFormat(QImage::Format_Grayscale8);
 	cv::Mat gray(crop.height(), crop.width(), CV_8UC1, (void*)crop.bits(), (size_t)crop.bytesPerLine());
@@ -319,6 +364,27 @@ bool VisionApp::runSafetyCheck(const QImage& fov, SafetyCheckResult& res)
 
 	std::vector<std::vector<mtrx::BlobInfo>> blobs;
 	mtrx::find_color_blobs(mColor, cb, blobs);
+
+	/*
+	* Optional view of what the segmentation actually matched. Built from the SAME call the
+	* verdict uses (the binary overload of find_color_blobs), so what is shown cannot disagree
+	* with what was counted - a debug view that renders its own approximation is worse than none.
+	*/
+	if (_safetyCheck.showRender) {
+		MIL_ID mBin = M_NULL;
+		MbufAllocColor(M_DEFAULT_HOST, 1,
+			MbufInquire(mColor, M_SIZE_X, M_NULL), MbufInquire(mColor, M_SIZE_Y, M_NULL),
+			MbufInquire(mColor, M_TYPE, M_NULL), MbufInquire(mColor, M_EXTENDED_ATTRIBUTE, M_NULL), &mBin);
+		if (mBin != M_NULL) {
+			mtrx::find_color_blobs(mColor, cb, mBin);
+			cv::Mat mask;
+			util::Mil_to_cv(mBin, mask);
+			if (!mask.empty() && mask.type() != CV_8UC1) mask.convertTo(mask, CV_8UC1);
+			res.render = buildSafetyRender(fov, roi, mask);
+			MbufFree(mBin);
+		}
+	}
+
 	MbufFree(mColor);
 
 	int passed = 0;
@@ -386,4 +452,68 @@ bool VisionApp::safetyCheckPassedForProduction()
 	}
 
 	return ok;
+}
+
+/*
+* Boxes over what the last test matched. Drawn straight onto the FOV scene and tracked here
+* so they can be cleared - the algo overlay machinery belongs to the algo page, and clearing
+* that would wipe its results too.
+*/
+void VisionApp::clearSafetyMarks()
+{
+	for (auto* item : _safetyMarkItems) {
+		if (!item) continue;
+		if (item->scene()) item->scene()->removeItem(item);
+		delete item;
+	}
+	_safetyMarkItems.clear();
+}
+
+void VisionApp::drawSafetyMarks(const SafetyCheckResult& res)
+{
+	clearSafetyMarks();
+	if (!_pGraphicsSceneFOV) return;
+
+	//green for a pass, red for a fail. The boxes say WHAT matched, the colour says whether that
+	//was enough - a FAIL with boxes on screen is the useful case, it shows the near misses.
+	const QColor colour = res.ok ? QColor(0, 220, 0) : QColor(229, 57, 53);
+
+	for (const QRectF& r : res.marks) {
+		auto* box = new QGraphicsRectItem(r);
+		box->setPen(QPen(colour, 3));
+		box->setBrush(Qt::NoBrush);
+		box->setZValue((int)UIHierarchy::SHAPE);
+		_pGraphicsSceneFOV->addItem(box);
+		_safetyMarkItems.append(box);
+	}
+}
+
+/*
+* The segmentation composed back into a full-FOV image, so it lines up with the boxes above
+* and with the ROI. Everything is dimmed first and the match painted back on top - context
+* makes it obvious WHERE on the part the match sits, which a bare binary image loses.
+*/
+QImage VisionApp::buildSafetyRender(const QImage& fov, const QRect& roi, const cv::Mat& mask)
+{
+	if (fov.isNull() || mask.empty()) return QImage();
+
+	QImage out = fov.convertToFormat(QImage::Format_RGB32);
+	{
+		QPainter p(&out);
+		p.fillRect(out.rect(), QColor(0, 0, 0, 150));
+	}
+
+	for (int y = 0; y < mask.rows; y++) {
+		const int oy = roi.y() + y;
+		if (oy < 0 || oy >= out.height()) continue;
+		const uchar* row = mask.ptr<uchar>(y);
+		for (int x = 0; x < mask.cols; x++) {
+			if (row[x] == 0) continue;
+			const int ox = roi.x() + x;
+			if (ox < 0 || ox >= out.width()) continue;
+			out.setPixelColor(ox, oy, QColor(0, 230, 0));
+		}
+	}
+
+	return out;
 }
