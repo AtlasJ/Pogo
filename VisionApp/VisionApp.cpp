@@ -1778,6 +1778,13 @@ void VisionApp::connectSignalAndSlot()
 				ui.lineEdit_unitsX->setText(QString::number(std::max(1, r.unitsX)));
 				ui.lineEdit_unitsY->setText(QString::number(std::max(1, r.unitsY)));
 			}
+			{
+				QSignalBlocker b5(ui.spinBox_pitchStartX);
+				QSignalBlocker b6(ui.spinBox_pitchStartY);
+				ui.spinBox_pitchStartX->setValue(std::max(1, r.startX));
+				ui.spinBox_pitchStartY->setValue(std::max(1, r.startY));
+			}
+			refreshPitchOverlapWarning();
 
 			//rebuild the combo only when the region COUNT changed - repopulating on every refresh
 			//would fight the user's selection while they are typing in the fields below
@@ -1813,6 +1820,11 @@ void VisionApp::connectSignalAndSlot()
 			fresh.pitchY = cur.pitchY;
 			fresh.unitsX = cur.unitsX;
 			fresh.unitsY = cur.unitsY;
+
+			//start numbering where the current region stops, which is the usual layout: another
+			//array of the same parts below the first. Editable afterwards if it sits elsewhere.
+			fresh.startX = std::max(1, cur.startX);
+			fresh.startY = std::max(1, cur.startY) + std::max(1, cur.unitsY);
 
 			sd._pitchRegionSel = sd.addPitchRegion(fresh);
 			refreshPitchLabels();
@@ -1961,11 +1973,23 @@ void VisionApp::connectSignalAndSlot()
 			const int v = std::max(1, ui.lineEdit_unitsX->text().toInt());
 			ui.lineEdit_unitsX->setText(QString::number(v));
 			editSelectedRegion([v](SystemData::PitchRegion& r) { r.unitsX = v; });
+			refreshPitchOverlapWarning();
 		});
 		connect(ui.lineEdit_unitsY, &QLineEdit::editingFinished, this, [=]() {
 			const int v = std::max(1, ui.lineEdit_unitsY->text().toInt());
 			ui.lineEdit_unitsY->setText(QString::number(v));
 			editSelectedRegion([v](SystemData::PitchRegion& r) { r.unitsY = v; });
+			refreshPitchOverlapWarning();
+		});
+
+		//the start indices ARE the unit naming, so every change can create or clear a clash
+		connect(ui.spinBox_pitchStartX, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int v) {
+			editSelectedRegion([v](SystemData::PitchRegion& r) { r.startX = std::max(1, v); });
+			refreshPitchOverlapWarning();
+		});
+		connect(ui.spinBox_pitchStartY, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int v) {
+			editSelectedRegion([v](SystemData::PitchRegion& r) { r.startY = std::max(1, v); });
+			refreshPitchOverlapWarning();
 		});
 
 		connect(ui.checkBox_pitchBarcode, &QCheckBox::toggled, this, [=](bool checked) {

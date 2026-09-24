@@ -897,6 +897,39 @@ bool VisionApp::pitchTeachIsConsistent(QString& why)
 	return false;
 }
 
+/*
+* Live X#Y# clash notice for the pitch page. Now that the start indices are taught by hand,
+* two regions can be given overlapping numbers with one keystroke - and the consequence
+* (units overwriting each other's saved images) would not show up until someone went looking
+* for the images. Shown while teaching rather than only at run start, which is the moment the
+* mistake is actually cheap to fix.
+*/
+void VisionApp::refreshPitchOverlapWarning()
+{
+	QHash<QString, QString> seen;
+	QStringList clashes;
+
+	const auto regions = SystemData::instance().pitchRegions();
+	for (int i = 0; i < (int)regions.size(); i++) {
+		const auto& r = regions[i];
+		for (int iy = 0; iy < std::max(1, r.unitsY); iy++) {
+			for (int ix = 0; ix < std::max(1, r.unitsX); ix++) {
+				const QString id = _jobThread.pitchUnitID(r, ix, iy);
+				const QString from = QStringLiteral("region %1").arg(i + 1);
+				if (seen.contains(id) && seen.value(id) != from) {
+					if (clashes.size() < 3) clashes << QStringLiteral("%1 (%2 and %3)")
+						.arg(id, seen.value(id), from);
+				}
+				else if (!seen.contains(id)) seen.insert(id, from);
+			}
+		}
+	}
+
+	ui.label_pitchOverlap->setText(clashes.isEmpty()
+		? QString()
+		: QStringLiteral("Unit IDs overlap: %1").arg(clashes.join(QStringLiteral(", "))));
+}
+
 void VisionApp::clearInspectionLogs()
 {
 	for (int i = m_logStatus.size() - 1; i >= 0; --i) {

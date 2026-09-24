@@ -1406,6 +1406,8 @@ bool VisionApp::saveRecipeConfig()
 			ro.insert(QStringLiteral("pitchY"), r.pitchY);
 			ro.insert(QStringLiteral("unitsX"), r.unitsX);
 			ro.insert(QStringLiteral("unitsY"), r.unitsY);
+			ro.insert(QStringLiteral("startX"), r.startX);
+			ro.insert(QStringLiteral("startY"), r.startY);
 			ro.insert(QStringLiteral("fidRefMask"), r.fidRefMask);
 			ro.insert(QStringLiteral("fidRef1x"), r.fidRef1x);
 			ro.insert(QStringLiteral("fidRef1y"), r.fidRef1y);
@@ -2075,6 +2077,8 @@ bool VisionApp::loadRecipeConfig()
 					r.pitchY = jsonHelper::getDouble(ro, QStringLiteral("pitchY"), 0.0);
 					r.unitsX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsX"), 1));
 					r.unitsY = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsY"), 1));
+					r.startX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("startX"), 1));
+					r.startY = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("startY"), 1));
 					r.fidRefMask = jsonHelper::getInteger(ro, QStringLiteral("fidRefMask"), 0);
 					r.fidRef1x = jsonHelper::getDouble(ro, QStringLiteral("fidRef1x"), 0.0);
 					r.fidRef1y = jsonHelper::getDouble(ro, QStringLiteral("fidRef1y"), 0.0);

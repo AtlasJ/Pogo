@@ -4900,39 +4900,14 @@ em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int 
 */
 QString JobThread::pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy)
 {
-	const auto origin = SystemData::instance().pitchRegion(0);
-
 	/*
-	* The two axes are resolved INDEPENDENTLY. They used to share one guard that required both
-	* of region 1's pitches to be non-zero, which quietly broke the common single-column teach:
-	* with P2 taught directly below P1 the X pitch is 0, the guard failed, and BOTH axes fell
-	* back to region-local indices - so every region restarted at X1Y1 instead of continuing.
-	*
-	* Per axis the lattice comes from region 1 when it has a usable pitch on that axis, else from
-	* this region's own pitch. An axis with no pitch anywhere has no lattice to place a unit on,
-	* so it keeps the region-local index - which is right for a single column: the column really
-	* is 1 in every region, and the rows are what distinguish them.
+	* Straight from the region's taught start index. This used to be inferred from where the
+	* region sat relative to region 1, which needed region 1 to have a usable pitch on both axes
+	* - a single-column teach has no X pitch, so there was no lattice and every region restarted
+	* at X1Y1. The start index is taught per region instead, so the numbering is whatever the
+	* operator says it is, and pitchTeachIsConsistent() catches any two units that collide.
 	*/
-	auto latticeIndex = [](double pos, double originPos, double originPitch,
-		double regionPitch, int localIndex) -> int {
-		const double pitch = (std::abs(originPitch) > 1e-6) ? originPitch
-			: ((std::abs(regionPitch) > 1e-6) ? regionPitch : 0.0);
-		if (std::abs(pitch) < 1e-6) return localIndex + 1;
-		//signed pitch: dividing by it keeps the index positive whichever way the axis runs
-		return (int)std::lround((pos - originPos) / pitch) + 1;
-	};
-
-	int col = ix + 1;
-	int row = iy + 1;
-
-	if (origin.p1Set) {
-		const double x = r.p1x + ix * r.pitchX;
-		const double y = r.p1y + iy * r.pitchY;
-		col = latticeIndex(x, origin.p1x, origin.pitchX, r.pitchX, ix);
-		row = latticeIndex(y, origin.p1y, origin.pitchY, r.pitchY, iy);
-	}
-
-	return QString("X%1Y%2").arg(col).arg(row);
+	return QString("X%1Y%2").arg(std::max(1, r.startX) + ix).arg(std::max(1, r.startY) + iy);
 }
 
 //one unit's 3D scan: recipe scan length centered on the unit, along the linescan axis

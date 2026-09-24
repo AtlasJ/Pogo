@@ -11166,7 +11166,7 @@ QLabel { color: #F0F0F0; }</string>
                              </property>
                             </widget>
                            </item>
-                           <item>
+                           <item><widget class="QLabel" name="label_pitchStartX"><property name="styleSheet"><string notr="true">color:#F0F0F0;</string></property><property name="text"><string>Start X</string></property></widget></item><item><widget class="QSpinBox" name="spinBox_pitchStartX"><property name="toolTip"><string>The X number this region's first column is called. Unit (1,1) of the region becomes X&lt;Start X&gt;Y&lt;Start Y&gt;.</string></property><property name="minimum"><number>1</number></property><property name="maximum"><number>9999</number></property><property name="value"><number>1</number></property></widget></item><item><widget class="QLabel" name="label_pitchStartY"><property name="styleSheet"><string notr="true">color:#F0F0F0;</string></property><property name="text"><string>Start Y</string></property></widget></item><item><widget class="QSpinBox" name="spinBox_pitchStartY"><property name="toolTip"><string>The Y number this region's first row is called.</string></property><property name="minimum"><number>1</number></property><property name="maximum"><number>9999</number></property><property name="value"><number>1</number></property></widget></item><item>
                             <widget class="QToolButton" name="toolButton_removePitchRegion">
                              <property name="toolTip">
                               <string>Remove the selected region. The last remaining region is cleared rather than removed.</string>
@@ -11177,7 +11177,7 @@ QLabel { color: #F0F0F0; }</string>
                             </widget>
                            </item>
                           </layout>
-                         </item>
+                         </item><item row="0" column="2"><widget class="QLabel" name="label_pitchOverlap"><property name="styleSheet"><string notr="true">color:#E53935;</string></property><property name="wordWrap"><bool>true</bool></property><property name="text"><string/></property></widget></item>
                         <item row="1" column="0">
                          <layout class="QHBoxLayout" name="hl_toolButton_jogToPitchP1"><item><widget class="QToolButton" name="toolButton_setPitchP1">
                           <property name="minimumSize">

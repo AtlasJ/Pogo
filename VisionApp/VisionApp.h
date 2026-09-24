@@ -543,6 +543,7 @@ private:
 	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
 	void updateProductionSummary(); //recount good/bad/total from the production table
 	bool pitchTeachIsConsistent(QString& why); //stale or out-of-order pitch/fiducial teaches
+	void refreshPitchOverlapWarning();         //live X#Y# clash notice on the pitch page
 	void discardUnitImages(const QString& unitID); //remove a passed unit's saved images
 	void prunePassedUnitImages();                  //end-of-run sweep for late writes
 	QTimer* _idleLogoutTimer = nullptr; //idle auto-logout (Admin/Engineer sessions only)

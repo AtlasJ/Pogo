@@ -185,6 +185,17 @@ public:
 		int unitsX = 1, unitsY = 1;
 
 		/*
+		* Where this region's numbering starts: unit (ix, iy) is named X(startX+ix) Y(startY+iy).
+		*
+		* Taught explicitly rather than derived from the geometry. Inferring the numbers from each
+		* region's position relative to region 1 only works when region 1 has a real pitch on BOTH
+		* axes - a single-column teach has no X pitch at all, so there is no lattice to place a
+		* column on, and the inference silently collapsed to "everything starts at 1". Explicit
+		* numbers are predictable, and the operator is who knows how the panel is actually labelled.
+		*/
+		int startX = 1, startY = 1;
+
+		/*
 		* Fiducial reference: the LOCATED fiducial positions captured when THIS region's point 1 was
 		* set. Run-time compensation applies where the fiducials are NOW relative to these, so
 		* re-teaching P1 rebases the region to the board pose at teach time - zero offset until the
