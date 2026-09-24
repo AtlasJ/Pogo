@@ -862,6 +862,36 @@ bool VisionApp::pitchTeachIsConsistent(QString& why)
 		}
 	}
 
+	/*
+	* Two units resolving to the same X#Y# would overwrite each other's saved images and
+	* collide in the status table, with nothing on screen to say so. Checked by building every
+	* ID the run will use, through the same call the run itself makes - a check that recreated
+	* the naming rule locally could drift away from the real one.
+	*/
+	{
+		QHash<QString, QString> seen; //id -> where it came from
+		QStringList clashes;
+		for (int i = 0; i < (int)regions.size(); i++) {
+			const auto& r = regions[i];
+			if (!r.p1Set) continue;
+			for (int iy = 0; iy < std::max(1, r.unitsY); iy++) {
+				for (int ix = 0; ix < std::max(1, r.unitsX); ix++) {
+					const QString id = _jobThread.pitchUnitID(r, ix, iy);
+					const QString from = QStringLiteral("region %1 unit (%2, %3)").arg(i + 1).arg(ix + 1).arg(iy + 1);
+					if (seen.contains(id)) {
+						if (clashes.size() < 5)
+							clashes << QStringLiteral("%1 is used by both %2 and %3").arg(id, seen.value(id), from);
+					}
+					else seen.insert(id, from);
+				}
+			}
+		}
+		if (!clashes.isEmpty()) {
+			problems << QStringLiteral("Unit IDs collide - saved images would overwrite each other:\n  %1")
+				.arg(clashes.join(QStringLiteral("\n  ")));
+		}
+	}
+
 	if (problems.isEmpty()) return true;
 	why = problems.join(QStringLiteral("\n"));
 	return false;

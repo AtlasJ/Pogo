@@ -268,7 +268,7 @@ private:
 	void searchDoubleFiducial();
 	Fiducial* fiducialForPoint(double x, double y);
 	em::V2d pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int iy); //fiducial-compensated grid point
-	QString pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy);    //continuous X#Y# across all regions
+
 	void saveFiducialResult();
 
 	//barcode
@@ -415,6 +415,10 @@ public slots:
 	* before the first board rather than after it.
 	*/
 	void locateFiducialsOnly();
+
+	//the run's own unit naming, public so a pre-flight check can predict the exact IDs
+	//a run will produce rather than recreating the rule and drifting from it
+	QString pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy);
 
 	QString readBarcode(int index, bool online = true);
 

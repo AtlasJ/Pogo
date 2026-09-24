@@ -4902,15 +4902,34 @@ QString JobThread::pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy)
 {
 	const auto origin = SystemData::instance().pitchRegion(0);
 
+	/*
+	* The two axes are resolved INDEPENDENTLY. They used to share one guard that required both
+	* of region 1's pitches to be non-zero, which quietly broke the common single-column teach:
+	* with P2 taught directly below P1 the X pitch is 0, the guard failed, and BOTH axes fell
+	* back to region-local indices - so every region restarted at X1Y1 instead of continuing.
+	*
+	* Per axis the lattice comes from region 1 when it has a usable pitch on that axis, else from
+	* this region's own pitch. An axis with no pitch anywhere has no lattice to place a unit on,
+	* so it keeps the region-local index - which is right for a single column: the column really
+	* is 1 in every region, and the rows are what distinguish them.
+	*/
+	auto latticeIndex = [](double pos, double originPos, double originPitch,
+		double regionPitch, int localIndex) -> int {
+		const double pitch = (std::abs(originPitch) > 1e-6) ? originPitch
+			: ((std::abs(regionPitch) > 1e-6) ? regionPitch : 0.0);
+		if (std::abs(pitch) < 1e-6) return localIndex + 1;
+		//signed pitch: dividing by it keeps the index positive whichever way the axis runs
+		return (int)std::lround((pos - originPos) / pitch) + 1;
+	};
+
 	int col = ix + 1;
 	int row = iy + 1;
 
-	if (origin.p1Set && std::abs(origin.pitchX) > 1e-6 && std::abs(origin.pitchY) > 1e-6) {
+	if (origin.p1Set) {
 		const double x = r.p1x + ix * r.pitchX;
 		const double y = r.p1y + iy * r.pitchY;
-		//signed pitch: dividing by it keeps the index positive whichever way the axes run
-		col = (int)std::lround((x - origin.p1x) / origin.pitchX) + 1;
-		row = (int)std::lround((y - origin.p1y) / origin.pitchY) + 1;
+		col = latticeIndex(x, origin.p1x, origin.pitchX, r.pitchX, ix);
+		row = latticeIndex(y, origin.p1y, origin.pitchY, r.pitchY, iy);
 	}
 
 	return QString("X%1Y%2").arg(col).arg(row);
