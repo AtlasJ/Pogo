@@ -16,7 +16,7 @@
 
 #include <QFile>
 
-static const QColor kSafetyRoiColor(255, 215, 0);
+static const QColor kSafetyRoiColor(0, 200, 0); //green, matching the 3D height ROIs
 
 void VisionApp::initSafetyCheckPage()
 {
@@ -32,8 +32,8 @@ void VisionApp::initSafetyCheckPage()
 	//clear afterwards which settings actually decided the verdict
 	auto applyMethod = [=]() {
 		const bool colour = (ui.comboBox_scMethod->currentIndex() == 0);
-		ui.group_scColour->setVisible(colour);
-		ui.group_scPattern->setVisible(!colour);
+		ui.frame_scColour->setVisible(colour);
+		ui.frame_scPattern->setVisible(!colour);
 	};
 
 	auto touched = [=]() { captureSafetyCheckFromUI(); saveRecipeConfig(); };
@@ -164,8 +164,8 @@ void VisionApp::refreshSafetyCheckPage()
 
 	ui.checkBox_scEnabled->setChecked(_safetyCheck.enabled);
 	ui.comboBox_scMethod->setCurrentIndex(_safetyCheck.method == 1 ? 1 : 0);
-	ui.group_scColour->setVisible(_safetyCheck.method == 0);
-	ui.group_scPattern->setVisible(_safetyCheck.method == 1);
+	ui.frame_scColour->setVisible(_safetyCheck.method == 0);
+	ui.frame_scPattern->setVisible(_safetyCheck.method == 1);
 
 	_safetyCheck.colors.resize((int)mtrx::Color::SIZE);
 	for (int i = 0; i < (int)mtrx::Color::SIZE; i++) {

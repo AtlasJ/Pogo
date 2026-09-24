@@ -7137,6 +7137,9 @@ bool VisionApp::showRightTab(int index, QString status)
 	//without toPage) hides its page-scoped ROIs
 	if (index != (int)UIPage::ALGO_SETUP && _algoOcrRoi1Box) hideAlgoSetupRois();
 
+	//same for the safety check ROI - it belongs to that page and nothing else
+	if (index != (int)UIPage::SAFETY_CHECK && _safetyRoiBox) _safetyRoiBox->hide();
+
 	showStatus(status);
 	return propertyShown;
 }
@@ -10232,6 +10235,26 @@ void VisionApp::showMsg(const QString& msg, QMessageBox::StandardButtons buttons
 	_msg.setStandardButtons(buttons);
 	_msg.setDefaultButton(QMessageBox::Ok);
 	_msg.setWindowFlags(Qt::WindowStaysOnTopHint | Qt::WindowCloseButtonHint);
+
+	/*
+	* Operator prompts are read standing at the machine, not at the screen, so the message runs
+	* at five times the app font. Scaled off the running app font rather than a fixed point size
+	* so it follows the theme instead of fighting it.
+	*
+	* The BUTTONS are only doubled. At 5x they alone are wider than the panel, which pushes the
+	* dialog off screen on the 1080p machine display - and an unreachable OK is worse than a
+	* small one. Raise it here if the buttons need to be bigger too.
+	*/
+	{
+		const int basePt = QApplication::font().pointSize() > 0 ? QApplication::font().pointSize() : 9;
+		_msg.setStyleSheet(QStringLiteral(
+			"QMessageBox{background-color:rgb(39,44,54);}"
+			"QMessageBox QLabel{color:#F0F0F0; font-size:%1pt;}"
+			"QMessageBox QPushButton{color:#F0F0F0; background-color:rgb(27,29,35);"
+			" border-radius:6px; padding:8px 22px; font-size:%2pt;}"
+			"QMessageBox QPushButton:hover{background-color:rgb(57,65,80);}")
+			.arg(basePt * 5).arg(basePt * 2));
+	}
 	// Qt::FramelessWindowHint
 	//_msg.setStyleSheet(
 	//	"QMessageBox {color: white; background-color: rgb(27, 29, 35); border: ; border-radius: 12px; padding: 10px;}"
