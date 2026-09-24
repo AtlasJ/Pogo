@@ -5242,8 +5242,29 @@ void VisionApp::setupProductionDir()
 	qDebug() << "[@@@@] getProductionResultPath: " << Common::Directory::getProductionResultPath();
 
 
-	SystemData::instance()._workingPath = Common::Directory::getProductionImageSetPath();
-	_jobThread.setRootPath(Common::Directory::getProductionImageSetPath());
+	const QString imgRoot = Common::Directory::getProductionImageSetPath();
+
+	/*
+	* Where the images for this run actually land, in the APP log - these paths used to exist
+	* only as qDebug output, which does not reach the log file the operator reads. The folder
+	* follows the configured production drive, so "images are missing" and "images are on the
+	* other drive" look identical without this line.
+	*/
+	ct::logger::info("[Production] Image folder: %s", imgRoot.toStdString().c_str());
+	ct::logger::info("[Production] Result folder: %s",
+		Common::Directory::getProductionResultPath().toStdString().c_str());
+
+	//a root that could not be created means every later save fails one file at a time, each
+	//with its own error line and no statement of the cause - say it once, up front
+	if (!QDir(imgRoot).exists()) {
+		ct::logger::error("[Production] Image folder does not exist and could not be created: %s",
+			imgRoot.toStdString().c_str());
+		showMsg(QStringLiteral("Inspection images cannot be saved - this folder could not be created:\n\n%1\n\n"
+			"Check that the production drive is present and writable.").arg(imgRoot));
+	}
+
+	SystemData::instance()._workingPath = imgRoot;
+	_jobThread.setRootPath(imgRoot);
 
 	saveProductionBarcodeInfo();
 	saveProductionInfoJson();
