@@ -1886,6 +1886,32 @@ void VisionApp::connectSignalAndSlot()
 			AuditLog::instance().log(QStringLiteral("PITCH_SET_P1"), QStringLiteral("region %1").arg(idx + 1));
 		});
 
+		/*
+		* Jog back to either taught point of the SELECTED region. Same jogSnap path the plane
+		* corner jogs use, so the camera ends up showing the point rather than just standing on
+		* it - the whole reason to jog here is to look at what was taught.
+		*/
+		auto jogToTaught = [=](bool wantP2) {
+			auto& sd = SystemData::instance();
+			const auto r = sd.pitchRegion(selectedRegion());
+
+			if (wantP2 ? !r.p2Set : !r.p1Set) {
+				showMsg(wantP2 ? "Point 2 has not been taught for this region."
+							: "Point 1 has not been taught for this region.");
+				return;
+			}
+
+			const double x = wantP2 ? r.p2x : r.p1x;
+			const double y = wantP2 ? r.p2y : r.p1y;
+			const double z = wantP2 ? r.p2z : r.p1z;
+			emit jogSnap(x, y, z, _mainOptics[_camID]);
+			showStatus(QStringLiteral("Jogging to region %1 point %2")
+				.arg(selectedRegion() + 1).arg(wantP2 ? 2 : 1));
+		};
+
+		connect(ui.toolButton_jogToPitchP1, &QToolButton::clicked, this, [=]() { jogToTaught(false); });
+		connect(ui.toolButton_jogToPitchP2, &QToolButton::clicked, this, [=]() { jogToTaught(true); });
+
 		connect(ui.toolButton_setPitchP2, &QToolButton::clicked, this, [=]() {
 			auto& sd = SystemData::instance();
 			const int idx = selectedRegion();

@@ -11179,7 +11179,7 @@ QLabel { color: #F0F0F0; }</string>
                           </layout>
                          </item>
                         <item row="1" column="0">
-                         <widget class="QToolButton" name="toolButton_setPitchP1">
+                         <layout class="QHBoxLayout" name="hl_toolButton_jogToPitchP1"><item><widget class="QToolButton" name="toolButton_setPitchP1">
                           <property name="minimumSize">
                            <size>
                             <width>130</width>
@@ -11189,10 +11189,10 @@ QLabel { color: #F0F0F0; }</string>
                           <property name="text">
                            <string>Set Point 1 (Top Left)</string>
                           </property>
-                         </widget>
+                         </widget></item><item><widget class="QToolButton" name="toolButton_jogToPitchP1"><property name="minimumSize"><size><width>60</width><height>26</height></size></property><property name="toolTip"><string>Jog to the taught point 1 of the selected region.</string></property><property name="text"><string>Jog To</string></property></widget></item></layout>
                         </item>
                         <item row="1" column="1">
-                         <widget class="QToolButton" name="toolButton_setPitchP2">
+                         <layout class="QHBoxLayout" name="hl_toolButton_jogToPitchP2"><item><widget class="QToolButton" name="toolButton_setPitchP2">
                           <property name="minimumSize">
                            <size>
                             <width>130</width>
@@ -11202,7 +11202,7 @@ QLabel { color: #F0F0F0; }</string>
                           <property name="text">
                            <string>Set Point 2 (Diagonal)</string>
                           </property>
-                         </widget>
+                         </widget></item><item><widget class="QToolButton" name="toolButton_jogToPitchP2"><property name="minimumSize"><size><width>60</width><height>26</height></size></property><property name="toolTip"><string>Jog to the taught point 2 of the selected region.</string></property><property name="text"><string>Jog To</string></property></widget></item></layout>
                         </item>
                         <item row="2" column="0">
                          <widget class="QLabel" name="label_pitchP1">
