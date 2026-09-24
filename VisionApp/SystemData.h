@@ -194,6 +194,18 @@ public:
 		int fidRefMask = 0; //bit0 = fid slot 0 captured, bit1 = slot 1
 		double fidRef1x = 0.0, fidRef1y = 0.0;
 		double fidRef2x = 0.0, fidRef2y = 0.0;
+
+		/*
+		* Which fiducial teach the reference above was measured against. The reference is a
+		* LOCATED position in machine mm, so it only means anything while the fiducial teach
+		* that produced it is still current - re-teaching a fiducial moves the measurement and
+		* silently invalidates it. Compared against _fiducialTeachRev at run start.
+		*/
+		int fidRefTeachRev = 0;
+
+		//epoch ms, purely to catch a P2 taught against a P1 that has since moved
+		qint64 p1TeachMs = 0;
+		qint64 p2TeachMs = 0;
 	};
 
 	//written only while teaching, read by the worker threads during a run
@@ -207,6 +219,13 @@ public:
 	int totalPitchUnits() const;                 //units summed over every region
 
 	std::atomic<int> _pitchRegionSel = 0;        //region the teach UI is editing
+
+	/*
+	* Bumped every time the fiducial teach is saved (model, ROI or teach point). Regions record
+	* the value current when they captured their reference, so a stale reference is detectable
+	* instead of silently wrong.
+	*/
+	std::atomic<int> _fiducialTeachRev = 0;
 	std::string _currentUnitID = "board"; //unit currently in the barcode/OCR flow (written by JobThread)
 	std::atomic<bool> _saveInspImages = false; //mirror of the Save Inspection Images toggle for worker threads
 	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow

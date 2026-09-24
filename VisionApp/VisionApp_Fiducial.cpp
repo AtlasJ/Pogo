@@ -467,6 +467,15 @@ bool VisionApp::saveFiducial()
 		j_array.append(obj);
 	}
 
+	/*
+	* Every path that changes a fiducial teach - Learn, Set Point, the ROI setup toggle - ends
+	* here, so this is the one place that can stamp the change. Pitch regions compare their
+	* stored stamp against this to tell a live reference from one measured against a fiducial
+	* that has since been re-taught.
+	*/
+	SystemData::instance()._fiducialTeachRev = SystemData::instance()._fiducialTeachRev + 1;
+	j_root.insert(QStringLiteral("teachRev"), (int)SystemData::instance()._fiducialTeachRev);
+
 	j_root.insert(QStringLiteral("fiducials"), j_array);
 	QJsonObject j_board_dims_obj;
 	j_board_dims_obj.insert(QStringLiteral("width_mm"), fidWidth);   
@@ -541,6 +550,12 @@ bool VisionApp::loadFiducial()
 	auto cam_h = CAMManager::instance().getHeight(_camID);
 
 	//guard
+	if (loadJson(jsonPath, root)) {
+		//a recipe written before the stamp existed reads as 0, which is also what a region with
+		//no captured reference carries - so those two agree and nothing false-alarms
+		SystemData::instance()._fiducialTeachRev = jsonHelper::getInteger(root, QStringLiteral("teachRev"), 0);
+	}
+
 	if (!loadJson(jsonPath, root)) {
 		for (auto& fid : _fiducialInfos) {
 			fid.inspect_region.cx = cam_w / 2;

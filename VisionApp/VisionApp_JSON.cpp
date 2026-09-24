@@ -1411,6 +1411,9 @@ bool VisionApp::saveRecipeConfig()
 			ro.insert(QStringLiteral("fidRef1y"), r.fidRef1y);
 			ro.insert(QStringLiteral("fidRef2x"), r.fidRef2x);
 			ro.insert(QStringLiteral("fidRef2y"), r.fidRef2y);
+			ro.insert(QStringLiteral("fidRefTeachRev"), r.fidRefTeachRev);
+			ro.insert(QStringLiteral("p1TeachMs"), r.p1TeachMs);
+			ro.insert(QStringLiteral("p2TeachMs"), r.p2TeachMs);
 			regionsArr.append(ro);
 		}
 		obj.insert(QStringLiteral("pitchRegions"), regionsArr);
@@ -2068,6 +2071,9 @@ bool VisionApp::loadRecipeConfig()
 					r.fidRef1y = jsonHelper::getDouble(ro, QStringLiteral("fidRef1y"), 0.0);
 					r.fidRef2x = jsonHelper::getDouble(ro, QStringLiteral("fidRef2x"), 0.0);
 					r.fidRef2y = jsonHelper::getDouble(ro, QStringLiteral("fidRef2y"), 0.0);
+					r.fidRefTeachRev = jsonHelper::getInteger(ro, QStringLiteral("fidRefTeachRev"), 0);
+					r.p1TeachMs = (qint64)ro.value(QStringLiteral("p1TeachMs")).toDouble(0);
+					r.p2TeachMs = (qint64)ro.value(QStringLiteral("p2TeachMs")).toDouble(0);
 					regions.push_back(r);
 				}
 			}

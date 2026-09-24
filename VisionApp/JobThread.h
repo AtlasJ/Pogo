@@ -407,6 +407,15 @@ public slots:
 	void autoSetFiducialPoint(int currentFid);
 	void testFiducial(int index, bool online);
 
+	/*
+	* Locate every fiducial and build the transform, WITHOUT running an acquisition.
+	* searchFiducial() is otherwise reachable only from preAcquisition(), which meant the
+	* only way to arm the transform was to run production - and a run needs the transform
+	* to be right in the first place. This breaks that circle so a re-teach can be done
+	* before the first board rather than after it.
+	*/
+	void locateFiducialsOnly();
+
 	QString readBarcode(int index, bool online = true);
 
 	//calibration

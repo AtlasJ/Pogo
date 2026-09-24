@@ -1338,6 +1338,19 @@ bool JobThread::locateFiducial(int index, int fidIndex, InspStatus::FiducialDeta
 	return ret;
 }
 
+void JobThread::locateFiducialsOnly()
+{
+	if (!m_enableFiducial) {
+		ct::logger::warn("[Fid] Locate requested but fiducial is disabled");
+		emit promptMsg("Fiducial is disabled - switch it on before locating.");
+		return;
+	}
+
+	m_stopRun = false; //a stale stop flag from an aborted run would skip every locate
+	ct::logger::info("[Fid] Locate only: running the production fiducial search");
+	searchFiducial();
+}
+
 void JobThread::searchFiducial()
 {
 	if (SystemData::instance()._doubleFiducialChecking) {

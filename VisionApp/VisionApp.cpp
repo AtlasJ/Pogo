@@ -1477,6 +1477,15 @@ void VisionApp::connectSignalAndSlot()
 	connect(_rightMenu, &ExtendedMenu::showUnitConfigTab, this, [=]() {toPage(UIPage::UNIT_CONFIG);});
 	connect(_rightMenu, &ExtendedMenu::showSafetyCheckTab, this, [=]() {toPage(UIPage::SAFETY_CHECK);});
 
+	/*
+	* Locate the fiducials without running production. The transform this builds is what
+	* Set P1 captures as a region's reference, so this is the first half of every re-teach.
+	*/
+	connect(ui.toolButton_locateFiducials, &QToolButton::clicked, this, [=]() {
+		QMetaObject::invokeMethod(&_jobThread, "locateFiducialsOnly", Qt::QueuedConnection);
+		showStatus("Locating fiducials...");
+	});
+
 	//Top Menu Bar
 	connect(ui.toolButton_minimize, &QToolButton::clicked, this, [=]() {showMinimized(); });
 	connect(ui.toolButton_maximize_restore, SIGNAL(clicked()), this, SLOT(maximize_restoreWindow()));
@@ -1857,6 +1866,8 @@ void VisionApp::connectSignalAndSlot()
 				fidMask |= 2;
 			}
 			r.fidRefMask = fidMask;
+			r.fidRefTeachRev = sd._fiducialTeachRev;
+			r.p1TeachMs = QDateTime::currentMSecsSinceEpoch();
 
 			sd.setPitchRegion(idx, r);
 
@@ -1894,6 +1905,7 @@ void VisionApp::connectSignalAndSlot()
 			r.p2y = wy;
 			r.p2z = wz;
 			r.p2Set = true;
+			r.p2TeachMs = QDateTime::currentMSecsSinceEpoch();
 			sd.setPitchRegion(idx, r);
 
 			refreshPitchLabels();

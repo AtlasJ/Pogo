@@ -536,6 +536,18 @@ void VisionApp::startProduction()
 		return;
 	}
 
+	{
+		QString why;
+		if (!pitchTeachIsConsistent(why)) {
+			ct::logger::warn("[Pitch] Teach consistency: %s", why.toStdString().c_str());
+			AuditLog::instance().log(QStringLiteral("PITCH_TEACH_WARNING"), why);
+			addLogLine(QStringLiteral("Pitch teach warning - see the prompt"));
+			showMsg(QStringLiteral("The taught points and the fiducial teach do not agree:\n\n%1\n\n"
+				"Units will be positioned from a reference that no longer matches the fiducials.")
+				.arg(why));
+		}
+	}
+
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
 
 	ui.lineEdit_inspectionTimeMain->clear();
@@ -619,6 +631,18 @@ void VisionApp::startProductionS()
 	if (!safetyCheckPassedForProduction()) {
 		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("safety check"));
 		return;
+	}
+
+	{
+		QString why;
+		if (!pitchTeachIsConsistent(why)) {
+			ct::logger::warn("[Pitch] Teach consistency: %s", why.toStdString().c_str());
+			AuditLog::instance().log(QStringLiteral("PITCH_TEACH_WARNING"), why);
+			addLogLine(QStringLiteral("Pitch teach warning - see the prompt"));
+			showMsg(QStringLiteral("The taught points and the fiducial teach do not agree:\n\n%1\n\n"
+				"Units will be positioned from a reference that no longer matches the fiducials.")
+				.arg(why));
+		}
 	}
 
 	ui.lineEdit_inspectionTimeMain->clear();
@@ -793,6 +817,54 @@ void VisionApp::prunePassedUnitImages()
 	}
 
 	ct::logger::info("[Production] Save Failed Images Only: swept %d passed unit(s)", units);
+}
+
+/*
+* Catch the two ways a re-teach goes wrong silently.
+*
+* 1. A region's fiducial reference was measured against a fiducial teach that has since been
+*    re-taught. The reference is a LOCATED position in machine mm, so re-teaching the fiducial
+*    (model, ROI or teach point) moves the measurement and leaves the stored number describing
+*    something that no longer exists - the run would compensate to the wrong place and nothing
+*    would look wrong until the parts were measured.
+*
+* 2. P2 was taught BEFORE the current P1. Pitch is computed as P2 - P1 against whatever P1 held
+*    at the time, so if P1 has moved since, that move is sitting inside the pitch.
+*
+* Reports rather than refuses: a machine mid-shift should not be stopped by a warning it can
+* act on, and the operator is told exactly which region and what to press.
+*/
+bool VisionApp::pitchTeachIsConsistent(QString& why)
+{
+	why.clear();
+	if (!SystemData::instance()._setupRegionPitchMode) return true;
+
+	const auto regions = SystemData::instance().pitchRegions();
+	const int fidRev = SystemData::instance()._fiducialTeachRev;
+	QStringList problems;
+
+	for (int i = 0; i < (int)regions.size(); i++) {
+		const auto& r = regions[i];
+		if (!r.p1Set) continue;
+
+		if (r.fidRefMask == 0) {
+			problems << QStringLiteral("Region %1 has no fiducial reference - press Locate Fiducials, "
+				"then Set P1.").arg(i + 1);
+		}
+		else if (r.fidRefTeachRev != fidRev) {
+			problems << QStringLiteral("Region %1 captured its fiducial reference against an older "
+				"fiducial teach - press Locate Fiducials, then Set P1 again.").arg(i + 1);
+		}
+
+		if (r.p2Set && r.p1TeachMs > 0 && r.p2TeachMs > 0 && r.p2TeachMs < r.p1TeachMs) {
+			problems << QStringLiteral("Region %1 had P1 re-taught after P2, so the pitch still carries "
+				"the old origin - re-teach P2.").arg(i + 1);
+		}
+	}
+
+	if (problems.isEmpty()) return true;
+	why = problems.join(QStringLiteral("\n"));
+	return false;
 }
 
 void VisionApp::clearInspectionLogs()
