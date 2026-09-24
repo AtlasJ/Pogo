@@ -135,6 +135,7 @@ class QMainGraphicsScene;
 class QGraphicsPixmapItem;
 class QItemSelectionModel;
 class ExtendedMenu;
+class External3DViewer;
 
 enum class EditMode {
 	SELECT,  
@@ -874,6 +875,7 @@ private:
 	void algoH3RunStage(AlgoH3Stage stage);
 	bool algoH3HandleViewMouse(QObject* obj, QEvent* ev); //drag-to-spin in the 3D view
 	int algoH3CurrentSection() const;
+	void algoH3ShownStage(bool& preprocessed, bool& segmented) const; //which map EVERY view shows, from the open section
 	AlgoH3Display algoH3DisplayMode() const;  //comboBox_algoH3Display, guarded against a null ui
 	QDragBox* makeAlgoH3Box(const QRectF& sceneRect, const QColor& color, const QString& name);
 
@@ -917,6 +919,10 @@ private:
 	QElapsedTimer _algoH3DragClock;       //throttles re-renders during a drag
 	QTimer* _algoH3SelTimer = nullptr;    //watches which ROI is selected on the scene
 	int _algoH3ShownRoi = -1;             //ROI index the results section is showing
+	External3DViewer* _external3D = nullptr; //ImageJ's 3D surface plot in its own window (child QObject)
+	QPointer<QDialog> _external3DBusy;       //its please-wait box while a job runs; null otherwise
+	void showExternal3DBusy(const QString& text);
+	void hideExternal3DBusy();
 	void showBarcode(int index);
 	void showBarcodeDebugImage(int index);
 	bool saveBarcode();

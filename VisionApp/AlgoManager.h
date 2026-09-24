@@ -114,6 +114,13 @@ public:
 	QImage height3Relief(bool preprocessed, bool segmented,
 		double zExaggeration, bool colorMapped) const;
 
+	/*
+	* A DEEP copy of the height map the page is showing, for handing to another thread or
+	* process (the external 3D display). try_lock like the renders above: false means a stage
+	* is running right now; true with an empty `out` means no map is loaded.
+	*/
+	bool height3CopyDisplayHeight(bool preprocessed, bool segmented, cv::Mat& out) const;
+
 	//── runs (queued to the worker thread; results come by signal) ──
 	void runOcr(const QImage& fov);
 	void runHeight();
