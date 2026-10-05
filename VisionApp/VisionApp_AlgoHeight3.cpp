@@ -294,7 +294,16 @@ void VisionApp::initAlgoHeight3Page()
 
 	// ── display mode + section: both decide what is on screen ──
 	connect(ui.comboBox_algoH3Display, QOverload<int>::of(&QComboBox::currentIndexChanged),
-		this, [=](int) { updateAlgoH3Display(); });
+		this, [=](int) {
+			//the fill only reaches the 3D renderer, so the toggle is dead weight on a flat view
+			ui.checkBox_algoH3FillHoles->setEnabled(h3IsSurfaceMode(algoH3DisplayMode()));
+			updateAlgoH3Display();
+		});
+
+	connect(ui.checkBox_algoH3FillHoles, &QCheckBox::toggled, this, [=](bool) {
+		updateAlgoH3Display();
+	});
+	ui.checkBox_algoH3FillHoles->setEnabled(h3IsSurfaceMode(algoH3DisplayMode()));
 
 	/*
 	* ── external 3D display: ImageJ's Interactive 3D Surface Plot, in a window of its own ──
@@ -1480,7 +1489,8 @@ void VisionApp::updateAlgoH3Display()
 	case AlgoH3Display::PointCloud3D:
 	case AlgoH3Display::Textured3D:
 		img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
-			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
+			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode),
+			ui.checkBox_algoH3FillHoles->isChecked());
 		break;
 
 	//lit but flat, and rendered at full resolution - so unlike the 3D views this one is
@@ -1664,7 +1674,8 @@ void VisionApp::updateAlgoH3Surface()
 	algoH3ShownStage(preprocessed, segmented);
 
 	const QImage img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
-		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode));
+		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode),
+		ui.checkBox_algoH3FillHoles->isChecked());
 	if (img.isNull()) return;
 
 	//the canvas size never changes, so the pixmap can be swapped in place - going through

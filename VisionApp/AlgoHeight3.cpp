@@ -1345,7 +1345,7 @@ h3fill::Report algoH3FillDisplayGrid(cv::Mat& grid16, int minValidRaw, int maxVa
 QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 	int minValidRaw, int maxValidRaw,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
-	AlgoH3SurfaceStyle style)
+	AlgoH3SurfaceStyle style, bool fillHoles)
 {
 	const bool mesh = (style == AlgoH3SurfaceStyle::ShadedMesh);
 	const bool wire = (style == AlgoH3SurfaceStyle::Wireframe);
@@ -1401,7 +1401,10 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 	//Before anything asks which cells are valid: reconstruct the pin surface the neighbouring
 	//pins shadowed. Without this a quad with one unmeasured corner is skipped, and the pins come
 	//out of every 3D view with bites taken out of them.
-	algoH3FillDisplayGrid(grid, minValidRaw, maxValidRaw);
+	//
+	//The operator can turn it off to see exactly what the profiler returned - which is the
+	//honest view when the question is how well the part was staged rather than what shape it is.
+	if (fillHoles) algoH3FillDisplayGrid(grid, minValidRaw, maxValidRaw);
 
 	//the intensity texture rides the SAME grid, so a cell's colour and its geometry come
 	//from the same place on the part. INTER_AREA here, not NEAREST: this one is a picture,

@@ -22936,6 +22936,26 @@ Selecting this section shows the image with no ROIs.</string>
                                </item>
                               </layout>
                              </item>
+                              <item>
+                               <widget class="QCheckBox" name="checkBox_algoH3FillHoles">
+                                <property name="styleSheet">
+                                 <string notr="true">color: #F0F0F0;</string>
+                                </property>
+                                <property name="toolTip">
+                                 <string>Reconstruct the pin surface that neighbouring pins shadowed from the sensor.
+
+Only gaps fully enclosed by measured surface are filled - the space between the pins reaches the edge of the map and is left open, so the pins are never welded into a slab.
+
+Turn this off to see exactly what the profiler returned. Display only: nothing is measured from the filled surface.</string>
+                                </property>
+                                <property name="text">
+                                 <string>Fill occlusion holes in the 3D views</string>
+                                </property>
+                                <property name="checked">
+                                 <bool>true</bool>
+                                </property>
+                               </widget>
+                              </item>
                              <item>
                               <widget class="QToolBox" name="toolBox_algoH3Sections">
                                <property name="sizePolicy">

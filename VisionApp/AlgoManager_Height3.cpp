@@ -314,7 +314,7 @@ QImage AlgoManager::height3Image(bool intensity, bool preprocessed, bool segment
 
 QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
-	AlgoH3SurfaceStyle style) const
+	AlgoH3SurfaceStyle style, bool fillHoles) const
 {
 	const AlgoHeight3Params p = height3Params();
 
@@ -325,7 +325,7 @@ QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 	//straightened crop would be painted with the uncropped map and slide off the part
 	return algoH3RenderSurface3D(m_height3.heightForDisplay(preprocessed, segmented),
 		m_height3.intensityForDisplay(segmented),
-		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style);
+		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style, fillHoles);
 }
 
 QImage AlgoManager::height3Relief(bool preprocessed, bool segmented,

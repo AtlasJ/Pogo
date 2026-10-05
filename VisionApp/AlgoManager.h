@@ -110,7 +110,8 @@ public:
 	QImage height3Image(bool intensity, bool preprocessed, bool segmented, bool colorMapped) const;
 	QImage height3Surface(bool preprocessed, bool segmented,
 		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
-		AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled) const;
+		AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled,
+		bool fillHoles = true) const;
 	QImage height3Relief(bool preprocessed, bool segmented,
 		double zExaggeration, bool colorMapped) const;
 
