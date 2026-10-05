@@ -23450,6 +23450,11 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                      <string>Largest Connected Region (Min-Area Rect)</string>
                                     </property>
                                    </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Complete Block (fully scanned band)</string>
+                                    </property>
+                                   </item>
                                   </widget>
                                  </item>
                                  <item row="1" column="0">

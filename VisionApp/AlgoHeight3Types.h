@@ -99,9 +99,23 @@ enum class AlgoH3Preprocess {
 * expressed in, so skipping it would leave the whole pipeline with no coordinates.
 */
 enum class AlgoH3SegMethod {
-	LargestRegion = 0  //largest valid connected region, posed by its min-area rect
+	LargestRegion = 0, //largest valid connected region, posed by its min-area rect
+	/*
+	* The one block of a multi-block scan that was captured WHOLE.
+	*
+	* A pogo field is several blocks stacked along the scan direction, each on its own plate
+	* at its own height. A scan that covers one block completely clips the blocks either side
+	* of it, and a part measured off a clipped block is measured off whatever fraction of it
+	* happened to land in frame - so the complete one is the only one worth keeping.
+	*
+	* "Complete" is decided the same way the hole fill decides a gap: a block that runs off
+	* the top or bottom edge of the map was cut by the scan, a block with a plate boundary on
+	* both sides was not. The boundaries come from the step in plate height between blocks,
+	* which survives the tilt along a plate because a step is abrupt and a tilt is not.
+	*/
+	CompleteBand = 1
 };
-constexpr int kAlgoH3SegMethodCount = 1;
+constexpr int kAlgoH3SegMethodCount = 2;
 
 //order matches comboBox_algoH3DatumMethod
 enum class AlgoH3DatumMethod {
@@ -198,6 +212,25 @@ struct AlgoHeight3Params {
 	*/
 	double segCanvasWidthUm = 0.0;
 	double segCanvasHeightUm = 0.0;
+
+	/*
+	* ── CompleteBand only ──
+	*
+	* The smallest plate-to-plate step that counts as a block boundary, in RAW grey levels -
+	* the same units as the map and as minValidRaw / bilateralHeightSigma, because that is
+	* what the profiler delivers and converting it to um here would only invite the operator
+	* to type a number in the wrong one.
+	*
+	* It has to clear the tilt ALONG a plate, which on a long block is easily as large as the
+	* step between two of them. What separates them is that a step happens over a few rows and
+	* a tilt does not, so the detector measures the change across a short window - but the
+	* threshold still has to sit above the noise in that window.
+	*
+	* The minimum band height keeps a sliver between two closely spaced boundaries from being
+	* mistaken for a block. 0 = an eighth of the map.
+	*/
+	double segBandStepRaw = 250.0;
+	double segBandMinUm = 0.0;
 	bool segCheckWidth = false;
 	double segMinWidthUm = 0.0, segMaxWidthUm = 0.0;
 	bool segCheckHeight = false;

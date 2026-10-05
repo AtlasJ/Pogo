@@ -259,6 +259,16 @@ static QIcon h3ColorIcon(const QColor& c)
 void VisionApp::initAlgoHeight3Page()
 {
 	configureAlgoH3Ranges();
+	buildAlgoH3SegMethodRows();
+
+	//a method change swaps which settings are on screen, and the new ones have to be captured
+	//into the params before any Run reads them
+	connect(ui.comboBox_algoH3SegMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) {
+			updateAlgoH3SegMethodUi();
+			captureAlgoH3ParamsFromUI();
+		});
+	updateAlgoH3SegMethodUi();
 
 	//every readout on this page is output, never input
 	const QStringList readouts = {
@@ -1392,6 +1402,91 @@ void VisionApp::algoH3ShownStage(bool& preprocessed, bool& segmented) const
 * machine then, and leaving the old files recorded would have the next restart quietly put a
 * stale pair back in their place.
 */
+/*
+* The settings that belong to one segmentation method only.
+*
+* Inserted into the form in code rather than placed in the .ui: that form numbers its rows
+* explicitly, so adding a row in the middle there means renumbering every row below it, and a
+* mis-numbered QFormLayout fails quietly by stacking two widgets in the same cell.
+*
+* They go straight after the canvas rows, which is where the method's own settings belong -
+* above the width, height and angle checks, which every method shares.
+*/
+void VisionApp::buildAlgoH3SegMethodRows()
+{
+	auto* form = ui.formLayout_algoH3Seg;
+	if (!form || _algoH3SegBandStep) return;
+
+	const QString kWhite = QStringLiteral("color: #F0F0F0;");
+
+	_algoH3SegBandStepLabel = new QLabel(tr("Plate Step (raw)"), ui.widget_algoHeight3Page);
+	_algoH3SegBandStepLabel->setStyleSheet(kWhite);
+	_algoH3SegBandStep = new QDoubleSpinBox(ui.widget_algoHeight3Page);
+	_algoH3SegBandStep->setRange(1.0, 60000.0);
+	_algoH3SegBandStep->setDecimals(0);
+	_algoH3SegBandStep->setSingleStep(25.0);
+	_algoH3SegBandStep->setValue(250.0);
+	_algoH3SegBandStep->setToolTip(tr(
+		"The smallest step in plate height that counts as a boundary between two blocks, in raw "
+		"grey levels - the same units as the height map.\n\n"
+		"It has to clear the tilt ALONG a plate, which on a long block can total as much as the "
+		"step between two of them. Too high and the blocks are never separated; too low and the "
+		"tilt itself gets cut into slivers.\n\n"
+		"Run once and read the Fail Reason: it says how many boundaries were found."));
+
+	_algoH3SegBandMinLabel = new QLabel(tr("Min Block Height (um)"), ui.widget_algoHeight3Page);
+	_algoH3SegBandMinLabel->setStyleSheet(kWhite);
+	_algoH3SegBandMin = new QDoubleSpinBox(ui.widget_algoHeight3Page);
+	_algoH3SegBandMin->setRange(0.0, 1000000.0);
+	_algoH3SegBandMin->setDecimals(1);
+	_algoH3SegBandMin->setSingleStep(100.0);
+	_algoH3SegBandMin->setValue(0.0);
+	_algoH3SegBandMin->setToolTip(tr(
+		"A band shorter than this is not a block. It stops a sliver between two boundaries that "
+		"landed close together from being taken for one.\n\n"
+		"0 = an eighth of the map."));
+
+	//row 2 is the Canvas (px) readout, so 3 puts these directly under the canvas block
+	form->insertRow(3, _algoH3SegBandMinLabel, _algoH3SegBandMin);
+	form->insertRow(3, _algoH3SegBandStepLabel, _algoH3SegBandStep);
+
+	auto rerun = [=](double) { captureAlgoH3ParamsFromUI(); };
+	connect(_algoH3SegBandStep, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, rerun);
+	connect(_algoH3SegBandMin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, rerun);
+}
+
+/*
+* Show only the settings the chosen method actually reads.
+*
+* The canvas is the clearest case: Largest Connected Region cannot work without one - it has
+* no idea how big the part is meant to be, so the frame has to be typed in - while Complete
+* Block is bounded by the plate edges it found and sizes the frame to those. Leaving the
+* canvas boxes on screen under Complete Block would be offering a setting that does nothing,
+* which is worse than not offering it.
+*/
+void VisionApp::updateAlgoH3SegMethodUi()
+{
+	const auto method = (AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex();
+	const bool canvas = (method == AlgoH3SegMethod::LargestRegion);
+	const bool band = (method == AlgoH3SegMethod::CompleteBand);
+
+	ui.label_algoH3SegCanvas->setVisible(canvas);
+	ui.label_algoH3SegCanvasWidthUm->setVisible(canvas);
+	ui.doubleSpinBox_algoH3SegCanvasWidthUm->setVisible(canvas);
+	ui.label_algoH3SegCanvasHeightUm->setVisible(canvas);
+	ui.doubleSpinBox_algoH3SegCanvasHeightUm->setVisible(canvas);
+	ui.label_algoH3SegCanvasPx->setVisible(canvas);
+	ui.lineEdit_algoH3SegCanvasPx->setVisible(canvas);
+
+	if (_algoH3SegBandStepLabel) _algoH3SegBandStepLabel->setVisible(band);
+	if (_algoH3SegBandStep) _algoH3SegBandStep->setVisible(band);
+	if (_algoH3SegBandMinLabel) _algoH3SegBandMinLabel->setVisible(band);
+	if (_algoH3SegBandMin) _algoH3SegBandMin->setVisible(band);
+
+	//the section just changed height, so the toolbox has to be remeasured
+	fitAlgoH3Sections();
+}
+
 void VisionApp::rememberAlgoH3Input(bool intensity, const QString& path)
 {
 	const QString key = intensity ? QStringLiteral("Algo_H3_Recent_Intensity_Map")
@@ -1955,6 +2050,8 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 	p.segMethod = (AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex();
 	p.segCanvasWidthUm = ui.doubleSpinBox_algoH3SegCanvasWidthUm->value();
 	p.segCanvasHeightUm = ui.doubleSpinBox_algoH3SegCanvasHeightUm->value();
+	if (_algoH3SegBandStep) p.segBandStepRaw = _algoH3SegBandStep->value();
+	if (_algoH3SegBandMin) p.segBandMinUm = _algoH3SegBandMin->value();
 	p.segCheckWidth = ui.checkBox_algoH3SegEnableWidthCheck->isChecked();
 	p.segMinWidthUm = ui.doubleSpinBox_algoH3SegMinWidthUm->value();
 	p.segMaxWidthUm = ui.doubleSpinBox_algoH3SegMaxWidthUm->value();
@@ -2099,7 +2196,16 @@ void VisionApp::refreshAlgoHeight3Page()
 			(sm >= 0 && sm < ui.comboBox_algoH3SegMethod->count()) ? sm : 0);
 		ui.doubleSpinBox_algoH3SegCanvasWidthUm->setValue(p.segCanvasWidthUm);
 		ui.doubleSpinBox_algoH3SegCanvasHeightUm->setValue(p.segCanvasHeightUm);
+		if (_algoH3SegBandStep) {
+			QSignalBlocker bb1(_algoH3SegBandStep);
+			_algoH3SegBandStep->setValue(p.segBandStepRaw);
+		}
+		if (_algoH3SegBandMin) {
+			QSignalBlocker bb2(_algoH3SegBandMin);
+			_algoH3SegBandMin->setValue(p.segBandMinUm);
+		}
 		updateAlgoH3CanvasPxLabel();
+		updateAlgoH3SegMethodUi();
 		ui.checkBox_algoH3SegEnableWidthCheck->setChecked(p.segCheckWidth);
 		ui.doubleSpinBox_algoH3SegMinWidthUm->setValue(p.segMinWidthUm);
 		ui.doubleSpinBox_algoH3SegMaxWidthUm->setValue(p.segMaxWidthUm);

@@ -675,6 +675,400 @@ static bool h3SegLargestRegion(const cv::Mat& src, const AlgoHeight3Params& p,
 	return true;
 }
 
+/*
+* Estimate how far the part is rotated in the map, from the long thin lines of dropout that
+* run across it.
+*
+* A pogo field is laid out in rows, and a row of pins casts a row of shadows: the sensor loses
+* the surface in a broken line that runs the length of the block. The seams between blocks do
+* the same. Both are features OF the part, so both carry its rotation - and unlike the plate
+* level, which is a majority statistic and so steps sharply whatever the angle, a line has a
+* direction that can simply be measured.
+*
+* The dropouts around the part are far larger than any of these lines, so the search is
+* confined to the part's interior first; then an opening by a long flat kernel keeps only what
+* runs a long way horizontally, which a pin's own shadow does not.
+*
+* Returns false when too little lines up to be sure, and the caller then works unrotated -
+* which is right, because a part that is square to the scan has no rotation to find.
+*/
+static bool h3PartRotation(const cv::Mat& validMask, double maxDeg, double& thetaDeg)
+{
+	const int h = validMask.rows, w = validMask.cols;
+	if (h < 64 || w < 64) return false;
+
+	//the part's outline: close hard enough to bridge the pin shadows, then take the biggest
+	//thing left. Everything outside it is background and has nothing to say about rotation.
+	const int closeK = std::max(31, std::min(201, w / 96) | 1);
+	cv::Mat closed;
+	cv::morphologyEx(validMask, closed, cv::MORPH_CLOSE,
+		cv::getStructuringElement(cv::MORPH_RECT, cv::Size(closeK, closeK)));
+
+	cv::Mat labels, stats, centroids;
+	const int nLab = cv::connectedComponentsWithStats(closed, labels, stats, centroids, 8, CV_32S);
+	if (nLab < 2) return false;
+	int interior = 1;
+	for (int i = 2; i < nLab; i++)
+		if (stats.at<int>(i, cv::CC_STAT_AREA) > stats.at<int>(interior, cv::CC_STAT_AREA)) interior = i;
+
+	cv::Mat holes(h, w, CV_8U, cv::Scalar(0));
+	for (int y = 0; y < h; y++) {
+		const int* lrow = labels.ptr<int>(y);
+		const uchar* vrow = validMask.ptr<uchar>(y);
+		uchar* orow = holes.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) if (lrow[x] == interior && !vrow[x]) orow[x] = 255;
+	}
+
+	//long and flat: a pin's shadow is a blob a few hundred px across, a shadow ROW is many
+	//times that. The kernel is a fraction of the width so it scales with the field.
+	const int openK = std::max(81, std::min(601, w / 56) | 1);
+	cv::Mat lines;
+	cv::morphologyEx(holes, lines, cv::MORPH_OPEN,
+		cv::getStructuringElement(cv::MORPH_RECT, cv::Size(openK, 1)));
+
+	cv::Mat lLab, lStats, lCent;
+	const int nSeg = cv::connectedComponentsWithStats(lines, lLab, lStats, lCent, 8, CV_32S);
+
+	struct Frag { double x, y; };
+	std::vector<Frag> frags;
+	for (int i = 1; i < nSeg; i++) {
+		const int x = lStats.at<int>(i, cv::CC_STAT_LEFT), y = lStats.at<int>(i, cv::CC_STAT_TOP);
+		const int bw = lStats.at<int>(i, cv::CC_STAT_WIDTH), bh = lStats.at<int>(i, cv::CC_STAT_HEIGHT);
+		const int area = lStats.at<int>(i, cv::CC_STAT_AREA);
+		if (area < openK * 6 || bw < openK) continue;
+		if (y <= 1 || y + bh >= h - 2) continue;       //the edge of the map is not a feature of the part
+		if (bh > openK / 2) continue;                  //thick enough to be a blob rather than a line
+		frags.push_back({ lCent.at<double>(i, 0), lCent.at<double>(i, 1) });
+	}
+	if (frags.size() < 6) return false;
+
+	/*
+	* Fit lines through the fragment centres: every pair far enough apart in x proposes a
+	* slope, and the proposal with the most fragments on it wins. Exhaustive rather than
+	* random - there are only ever a few dozen fragments, so every pair is cheap and the
+	* answer does not change from run to run.
+	*/
+	const double maxSlope = std::tan(maxDeg * CV_PI / 180.0);
+	const double minSpan = w * 0.25;
+	const double tol = std::max(8.0, h * 0.008);
+
+	std::vector<std::pair<int, double>> found;   //inliers, slope
+	for (size_t i = 0; i < frags.size(); i++) {
+		for (size_t j = i + 1; j < frags.size(); j++) {
+			const double dx = frags[j].x - frags[i].x;
+			if (std::fabs(dx) < minSpan) continue;
+			const double m = (frags[j].y - frags[i].y) / dx;
+			if (std::fabs(m) > maxSlope) continue;
+			const double c = frags[i].y - m * frags[i].x;
+
+			int n = 0; double sx = 0, sy = 0, sxx = 0, sxy = 0;
+			for (const Frag& f : frags) {
+				if (std::fabs(f.y - (m * f.x + c)) > tol) continue;
+				n++; sx += f.x; sy += f.y; sxx += f.x * f.x; sxy += f.x * f.y;
+			}
+			if (n < 4) continue;
+			//refit on the fragments that agreed, so the answer is not hostage to the two that
+			//happened to propose it
+			const double den = n * sxx - sx * sx;
+			if (std::fabs(den) < 1e-9) continue;
+			found.emplace_back(n, (n * sxy - sx * sy) / den);
+		}
+	}
+	if (found.empty()) return false;
+
+	//the median slope over every line found, weighted by nothing but its own vote: a pin row
+	//and a block seam are parallel, so they should agree, and the median says so if they do
+	std::sort(found.begin(), found.end(),
+		[](const std::pair<int, double>& l, const std::pair<int, double>& r) { return l.first > r.first; });
+	const size_t keep = std::min<size_t>(found.size(), 8);
+	std::vector<double> slopes;
+	for (size_t i = 0; i < keep; i++) slopes.push_back(found[i].second);
+	std::nth_element(slopes.begin(), slopes.begin() + slopes.size() / 2, slopes.end());
+	thetaDeg = std::atan(slopes[slopes.size() / 2]) * 180.0 / CV_PI;
+	return true;
+}
+
+/*
+* Find the block the scan captured WHOLE, and pose it.
+*
+* A pogo field is several blocks stacked along the scan direction, each sitting on its own
+* plate at its own height. The scan covers one of them completely and clips the ones either
+* side, and a part measured off a clipped block is measured off whatever fraction of it
+* happened to land in frame.
+*
+*   1. How far the part is rotated, from the lines of dropout that run along it (above). This
+*      has to come first. The boundaries between blocks are parallel to it, so a cut made
+*      before the angle is known is a cut at the wrong angle - and on a long block that keeps
+*      a wedge of the neighbour at one end while losing a wedge of the block at the other.
+*   2. The plate level along each line at that angle: the MODE of the valid heights on it. The
+*      mode and not the mean or the median, because the pins are a minority of the area but a
+*      long way from the plate, and both of those get dragged by them.
+*   3. Median filter, so a line that caught a row of pin tops cannot become a boundary alone.
+*   4. The step response: the change in level across a short window. This is what separates a
+*      block boundary from the tilt along a plate - on a long block the tilt totals as much as
+*      the step does, but it is spread over the whole block and the step is not.
+*   5. Cut at each step above the threshold, strongest first, suppressing anything within half
+*      a band of a cut already taken, so one boundary yields one cut.
+*   6. Of the bands between the cuts, keep the ones that reach neither end of the sweep - a
+*      band that runs off an end was cut by the scan. Take the tallest, since a real block is
+*      much taller than any sliver two nearby boundaries can enclose.
+*   7. Pose it directly from the angle already known, sized to the block's own extent. Not by
+*      min-area rect over a contour: the fixture rails that run down either side of the field
+*      sit several thousand counts BELOW the plate and reach into the band like everything
+*      else there, and a rect fitted around one of those is stretched sideways and square to
+*      the image. Anything that far below the local plate is fixture, not part.
+*/
+static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
+	cv::RotatedRect& out, QString& why)
+{
+	const cv::Mat mask = validMaskOf(src, p.minValidRaw, p.maxValidRaw);
+	const int h = src.rows, w = src.cols;
+	if (h < 32 || w < 8) { why = QStringLiteral("Map is too small to split into blocks"); return false; }
+
+	cv::Mat src16;
+	if (src.type() == CV_16U) src16 = src;
+	else src.convertTo(src16, CV_16U);
+
+	//the minimum a band can be, in rows. An eighth of the map by default: big enough that a
+	//sliver cannot win, small enough not to rule out a genuinely short block.
+	int minBand = (p.segBandMinUm > 0.0 && p.yScaleUmPx > 0.0)
+		? (int)std::lround(p.segBandMinUm / p.yScaleUmPx) : h / 8;
+	minBand = std::max(8, std::min(minBand, h / 2));
+
+	// ── 1. how far the part is rotated ──
+	//5 degrees is already far more than a part can sit out in its fixture; allowing more only
+	//lets a chance alignment of unrelated dropouts pass for a pin row
+	double thetaDeg = 0.0;
+	h3PartRotation(mask, 5.0, thetaDeg);
+	const double tanT = std::tan(thetaDeg * CV_PI / 180.0);
+
+	/*
+	* ── 2. the plate level along each line at that angle ──
+	*
+	* The sweep coordinate is u = y - x * tan(theta): lines of constant u are parallel to the
+	* part, so a band in u is a band of the PART rather than of the image.
+	*
+	* Binned over the range the MAP actually occupies, not over the configured valid range.
+	* The valid range is usually left wide open (0 .. 65535), and spreading the bins across
+	* that would quantise the level to hundreds of counts - the same size as the step being
+	* looked for, which would bury it. A real map covers a small part of that span, so
+	* binning the span it uses puts the resolution where the signal is.
+	*/
+	const int kBins = 1024;
+	double dataLo = 0.0, dataHi = 0.0;
+	cv::minMaxLoc(src16, &dataLo, &dataHi, nullptr, nullptr, mask);
+	const double lo = std::max<double>(dataLo, p.minValidRaw);
+	const double hi = std::max(lo + 1.0, std::min<double>(dataHi, p.maxValidRaw));
+	const double binW = (hi - lo) / kBins;
+	if (binW <= 0.0) { why = QStringLiteral("The map has no height variation to split on"); return false; }
+
+	const int uMin = (int)std::floor(std::min(0.0, -(w - 1) * tanT));
+	const int uMax = (int)std::ceil((h - 1) - std::min(0.0, (w - 1) * tanT));
+	const int uCount = uMax - uMin + 1;
+	if (uCount < 32) { why = QStringLiteral("Map is too small to split into blocks"); return false; }
+
+	std::vector<int> hist((size_t)uCount * kBins, 0);
+	std::vector<int> total(uCount, 0);
+	for (int y = 0; y < h; y++) {
+		const ushort* row = src16.ptr<ushort>(y);
+		const uchar* mrow = mask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			if (!mrow[x]) continue;
+			int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
+			int b = (int)((row[x] - lo) / binW);
+			if (b < 0) b = 0; else if (b >= kBins) b = kBins - 1;
+			hist[(size_t)ui * kBins + b]++;
+			total[ui]++;
+		}
+	}
+
+	int peakTotal = 0;
+	for (int v : total) peakTotal = std::max(peakTotal, v);
+	if (peakTotal == 0) { why = QStringLiteral("The map contains no valid data"); return false; }
+
+	std::vector<double> level(uCount, 0.0);
+	std::vector<char> hasLevel(uCount, 0);
+	for (int u = 0; u < uCount; u++) {
+		//a line that barely clips the part carries no level; it is held across below rather
+		//than allowed to read as a step
+		if (total[u] < peakTotal / 5) continue;
+		const int* bins = &hist[(size_t)u * kBins];
+		const int top = (int)(std::max_element(bins, bins + kBins) - bins);
+		level[u] = lo + (top + 0.5) * binW;
+		hasLevel[u] = 1;
+	}
+
+	double held = 0.0; bool any = false;
+	for (int u = 0; u < uCount; u++) {
+		if (hasLevel[u]) { held = level[u]; any = true; }
+		else if (any) level[u] = held;
+	}
+	if (!any) { why = QStringLiteral("No line across the part carried enough data to find a plate level"); return false; }
+	for (int u = 0; u < uCount && !hasLevel[u]; u++) level[u] = level[std::min(uCount - 1, u + 1)];
+
+	// ── 3. median filter ──
+	int k = std::min(51, (minBand | 1));
+	if (k % 2 == 0) k++;
+	const int half = k / 2;
+	std::vector<double> smooth(uCount), window(k);
+	for (int u = 0; u < uCount; u++) {
+		for (int i = 0; i < k; i++) window[i] = level[std::max(0, std::min(uCount - 1, u - half + i))];
+		std::nth_element(window.begin(), window.begin() + half, window.end());
+		smooth[u] = window[half];
+	}
+
+	// ── 4. the step response ──
+	const int W = std::max(4, std::min(25, minBand / 4));
+	std::vector<double> resp(uCount, 0.0);
+	for (int u = W; u < uCount - W; u++) {
+		double aSum = 0.0, bSum = 0.0;
+		for (int i = 0; i < W; i++) { aSum += smooth[u + i]; bSum += smooth[u - 1 - i]; }
+		resp[u] = (aSum - bSum) / W;
+	}
+
+	// ── 5. cuts, strongest first ──
+	std::vector<int> order(uCount);
+	for (int u = 0; u < uCount; u++) order[u] = u;
+	std::sort(order.begin(), order.end(),
+		[&](int l, int r) { return std::fabs(resp[l]) > std::fabs(resp[r]); });
+
+	const double thresh = std::max(1.0, p.segBandStepRaw);
+	std::vector<char> taken(uCount, 0);
+	std::vector<int> cuts;
+	for (int u : order) {
+		if (std::fabs(resp[u]) < thresh) break;
+		bool near = false;
+		for (int i = std::max(0, u - minBand / 2); i <= std::min(uCount - 1, u + minBand / 2); i++)
+			if (taken[i]) { near = true; break; }
+		if (near) continue;
+		taken[u] = 1;
+		cuts.push_back(u);
+	}
+	std::sort(cuts.begin(), cuts.end());
+
+	// ── 6. the tallest band that reaches neither end of the sweep ──
+	std::vector<int> edges;
+	edges.push_back(0);
+	for (int c : cuts) edges.push_back(c);
+	edges.push_back(uCount);
+
+	int bandU0 = -1, bandU1 = -1;
+	for (size_t i = 0; i + 1 < edges.size(); i++) {
+		const int a0 = edges[i], a1 = edges[i + 1] - 1;
+		if (a0 == 0 || a1 == uCount - 1) continue;        //cut by the scan, not by a plate edge
+		if (a1 - a0 + 1 < minBand) continue;
+		if (bandU0 < 0 || (a1 - a0) > (bandU1 - bandU0)) { bandU0 = a0; bandU1 = a1; }
+	}
+
+	if (bandU0 < 0) {
+		why = cuts.size() < 2
+			? QStringLiteral("Found %1 block boundary across the map - a complete block needs one "
+				"on each side of it. Lower the plate step if the blocks sit at similar heights.")
+				.arg(cuts.size())
+			: QStringLiteral("Every block runs off one end of the scan, so none of them was "
+				"captured whole.");
+		return false;
+	}
+
+	/*
+	* ── 7. pose the block ──
+	*
+	* The angle is already known and the band is already parallel to the part, so the rect
+	* follows from the block's extent along and across that angle - there is nothing left for
+	* a min-area rect to work out, and a good deal for it to get wrong.
+	*
+	* The block is ONE PIECE, and that is what finally settles where it ends. The fixture rails
+	* run down either side of the field separated from the plate by a strip the sensor sees
+	* nothing of, so they are not connected to it - whereas no height threshold tells them apart
+	* reliably, because a rail ramps down from its edge and its first columns read barely more
+	* below the plate than a deep pin bore does. The height drop below is only a pre-filter, to
+	* keep a rail that touches the plate somewhere from dragging the whole thing in with it; the
+	* connectivity is what does the work.
+	*
+	* Ten times the plate step as that drop. It has to clear the pins' own bores while staying
+	* well above them a rail does, and on real parts those two are orders apart.
+	*/
+	const double railDrop = 10.0 * thresh;
+	const double cosT = std::cos(thetaDeg * CV_PI / 180.0);
+	const double sinT = std::sin(thetaDeg * CV_PI / 180.0);
+
+	cv::Mat blockMask(h, w, CV_8U, cv::Scalar(0));
+	for (int y = 0; y < h; y++) {
+		const ushort* row = src16.ptr<ushort>(y);
+		const uchar* mrow = mask.ptr<uchar>(y);
+		uchar* brow = blockMask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			if (!mrow[x]) continue;
+			const int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (ui < bandU0 || ui > bandU1) continue;
+			if (row[x] < smooth[ui] - railDrop) continue;
+			brow[x] = 255;
+		}
+	}
+
+	/*
+	* Close before labelling: the pins shadow the plate into a lace of small holes, and a few of
+	* those run together into a channel that would cut a corner of the plate off from the rest.
+	* The kernel is sized to bridge a pin's shadow and no more, so it cannot reach across the
+	* strip that separates the plate from a rail.
+	*/
+	const int bridge = std::max(3, std::min(41, w / 400) | 1);
+	cv::Mat joined;
+	cv::morphologyEx(blockMask, joined, cv::MORPH_CLOSE,
+		cv::getStructuringElement(cv::MORPH_RECT, cv::Size(bridge, bridge)));
+
+	cv::Mat bLabels, bStats, bCent;
+	const int nBlocks = cv::connectedComponentsWithStats(joined, bLabels, bStats, bCent, 8, CV_32S);
+	if (nBlocks < 2) {
+		why = QStringLiteral("The complete block contains no surface to pose");
+		return false;
+	}
+	int biggest = 1;
+	for (int i = 2; i < nBlocks; i++)
+		if (bStats.at<int>(i, cv::CC_STAT_AREA) > bStats.at<int>(biggest, cv::CC_STAT_AREA)) biggest = i;
+
+	std::vector<float> along, across;
+	along.reserve(1 << 16);
+	across.reserve(1 << 16);
+	for (int y = 0; y < h; y++) {
+		const int* lrow = bLabels.ptr<int>(y);
+		const uchar* brow = blockMask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			//the label comes from the closed mask, the membership from the original: the closing
+			//is there to join the plate up, not to grow it over the gap around it
+			if (!brow[x] || lrow[x] != biggest) continue;
+			along.push_back((float)(x * cosT + y * sinT));
+			across.push_back((float)(-x * sinT + y * cosT));
+		}
+	}
+	if (along.size() < 64) {
+		why = QStringLiteral("The complete block contains too little surface to pose");
+		return false;
+	}
+
+	//a fiftieth of a percent off each end: enough that a thin line of stragglers cannot stretch
+	//the frame, little enough that it never eats into the block itself
+	auto pct = [](std::vector<float>& v, double q) {
+		size_t i = (size_t)std::lround(q * (v.size() - 1));
+		i = std::min(i, v.size() - 1);
+		std::nth_element(v.begin(), v.begin() + i, v.end());
+		return (double)v[i];
+	};
+	const double s0 = pct(along, 0.0002), s1 = pct(along, 0.9998);
+	const double n0 = pct(across, 0.0002), n1 = pct(across, 0.9998);
+	if (s1 - s0 < 2.0 || n1 - n0 < 2.0) {
+		why = QStringLiteral("The complete block measured smaller than 2 px");
+		return false;
+	}
+
+	const double cs = 0.5 * (s0 + s1), cn = 0.5 * (n0 + n1);
+	out = cv::RotatedRect(
+		cv::Point2f((float)(cs * cosT - cn * sinT), (float)(cs * sinT + cn * cosT)),
+		cv::Size2f((float)(s1 - s0), (float)(n1 - n0)),
+		(float)thetaDeg);
+	return true;
+}
 } //namespace
 
 bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
@@ -703,6 +1097,9 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	switch (p.segMethod) {
 	case AlgoH3SegMethod::LargestRegion:
 		if (!h3SegLargestRegion(src, p, rr, segWhy)) return fail(segWhy);
+		break;
+	case AlgoH3SegMethod::CompleteBand:
+		if (!h3SegCompleteBand(src, p, rr, segWhy)) return fail(segWhy);
 		break;
 	default:
 		//loadRecipeConfig clamps seg_method, so this can only fire if an enum value was
@@ -753,7 +1150,24 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	* That is the whole point: a taught ROI has to mean the same thing on every part, and it
 	* cannot if the frame is sized to whatever this one happened to measure.
 	*/
-	if (p.segCanvasWidthUm <= 0.0 || p.segCanvasHeightUm <= 0.0) {
+	double canvasWidthUm = p.segCanvasWidthUm;
+	double canvasHeightUm = p.segCanvasHeightUm;
+
+	/*
+	* CompleteBand sizes the frame to the block it found, and the page hides the canvas boxes
+	* for it. The block is bounded by its own plate edges rather than by whatever the scan
+	* happened to include, so its extent is a property of the PART and repeats unit to unit -
+	* which is the thing the fixed canvas exists to guarantee. It is not quite as strong a
+	* guarantee: a block that measures a little differently still moves the frame a little,
+	* where a typed canvas cannot move at all. Set a canvas anyway and it is honoured.
+	*/
+	if (p.segMethod == AlgoH3SegMethod::CompleteBand
+		&& (canvasWidthUm <= 0.0 || canvasHeightUm <= 0.0)) {
+		canvasWidthUm = m_out.segWidthUm;
+		canvasHeightUm = m_out.segHeightUm;
+	}
+
+	if (canvasWidthUm <= 0.0 || canvasHeightUm <= 0.0) {
 		return fail(QStringLiteral(
 			"Canvas size is not set. This part measured %1 x %2 um - set a canvas "
 			"comfortably larger than the biggest part the line will see.")
@@ -770,8 +1184,8 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 		if (px % 2) px++;
 		return px;
 	};
-	const int cropW = toEvenPx(p.segCanvasWidthUm, p.xScaleUmPx);
-	const int cropH = toEvenPx(p.segCanvasHeightUm, p.yScaleUmPx);
+	const int cropW = toEvenPx(canvasWidthUm, p.xScaleUmPx);
+	const int cropH = toEvenPx(canvasHeightUm, p.yScaleUmPx);
 
 	//a corrupt map or an absurd canvas could ask for an allocation that will not fit
 	if ((qint64)cropW * (qint64)cropH > 400000000LL)
@@ -792,7 +1206,7 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 		res.note = QStringLiteral(
 			"Part %1 x %2 um is larger than the %3 x %4 um canvas - the outer part was cropped")
 			.arg(m_out.segWidthUm, 0, 'f', 1).arg(m_out.segHeightUm, 0, 'f', 1)
-			.arg(p.segCanvasWidthUm, 0, 'f', 1).arg(p.segCanvasHeightUm, 0, 'f', 1);
+			.arg(canvasWidthUm, 0, 'f', 1).arg(canvasHeightUm, 0, 'f', 1);
 	}
 
 	// ── the checks the operator enabled ──

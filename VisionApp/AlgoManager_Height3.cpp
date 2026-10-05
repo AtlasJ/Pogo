@@ -422,6 +422,8 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		p.segMethod = (AlgoH3SegMethod)jsonHelper::getInteger(h, "seg_method", 0);
 		p.segCanvasWidthUm = jsonHelper::getDouble(h, "seg_canvas_width_um", 0.0);
 		p.segCanvasHeightUm = jsonHelper::getDouble(h, "seg_canvas_height_um", 0.0);
+		p.segBandStepRaw = jsonHelper::getDouble(h, "seg_band_step_raw", 250.0);
+		p.segBandMinUm = jsonHelper::getDouble(h, "seg_band_min_um", 0.0);
 		p.segCheckWidth = jsonHelper::getBool(h, "seg_check_width", false);
 		p.segMinWidthUm = jsonHelper::getDouble(h, "seg_min_width_um", 0.0);
 		p.segMaxWidthUm = jsonHelper::getDouble(h, "seg_max_width_um", 0.0);
@@ -550,6 +552,8 @@ QJsonObject AlgoManager::height3ToJson() const
 	h.insert("seg_method", (int)p.segMethod);
 	h.insert("seg_canvas_width_um", p.segCanvasWidthUm);
 	h.insert("seg_canvas_height_um", p.segCanvasHeightUm);
+	h.insert("seg_band_step_raw", p.segBandStepRaw);
+	h.insert("seg_band_min_um", p.segBandMinUm);
 	h.insert("seg_check_width", p.segCheckWidth);
 	h.insert("seg_min_width_um", p.segMinWidthUm);
 	h.insert("seg_max_width_um", p.segMaxWidthUm);

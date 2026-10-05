@@ -867,6 +867,20 @@ private:
 	void fitAlgoH3Sections();          //no scrollbar inside a toolbox section: let it grow
 	void hideAlgoH3Rois();
 	/*
+	* The segmentation settings that belong to one method only.
+	*
+	* Built in code and inserted with QFormLayout::insertRow rather than placed in the .ui,
+	* because that form numbers its rows explicitly - adding a row in the middle there means
+	* renumbering every row below it, and a mis-numbered form fails silently by overlapping
+	* two widgets in one cell.
+	*/
+	void buildAlgoH3SegMethodRows();
+	void updateAlgoH3SegMethodUi();      //show only the settings the chosen method uses
+	class QDoubleSpinBox* _algoH3SegBandStep = nullptr;
+	class QDoubleSpinBox* _algoH3SegBandMin = nullptr;
+	class QLabel* _algoH3SegBandStepLabel = nullptr;
+	class QLabel* _algoH3SegBandMinLabel = nullptr;
+	/*
 	* The height and intensity maps the page last had loaded from file, remembered in the
 	* system JSON and reloaded the first time the page is opened after a restart - the same
 	* idea as Recent_Open_Recipe. Setting a part up is a lot of back and forth between this
