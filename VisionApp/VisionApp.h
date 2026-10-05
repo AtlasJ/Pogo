@@ -867,6 +867,20 @@ private:
 	void fitAlgoH3Sections();          //no scrollbar inside a toolbox section: let it grow
 	void hideAlgoH3Rois();
 	/*
+	* The height and intensity maps the page last had loaded from file, remembered in the
+	* system JSON and reloaded the first time the page is opened after a restart - the same
+	* idea as Recent_Open_Recipe. Setting a part up is a lot of back and forth between this
+	* page and the machine, and re-picking two files out of a scan folder every launch is the
+	* kind of friction that is only noticed because it happens ten times a day.
+	*
+	* Reloaded lazily rather than at startup: these are full-field 16-bit maps, and reading
+	* two of them would show up in the launch time of an app most sessions never open this
+	* page in.
+	*/
+	void rememberAlgoH3Input(bool intensity, const QString& path);
+	void restoreAlgoH3Inputs();
+	bool _algoH3InputsRestored = false;
+	/*
 	* ROI types are edited ONE AT A TIME, chosen by comboBox_algoH3RoiType, instead of in a
 	* grid: the panel is tall and narrow, and a 5-column table could only ever be read by
 	* scrolling it sideways.

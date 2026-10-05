@@ -64,6 +64,9 @@ void VisionApp::initAlgoSetupPage()
 		updateAlgoRoiVisibility();
 
 		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+			//first visit this session: put back whatever maps were loaded when the app was
+			//last closed. Before the two updates below, so they see the restored maps.
+			restoreAlgoH3Inputs();
 			updateAlgoH3Enables();
 			updateAlgoH3Display();
 		}

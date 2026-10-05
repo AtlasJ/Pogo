@@ -376,6 +376,7 @@ void VisionApp::initAlgoHeight3Page()
 			return;
 		}
 		ui.lineEdit_algoH3InputLoadHeightStatus->setText(QFileInfo(path).fileName());
+		rememberAlgoH3Input(false, path);
 		//a new map invalidates everything taught against the old one
 		_algoH3Output = AlgoHeight3Output();
 		refreshAlgoH3RoiBoxes();
@@ -398,6 +399,7 @@ void VisionApp::initAlgoHeight3Page()
 			return;
 		}
 		ui.lineEdit_algoH3InputLoadIntensityStatus->setText(QFileInfo(path).fileName());
+		rememberAlgoH3Input(true, path);
 		updateAlgoH3Display();
 		updateAlgoH3Enables();
 		AuditLog::instance().log(QStringLiteral("ALGO_H3_LOAD_INTENSITY"), QFileInfo(path).fileName());
@@ -415,6 +417,10 @@ void VisionApp::initAlgoHeight3Page()
 		ui.lineEdit_algoH3InputLoadHeightStatus->setText(QStringLiteral("(from last scan)"));
 		ui.lineEdit_algoH3InputLoadIntensityStatus->setText(
 			AlgoManager::instance().height3HasIntensity() ? QStringLiteral("(from last scan)") : QString());
+		//the maps now come from the scan, not from a pair of files: forget the remembered
+		//ones rather than have the next restart silently replace a scan with stale files
+		rememberAlgoH3Input(false, QString());
+		rememberAlgoH3Input(true, QString());
 
 		_algoH3Output = AlgoHeight3Output();
 		refreshAlgoH3RoiBoxes();
@@ -1364,6 +1370,91 @@ void VisionApp::algoH3ShownStage(bool& preprocessed, bool& segmented) const
 	const int section = algoH3CurrentSection();
 	preprocessed = (section >= SEC_PREPROCESS);
 	segmented = (section >= SEC_DATUM) && AlgoManager::instance().height3SegmentReady();
+}
+
+/*
+* Remember, or forget, one of the two input files.
+*
+* Alongside Recent_Open_Recipe in the system JSON, because that is already the app's answer to
+* "pick up where you left off" and these belong to the installation rather than to the recipe -
+* the maps are sample data the operator teaches against, not something the recipe owns.
+*
+* An empty path clears the key, which is what "Use Last Scan" does: the maps come from the
+* machine then, and leaving the old files recorded would have the next restart quietly put a
+* stale pair back in their place.
+*/
+void VisionApp::rememberAlgoH3Input(bool intensity, const QString& path)
+{
+	const QString key = intensity ? QStringLiteral("Algo_H3_Recent_Intensity_Map")
+		: QStringLiteral("Algo_H3_Recent_Height_Map");
+	_systemObj.insert(key, path);
+	updateSystemInfo(_systemObj);
+}
+
+/*
+* Reload the remembered pair, once, the first time the page is opened in this session.
+*
+* Height first and intensity second, because loading a height map of a different size drops the
+* intensity map that no longer lines up with it - do it the other way round and the restore
+* throws away the thing it just loaded.
+*
+* A file that has since been moved or deleted is reported in the status line and nothing more:
+* this runs because the operator opened a page, not because they asked for anything, so it has
+* no business putting a modal in front of them. The key is left alone so the path stays visible
+* and comes back if the folder is remounted.
+*/
+void VisionApp::restoreAlgoH3Inputs()
+{
+	if (_algoH3InputsRestored) return;
+	_algoH3InputsRestored = true;
+
+	const QString heightPath = jsonHelper::getString(_systemObj,
+		QStringLiteral("Algo_H3_Recent_Height_Map"));
+	const QString intensityPath = jsonHelper::getString(_systemObj,
+		QStringLiteral("Algo_H3_Recent_Intensity_Map"));
+	if (heightPath.isEmpty() && intensityPath.isEmpty()) return;
+
+	//a scan loaded in this session outranks anything a previous one left on disk
+	if (AlgoManager::instance().height3HasHeight()) return;
+
+	auto& mgr = AlgoManager::instance();
+	bool loadedAny = false;
+
+	if (!heightPath.isEmpty()) {
+		QString error;
+		if (mgr.height3LoadHeightFile(heightPath, error)) {
+			ui.lineEdit_algoH3InputLoadHeightStatus->setText(QFileInfo(heightPath).fileName());
+			loadedAny = true;
+		}
+		else {
+			ui.lineEdit_algoH3InputLoadHeightStatus->setText(error);
+			ct::logger::warn("[Algo H3] Could not reopen the last height map %s: %s",
+				heightPath.toStdString().c_str(), error.toStdString().c_str());
+		}
+	}
+
+	//no height map means nothing for an intensity map to line up against, so do not try
+	if (!intensityPath.isEmpty() && mgr.height3HasHeight()) {
+		QString error;
+		if (mgr.height3LoadIntensityFile(intensityPath, error)) {
+			ui.lineEdit_algoH3InputLoadIntensityStatus->setText(QFileInfo(intensityPath).fileName());
+			loadedAny = true;
+		}
+		else {
+			ui.lineEdit_algoH3InputLoadIntensityStatus->setText(error);
+			ct::logger::warn("[Algo H3] Could not reopen the last intensity map %s: %s",
+				intensityPath.toStdString().c_str(), error.toStdString().c_str());
+		}
+	}
+
+	if (!loadedAny) return;
+
+	//the maps are back but nothing has been measured from them yet, exactly as after a manual load
+	_algoH3Output = AlgoHeight3Output();
+	refreshAlgoH3RoiBoxes();
+	applyAlgoH3Output(_algoH3Output);
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_RESTORE_INPUT"),
+		QFileInfo(heightPath).fileName());
 }
 
 void VisionApp::updateAlgoH3Display()
