@@ -387,6 +387,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initImageFiltering();
 	initProductionUI();
 	initSafetyCheckPage();
+	initPmfPage();
 
 	ct::logger::info("Initializing Startup State...");
 	initStartupState();
@@ -1476,6 +1477,7 @@ void VisionApp::connectSignalAndSlot()
 	connect(_rightMenu, &ExtendedMenu::showNamingConvention, this, [=]() { toPage(UIPage::NAMING_CONVENTION); });
 	connect(_rightMenu, &ExtendedMenu::showUnitConfigTab, this, [=]() {toPage(UIPage::UNIT_CONFIG);});
 	connect(_rightMenu, &ExtendedMenu::showSafetyCheckTab, this, [=]() {toPage(UIPage::SAFETY_CHECK);});
+	connect(_rightMenu, &ExtendedMenu::showPmfTab, this, [=]() {toPage(UIPage::PMF);});
 
 	/*
 	* Locate the fiducials without running production. The transform this builds is what
@@ -6859,6 +6861,10 @@ bool VisionApp::toPage(UIPage page) {
 	case UIPage::DRY_RUN:
 		unlockAllROIs();
 		showRightTab((int)page, QStringLiteral("Open Dry Run"));
+		return true;
+	case UIPage::PMF:
+		unlockAllROIs();
+		showRightTab((int)page, QStringLiteral("Open PMF"));
 		return true;
 	case UIPage::SAFETY_CHECK:
 		unlockAllROIs();

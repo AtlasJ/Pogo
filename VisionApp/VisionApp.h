@@ -154,7 +154,7 @@ enum class Direction {
 enum class UIPage {
 	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
-	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK
+	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK, PMF
 };
 
 enum class UIHierarchy {
@@ -566,6 +566,12 @@ private:
 
 	//── safety check (VisionApp_SafetyCheck.cpp): feature-present gate before production
 	void initSafetyCheckPage();
+
+	//── Pogo Mapping File (VisionApp_PMF.cpp)
+	static const int kPmfContextColumns = 4; //Slot, Board, Description, Cable before column A
+	void initPmfPage();
+	void loadPmfFile(const QString& path);
+	QString _pmfLastDir;
 	void refreshSafetyCheckPage();
 	void captureSafetyCheckFromUI();
 	void showSafetyCheckResult(const SafetyCheckResult& res);

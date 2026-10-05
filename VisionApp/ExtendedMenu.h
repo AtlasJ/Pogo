@@ -28,4 +28,5 @@ signals:
 	void showNamingConvention();
 	void showUnitConfigTab();
 	void showSafetyCheckTab();
+	void showPmfTab();
 };
