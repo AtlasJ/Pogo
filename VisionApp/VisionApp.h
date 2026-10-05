@@ -570,7 +570,8 @@ private:
 	//── Pogo Mapping File (VisionApp_PMF.cpp)
 	static const int kPmfContextColumns = 4; //Slot, Board, Description, Cable before column A
 	static const int kPmfWorkspacePage = 7;  //pagePMF in stackedWidgetViewSelection
-	void showPmfXyForRow(int row);           //fill the XY grid from one table row
+	void buildPmfXyTable();                  //continuous XY grid for the whole file
+	QVector<int> _pmfRowFirstX;              //table row -> its first X column, -1 when it has none
 	void initPmfPage();
 	void loadPmfFile(const QString& path);
 	QString _pmfLastDir;

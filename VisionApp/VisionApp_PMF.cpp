@@ -53,10 +53,18 @@ void VisionApp::initPmfPage()
 
 	ui.tableWidget_pmfXY->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
-	//the grid belongs to ONE board, so it follows the selection rather than trying to merge
-	//every slot into a single map - two slots can both own an X1Y1 and neither is wrong
+	/*
+	* The grid spans the whole file, so selecting a board cannot rebuild it - instead it
+	* scrolls to where that board's columns start. With a hundred-odd X columns, finding
+	* the one you care about by hand is the slow part.
+	*/
 	connect(ui.tableWidget_pmf, &QTableWidget::currentCellChanged, this,
-		[=](int row, int, int, int) { showPmfXyForRow(row); });
+		[=](int row, int, int, int) {
+			if (row < 0 || row >= _pmfRowFirstX.size()) return;
+			const int x = _pmfRowFirstX[row];
+			if (x > 0) ui.tableWidget_pmfXY->scrollToItem(
+				ui.tableWidget_pmfXY->item(0, x - 1), QAbstractItemView::PositionAtCenter);
+		});
 }
 
 void VisionApp::loadPmfFile(const QString& path)
@@ -148,6 +156,9 @@ void VisionApp::loadPmfFile(const QString& path)
 
 	t->resizeColumnsToContents();
 
+	//the XY grid is derived from what just landed in the table above
+	buildPmfXyTable();
+
 	const int pages = root.value(QStringLiteral("pages")).toInt();
 	ui.label_pmfStatus->setStyleSheet(QStringLiteral("color:#4CAF50;"));
 	ui.label_pmfStatus->setText(tr("%1 row(s) from %2 page(s)").arg(rows.size()).arg(pages));
@@ -158,17 +169,18 @@ void VisionApp::loadPmfFile(const QString& path)
 }
 
 /*
-* The XY grid for one board.
+* The XY grid for the WHOLE file, numbered continuously.
 *
-* The PMF stores a pogo block as sixteen lettered columns, each holding the positions for
-* that column top to bottom: column A reads "226, 626, 258, 658". The letter is the X index
-* and the place in the list is the Y index, so A is X1 and its first entry is Y1 - giving
-* X1Y1 = 226, X2Y1 = 230 (column B's first entry) and X1Y2 = 626 (column A's second).
+* The PMF stores each board as sixteen lettered columns, every one holding that column's
+* positions top to bottom: slot 101 column A reads "226, 626, 258, 658". The place in the
+* list is the Y index, and the X index runs on across boards rather than restarting - slot
+* 101 uses four columns, so it takes X1..X4, and the next board's column A becomes X5.
+* That gives X1Y1 = 226 and X5Y1 = 212.
 *
-* Only the columns that actually carry values are shown. A board using four of the sixteen
-* would otherwise sit behind twelve empty columns, with the real data squeezed off to the left.
+* Only populated columns take an X number. An empty lettered column is not a position that
+* exists, so numbering it would push every later column along by one and break the sequence.
 */
-void VisionApp::showPmfXyForRow(int row)
+void VisionApp::buildPmfXyTable()
 {
 	auto* src = ui.tableWidget_pmf;
 	auto* grid = ui.tableWidget_pmfXY;
@@ -176,62 +188,75 @@ void VisionApp::showPmfXyForRow(int row)
 	grid->clear();
 	grid->setRowCount(0);
 	grid->setColumnCount(0);
+	_pmfRowFirstX.clear();
+	_pmfRowFirstX.resize(src->rowCount());
 
-	if (row < 0 || row >= src->rowCount()) {
-		ui.label_pmfXYCap->setText(tr("XY coordinates - select a row above"));
-		return;
-	}
-
-	//split every pogo column of this row into its Y values
-	QVector<QStringList> byX;
+	struct XCol { QStringList values; QString slot; QString board; QChar letter; };
+	QVector<XCol> columns;
 	int maxY = 0;
-	int lastUsedX = -1;
 
-	for (int c = kPmfContextColumns; c < src->columnCount(); c++) {
-		auto* item = src->item(row, c);
-		const QString text = item ? item->text().trimmed() : QString();
+	for (int r = 0; r < src->rowCount(); r++) {
+		_pmfRowFirstX[r] = -1;
 
-		QStringList values;
-		for (const QString& part : text.split(QLatin1Char(','), QString::SkipEmptyParts)) {
-			const QString v = part.trimmed();
-			if (!v.isEmpty()) values << v;
+		auto* slotItem = src->item(r, 0);
+		auto* boardItem = src->item(r, 1);
+
+		for (int c = kPmfContextColumns; c < src->columnCount(); c++) {
+			auto* item = src->item(r, c);
+			const QString text = item ? item->text().trimmed() : QString();
+			if (text.isEmpty()) continue;
+
+			XCol col;
+			for (const QString& part : text.split(QLatin1Char(','), QString::SkipEmptyParts)) {
+				const QString v = part.trimmed();
+				if (!v.isEmpty()) col.values << v;
+			}
+			if (col.values.isEmpty()) continue;
+
+			col.slot = slotItem ? slotItem->text() : QString();
+			col.board = boardItem ? boardItem->text() : QString();
+			col.letter = QChar('A' + (c - kPmfContextColumns));
+
+			if (_pmfRowFirstX[r] < 0) _pmfRowFirstX[r] = columns.size() + 1; //1-based X
+			maxY = std::max(maxY, col.values.size());
+			columns.append(col);
 		}
-
-		if (!values.isEmpty()) lastUsedX = byX.size();
-		maxY = std::max(maxY, values.size());
-		byX.append(values);
 	}
 
-	if (lastUsedX < 0 || maxY == 0) {
-		ui.label_pmfXYCap->setText(tr("XY coordinates - this row has no pogo positions"));
+	if (columns.isEmpty() || maxY == 0) {
+		ui.label_pmfXYCap->setText(tr("XY coordinates - nothing to show"));
 		return;
 	}
 
-	const int cols = lastUsedX + 1;
-	grid->setColumnCount(cols);
+	grid->setColumnCount(columns.size());
 	grid->setRowCount(maxY);
 
-	QStringList xHeaders, yHeaders;
-	for (int x = 0; x < cols; x++) xHeaders << QStringLiteral("X%1").arg(x + 1);
+	QStringList yHeaders;
 	for (int y = 0; y < maxY; y++) yHeaders << QStringLiteral("Y%1").arg(y + 1);
-	grid->setHorizontalHeaderLabels(xHeaders);
 	grid->setVerticalHeaderLabels(yHeaders);
 
-	for (int x = 0; x < cols; x++) {
+	for (int x = 0; x < columns.size(); x++) {
+		const XCol& col = columns[x];
+
+		//the X number alone cannot say where a position came from, and with this many columns
+		//that matters - the header carries its board on the tooltip
+		auto* head = new QTableWidgetItem(QStringLiteral("X%1").arg(x + 1));
+		head->setToolTip(tr("Slot %1, %2, column %3")
+			.arg(col.slot, col.board, QString(col.letter)));
+		grid->setHorizontalHeaderItem(x, head);
+
 		for (int y = 0; y < maxY; y++) {
-			const QString v = (y < byX[x].size()) ? byX[x][y] : QString();
+			const QString v = (y < col.values.size()) ? col.values[y] : QString();
 			auto* cell = new QTableWidgetItem(v);
 			cell->setTextAlignment(Qt::AlignCenter);
 			cell->setForeground(QBrush(v.isEmpty() ? QColor(0x6A, 0x72, 0x80) : QColor(0xF0, 0xF0, 0xF0)));
+			cell->setToolTip(v.isEmpty() ? QString()
+				: tr("X%1Y%2 - slot %3, column %4").arg(x + 1).arg(y + 1).arg(col.slot, QString(col.letter)));
 			grid->setItem(y, x, cell);
 		}
 	}
 
 	grid->resizeColumnsToContents();
-
-	//name the board the grid belongs to - "X1Y1" means nothing without it
-	auto* slot = src->item(row, 0);
-	auto* board = src->item(row, 1);
-	ui.label_pmfXYCap->setText(tr("XY coordinates - slot %1, %2")
-		.arg(slot ? slot->text() : QString("?"), board ? board->text() : QString("?")));
+	ui.label_pmfXYCap->setText(tr("XY coordinates - %1 columns across %2 board(s)")
+		.arg(columns.size()).arg(src->rowCount()));
 }
