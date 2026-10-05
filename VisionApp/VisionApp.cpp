@@ -6863,8 +6863,14 @@ bool VisionApp::toPage(UIPage page) {
 		showRightTab((int)page, QStringLiteral("Open Dry Run"));
 		return true;
 	case UIPage::PMF:
+		/*
+		* The PMF page sits in the WORKSPACE stack, where the world view is, rather than in
+		* the right tab: it carries two wide tables (A..P is sixteen columns, and the XY grid
+		* is wider still) and the 660 px right tab cannot show either without scrolling.
+		*/
 		unlockAllROIs();
-		showRightTab((int)page, QStringLiteral("Open PMF"));
+		ui.stackedWidgetViewSelection->setCurrentIndex(kPmfWorkspacePage);
+		showStatus(QStringLiteral("Open PMF"));
 		return true;
 	case UIPage::SAFETY_CHECK:
 		unlockAllROIs();
