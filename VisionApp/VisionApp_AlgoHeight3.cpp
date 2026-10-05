@@ -131,6 +131,26 @@ static QString h3RoiLabelText(const AlgoH3RoiResult& r)
 	return r.valid ? QString::number(r.heightUm, 'f', 1) : QStringLiteral("NO DATA");
 }
 
+/*
+* One log line for a stage the page just ran. Until this existed the page logged only the
+* button press - ALGO_H3_RUN in the audit log, written at dispatch with no result, so it
+* reads "OK" whatever happened - and every number went to the widgets and nowhere else.
+* Production logs its own line per unit (InspectionThread); this is the page's equivalent.
+*/
+static void h3LogStage(const char* stage, const AlgoH3StageResult& s, const QString& details)
+{
+	if (!s.ran) return; //a Run All that stopped early never reached the later stages
+
+	QString line = s.pass
+		? QStringLiteral("OK in %1 ms").arg(s.elapsedMs)
+		: QStringLiteral("FAILED in %1 ms: %2").arg(s.elapsedMs).arg(s.failReason);
+	if (!details.isEmpty()) line += QStringLiteral(" - ") + details;
+	if (!s.note.isEmpty()) line += QStringLiteral(" [note: %1]").arg(s.note);
+
+	if (s.pass) ct::logger::info("[Algo H3] Page %s: %s", stage, line.toStdString().c_str());
+	else ct::logger::warn("[Algo H3] Page %s: %s", stage, line.toStdString().c_str());
+}
+
 //the same sentence in both refusals, so the operator is told where the ROIs DO belong
 static const char* kH3RoiSectionHint =
 	"Open the Datum Plane section to work with datum ROIs, or ROI Types & Criteria / "
@@ -663,7 +683,7 @@ void VisionApp::initAlgoHeight3Page()
 			removed = true;
 		}
 		if (!removed) {
-			showMsg("Click one or more ROIs on the image first, then Delete Selected ROI.");
+			showMsg("Click one or more ROIs on the image first, then press Delete Selected.");
 			return;
 		}
 		for (int i = 0; i < _algoH3RoiBoxes.size(); i++)
@@ -774,6 +794,60 @@ void VisionApp::initAlgoHeight3Page()
 				break;
 			}
 			ui.label_algoStatus->setText(status);
+
+			/*
+			* One log line per stage THIS job ran. A single-stage run carries the earlier
+			* stages' results too, from whenever they last ran, so only a Run All logs more
+			* than the one stage - and h3LogStage skips any stage it never reached.
+			*/
+			const bool all = ((AlgoH3Stage)stage == AlgoH3Stage::All);
+			auto thisJob = [&](AlgoH3Stage s) { return all || (AlgoH3Stage)stage == s; };
+
+			if (thisJob(AlgoH3Stage::Preprocess))
+				h3LogStage("Preprocess", out.preprocess, QString());
+
+			//the size is measured before the canvas check, so a refusal still reports it
+			if (thisJob(AlgoH3Stage::Segment))
+				h3LogStage("Segment", out.segment, out.segWidthUm > 0.0
+					? QStringLiteral("part %1 x %2 um at %3 deg")
+						.arg(out.segWidthUm, 0, 'f', 2).arg(out.segHeightUm, 0, 'f', 2)
+						.arg(out.segAngleDeg, 0, 'f', 3)
+					: QString());
+
+			if (thisJob(AlgoH3Stage::Datum))
+				h3LogStage("Datum", out.datum, out.planeValid
+					? QStringLiteral("tilt %1 deg, RMS %2 um, %3 points")
+						.arg(out.planeTiltDeg, 0, 'f', 3).arg(out.planeRmsUm, 0, 'f', 2)
+						.arg(out.datumPoints)
+					: QString());
+
+			if (thisJob(AlgoH3Stage::Measure)) {
+				int pass = 0, fail = 0, noData = 0;
+				for (const auto& r : out.roiResults) {
+					if (!r.valid) noData++;
+					else if (r.pass) pass++;
+					else fail++;
+				}
+				h3LogStage("Measure", out.measure, out.measure.pass
+					? QStringLiteral("%1 ROI(s): %2 pass, %3 fail, %4 no data")
+						.arg(out.roiResults.size()).arg(pass).arg(fail).arg(noData)
+					: QString());
+			}
+
+			//unlike the others, this stage's pass IS the unit's verdict (doOverall sets it from
+			//overallPass), so a FAIL here is a failed unit and its reasons are the failReason -
+			//the tally is wanted either way, and only a measurement that never ran has none
+			if (thisJob(AlgoH3Stage::Overall))
+				h3LogStage("Overall", out.overall, out.totalPins > 0
+					? QStringLiteral("%1 of %2 pins passed, %3 failed (%4%)")
+						.arg(out.passedPins).arg(out.totalPins).arg(out.failedPins)
+						.arg(out.failedRatePct, 0, 'f', 2)
+					: QString());
+
+			if (all)
+				ct::logger::info("[Algo H3] Page Run All: pass=%d, %s (%lld ms)",
+					out.overallPass ? 1 : 0, algoH3RunSummary(out).toStdString().c_str(),
+					(long long)out.totalElapsedMs);
 		});
 
 	//last: every section's contents are configured by now, so their heights are meaningful

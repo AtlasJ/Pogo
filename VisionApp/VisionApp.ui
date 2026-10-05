@@ -24307,8 +24307,11 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                    <item>
                                     <widget class="QToolButton" name="toolButton_algoH3RoiDeleteType">
+                                     <property name="toolTip">
+                                      <string>Delete the type chosen in ROI Type below, together with its ROIs (asks first if any use it)</string>
+                                     </property>
                                      <property name="text">
-                                      <string>Delete Selected ROI Type</string>
+                                      <string>Delete Current Type</string>
                                      </property>
                                     </widget>
                                    </item>
@@ -24345,15 +24348,21 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                    <item>
                                     <widget class="QToolButton" name="toolButton_algoH3RoiDelete">
+                                     <property name="toolTip">
+                                      <string>Delete the ROIs selected on the image</string>
+                                     </property>
                                      <property name="text">
-                                      <string>Delete Selected ROI</string>
+                                      <string>Delete Selected</string>
                                      </property>
                                     </widget>
                                    </item>
                                    <item>
                                     <widget class="QToolButton" name="toolButton_algoH3RoiAssignType">
+                                     <property name="toolTip">
+                                      <string>Move the ROIs selected on the image to the type chosen in ROI Type below</string>
+                                     </property>
                                      <property name="text">
-                                      <string>Assign Selected ROI to Current Type</string>
+                                      <string>Assign to Current Type</string>
                                      </property>
                                     </widget>
                                    </item>
