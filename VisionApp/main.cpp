@@ -60,6 +60,16 @@ int main(int argc, char *argv[])
 	//QByteArray scaleAsQByteArray(scaleAsString.c_str(), scaleAsString.length());
 	//qputenv("QT_SCALE_FACTOR", scaleAsQByteArray);
 
+	/*
+	* Desktop OpenGL, not ANGLE. The 3D views on the Height 3 page render through an offscreen
+	* OpenGL 3.3 core context (AlgoH3GLSurface.cpp), which ANGLE's ES profile cannot provide.
+	* It has to be set before the QApplication is constructed - afterwards it is ignored.
+	*
+	* Nothing else in the app touches OpenGL, and if the attribute cannot be honoured on a given
+	* machine the 3D views fall back to their CPU renderer, so this cannot cost us a working app.
+	*/
+	QApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+
 	QApplication a(argc, argv);
 
 	a.setAttribute(Qt::AA_EnableHighDpiScaling);

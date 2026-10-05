@@ -9,6 +9,8 @@
 // =============================================================================
 
 #include "AlgoHeight3.h"
+#include "AlgoH3GLSurface.h"
+#include "AlgoH3HoleFill.h"
 
 #include <QElapsedTimer>
 #include <QPainter>
@@ -1278,6 +1280,57 @@ const double kMeshLightY = -0.6484;
 const double kMeshLightZ = 0.6484;
 const double kMeshAmbient = 0.32;   //floor, so a facet facing away is dim but never black
 
+/*
+* Close the shadows the pins cast on each other, on the display grid, before anything is
+* drawn from it.
+*
+* A pin blocks the laser from reaching part of its neighbour, so the neighbour comes back
+* with no height exactly where it is most crowded. A quad with an unmeasured corner cannot
+* be drawn, so every one of those shadows is a bite taken out of a pin in the 3D view - and
+* on a dense field that is most of what the operator is trying to look at.
+*
+* Only ENCLOSED gaps are filled, which is what separates a pin's own shadow from the space
+* around the pins: see AlgoH3HoleFill.h. Filled heights are clamped back into the valid band
+* so validMaskOf() accepts them - over-relaxation can overshoot a rim by a hair, and a value
+* one count outside the band would come straight back as a dropout.
+*
+* Display only. Nothing is measured from this grid - the pipeline measures the full-resolution
+* map, which this never touches.
+*/
+h3fill::Report algoH3FillDisplayGrid(cv::Mat& grid16, int minValidRaw, int maxValidRaw)
+{
+	if (grid16.empty() || grid16.type() != CV_16U) return h3fill::Report();
+
+	const int w = grid16.cols, h = grid16.rows;
+	const cv::Mat mask = validMaskOf(grid16, minValidRaw, maxValidRaw);
+
+	std::vector<float> z((size_t)w * h, h3fill::kNaN);
+	for (int j = 0; j < h; j++) {
+		const ushort* row = grid16.ptr<ushort>(j);
+		const uchar* mrow = mask.ptr<uchar>(j);
+		for (int i = 0; i < w; i++) if (mrow[i]) z[(size_t)j * w + i] = (float)row[i];
+	}
+
+	h3fill::Params prm;
+	prm.mode = h3fill::Mode::Interpolate;
+	prm.tol = 0.5f;          //raw counts: half a count is already below anything that can be seen
+	const h3fill::Report rep = h3fill::algoH3FillHoles(z, w, h, prm);
+	if (rep.filledCells == 0) return rep;
+
+	for (int j = 0; j < h; j++) {
+		ushort* row = grid16.ptr<ushort>(j);
+		const uchar* mrow = mask.ptr<uchar>(j);
+		for (int i = 0; i < w; i++) {
+			if (mrow[i]) continue;                    //already measured, leave it alone
+			const float v = z[(size_t)j * w + i];
+			if (!h3fill::valid(v)) continue;          //background, still a gap
+			row[i] = (ushort)std::lround(std::max((double)minValidRaw,
+				std::min((double)maxValidRaw, (double)v)));
+		}
+	}
+	return rep;
+}
+
 } //namespace
 
 /*
@@ -1312,19 +1365,31 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 	else height16.convertTo(src, CV_16U);
 
 	/*
-	* Downsample to a grid we can still rotate interactively. Budget per style, because
-	* they cost very different amounts per cell: at the filled view's 150 a 1.27 mm pin on
-	* a 10000 px map is under 4 cells wide and simply is not there, but a wireframe at 400
-	* is an unreadable ball of lines. Points are the cheapest thing to draw, so they get
-	* the most. Filled keeps 150 so that mode renders exactly as it always has.
+	* Downsample to a grid we can still rotate interactively. Budget per style, because they
+	* cost very different amounts per cell: at the CPU filled view's 150 a 1.27 mm pin on a
+	* 10000 px map is under 4 cells wide and simply is not there, but a wireframe at 400 is an
+	* unreadable ball of lines. Points are the cheapest thing to draw, so they get the most.
+	*
+	* The GPU column is several times denser, because those numbers were set by what a QPainter
+	* could sort and fill per drag frame and a depth-buffered mesh has no such limit. Resolving
+	* a pin at all is the whole point of this view, so that headroom goes straight into cells.
+	* The wireframe barely moves either way: a dense hidden-line lattice is unreadable no matter
+	* who draws it.
 	*/
-	const int kGridBudget =
-		(style == AlgoH3SurfaceStyle::Filled)       ? 150 :
-		(style == AlgoH3SurfaceStyle::ShadedMesh)   ? 240 :
-		(style == AlgoH3SurfaceStyle::SmoothShaded) ? 420 :
-		(style == AlgoH3SurfaceStyle::Wireframe)    ? 170 :
-		(style == AlgoH3SurfaceStyle::PointCloud)   ? 380 :
-		/* Textured */                                420;
+	const bool gpu = algoH3GLAvailable();
+	const int kGridBudget = gpu
+		? ((style == AlgoH3SurfaceStyle::Filled)       ?  800 :
+		   (style == AlgoH3SurfaceStyle::ShadedMesh)   ?  800 :
+		   (style == AlgoH3SurfaceStyle::SmoothShaded) ? 1100 :
+		   (style == AlgoH3SurfaceStyle::Wireframe)    ?  320 :
+		   (style == AlgoH3SurfaceStyle::PointCloud)   ? 1100 :
+		   /* Textured */                                1100)
+		: ((style == AlgoH3SurfaceStyle::Filled)       ?  150 :
+		   (style == AlgoH3SurfaceStyle::ShadedMesh)   ?  240 :
+		   (style == AlgoH3SurfaceStyle::SmoothShaded) ?  420 :
+		   (style == AlgoH3SurfaceStyle::Wireframe)    ?  170 :
+		   (style == AlgoH3SurfaceStyle::PointCloud)   ?  380 :
+		   /* Textured */                                 420);
 	const double shrink = std::min(1.0,
 		(double)kGridBudget / (double)std::max(src.cols, src.rows));
 	const int gw = std::max(2, (int)std::lround(src.cols * shrink));
@@ -1332,6 +1397,11 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 
 	cv::Mat grid;
 	cv::resize(src, grid, cv::Size(gw, gh), 0, 0, cv::INTER_NEAREST);
+
+	//Before anything asks which cells are valid: reconstruct the pin surface the neighbouring
+	//pins shadowed. Without this a quad with one unmeasured corner is skipped, and the pins come
+	//out of every 3D view with bites taken out of them.
+	algoH3FillDisplayGrid(grid, minValidRaw, maxValidRaw);
 
 	//the intensity texture rides the SAME grid, so a cell's colour and its geometry come
 	//from the same place on the part. INTER_AREA here, not NEAREST: this one is a picture,
@@ -1351,6 +1421,43 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 	if (cv::countNonZero(gmask) == 0) return img;
 	cv::minMaxLoc(grid, &zMin, &zMax, nullptr, nullptr, gmask);
 	if (zMax <= zMin) zMax = zMin + 1.0;
+
+	/*
+	* The GPU path. Everything below it is the CPU fallback and stays reachable: a machine PC
+	* with no usable desktop GL driver still gets a picture rather than a black canvas.
+	*
+	* The two share this grid, this validity mask and this colour band, and project the same
+	* way, so switching between them does not move the part on the canvas or change its colour.
+	* What differs is that the GPU resolves occlusion with a depth buffer instead of sorting
+	* quads far-to-near - and on a pin field the painter's algorithm genuinely fails, because
+	* two pins at a similar distance interleave in depth and flicker through each other as the
+	* view is spun.
+	*/
+	if (gpu) {
+		AlgoH3GLScene scene;
+		scene.w = gw;
+		scene.h = gh;
+		scene.zMin = zMin;
+		scene.zMax = zMax;
+		scene.ramp = reinterpret_cast<const unsigned int*>(jetTable());
+		scene.z.resize((size_t)gw * gh, h3fill::kNaN);
+		for (int j = 0; j < gh; j++) {
+			const ushort* row = grid.ptr<ushort>(j);
+			const uchar* mrow = gmask.ptr<uchar>(j);
+			for (int i = 0; i < gw; i++) if (mrow[i]) scene.z[(size_t)j * gw + i] = (float)row[i];
+		}
+		if (haveTex) {
+			scene.tex.resize((size_t)gw * gh);
+			for (int j = 0; j < gh; j++) {
+				const uchar* trow = gtex.ptr<uchar>(j);
+				for (int i = 0; i < gw; i++) scene.tex[(size_t)j * gw + i] = trow[i];
+			}
+		}
+
+		const QImage rendered = algoH3RenderSurfaceGL(scene, yawDeg, pitchDeg,
+			zExaggeration, size, style);
+		if (!rendered.isNull()) return rendered;
+	}
 
 	// ── model space: x,y in [-1,1] scaled by aspect, z centred on 0 ──
 	const double aspect = (double)gw / (double)std::max(1, gh);

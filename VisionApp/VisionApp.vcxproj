@@ -228,6 +228,7 @@
     <ClCompile Include="Profiler_Keyence.cpp" />
     <ClCompile Include="ScaleManager.cpp" />
     <ClCompile Include="AlgoBuffers.cpp" />
+    <ClCompile Include="AlgoH3GLSurface.cpp" />
     <ClCompile Include="AlgoHeight3.cpp" />
     <ClCompile Include="AlgoManager.cpp" />
     <ClCompile Include="AlgoManager_Height3.cpp" />
@@ -263,6 +264,8 @@
     <QtMoc Include="External3DViewer.h" />
     <QtMoc Include="InspectionThread.h" />
     <QtMoc Include="PaddleOcrClient.h" />
+    <ClInclude Include="AlgoH3GLSurface.h" />
+    <ClInclude Include="AlgoH3HoleFill.h" />
     <ClInclude Include="AlgoHeight3.h" />
     <ClInclude Include="AlgoHeight3Types.h" />
     <ClInclude Include="AlgoSetupTypes.h" />
