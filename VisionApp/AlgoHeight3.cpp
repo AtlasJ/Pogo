@@ -2588,14 +2588,33 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 	//shortest pin worth teaching
 	const double cutUm = std::max(25.0, pinTopUm / 6.0);
 
+	/*
+	* TWO masks, because they answer different questions.
+	*
+	* The low one, a sixth of the way up a pin, is everything that stands proud of the plate -
+	* a pin's whole flank and the skirt of lower surface around it. That is the right thing for
+	* asking WHETHER a lattice cell holds a pin, because a pin lost in its neighbour's shadow
+	* still shows some of its flank.
+	*
+	* The high one is the pin TOP: the flat disc at the end of it. That is the right thing for
+	* asking WHERE the pin is and HOW BIG to make its box. Sizing from the low mask was the
+	* mistake in the first version - the skirt is as wide as the whole cell and lopsided with
+	* it, so the boxes came out cell-sized and centred on the shadow rather than on the pin.
+	*/
+	const double topCutUm = 0.7 * pinTopUm;
+
 	cv::Mat mask(h, w, CV_8U, cv::Scalar(0));
+	cv::Mat tops(h, w, CV_8U, cv::Scalar(0));
 	for (int y = 0; y < h; y++) {
 		const ushort* row = m_cropHeight.ptr<ushort>(y);
 		uchar* mrow = mask.ptr<uchar>(y);
+		uchar* trow = tops.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
 			const ushort z = row[x];
 			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
-			if ((z - planeZ(plane, x, y)) / p.zScaleRawPerUm > cutUm) mrow[x] = 255;
+			const double d = (z - planeZ(plane, x, y)) / p.zScaleRawPerUm;
+			if (d > cutUm) mrow[x] = 255;
+			if (d > topCutUm) trow[x] = 255;
 		}
 	}
 
@@ -2606,11 +2625,35 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 		(int)std::lround(150.0 / std::min(p.xScaleUmPx, p.yScaleUmPx)) | 1));
 	cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
 		cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(closeK, closeK)));
+	cv::morphologyEx(tops, tops, cv::MORPH_CLOSE,
+		cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(closeK, closeK)));
+
+	//the pin tops as objects: centres to put the lattice through, extents to size the box by
+	cv::Mat tLab, tStat, tCent;
+	const int nTops = cv::connectedComponentsWithStats(tops, tLab, tStat, tCent, 8, CV_32S);
+	std::vector<int> topAreas;
+	for (int i = 1; i < nTops; i++) topAreas.push_back(tStat.at<int>(i, cv::CC_STAT_AREA));
+	int topFloor = 0;
+	if (!topAreas.empty()) {
+		std::nth_element(topAreas.begin(), topAreas.begin() + topAreas.size() / 2, topAreas.end());
+		//a third of a typical top: keeps a disc the sensor only half saw, drops the speckle
+		topFloor = std::max(16, topAreas[topAreas.size() / 2] / 3);
+	}
+	struct Disc { double cx, cy; int w, h; };
+	std::vector<Disc> discs;
+	for (int i = 1; i < nTops; i++) {
+		if (tStat.at<int>(i, cv::CC_STAT_AREA) < topFloor) continue;
+		discs.push_back({ tCent.at<double>(i, 0), tCent.at<double>(i, 1),
+			tStat.at<int>(i, cv::CC_STAT_WIDTH), tStat.at<int>(i, cv::CC_STAT_HEIGHT) });
+	}
 
 	// ── 3. the lattice ──
+	//the tops, because they are compact and separated - the flanks run into each other and
+	//blur the very repeat the transform is looking for
+	const cv::Mat& periodic = discs.size() >= 8 ? tops : mask;
 	std::vector<double> colSum(w, 0.0), rowSum(h, 0.0);
 	for (int y = 0; y < h; y++) {
-		const uchar* mrow = mask.ptr<uchar>(y);
+		const uchar* mrow = periodic.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
 			if (!mrow[x]) continue;
 			colSum[x] += 1.0; rowSum[y] += 1.0;
@@ -2640,6 +2683,24 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 		return false;
 	}
 
+	/*
+	* The box is sized to the pin TOP, not to the cell.
+	*
+	* The ninetieth percentile of the discs rather than the largest: a couple of them will have
+	* run into a neighbour's top and measure double, and one of those must not set the size for
+	* all two hundred. Plus a tenth as buffer, never less than 50 um.
+	*/
+	double discW = 0, discH = 0;
+	if (discs.size() >= 8) {
+		std::vector<int> ws, hs;
+		for (const Disc& d : discs) { ws.push_back(d.w); hs.push_back(d.h); }
+		const size_t k = (size_t)(0.9 * (ws.size() - 1));
+		std::nth_element(ws.begin(), ws.begin() + k, ws.end()); discW = ws[k];
+		std::nth_element(hs.begin(), hs.begin() + k, hs.end()); discH = hs[k];
+		discW += 2.0 * std::max(50.0 / p.xScaleUmPx, discW / 10.0);
+		discH += 2.0 * std::max(50.0 / p.yScaleUmPx, discH / 10.0);
+	}
+
 	double boxW = 0, boxH = 0;
 	if (seed) {
 		//the operator has shown it a pin: take the size from the box they drew, and put the
@@ -2657,35 +2718,38 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 		phy = std::fmod(sy - py / 2.0 + py * 1000.0, py);
 	}
 	else {
-		//a cell, less a hair, so neighbouring boxes cannot touch
-		boxW = px - 4.0;
-		boxH = py - 4.0;
+		//the pin top plus its buffer, capped by the cell so two boxes can never touch. Falling
+		//back to the cell only when there were too few tops to measure one.
+		boxW = (discW > 1.0) ? std::min(discW, px - 4.0) : px - 4.0;
+		boxH = (discH > 1.0) ? std::min(discH, py - 4.0) : py - 4.0;
 	}
 	if (boxW < 4.0 || boxH < 4.0) { why = QStringLiteral("The pin spacing is too small to place ROIs in"); return false; }
 
 	/*
-	* Centre the lattice on the pins.
+	* Put the cell centres on the pins.
 	*
 	* The transform's phase locks onto the repeat, but which part of the cycle it calls zero
-	* depends on the shape of the profile, so the grid can sit half a pin out. Shifting it by
-	* the average offset of the pin pixels from their own cell centres puts the pins in the
-	* middle of their boxes, where a box that is narrower than a cell needs them to be.
+	* depends on the shape of the profile, so the grid can land half a cell out - which is
+	* exactly what it did on the sample part, cutting every pin in half.
+	*
+	* The fix is to take the phase from the pin TOPS. Their centres are what a box has to be
+	* centred on, and averaging them has to be done on the circle: these are positions modulo
+	* the pitch, so a straight mean of discs scattered either side of zero lands at the pitch's
+	* midpoint, which is the one answer that is certainly wrong. Summing unit vectors and taking
+	* the angle has no such seam.
 	*/
-	for (int pass = 0; pass < 2 && !seed; pass++) {
-		double sx = 0, sy = 0; qint64 n = 0;
-		for (int y = 0; y < h; y++) {
-			const uchar* mrow = mask.ptr<uchar>(y);
-			const double fy = std::fmod(y - phy + py * 1000.0, py) - py / 2.0;
-			for (int x = 0; x < w; x++) {
-				if (!mrow[x]) continue;
-				sx += std::fmod(x - phx + px * 1000.0, px) - px / 2.0;
-				sy += fy;
-				n++;
-			}
+	if (!seed && discs.size() >= 8) {
+		double sxr = 0, sxi = 0, syr = 0, syi = 0;
+		for (const Disc& d : discs) {
+			const double ax = 2.0 * CV_PI * d.cx / px, ay = 2.0 * CV_PI * d.cy / py;
+			sxr += std::cos(ax); sxi += std::sin(ax);
+			syr += std::cos(ay); syi += std::sin(ay);
 		}
-		if (n == 0) break;
-		phx = std::fmod(phx + sx / n + px * 1000.0, px);
-		phy = std::fmod(phy + sy / n + py * 1000.0, py);
+		//the mean disc position within a cycle; the cell BOUNDARY is half a pitch before it
+		const double mux = std::atan2(sxi, sxr) / (2.0 * CV_PI) * px;
+		const double muy = std::atan2(syi, syr) / (2.0 * CV_PI) * py;
+		phx = std::fmod(mux - px / 2.0 + px * 1000.0, px);
+		phy = std::fmod(muy - py / 2.0 + py * 1000.0, py);
 	}
 
 	// ── 4. a box per cell that actually holds a pin ──
