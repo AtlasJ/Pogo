@@ -378,6 +378,39 @@ void AlgoManager::runHeight3(AlgoH3Stage stage)
 		Q_ARG(int, (int)stage));
 }
 
+void AlgoManager::runHeight3UpTo(int stage)
+{
+	QMetaObject::invokeMethod(this, "doRunHeight3UpTo", Qt::QueuedConnection, Q_ARG(int, stage));
+}
+
+/*
+* Re-run every stage up to `stage`, which is how a reopened recipe gets back to where it was.
+*
+* The same worker, the same lock and the same finished signal as a stage the operator asked
+* for - the page cannot tell the difference, and so needs no second path for showing results
+* that arrived on their own.
+*/
+void AlgoManager::doRunHeight3UpTo(int stage)
+{
+	if (stage < 0 || stage >(int)AlgoH3Stage::Overall) return;
+
+	m_busy = true;
+	emit busyChanged(true);
+
+	const AlgoHeight3Params p = height3Params();
+
+	AlgoHeight3Output out;
+	{
+		std::lock_guard<std::mutex> lock(m_height3Mutex);
+		m_height3.runUpTo((AlgoH3Stage)stage, p);
+		out = m_height3.output();
+	}
+
+	m_busy = false;
+	emit busyChanged(false);
+	emit height3Finished(stage, out);
+}
+
 void AlgoManager::doRunHeight3(int stage)
 {
 	//the slot takes an int so it can be queued across threads; validate before casting
@@ -464,6 +497,8 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		const int datM = jsonHelper::getInteger(h, "datum_method", (int)p.datumMethod);
 		if (datM >= 0 && datM < kAlgoH3DatumMethodCount) p.datumMethod = (AlgoH3DatumMethod)datM;
 		p.datumFlatnessUm = jsonHelper::getDouble(h, "datum_flatness_um", 15.0);
+		m_height3SavedStage = jsonHelper::getInteger(h, "last_stage", -1);
+		if (m_height3SavedStage > (int)AlgoH3Stage::Overall) m_height3SavedStage = -1;
 		p.datumCheckTilt = jsonHelper::getBool(h, "datum_check_tilt", false);
 		p.datumMaxTiltDeg = jsonHelper::getDouble(h, "datum_max_tilt_deg", 0.0);
 		p.datumRois.clear();
@@ -594,6 +629,15 @@ QJsonObject AlgoManager::height3ToJson() const
 
 	h.insert("datum_method", (int)p.datumMethod);
 	h.insert("datum_flatness_um", p.datumFlatnessUm);
+	/*
+	* How far the pipeline had got, so reopening the recipe can put it back there.
+	*
+	* The stage NUMBER only, never the results. A stored result could outlive the settings it
+	* was computed from, and this pipeline is built on the opposite rule - running a stage
+	* invalidates every stage after it, so a number on screen is never older than the data
+	* behind it. Re-running reproduces the state instead of restoring it, and cannot go stale.
+	*/
+	h.insert("last_stage", m_height3.furthestPassed());
 	h.insert("datum_check_tilt", p.datumCheckTilt);
 	h.insert("datum_max_tilt_deg", p.datumMaxTiltDeg);
 	QJsonArray datumRois;

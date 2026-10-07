@@ -460,20 +460,7 @@ void AlgoHeight3Pipeline::invalidateFrom(AlgoH3Stage stage)
 
 bool AlgoHeight3Pipeline::runStage(AlgoH3Stage stage, const AlgoHeight3Params& p)
 {
-	if (stage == AlgoH3Stage::All) {
-		QElapsedTimer total;
-		total.start();
-		m_out.totalElapsedMs = 0;
-
-		bool ok = doPreprocess(p)
-			&& doSegment(p)
-			&& doDatum(p)
-			&& doMeasure(p)
-			&& doOverall(p);
-
-		m_out.totalElapsedMs = total.elapsed();
-		return ok;
-	}
+	if (stage == AlgoH3Stage::All) return runUpTo(AlgoH3Stage::Overall, p);
 
 	switch (stage) {
 	case AlgoH3Stage::Preprocess: return doPreprocess(p);
@@ -483,6 +470,33 @@ bool AlgoHeight3Pipeline::runStage(AlgoH3Stage stage, const AlgoHeight3Params& p
 	case AlgoH3Stage::Overall:    return doOverall(p);
 	default: return false;
 	}
+}
+
+bool AlgoHeight3Pipeline::runUpTo(AlgoH3Stage last, const AlgoHeight3Params& p)
+{
+	QElapsedTimer total;
+	total.start();
+	m_out.totalElapsedMs = 0;
+
+	const int n = (int)last;
+	bool ok = doPreprocess(p);
+	if (ok && n >= (int)AlgoH3Stage::Segment) ok = doSegment(p);
+	if (ok && n >= (int)AlgoH3Stage::Datum)   ok = doDatum(p);
+	if (ok && n >= (int)AlgoH3Stage::Measure) ok = doMeasure(p);
+	if (ok && n >= (int)AlgoH3Stage::Overall) ok = doOverall(p);
+
+	m_out.totalElapsedMs = total.elapsed();
+	return ok;
+}
+
+int AlgoHeight3Pipeline::furthestPassed() const
+{
+	if (m_out.overall.ran && m_out.overall.pass) return (int)AlgoH3Stage::Overall;
+	if (m_measureDone) return (int)AlgoH3Stage::Measure;
+	if (m_datumDone)   return (int)AlgoH3Stage::Datum;
+	if (m_segmentDone) return (int)AlgoH3Stage::Segment;
+	if (m_preprocessDone) return (int)AlgoH3Stage::Preprocess;
+	return -1;
 }
 
 // =============================================================================

@@ -1822,12 +1822,31 @@ void VisionApp::restoreAlgoH3Inputs()
 
 	if (!loadedAny) return;
 
-	//the maps are back but nothing has been measured from them yet, exactly as after a manual load
 	_algoH3Output = AlgoHeight3Output();
 	refreshAlgoH3RoiBoxes();
 	applyAlgoH3Output(_algoH3Output);
 	AuditLog::instance().log(QStringLiteral("ALGO_H3_RESTORE_INPUT"),
 		QFileInfo(heightPath).fileName());
+
+	/*
+	* Put the pipeline back where it left off, rather than making the operator press Run on
+	* every section again.
+	*
+	* RE-RUN, not restore. Only how far it got is kept in the recipe, never the results - a
+	* stored result could outlive the settings it was computed from, and the whole pipeline is
+	* built on the opposite rule: running a stage invalidates every stage after it, so a number
+	* on screen is never older than the data behind it. Re-running reproduces the state and
+	* cannot go stale; on the sample part it costs about three seconds.
+	*
+	* On the worker, like any other run, so the window stays alive while it happens - and it
+	* arrives back through the same finished signal, so nothing here has to show it.
+	*/
+	const int stage = mgr.height3SavedStage();
+	if (stage >= 0 && !mgr.isBusy()) {
+		showStatus(QStringLiteral("Re-running the stages this recipe had completed..."));
+		ui.label_algoStatus->setText(QStringLiteral("Restoring the last run..."));
+		mgr.runHeight3UpTo(stage);
+	}
 }
 
 void VisionApp::updateAlgoH3Display()

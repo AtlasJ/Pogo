@@ -66,6 +66,19 @@ public:
 	// ── running ──
 	//returns the stage's pass/fail; the reason is in output().<stage>.failReason
 	bool runStage(AlgoH3Stage stage, const AlgoHeight3Params& p);
+	//Every stage in order, stopping at the first failure or after `last` - what All does, with
+	//a ceiling. Puts a reopened recipe back where it left off without running past it.
+	bool runUpTo(AlgoH3Stage last, const AlgoHeight3Params& p);
+	/*
+	* The furthest stage that has PASSED, as an AlgoH3Stage, or -1 for none.
+	*
+	* Recorded in the recipe so reopening it can re-run exactly that far. The number is all that
+	* is kept - not the results. A stored result could outlive the settings it was computed
+	* from, and this whole class is built on the opposite rule: running a stage invalidates
+	* every stage after it, so a number on screen is never older than the data behind it.
+	* Re-running reproduces the state instead of restoring it, and cannot go stale.
+	*/
+	int furthestPassed() const;
 
 	AlgoHeight3Output output() const { return m_out; }
 

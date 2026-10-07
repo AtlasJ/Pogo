@@ -105,6 +105,16 @@ public:
 	bool height3DatumReady() const;
 	//Place one ROI per pin. seed = a taught ROI to lay the grid out from, or null.
 	bool height3FindPins(const QRectF* seed, AlgoH3PinFind& out, QString& why) const;
+
+	/*
+	* Put a reopened recipe back where it left off: run every stage up to and including the
+	* furthest one that passed when it was last saved. -1 when nothing had.
+	*
+	* Only the stage NUMBER is kept in the recipe, never the results - see
+	* AlgoHeight3Pipeline::furthestPassed for why.
+	*/
+	int height3SavedStage() const { return m_height3SavedStage; }
+	void runHeight3UpTo(int stage);
 	QSize height3CropSize() const;
 	AlgoHeight3Output height3Output() const;
 
@@ -145,6 +155,7 @@ private slots:
 	void doRunOcr(QImage fov);
 	void doRunHeight();
 	void doRunHeight3(int stage);
+	void doRunHeight3UpTo(int stage);
 
 private:
 	AlgoManager();
@@ -207,6 +218,7 @@ private:
 	*/
 	AlgoHeight3Params m_height3Params;
 	mutable std::mutex m_height3Mutex;
+	int m_height3SavedStage = -1;   //from the recipe; -1 = nothing had passed
 	AlgoHeight3Pipeline m_height3;
 
 	PaddleOcrClient* m_paddle = nullptr; //created on worker thread
