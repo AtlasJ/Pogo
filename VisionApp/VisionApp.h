@@ -875,6 +875,10 @@ private:
 	* two widgets in one cell.
 	*/
 	void buildAlgoH3SegMethodRows();
+	void buildAlgoH3DatumMethodRows();   //the same, for the datum section
+	void updateAlgoH3DatumMethodUi();    //Auto Flat needs no ROIs, so its ROI controls go
+	class QDoubleSpinBox* _algoH3DatumFlatness = nullptr;
+	class QLabel* _algoH3DatumFlatnessLabel = nullptr;
 	void updateAlgoH3SegMethodUi();      //show only the settings the chosen method uses
 	class QDoubleSpinBox* _algoH3SegBandStep = nullptr;
 	class QDoubleSpinBox* _algoH3SegBandMin = nullptr;

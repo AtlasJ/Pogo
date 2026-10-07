@@ -260,6 +260,14 @@ void VisionApp::initAlgoHeight3Page()
 {
 	configureAlgoH3Ranges();
 	buildAlgoH3SegMethodRows();
+	buildAlgoH3DatumMethodRows();
+
+	connect(ui.comboBox_algoH3DatumMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) {
+			updateAlgoH3DatumMethodUi();
+			captureAlgoH3ParamsFromUI();
+		});
+	updateAlgoH3DatumMethodUi();
 
 	//a method change swaps which settings are on screen, and the new ones have to be captured
 	//into the params before any Run reads them
@@ -1500,6 +1508,65 @@ void VisionApp::updateAlgoH3SegMethodUi()
 	fitAlgoH3Sections();
 }
 
+/*
+* The datum settings that belong to one method only - built in code for the same reason the
+* segmentation ones are: formLayout_algoH3Datum numbers its rows explicitly, and inserting one
+* in the middle of the .ui means renumbering every row below it.
+*/
+void VisionApp::buildAlgoH3DatumMethodRows()
+{
+	auto* form = ui.formLayout_algoH3Datum;
+	if (!form || _algoH3DatumFlatness) return;
+
+	_algoH3DatumFlatnessLabel = new QLabel(tr("Flatness (um)"), ui.widget_algoHeight3Page);
+	_algoH3DatumFlatnessLabel->setStyleSheet(QStringLiteral("color: #F0F0F0;"));
+	_algoH3DatumFlatness = new QDoubleSpinBox(ui.widget_algoHeight3Page);
+	_algoH3DatumFlatness->setRange(0.1, 10000.0);
+	_algoH3DatumFlatness->setDecimals(1);
+	_algoH3DatumFlatness->setSingleStep(1.0);
+	_algoH3DatumFlatness->setValue(15.0);
+	_algoH3DatumFlatness->setToolTip(tr(
+		"How much a patch of surface may vary, top to bottom, and still count as flat.\n\n"
+		"This is only the first sieve - a pin cap is flat too and passes it easily. What separates "
+		"the datum from the caps is that the plate is the surface everything else stands on, so it "
+		"is the biggest flat population, and the fit settles on it by repeatedly discarding whatever "
+		"sits too far off.\n\n"
+		"That makes the value far less critical than it looks: on a sample part 10 um and 20 um "
+		"agreed to four decimal places. Raise it if too few flat regions are found."));
+
+	//row 1 is the method combo, so 2 puts this straight under it
+	form->insertRow(2, _algoH3DatumFlatnessLabel, _algoH3DatumFlatness);
+
+	//both hooks: initAlgoSetupPage wires the page's widgets to the auto-save by walking its
+	//children, and that walk has already run by the time this builds them
+	connect(_algoH3DatumFlatness, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+		[=](double) { captureAlgoH3ParamsFromUI(); algoSettingsTouched(); });
+}
+
+/*
+* Auto Flat finds its own surface, so the datum ROI controls do nothing under it. Leaving Add
+* and Delete on screen would invite the operator to place boxes that are then ignored, which
+* reads as the page being broken rather than as the method not needing them.
+*/
+void VisionApp::updateAlgoH3DatumMethodUi()
+{
+	const auto method = (AlgoH3DatumMethod)ui.comboBox_algoH3DatumMethod->currentIndex();
+	const bool autoFlat = (method == AlgoH3DatumMethod::AutoFlat);
+
+	ui.toolButton_algoH3DatumAddRoi->setVisible(!autoFlat);
+	ui.toolButton_algoH3DatumDeleteRoi->setVisible(!autoFlat);
+	ui.label_algoH3DatumRoiCount->setVisible(!autoFlat);
+	ui.lineEdit_algoH3DatumRoiCount->setVisible(!autoFlat);
+
+	if (_algoH3DatumFlatnessLabel) _algoH3DatumFlatnessLabel->setVisible(autoFlat);
+	if (_algoH3DatumFlatness) _algoH3DatumFlatness->setVisible(autoFlat);
+
+	//the taught boxes stay in the recipe, but showing them under a method that ignores them
+	//would be claiming they are doing something
+	updateAlgoH3RoiVisibility();
+	fitAlgoH3Sections();
+}
+
 void VisionApp::rememberAlgoH3Input(bool intensity, const QString& path)
 {
 	const QString key = intensity ? QStringLiteral("Algo_H3_Recent_Intensity_Map")
@@ -2077,6 +2144,7 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 
 	// ── section 3 ──
 	p.datumMethod = (AlgoH3DatumMethod)ui.comboBox_algoH3DatumMethod->currentIndex();
+	if (_algoH3DatumFlatness) p.datumFlatnessUm = _algoH3DatumFlatness->value();
 	p.datumCheckTilt = ui.checkBox_algoH3DatumEnableTiltCheck->isChecked();
 	p.datumMaxTiltDeg = ui.doubleSpinBox_algoH3DatumMaxTiltDeg->value();
 
@@ -2241,7 +2309,12 @@ void VisionApp::refreshAlgoHeight3Page()
 			(m >= 0 && m < ui.comboBox_algoH3DatumMethod->count()) ? m : 0);
 		ui.checkBox_algoH3DatumEnableTiltCheck->setChecked(p.datumCheckTilt);
 		ui.doubleSpinBox_algoH3DatumMaxTiltDeg->setValue(p.datumMaxTiltDeg);
+		if (_algoH3DatumFlatness) {
+			QSignalBlocker b4(_algoH3DatumFlatness);
+			_algoH3DatumFlatness->setValue(p.datumFlatnessUm);
+		}
 	}
+	updateAlgoH3DatumMethodUi();
 
 	// ── section 4 ──
 	{

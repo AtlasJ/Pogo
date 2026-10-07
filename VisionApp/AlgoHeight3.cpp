@@ -1265,6 +1265,203 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 // Stage 3 - datum plane
 // =============================================================================
 
+/*
+* Fit the datum to the part's own flat surface, with no ROIs to place.
+*
+* Placing datum ROIs by hand is the slow and fragile part of teaching this page: the operator
+* has to find patches of bare substrate between the pins, and a patch that was bare on the
+* unit it was taught on may have a pin shadow across it on the next. This finds them instead,
+* and it finds ALL of them - on the sample part that is 4.96 million points spread over the
+* whole plate, against 0.9 million in six hand-placed boxes.
+*
+* Flatness alone is not enough, because a pin cap is flat too. What distinguishes the datum is
+* that it is the flat surface the rest of the part STANDS ON, which is to say the dominant one.
+* So:
+*
+*   1. Split the crop into tiles and measure each one's spread - the 10th to 90th percentile of
+*      its heights, which ignores the few stray samples a peak-to-peak would be set by. A tile
+*      with too little data to judge is skipped rather than guessed at.
+*   2. Keep the tiles flatter than the tolerance. Both the plate and the pin caps survive this.
+*   3. Fit a plane to those tiles and throw out the ones that sit too far off it, repeatedly.
+*      The plate is the biggest population, so it is what the fit settles on, and the caps -
+*      which stand well above it - drop out within a couple of rounds. The cut is 2.5 MAD
+*      rather than a fixed band, so a rough plate widens its own tolerance instead of
+*      discarding itself, with a floor so a mirror-flat one does not close down to nothing.
+*   4. Re-fit on every PIXEL within that band, not just the surviving tile centres. The tiles
+*      found the surface; the pixels measure it, and there are three orders more of them.
+*
+* The result on the sample part is a plane with 4.4 um RMS where six hand-placed ROIs gave
+* 37.6 um - not because the fit is better arithmetic, but because it is fitted to the whole
+* plate rather than to three edges of it.
+*/
+static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const AlgoHeight3Params& p,
+	H3Plane& out, qint64& points, double& rmsUm, int& tilesUsed, QString& why)
+{
+	const int w = crop16.cols, h = crop16.rows;
+	if (w < 64 || h < 64) { why = QStringLiteral("The segmented part is too small to find flat regions in"); return false; }
+
+	//A tile has to be big enough for its spread to mean something and small enough that the
+	//plate and a pin do not share one. Sixty-four across the short side puts it at 32 px on the
+	//sample part, which is a fraction of a pin.
+	int T = std::min(w, h) / 64;
+	T = std::max(8, std::min(64, T));
+	const int tw = w / T, th = h / T;
+	if (tw < 4 || th < 4) { why = QStringLiteral("The segmented part is too small to find flat regions in"); return false; }
+
+	const double zPerUm = p.zScaleRawPerUm;      //raw grey levels per um
+	const double flatRaw = std::max(1.0, p.datumFlatnessUm) * zPerUm;
+
+	struct Tile { double x, y, z; };
+	std::vector<Tile> tiles;
+	tiles.reserve((size_t)tw * th);
+
+	std::vector<ushort> vals;
+	vals.reserve((size_t)T * T);
+
+	for (int tj = 0; tj < th; tj++) {
+		for (int ti = 0; ti < tw; ti++) {
+			vals.clear();
+			for (int y = tj * T; y < (tj + 1) * T; y++) {
+				const ushort* row = crop16.ptr<ushort>(y);
+				for (int x = ti * T; x < (ti + 1) * T; x++) {
+					const ushort z = row[x];
+					if (z < p.minValidRaw || z > p.maxValidRaw) continue;
+					vals.push_back(z);
+				}
+			}
+			//half the tile has to be measured; below that the spread says more about the
+			//dropouts than about the surface
+			if ((int)vals.size() < T * T / 2) continue;
+
+			const size_t lo = vals.size() / 10, mid = vals.size() / 2;
+			const size_t hiIdx = vals.size() - 1 - vals.size() / 10;
+			std::nth_element(vals.begin(), vals.begin() + lo, vals.end());
+			const double p10 = vals[lo];
+			std::nth_element(vals.begin() + lo + 1, vals.begin() + hiIdx, vals.end());
+			const double p90 = vals[hiIdx];
+			if (p90 - p10 > flatRaw) continue;        //not flat: a pin flank, an edge, a bore
+
+			std::nth_element(vals.begin(), vals.begin() + mid, vals.end());
+			tiles.push_back({ ti * T + T / 2.0, tj * T + T / 2.0, (double)vals[mid] });
+		}
+	}
+
+	if (tiles.size() < 16) {
+		why = QStringLiteral("Only %1 flat region(s) found - raise Flatness, or check that the "
+			"part was segmented correctly.").arg(tiles.size());
+		return false;
+	}
+
+	// ── settle on the dominant flat surface ──
+	std::vector<char> keep(tiles.size(), 1);
+	H3Plane plane;
+	double bandUm = 0.0;
+
+	for (int iter = 0; iter < 8; iter++) {
+		std::vector<H3Point> pts;
+		pts.reserve(tiles.size());
+		for (size_t i = 0; i < tiles.size(); i++)
+			if (keep[i]) pts.push_back({ tiles[i].x, tiles[i].y, tiles[i].z });
+		if (pts.size() < 16) break;
+
+		plane = fitPlaneLeastSquares(pts);
+		if (!plane.valid) { why = QStringLiteral("Plane fit failed on the flat regions"); return false; }
+
+		//residuals of EVERY candidate against the current plane, so a tile thrown out in one
+		//round can come back in the next if the plane moved towards it
+		std::vector<double> resid(tiles.size());
+		std::vector<double> kept;
+		kept.reserve(pts.size());
+		for (size_t i = 0; i < tiles.size(); i++) {
+			resid[i] = (tiles[i].z - planeZ(plane, tiles[i].x, tiles[i].y)) / zPerUm;
+			if (keep[i]) kept.push_back(resid[i]);
+		}
+
+		std::nth_element(kept.begin(), kept.begin() + kept.size() / 2, kept.end());
+		const double centre = kept[kept.size() / 2];
+		for (double& k : kept) k = std::fabs(k - centre);
+		std::nth_element(kept.begin(), kept.begin() + kept.size() / 2, kept.end());
+		const double mad = 1.4826 * kept[kept.size() / 2];
+
+		//a floor under the band, so a plate that is flat to a micron does not keep tightening
+		//until it has discarded itself
+		bandUm = std::max(5.0, 2.5 * mad);
+
+		std::vector<char> next(tiles.size(), 0);
+		int n = 0;
+		for (size_t i = 0; i < tiles.size(); i++)
+			if (std::fabs(resid[i] - centre) < bandUm) { next[i] = 1; n++; }
+		if (n < 16) break;
+		const bool same = (next == keep);
+		keep.swap(next);
+		if (same) break;
+	}
+
+	tilesUsed = 0;
+	for (char k : keep) if (k) tilesUsed++;
+	if (tilesUsed < 16 || !plane.valid) {
+		why = QStringLiteral("The flat regions did not settle on one surface - try a tighter Flatness.");
+		return false;
+	}
+
+	/*
+	* ── re-fit on the pixels ──
+	*
+	* Accumulated straight into the normal equations rather than collected into a vector: on the
+	* sample part this band holds five million points, and a std::vector of them is 120 MB spent
+	* to compute nine sums. Coordinates are taken relative to the crop centre so the sums stay
+	* well inside double precision.
+	*/
+	const double cx = w / 2.0, cy = h / 2.0;
+	double sxx = 0, sxy = 0, sx = 0, syy = 0, sy = 0, s1 = 0, sxz = 0, syz = 0, sz = 0;
+
+	for (int y = 0; y < h; y++) {
+		const ushort* row = crop16.ptr<ushort>(y);
+		const double Y = y - cy;
+		for (int x = 0; x < w; x++) {
+			const ushort z = row[x];
+			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
+			if (std::fabs((z - planeZ(plane, x, y)) / zPerUm) >= bandUm) continue;
+			const double X = x - cx, Z = z;
+			sxx += X * X; sxy += X * Y; sx += X;
+			syy += Y * Y; sy += Y; s1 += 1.0;
+			sxz += X * Z; syz += Y * Z; sz += Z;
+		}
+	}
+	if (s1 < 1000) {
+		why = QStringLiteral("Too few points on the flat surface to fit a plane");
+		return false;
+	}
+
+	double ATA[3][3] = { { sxx, sxy, sx }, { sxy, syy, sy }, { sx, sy, s1 } };
+	double ATb[3] = { sxz, syz, sz };
+	double sol[3];
+	if (!solve3x3(ATA, ATb, sol)) {
+		why = QStringLiteral("Plane fit failed - the flat surface is degenerate");
+		return false;
+	}
+
+	out.a = sol[0];
+	out.b = sol[1];
+	out.c = sol[2] - sol[0] * cx - sol[1] * cy;    //back to absolute coordinates
+	out.valid = true;
+
+	double sumSq = 0.0;
+	for (int y = 0; y < h; y++) {
+		const ushort* row = crop16.ptr<ushort>(y);
+		for (int x = 0; x < w; x++) {
+			const ushort z = row[x];
+			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
+			if (std::fabs((z - planeZ(plane, x, y)) / zPerUm) >= bandUm) continue;
+			const double d = (z - planeZ(out, x, y)) / zPerUm;
+			sumSq += d * d;
+		}
+	}
+	points = (qint64)s1;
+	rmsUm = std::sqrt(sumSq / s1);
+	return true;
+}
+
 bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 {
 	invalidateFrom(AlgoH3Stage::Datum);
@@ -1281,7 +1478,11 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	};
 
 	if (!segmentReady()) return fail(QStringLiteral("Run segmentation first"));
-	if (p.datumRois.isEmpty()) return fail(QStringLiteral("Add at least one datum ROI"));
+	//AutoFlat finds its own surface, so an ROI is not merely unnecessary there - demanding one
+	//would be asking for the thing the method exists to avoid
+	const bool autoFlat = (p.datumMethod == AlgoH3DatumMethod::AutoFlat);
+	if (!autoFlat && p.datumRois.isEmpty())
+		return fail(QStringLiteral("Add at least one datum ROI"));
 	if (p.zScaleRawPerUm <= 0.0) return fail(QStringLiteral("Z scale must be greater than 0"));
 	//the tilt and the PCA/SVD fit are both worked out in um, so they need the XY scale too
 	if (p.xScaleUmPx <= 0.0 || p.yScaleUmPx <= 0.0)
@@ -1289,6 +1490,18 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 
 	const int w = m_cropHeight.cols, h = m_cropHeight.rows;
 	const cv::Rect bounds(0, 0, w, h);
+
+	H3Plane autoPlane;
+	qint64 autoPoints = 0;
+	double autoRmsUm = 0.0;
+	int autoTiles = 0;
+	if (autoFlat) {
+		QString autoWhy;
+		if (!h3FitDatumAutoFlat(m_cropHeight, p, autoPlane, autoPoints, autoRmsUm, autoTiles, autoWhy))
+			return fail(autoWhy);
+		res.note = QStringLiteral("Fitted to %1 flat regions, %2 points")
+			.arg(autoTiles).arg(autoPoints);
+	}
 
 	std::vector<H3Point> pts;
 	int usedRois = 0;
@@ -1312,12 +1525,15 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 		}
 	}
 
-	if (usedRois == 0) return fail(QStringLiteral("Every datum ROI is outside the segmented image"));
-	if (pts.size() < 3) return fail(QStringLiteral("Fewer than 3 valid points in the datum ROIs"));
+	if (!autoFlat) {
+		if (usedRois == 0) return fail(QStringLiteral("Every datum ROI is outside the segmented image"));
+		if (pts.size() < 3) return fail(QStringLiteral("Fewer than 3 valid points in the datum ROIs"));
+	}
 
-	const H3Plane plane = (p.datumMethod == AlgoH3DatumMethod::PcaSvd)
-		? fitPlanePcaSvd(pts, p.xScaleUmPx, p.yScaleUmPx, 1.0 / p.zScaleRawPerUm)
-		: fitPlaneLeastSquares(pts);
+	const H3Plane plane = autoFlat ? autoPlane
+		: ((p.datumMethod == AlgoH3DatumMethod::PcaSvd)
+			? fitPlanePcaSvd(pts, p.xScaleUmPx, p.yScaleUmPx, 1.0 / p.zScaleRawPerUm)
+			: fitPlaneLeastSquares(pts));
 
 	if (!plane.valid)
 		return fail(QStringLiteral("Plane fit failed - the datum points are degenerate"));
@@ -1326,7 +1542,7 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	m_out.planeA = plane.a;
 	m_out.planeB = plane.b;
 	m_out.planeC = plane.c;
-	m_out.datumPoints = (qint64)pts.size();
+	m_out.datumPoints = autoFlat ? autoPoints : (qint64)pts.size();
 
 	/*
 	* Absolute angle between the fitted plane and the map plane; a tilt has no sign that
@@ -1343,12 +1559,17 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	const double slopeY = plane.b / (p.zScaleRawPerUm * p.yScaleUmPx);
 	m_out.planeTiltDeg = qRadiansToDegrees(std::atan(std::sqrt(slopeX * slopeX + slopeY * slopeY)));
 
-	double sumSq = 0.0;
-	for (const auto& pt : pts) {
-		const double d = (pt.z - planeZ(plane, pt.x, pt.y)) / p.zScaleRawPerUm;
-		sumSq += d * d;
+	if (autoFlat) {
+		m_out.planeRmsUm = autoRmsUm;
 	}
-	m_out.planeRmsUm = std::sqrt(sumSq / (double)pts.size());
+	else {
+		double sumSq = 0.0;
+		for (const auto& pt : pts) {
+			const double d = (pt.z - planeZ(plane, pt.x, pt.y)) / p.zScaleRawPerUm;
+			sumSq += d * d;
+		}
+		m_out.planeRmsUm = std::sqrt(sumSq / (double)pts.size());
+	}
 
 	if (p.datumCheckTilt && m_out.planeTiltDeg > p.datumMaxTiltDeg) {
 		return fail(QStringLiteral("Plane tilt %1 deg exceeds %2 deg")

@@ -436,6 +436,7 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 
 		// ── section 3 ──
 		p.datumMethod = (AlgoH3DatumMethod)jsonHelper::getInteger(h, "datum_method", 0);
+		p.datumFlatnessUm = jsonHelper::getDouble(h, "datum_flatness_um", 15.0);
 		p.datumCheckTilt = jsonHelper::getBool(h, "datum_check_tilt", false);
 		p.datumMaxTiltDeg = jsonHelper::getDouble(h, "datum_max_tilt_deg", 0.0);
 		p.datumRois.clear();
@@ -565,6 +566,7 @@ QJsonObject AlgoManager::height3ToJson() const
 	h.insert("seg_max_angle_deg", p.segMaxAngleDeg);
 
 	h.insert("datum_method", (int)p.datumMethod);
+	h.insert("datum_flatness_um", p.datumFlatnessUm);
 	h.insert("datum_check_tilt", p.datumCheckTilt);
 	h.insert("datum_max_tilt_deg", p.datumMaxTiltDeg);
 	QJsonArray datumRois;

@@ -23820,6 +23820,11 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                      <string>Orthogonal Fit (PCA/SVD)</string>
                                     </property>
                                    </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>Auto Flat Regions (no ROIs)</string>
+                                    </property>
+                                   </item>
                                   </widget>
                                  </item>
                                  <item row="2" column="0">

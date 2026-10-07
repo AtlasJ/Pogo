@@ -120,8 +120,18 @@ constexpr int kAlgoH3SegMethodCount = 2;
 //order matches comboBox_algoH3DatumMethod
 enum class AlgoH3DatumMethod {
 	LeastSquares = 0, //vertical (z) error, the QAlgoHeightMeasurement fit
-	PcaSvd = 1        //orthogonal (perpendicular) error, smallest-eigenvector normal
+	PcaSvd = 1,       //orthogonal (perpendicular) error, smallest-eigenvector normal
+	/*
+	* No ROIs at all: find the part's own flat surface and fit to that.
+	*
+	* Placing datum ROIs by hand is the slow and fragile part of teaching this page - the
+	* operator has to find bare substrate between the pins, and a patch that was bare on the
+	* unit it was taught on may have a pin shadow across it on the next. This finds every
+	* such patch instead, and fits the plane to all of them.
+	*/
+	AutoFlat = 2
 };
+constexpr int kAlgoH3DatumMethodCount = 3;
 
 /*
 * Height measurement methods. The VALUE IS THE METHOD ID the operator types into an
@@ -240,6 +250,17 @@ struct AlgoHeight3Params {
 
 	// ── section 3: datum plane ──
 	AlgoH3DatumMethod datumMethod = AlgoH3DatumMethod::LeastSquares;
+	/*
+	* AutoFlat only: how much a patch of surface may vary, top to bottom, and still count as
+	* flat - in um, because this is a statement about the part rather than about the sensor.
+	*
+	* It is a first sieve, not the decision: a pin cap is flat too and passes this easily. What
+	* actually separates the datum from the caps is that the plate is the surface everything
+	* else stands on, so it is the biggest flat population - which the fit settles on by
+	* throwing out whatever sits too far off it, over and over. That makes the value far less
+	* critical than it looks: 10 um and 20 um agree on the sample part to four decimal places.
+	*/
+	double datumFlatnessUm = 15.0;
 	bool datumCheckTilt = false;
 	double datumMaxTiltDeg = 0.0;   //tilt is an absolute angle, so there is no minimum
 	QVector<QRectF> datumRois;      //part frame, px
