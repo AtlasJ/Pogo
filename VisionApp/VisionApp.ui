@@ -24348,6 +24348,22 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  </item>
                                  <item row="0" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3RoiTypeButtons">
+                                    <item>
+                                     <widget class="QToolButton" name="toolButton_algoH3RoiAutoAssign">
+                                      <property name="toolTip">
+                                       <string>Place one ROI on every pin.
+
+Finds the pins by how far they stand above the datum, reads the spacing of the field, and lays an ROI on each - so the boxes are perfectly regular and cannot overlap.
+
+If one ROI is selected, its size and position lay out the rest. That is the way through on a field too broken for the pattern to be read on its own.
+
+Needs the datum plane fitted first.</string>
+                                      </property>
+                                      <property name="text">
+                                       <string>Auto Assign Pins</string>
+                                      </property>
+                                     </widget>
+                                    </item>
                                    <item>
                                     <widget class="QToolButton" name="toolButton_algoH3RoiAddType">
                                      <property name="text">
@@ -24429,22 +24445,7 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                      </property>
                                     </spacer>
                                    </item>
-                                  <item>
-                                     <widget class="QToolButton" name="toolButton_algoH3RoiAutoAssign">
-                                      <property name="toolTip">
-                                       <string>Place one ROI on every pin.
-
-Finds the pins by how far they stand above the datum, reads the spacing of the field, and lays an ROI on each - so the boxes are perfectly regular and cannot overlap.
-
-If one ROI is selected, its size and position lay out the rest. That is the way through on a field too broken for the pattern to be read on its own.
-
-Needs the datum plane fitted first.</string>
-                                      </property>
-                                      <property name="text">
-                                       <string>Auto Assign Pins</string>
-                                      </property>
-                                     </widget>
-                                    </item>
+                                  
                                    </layout>
                                  </item>
                                  <item row="2" column="0">

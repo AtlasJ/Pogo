@@ -2851,30 +2851,83 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 		return false;
 	}
 
-	std::vector<int> fill((size_t)cols * rows, 0);
+	std::vector<int> fill((size_t)cols * rows, 0), topFill((size_t)cols * rows, 0);
 	for (int y = 0; y < h; y++) {
 		const uchar* mrow = mask.ptr<uchar>(y);
+		const uchar* trow = tops.ptr<uchar>(y);
 		const int r = (int)std::floor((y - phy) / py);
 		if (r < 0 || r >= rows) continue;
 		for (int x = 0; x < w; x++) {
-			if (!mrow[x]) continue;
 			const int c = (int)std::floor((x - phx) / px);
 			if (c < 0 || c >= cols) continue;
-			fill[(size_t)r * cols + c]++;
+			if (mrow[x]) fill[(size_t)r * cols + c]++;
+			if (trow[x]) topFill[(size_t)r * cols + c]++;
 		}
 	}
 
-	//an eighth of the cell. A pin shadowed almost to nothing still covers more than that, and
-	//the speckle a threshold leaves behind covers far less.
+	/*
+	* ── which cells are really pins ──
+	*
+	* Decided by the pin TOP, not by the flank. The operator's own deletions on the sample part
+	* settled this: of 220 cells the first version taught, 104 were not pins at all - stray
+	* heights the sensor returned where reflections came back off the neighbours. Those were
+	* TALLER than the real pins at their peak (3364 um against 2996), so a height test cannot
+	* tell them apart, and their flanks covered 38% of the cell, which sailed past the old
+	* eighth-of-a-cell floor. What they did not have was a broad flat top: the real pins filled
+	* half their box with it, the false ones a tenth. That is the test now.
+	*
+	* The floor is relative - half the median top fill of the cells that have any - so a part
+	* whose pins are all half-shadowed does not reject itself, with an absolute floor under it
+	* so a field of pure speckle does not elect a median of nothing.
+	*/
+	std::vector<int> tf;
+	for (int v : topFill) if (v > 0) tf.push_back(v);
+	int minTop = (int)std::max(16.0, 0.05 * px * py);
+	if (tf.size() >= 8) {
+		std::nth_element(tf.begin(), tf.begin() + tf.size() / 2, tf.end());
+		minTop = std::max(minTop, tf[tf.size() / 2] / 2);
+	}
 	const int minFill = (int)std::max(16.0, 0.125 * px * py);
+
+	/*
+	* ── a staggered field ──
+	*
+	* Pins in alternate rows are often offset by half a pitch, so the rectangular lattice the
+	* transform finds is the HALF-lattice, with pins on one chequerboard parity and nothing on
+	* the other - and the empty cells are exactly where the sensor's reflections land. On the
+	* sample part every one of the 116 real pins sat on one parity and every one of the 104
+	* false ones on the other.
+	*
+	* So the two parities are weighed against each other by their top fill. One clearly heavier
+	* than the other means a staggered field and only that parity is taught; two about the same
+	* means a full grid and both are. The ratio is 3:1, far above anything a few shadowed pins
+	* on one parity could produce.
+	*/
+	double parTop[2] = { 0, 0 };
+	int parCount[2] = { 0, 0 };
+	for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) {
+		const int t = topFill[(size_t)r * cols + c];
+		if (t < minTop) continue;
+		parTop[(r + c) & 1] += t;
+		parCount[(r + c) & 1]++;
+	}
+	int keepParity = -1;
+	if (parCount[0] + parCount[1] >= 8) {
+		const double a = parTop[0], b = parTop[1];
+		if (a > 3.0 * b) keepParity = 0;
+		else if (b > 3.0 * a) keepParity = 1;
+	}
 
 	struct Cell { double cx, cy; int fill; };
 	std::vector<Cell> cells;
-	int edgeDropped = 0;
+	int edgeDropped = 0, parityDropped = 0, topDropped = 0;
 	for (int r = 0; r < rows; r++) {
 		for (int c = 0; c < cols; c++) {
 			const int f = fill[(size_t)r * cols + c];
+			const int t = topFill[(size_t)r * cols + c];
 			if (f < minFill) continue;
+			if (t < minTop) { topDropped++; continue; }
+			if (keepParity >= 0 && ((r + c) & 1) != keepParity) { parityDropped++; continue; }
 			const double cx = phx + (c + 0.5) * px;
 			const double cy = phy + (r + 0.5) * py;
 			//a box hanging off the crop would measure less of its pin than the others do, and
@@ -2938,6 +2991,9 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 		.arg(out.boxWidthUm, 0, 'f', 0).arg(out.boxHeightUm, 0, 'f', 0);
 	if (seed) out.note += QStringLiteral(", from a taught ROI");
 	else out.note += QStringLiteral(", confidence %1/%2").arg(confX, 0, 'f', 1).arg(confY, 0, 'f', 1);
+	if (keepParity >= 0) out.note += QStringLiteral(", staggered field");
+	if (topDropped > 0) out.note += QStringLiteral(", %1 without a pin top").arg(topDropped);
+	if (parityDropped > 0) out.note += QStringLiteral(", %1 off-lattice").arg(parityDropped);
 	if (edgeDropped > 0) out.note += QStringLiteral(", %1 dropped at the edge").arg(edgeDropped);
 	if (out.groups > 1) out.note += QStringLiteral(", %1 sizes").arg(out.groups);
 	return true;
