@@ -204,6 +204,46 @@ static void h3SetReadonly(QLineEdit* le)
 	if (le) le->setReadOnly(true);
 }
 
+/*
+* Stop a readout from sizing the page.
+*
+* Several of these carry a sentence rather than a number - a fail reason, the instruction line,
+* the type status - and the sentence is as long as whatever happened. Left to its own size hint
+* a widget like that widens the whole section the moment the message grows, so the panel moves
+* under the operator's hand for no reason they can see.
+*
+* Ignored is the policy that says it outright: the layout gives the widget the room there is
+* and never asks what it would like. A line edit scrolls its own text, so nothing is lost; a
+* label would clip, so the ones carrying messages are elided explicitly below and keep the full
+* text on the tooltip.
+*/
+static void h3SetNonExpanding(QWidget* w, int minWidth = 60)
+{
+	if (!w) return;
+	w->setSizePolicy(QSizePolicy::Ignored, w->sizePolicy().verticalPolicy());
+	w->setMinimumWidth(minWidth);
+	//a wrapped label grows DOWNWARD instead, which is the same problem turned on its side
+	if (auto* lbl = qobject_cast<QLabel*>(w)) lbl->setWordWrap(false);
+}
+
+//A message in a widget that must not grow: show what fits, keep the whole of it on the
+//tooltip. Elided against the width it has NOW, which on this page is a fixed panel.
+static void h3SetMessage(QLabel* lbl, const QString& text)
+{
+	if (!lbl) return;
+	lbl->setToolTip(text);
+	const int room = std::max(40, lbl->width() - 4);
+	lbl->setText(lbl->fontMetrics().elidedText(text, Qt::ElideRight, room));
+}
+
+static void h3SetMessage(QLineEdit* le, const QString& text)
+{
+	//a line edit scrolls, so it needs no elision - only the tooltip, for the tail it is hiding
+	if (!le) return;
+	le->setToolTip(text);
+	le->setText(text);
+}
+
 static void h3ShowVerdict(QLineEdit* le, bool ran, bool pass)
 {
 	if (!le) return;
@@ -299,8 +339,19 @@ void VisionApp::initAlgoHeight3Page()
 		"lineEdit_algoH3OverallPassFail", "lineEdit_algoH3OverallFailReason",
 		"lineEdit_algoH3OverallTimeMs", "lineEdit_algoH3OverallTotalTimeMs"
 	};
-	for (const QString& name : readouts)
-		h3SetReadonly(ui.widget_algoHeight3Page->findChild<QLineEdit*>(name));
+	for (const QString& name : readouts) {
+		auto* le = ui.widget_algoHeight3Page->findChild<QLineEdit*>(name);
+		h3SetReadonly(le);
+		h3SetNonExpanding(le);
+	}
+
+	//the rest of the page's variable text: the type status, the result instruction, and the
+	//shared algo status line that every page writes to
+	h3SetReadonly(ui.lineEdit_algoH3RoiTypeStatus);
+	h3SetNonExpanding(ui.lineEdit_algoH3RoiTypeStatus, 120);
+	h3SetNonExpanding(ui.label_algoH3ResultInstruction, 120);
+	h3SetNonExpanding(ui.label_algoH3DatumEquation, 120);
+	h3SetNonExpanding(ui.label_algoStatus, 120);
 
 	//Ctrl+C / Ctrl+V has no button of its own, so say so where the operator is looking
 	const QString copyHint = QStringLiteral(
@@ -2161,7 +2212,7 @@ void VisionApp::updateAlgoH3TypeStatus()
 		msg = QStringLiteral("Add ROI creates one of '%1'. Select ROIs on the image to "
 			"re-assign, copy (Ctrl+C) or delete them.").arg(name);
 
-	ui.lineEdit_algoH3RoiTypeStatus->setText(msg);
+	h3SetMessage(ui.lineEdit_algoH3RoiTypeStatus, msg);
 }
 
 void VisionApp::loadAlgoH3TypeFields()
@@ -2582,7 +2633,7 @@ void VisionApp::refreshAlgoH3ResultSection()
 	const AlgoH3RoiResult* r = _algoH3Output.roiById(id);
 	if (!r) {
 		//taught but not measured since - say so rather than show the previous run's number
-		ui.label_algoH3ResultInstruction->setText(
+		h3SetMessage(ui.label_algoH3ResultInstruction,
 			QStringLiteral("ROI %1 has not been measured yet - press Run Height Measurement.").arg(id));
 		ui.lineEdit_algoH3ResultCriteriaMinUm->clear();
 		ui.lineEdit_algoH3ResultCriteriaMaxUm->clear();
@@ -2595,7 +2646,7 @@ void VisionApp::refreshAlgoH3ResultSection()
 		return;
 	}
 
-	ui.label_algoH3ResultInstruction->setText(
+	h3SetMessage(ui.label_algoH3ResultInstruction,
 		QStringLiteral("Showing ROI %1 of %2.").arg(id).arg(_algoH3RoiBoxes.size()));
 	//the type as MEASURED, which can differ from the box's tag if it was retyped since
 	ui.lineEdit_algoH3ResultRoiType->setText(r->typeName);
