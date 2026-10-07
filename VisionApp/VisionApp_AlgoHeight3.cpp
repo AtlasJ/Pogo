@@ -1274,11 +1274,16 @@ void VisionApp::algoH3DeleteSelectedRois()
 		return;
 	}
 
-	//nothing selected is not worth a message - the operator pressed Delete with no selection,
-	//which is a miss rather than a mistake
+	/*
+	* Selection alone, with no visibility test - the same thing the button asks. A box can be
+	* selected while the section that owns it has scrolled it out of view, and an extra
+	* condition here would make the key quietly refuse where the button works.
+	*
+	* Nothing selected is silent: that is a miss, not a mistake.
+	*/
 	const auto& boxes = (owner == H3RoiOwner::Datum) ? _algoH3DatumBoxes : _algoH3RoiBoxes;
 	int selected = 0;
-	for (auto* b : boxes) if (b && b->isVisible() && b->isSelected()) selected++;
+	for (auto* b : boxes) if (b && b->isSelected()) selected++;
 	if (selected == 0) return;
 
 	if (owner == H3RoiOwner::Datum) ui.toolButton_algoH3DatumDeleteRoi->click();

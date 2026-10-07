@@ -523,12 +523,16 @@ void VisionApp::copyShortcutPressed()
 * There is deliberately no confirmation. An ROI is cheap to put back, Delete is a key people
 * press on purpose, and a dialog on every press would make deleting fifty of them a chore.
 */
-void VisionApp::deleteShortcutPressed()
+bool VisionApp::deleteShortcutPressed()
 {
-	if (copyPasteGoesToText()) return;
-	if (!isPage(UIPage::ALGO_SETUP)) return;
+	if (copyPasteGoesToText()) return false;
+	if (!isPage(UIPage::ALGO_SETUP)) return false;
+	if (currentAlgoPageAlgo() != AlgoPageAlgo::HEIGHT_3D_V3) return false;
 
-	if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3DeleteSelectedRois();
+	algoH3DeleteSelectedRois();
+	//consumed either way: on this page Delete means the page's ROIs, and falling through to
+	//the recipe page's handler would delete vision objects the operator cannot even see
+	return true;
 }
 
 void VisionApp::pasteShortcutPressed()

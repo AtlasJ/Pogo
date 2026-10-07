@@ -842,7 +842,8 @@ private:
 	//VisionApp_Shortcuts.cpp - NOT from eventFilter, which never sees these keys.
 	void copyShortcutPressed();
 	void pasteShortcutPressed();
-	void deleteShortcutPressed();
+	//true when the key was consumed, so the recipe page's own Delete handling stands down
+	bool deleteShortcutPressed();
 	void algoH3DeleteSelectedRois();   //whichever kind the open section owns
 	bool copyPasteGoesToText() const;
 

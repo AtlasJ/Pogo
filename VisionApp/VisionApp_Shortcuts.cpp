@@ -320,8 +320,20 @@ void VisionApp::connectShortcuts()
 		//}
 	});
 
+	/*
+	* THE ONLY Delete shortcut. There must not be a second one on the same parent: two
+	* QShortcuts sharing a key and a context are ambiguous, and Qt resolves that by firing
+	* NEITHER - which is exactly what a second one added for the algo pages did, leaving the key
+	* dead everywhere including here.
+	*
+	* So the algo pages get first refusal through deleteShortcutPressed(), and the recipe-page
+	* ROI deletion below runs only when they did not want it.
+	*/
 	QShortcut *shortcut_dlt = new QShortcut(QKeySequence(Qt::Key_Delete), this);
 	connect(shortcut_dlt, &QShortcut::activated, [=]() {
+		if (notAllowToAccess(AccessLevel::OPERATOR)) return;
+		if (deleteShortcutPressed()) return;
+
 		QVector<QDragBox*> _selectedROIs;
 		for (auto roi : _dragROI) {
 			if (roi->isSelected()) {
@@ -1420,14 +1432,6 @@ void VisionApp::connectShortcuts()
 
 	QShortcut *shortcut_ctrlV = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_V), this);
 	connect(shortcut_ctrlV, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; pasteShortcutPressed(); });
-
-	/*
-	* Delete removes the selected ROIs on the algo pages. A QShortcut like the two above, and
-	* for the same reason: Qt fires shortcuts BEFORE key events exist, so an eventFilter
-	* watching for KeyPress would never see it.
-	*/
-	QShortcut *shortcut_del = new QShortcut(QKeySequence(Qt::Key_Delete), this);
-	connect(shortcut_del, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; deleteShortcutPressed(); });
 
 	QShortcut *shortcut_ctrlB = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_B), this);
 	connect(shortcut_ctrlB, &QShortcut::activated, [=]() {
