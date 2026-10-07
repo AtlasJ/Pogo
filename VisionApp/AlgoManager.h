@@ -103,6 +103,8 @@ public:
 	bool height3HasIntensity() const;
 	bool height3SegmentReady() const;
 	bool height3DatumReady() const;
+	//Place one ROI per pin. seed = a taught ROI to lay the grid out from, or null.
+	bool height3FindPins(const QRectF* seed, AlgoH3PinFind& out, QString& why) const;
 	QSize height3CropSize() const;
 	AlgoHeight3Output height3Output() const;
 

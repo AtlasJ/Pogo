@@ -297,6 +297,16 @@ AlgoHeight3Output AlgoManager::height3Output() const
 // simply keeps the frame it already has, instead of the whole UI stalling.
 // =============================================================================
 
+bool AlgoManager::height3FindPins(const QRectF* seed, AlgoH3PinFind& out, QString& why) const
+{
+	const AlgoHeight3Params p = height3Params();
+
+	//blocking, not try_to_lock: this runs because the operator pressed a button and is waiting
+	//for the answer, where the display renders can simply skip a frame
+	std::lock_guard<std::mutex> lock(m_height3Mutex);
+	return m_height3.findPins(p, seed, out, why);
+}
+
 QImage AlgoManager::height3Image(bool intensity, bool preprocessed, bool segmented, bool colorMapped) const
 {
 	//params first, then the pipeline: the two locks are never held at the same time,

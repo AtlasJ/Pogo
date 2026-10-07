@@ -2441,3 +2441,349 @@ QImage algoH3RenderRelief2D(const cv::Mat& height16, int minValidRaw, int maxVal
 
 	return img;
 }
+
+/*
+* The strongest repeat in a 1-D profile, and where it starts.
+*
+* A pin field is periodic, so the column sums of its mask are too - and one Fourier
+* coefficient per candidate period finds that repeat far more reliably than trying to group
+* blobs into rows and columns. Grouping has to decide what counts as "the same row" before it
+* knows the pitch, which on a field whose pins are nearly as tall as the gap between rows is a
+* decision it gets wrong; the transform needs no such threshold.
+*
+* The coefficient's angle gives the phase, which is what turns a pitch into an actual lattice.
+*
+* Coarse pass then a fine one around the winner: the direct sum is O(period * samples) and the
+* coarse grid alone would be a tenth of a pixel over a 9000 px profile.
+*/
+static bool h3StrongestPeriod(const std::vector<double>& sig, double loP, double hiP,
+	double& period, double& phase, double& confidence)
+{
+	const int N = (int)sig.size();
+	if (N < 32 || hiP <= loP) return false;
+
+	double mean = 0.0;
+	for (double v : sig) mean += v;
+	mean /= N;
+
+	auto coeff = [&](double P, double& re, double& im) {
+		re = im = 0.0;
+		const double k = 2.0 * CV_PI / P;
+		for (int i = 0; i < N; i++) {
+			const double s = sig[i] - mean;
+			re += s * std::cos(k * i);
+			im -= s * std::sin(k * i);
+		}
+	};
+
+	double bestA = -1.0, bestP = 0.0, bestRe = 0, bestIm = 0;
+	for (double P = loP; P <= hiP; P += 1.0) {
+		double re, im; coeff(P, re, im);
+		const double a = std::sqrt(re * re + im * im);
+		if (a > bestA) { bestA = a; bestP = P; bestRe = re; bestIm = im; }
+	}
+	if (bestA <= 0.0) return false;
+
+	for (double P = std::max(loP, bestP - 1.0); P <= std::min(hiP, bestP + 1.0); P += 0.05) {
+		double re, im; coeff(P, re, im);
+		const double a = std::sqrt(re * re + im * im);
+		if (a > bestA) { bestA = a; bestP = P; bestRe = re; bestIm = im; }
+	}
+
+	/*
+	* How much the winner stands out, ignoring its own harmonics - a period of P/2 or P/3 is the
+	* same lattice described twice, not a rival. Without that exclusion every real lattice would
+	* score as ambiguous against its own second harmonic.
+	*/
+	double rival = 0.0;
+	for (double P = loP; P <= hiP; P += 1.0) {
+		bool harmonic = false;
+		for (int k = 1; k <= 4 && !harmonic; k++) {
+			harmonic |= std::fabs(P - bestP / k) < 0.15 * bestP / k;
+			harmonic |= std::fabs(P - bestP * k) < 0.15 * bestP * k;
+		}
+		if (harmonic) continue;
+		double re, im; coeff(P, re, im);
+		rival = std::max(rival, std::sqrt(re * re + im * im));
+	}
+
+	period = bestP;
+	//angle -> the offset of the first lattice line, folded into [0, P)
+	phase = std::fmod(std::atan2(bestIm, bestRe) / (2.0 * CV_PI) * bestP + bestP, bestP);
+	confidence = (rival > 0.0) ? bestA / rival : 99.0;
+	return true;
+}
+
+/*
+* Teach every pin on the segmented part at once.
+*
+* Placing a box on each pin by hand means two hundred boxes. This places them.
+*
+* A pin is whatever stands proud of the datum, so the datum has to be fitted first - which also
+* means heights are already relative to the part's own plate, and a tilted part needs no
+* special handling.
+*
+*   1. Height above the datum, thresholded at a fraction of how tall the pins actually are.
+*      A fraction rather than a number in um, because the field's own height sets the scale.
+*   2. Close by a pin-sized amount, so one pin reads as one blob. The sensor sees a pin from
+*      one side, so what comes back is a crescent with holes rather than a disc.
+*   3. THE LATTICE, not the blobs, decides where the ROIs go. Blobs are not pins: a shadowed
+*      pin breaks into two or three of them and a pair that touch become one, so an ROI per
+*      blob gives duplicates stacked on one pin and single boxes straddling two. The pitch
+*      comes from the strongest repeat in the mask's column and row sums, which is a property
+*      of the whole field rather than of any blob, and every ROI then lands on a lattice
+*      point - perfectly regular, and incapable of overlapping its neighbour.
+*   4. A cell gets an ROI only if enough of it is actually pin. Nothing is invented: an ROI
+*      with no pin under it measures the plate and passes every criterion, which is the worst
+*      way for this to be wrong.
+*
+* seed, when given, is one ROI the operator has already placed on a pin. Its size becomes the
+* box size and its centre fixes the lattice phase, which is the fallback when the field is too
+* broken or too small for the transform to find the repeat on its own.
+*/
+bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* seed,
+	AlgoH3PinFind& out, QString& why) const
+{
+	out = AlgoH3PinFind();
+
+	if (!segmentReady()) { why = QStringLiteral("Run segmentation first"); return false; }
+	if (!m_datumDone || !m_out.planeValid) {
+		why = QStringLiteral("Fit the datum plane first - a pin is found by how far it stands "
+			"above the datum.");
+		return false;
+	}
+	if (p.zScaleRawPerUm <= 0.0 || p.xScaleUmPx <= 0.0 || p.yScaleUmPx <= 0.0) {
+		why = QStringLiteral("X, Y and Z scale must all be greater than 0");
+		return false;
+	}
+
+	const int w = m_cropHeight.cols, h = m_cropHeight.rows;
+	H3Plane plane;
+	plane.a = m_out.planeA; plane.b = m_out.planeB; plane.c = m_out.planeC; plane.valid = true;
+
+	// ── 1. what stands above the datum ──
+	std::vector<float> above;
+	above.reserve((size_t)w * h / 4);
+	for (int y = 0; y < h; y++) {
+		const ushort* row = m_cropHeight.ptr<ushort>(y);
+		for (int x = 0; x < w; x++) {
+			const ushort z = row[x];
+			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
+			const double d = (z - planeZ(plane, x, y)) / p.zScaleRawPerUm;
+			if (d > 0.0) above.push_back((float)d);
+		}
+	}
+	if (above.size() < 1000) { why = QStringLiteral("Nothing stands above the datum plane"); return false; }
+
+	//the 99th percentile, not the maximum, so one spike cannot set the scale for the whole part
+	const size_t q = (size_t)(0.99 * (above.size() - 1));
+	std::nth_element(above.begin(), above.begin() + q, above.end());
+	const double pinTopUm = above[q];
+	if (pinTopUm < 50.0) {
+		why = QStringLiteral("Nothing stands more than %1 um above the datum - is the datum on "
+			"the right surface?").arg(pinTopUm, 0, 'f', 1);
+		return false;
+	}
+	//a sixth of the way up a pin: clear of the plate and of whatever lies on it, well below the
+	//shortest pin worth teaching
+	const double cutUm = std::max(25.0, pinTopUm / 6.0);
+
+	cv::Mat mask(h, w, CV_8U, cv::Scalar(0));
+	for (int y = 0; y < h; y++) {
+		const ushort* row = m_cropHeight.ptr<ushort>(y);
+		uchar* mrow = mask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			const ushort z = row[x];
+			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
+			if ((z - planeZ(plane, x, y)) / p.zScaleRawPerUm > cutUm) mrow[x] = 255;
+		}
+	}
+
+	// ── 2. one pin, one blob ──
+	//150 um of closing: enough to bridge the holes across a pin's own face, far too little to
+	//join two pins a millimetre apart
+	const int closeK = std::max(3, std::min(81,
+		(int)std::lround(150.0 / std::min(p.xScaleUmPx, p.yScaleUmPx)) | 1));
+	cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
+		cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(closeK, closeK)));
+
+	// ── 3. the lattice ──
+	std::vector<double> colSum(w, 0.0), rowSum(h, 0.0);
+	for (int y = 0; y < h; y++) {
+		const uchar* mrow = mask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			if (!mrow[x]) continue;
+			colSum[x] += 1.0; rowSum[y] += 1.0;
+		}
+	}
+
+	//a lattice finer than 100 um is not a pin field, and one coarser than a third of the part
+	//cannot be measured from the two or three repeats that would fit
+	const double loX = std::max(8.0, 100.0 / p.xScaleUmPx), hiX = w / 3.0;
+	const double loY = std::max(8.0, 100.0 / p.yScaleUmPx), hiY = h / 3.0;
+
+	double px = 0, py = 0, phx = 0, phy = 0, confX = 0, confY = 0;
+	const bool gotX = h3StrongestPeriod(colSum, loX, hiX, px, phx, confX);
+	const bool gotY = h3StrongestPeriod(rowSum, loY, hiY, py, phy, confY);
+
+	//1.3 is deliberately low. A real field beats its nearest non-harmonic rival by two or three
+	//times, and anything near parity is a field the transform cannot read - better to say so and
+	//let one taught ROI settle it than to lay a confident grid over nothing.
+	const double kMinConfidence = 1.3;
+	const bool latticeOk = gotX && gotY && confX >= kMinConfidence && confY >= kMinConfidence;
+
+	if (!latticeOk && !seed) {
+		why = QStringLiteral("Could not read a repeating pin pattern (confidence %1 across, %2 "
+			"down; %3 needed). Place one ROI on a single pin and press Auto Assign again - its "
+			"size and position are enough to lay out the rest.")
+			.arg(confX, 0, 'f', 2).arg(confY, 0, 'f', 2).arg(kMinConfidence, 0, 'f', 2);
+		return false;
+	}
+
+	double boxW = 0, boxH = 0;
+	if (seed) {
+		//the operator has shown it a pin: take the size from the box they drew, and put the
+		//lattice through its centre so the grid is in step with the pin they chose
+		boxW = seed->width();
+		boxH = seed->height();
+		const double sx = seed->center().x() + w / 2.0;
+		const double sy = seed->center().y() + h / 2.0;
+		if (!gotX || !gotY) {
+			why = QStringLiteral("Could not measure the spacing between pins even with a taught "
+				"ROI - check that the datum is on the plate and that pins stand above it.");
+			return false;
+		}
+		phx = std::fmod(sx - px / 2.0 + px * 1000.0, px);
+		phy = std::fmod(sy - py / 2.0 + py * 1000.0, py);
+	}
+	else {
+		//a cell, less a hair, so neighbouring boxes cannot touch
+		boxW = px - 4.0;
+		boxH = py - 4.0;
+	}
+	if (boxW < 4.0 || boxH < 4.0) { why = QStringLiteral("The pin spacing is too small to place ROIs in"); return false; }
+
+	/*
+	* Centre the lattice on the pins.
+	*
+	* The transform's phase locks onto the repeat, but which part of the cycle it calls zero
+	* depends on the shape of the profile, so the grid can sit half a pin out. Shifting it by
+	* the average offset of the pin pixels from their own cell centres puts the pins in the
+	* middle of their boxes, where a box that is narrower than a cell needs them to be.
+	*/
+	for (int pass = 0; pass < 2 && !seed; pass++) {
+		double sx = 0, sy = 0; qint64 n = 0;
+		for (int y = 0; y < h; y++) {
+			const uchar* mrow = mask.ptr<uchar>(y);
+			const double fy = std::fmod(y - phy + py * 1000.0, py) - py / 2.0;
+			for (int x = 0; x < w; x++) {
+				if (!mrow[x]) continue;
+				sx += std::fmod(x - phx + px * 1000.0, px) - px / 2.0;
+				sy += fy;
+				n++;
+			}
+		}
+		if (n == 0) break;
+		phx = std::fmod(phx + sx / n + px * 1000.0, px);
+		phy = std::fmod(phy + sy / n + py * 1000.0, py);
+	}
+
+	// ── 4. a box per cell that actually holds a pin ──
+	const int cols = (int)std::ceil((w - phx) / px) + 1;
+	const int rows = (int)std::ceil((h - phy) / py) + 1;
+	if (cols < 1 || rows < 1 || (qint64)cols * rows > 100000) {
+		why = QStringLiteral("The pin lattice came out implausible (%1 x %2 cells)").arg(cols).arg(rows);
+		return false;
+	}
+
+	std::vector<int> fill((size_t)cols * rows, 0);
+	for (int y = 0; y < h; y++) {
+		const uchar* mrow = mask.ptr<uchar>(y);
+		const int r = (int)std::floor((y - phy) / py);
+		if (r < 0 || r >= rows) continue;
+		for (int x = 0; x < w; x++) {
+			if (!mrow[x]) continue;
+			const int c = (int)std::floor((x - phx) / px);
+			if (c < 0 || c >= cols) continue;
+			fill[(size_t)r * cols + c]++;
+		}
+	}
+
+	//an eighth of the cell. A pin shadowed almost to nothing still covers more than that, and
+	//the speckle a threshold leaves behind covers far less.
+	const int minFill = (int)std::max(16.0, 0.125 * px * py);
+
+	struct Cell { double cx, cy; int fill; };
+	std::vector<Cell> cells;
+	int edgeDropped = 0;
+	for (int r = 0; r < rows; r++) {
+		for (int c = 0; c < cols; c++) {
+			const int f = fill[(size_t)r * cols + c];
+			if (f < minFill) continue;
+			const double cx = phx + (c + 0.5) * px;
+			const double cy = phy + (r + 0.5) * py;
+			//a box hanging off the crop would measure less of its pin than the others do, and
+			//silently - so it is dropped and counted rather than taught
+			if (cx - boxW / 2 < 0 || cx + boxW / 2 > w || cy - boxH / 2 < 0 || cy + boxH / 2 > h) {
+				edgeDropped++;
+				continue;
+			}
+			cells.push_back({ cx, cy, f });
+		}
+	}
+	if (cells.empty()) {
+		why = QStringLiteral("The lattice fitted, but no cell holds enough pin to teach");
+		return false;
+	}
+
+	/*
+	* ── which pins count as the same kind ──
+	*
+	* By how much pin each box holds, and only split where the sorted amounts show a real gap -
+	* a ratio of 1.8 between neighbours, with at least five pins on each side. Anything looser
+	* invents types out of noise, because how much of a pin the sensor returns depends on how
+	* deep it sits in its neighbours' shadow as much as on the pin itself.
+	*/
+	std::vector<std::pair<int, size_t>> sorted;
+	for (size_t i = 0; i < cells.size(); i++) sorted.emplace_back(cells[i].fill, i);
+	std::sort(sorted.begin(), sorted.end());
+
+	std::vector<size_t> cuts;
+	for (size_t i = 1; i < sorted.size(); i++) {
+		if (sorted[i].first < sorted[i - 1].first * 1.8) continue;
+		if (i < 5 || sorted.size() - i < 5) continue;
+		cuts.push_back(i);
+		if (cuts.size() >= 3) break;         //four kinds of pin is already more than plausible
+	}
+
+	std::vector<int> groupOf(cells.size(), 0);
+	int g = 0; size_t nextCut = 0;
+	for (size_t i = 0; i < sorted.size(); i++) {
+		if (nextCut < cuts.size() && i == cuts[nextCut]) { g++; nextCut++; }
+		groupOf[sorted[i].second] = g;
+	}
+	out.groups = g + 1;
+
+	const double ox = w / 2.0, oy = h / 2.0;
+	for (size_t i = 0; i < cells.size(); i++) {
+		out.boxes.append(QRectF(cells[i].cx - ox - boxW / 2.0,
+			cells[i].cy - oy - boxH / 2.0, boxW, boxH));
+		out.group.append(groupOf[i]);
+	}
+
+	out.pitchXUm = px * p.xScaleUmPx;
+	out.pitchYUm = py * p.yScaleUmPx;
+	out.boxWidthUm = boxW * p.xScaleUmPx;
+	out.boxHeightUm = boxH * p.yScaleUmPx;
+	out.edgeDropped = edgeDropped;
+	out.seeded = (seed != nullptr);
+	out.note = QStringLiteral("%1 pins on a %2 x %3 um pitch, %4 x %5 um boxes")
+		.arg(out.boxes.size())
+		.arg(out.pitchXUm, 0, 'f', 0).arg(out.pitchYUm, 0, 'f', 0)
+		.arg(out.boxWidthUm, 0, 'f', 0).arg(out.boxHeightUm, 0, 'f', 0);
+	if (seed) out.note += QStringLiteral(", from a taught ROI");
+	else out.note += QStringLiteral(", confidence %1/%2").arg(confX, 0, 'f', 1).arg(confY, 0, 'f', 1);
+	if (edgeDropped > 0) out.note += QStringLiteral(", %1 dropped at the edge").arg(edgeDropped);
+	if (out.groups > 1) out.note += QStringLiteral(", %1 sizes").arg(out.groups);
+	return true;
+}

@@ -25,6 +25,21 @@
 * No Qt widgets here, and nothing in this class touches the GUI thread's state, so the
 * whole pipeline can run on AlgoManager's worker thread.
 */
+/*
+* What findPins() found: one box per pin, all the same size, in the part frame - plus which
+* size group each fell into, so the caller can make a type per kind of pin.
+*/
+struct AlgoH3PinFind {
+	QVector<QRectF> boxes;
+	QVector<int> group;            //parallel to boxes; 0 .. groups-1
+	int groups = 0;
+	double pitchXUm = 0.0, pitchYUm = 0.0;
+	double boxWidthUm = 0.0, boxHeightUm = 0.0;
+	int edgeDropped = 0;           //cells whose box would hang off the crop
+	bool seeded = false;           //laid out from a taught ROI rather than found outright
+	QString note;                  //for the status line and the log
+};
+
 class AlgoHeight3Pipeline {
 public:
 	// ── source ──
@@ -53,6 +68,18 @@ public:
 	bool runStage(AlgoH3Stage stage, const AlgoHeight3Params& p);
 
 	AlgoHeight3Output output() const { return m_out; }
+
+	/*
+	* Teach every pin at once. Needs the datum, because a pin is found by how far it stands
+	* above it. Reads the part and changes nothing - the caller decides what to do with the
+	* boxes.
+	*
+	* seed: one ROI the operator has already placed on a single pin, or null. Given one, its
+	* size and position lay out the rest, which is the way through when the field is too
+	* broken for the pattern to be read outright.
+	*/
+	bool findPins(const AlgoHeight3Params& p, const QRectF* seed,
+		AlgoH3PinFind& out, QString& why) const;
 
 	// ── display sources ──
 	//the map a given section should be looking at, already 8-bit for display.

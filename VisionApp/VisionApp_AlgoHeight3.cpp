@@ -706,6 +706,107 @@ void VisionApp::initAlgoHeight3Page()
 		algoSettingsTouched();
 	});
 
+	/*
+	* ── Auto Assign Pins ──
+	*
+	* Two hundred boxes placed by hand is the job this replaces. The pipeline finds the pins and
+	* the lattice; this turns what it found into types and ROIs.
+	*
+	* A single SELECTED ROI is passed down as a seed - its size and position lay the grid out,
+	* which is the way through when the field is too broken for the pattern to be read on its
+	* own. Selected rather than "the only one", because on a part already half taught the
+	* operator still needs to be able to say WHICH box is the good one.
+	*/
+	connect(ui.toolButton_algoH3RoiAutoAssign, &QToolButton::clicked, this, [=]() {
+		auto& mgr = AlgoManager::instance();
+		//this one waits on the pipeline's lock rather than skipping a turn like the display
+		//renders do, so a stage still running would freeze the window instead of answering
+		if (mgr.isBusy()) {
+			showMsg("Algo is still running, please wait.");
+			return;
+		}
+		if (!mgr.height3DatumReady()) {
+			showMsg("Fit the datum plane first - a pin is found by how far it stands above it.");
+			return;
+		}
+		captureAlgoH3ParamsFromUI();
+
+		QRectF seedRect;
+		bool haveSeed = false;
+		int selected = 0;
+		for (auto* b : _algoH3RoiBoxes) if (b && b->isSelected()) selected++;
+		if (selected == 1) {
+			const QSize crop = mgr.height3CropSize();
+			for (auto* b : _algoH3RoiBoxes) {
+				if (!b || !b->isSelected()) continue;
+				seedRect = b->getGeometry().translated(-crop.width() / 2.0, -crop.height() / 2.0);
+				haveSeed = true;
+			}
+		}
+		else if (selected > 1) {
+			showMsg("Select a single ROI to lay the grid out from, or none to find the pins "
+				"automatically.");
+			return;
+		}
+
+		AlgoH3PinFind found;
+		QString why;
+		if (!mgr.height3FindPins(haveSeed ? &seedRect : nullptr, found, why)) {
+			showMsg(why);
+			ui.label_algoStatus->setText(QStringLiteral("Auto Assign: ") + why);
+			return;
+		}
+
+		if (!_algoH3RoiBoxes.isEmpty()) {
+			const auto reply = QMessageBox::warning(this, "Auto Assign Pins",
+				QStringLiteral("%1 ROI(s) are already taught.\n\n"
+					"Auto Assign replaces all of them with %2 new ones. Continue?")
+					.arg(_algoH3RoiBoxes.size()).arg(found.boxes.size()),
+				QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+			if (reply != QMessageBox::Yes) return;
+		}
+
+		AlgoHeight3Params p = mgr.height3Params();
+
+		/*
+		* One type per size of pin, white, created only if it is missing - a second Auto Assign
+		* must not wipe the criteria the operator has since typed into "Pin".
+		*/
+		QStringList typeNames;
+		for (int g = 0; g < found.groups; g++) {
+			const QString name = (found.groups == 1)
+				? QStringLiteral("Pin") : QStringLiteral("Pin %1").arg(g + 1);
+			typeNames << name;
+			if (p.hasType(name)) continue;
+			AlgoH3RoiType t;
+			t.name = name;
+			t.color = QColor(255, 255, 255);
+			t.methodId = p.methodId;
+			p.roiTypes.append(t);
+		}
+
+		p.rois.clear();
+		for (int i = 0; i < found.boxes.size(); i++) {
+			AlgoH3Roi roi;
+			roi.rel = found.boxes[i];
+			const int g = (i < found.group.size()) ? found.group[i] : 0;
+			roi.typeName = typeNames.value(qBound(0, g, typeNames.size() - 1));
+			p.rois.append(roi);
+		}
+		mgr.setHeight3Params(p);
+
+		refreshAlgoH3TypeList();
+		refreshAlgoH3RoiBoxes();
+		updateAlgoH3RoiVisibility();
+		refreshAlgoH3Overlay();
+		algoSettingsTouched();
+
+		ui.label_algoStatus->setText(QStringLiteral("Auto Assign: ") + found.note);
+		ct::logger::info("[Algo H3] Auto Assign: %s", found.note.toStdString().c_str());
+		AuditLog::instance().log(QStringLiteral("ALGO_H3_AUTO_ASSIGN"),
+			QStringLiteral("%1 ROIs").arg(found.boxes.size()));
+	});
+
 	connect(ui.toolButton_algoH3RoiDelete, &QToolButton::clicked, this, [=]() {
 		bool removed = false;
 		for (int i = _algoH3RoiBoxes.size() - 1; i >= 0; i--) {

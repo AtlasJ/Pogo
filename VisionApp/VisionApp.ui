@@ -24409,7 +24409,23 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                      </property>
                                     </spacer>
                                    </item>
-                                  </layout>
+                                  <item>
+                                     <widget class="QToolButton" name="toolButton_algoH3RoiAutoAssign">
+                                      <property name="toolTip">
+                                       <string>Place one ROI on every pin.
+
+Finds the pins by how far they stand above the datum, reads the spacing of the field, and lays an ROI on each - so the boxes are perfectly regular and cannot overlap.
+
+If one ROI is selected, its size and position lay out the rest. That is the way through on a field too broken for the pattern to be read on its own.
+
+Needs the datum plane fitted first.</string>
+                                      </property>
+                                      <property name="text">
+                                       <string>Auto Assign Pins</string>
+                                      </property>
+                                     </widget>
+                                    </item>
+                                   </layout>
                                  </item>
                                  <item row="2" column="0">
                                   <widget class="QLabel" name="label_algoH3RoiCount">
