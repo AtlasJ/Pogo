@@ -419,7 +419,17 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		p.closingKernel = jsonHelper::getInteger(h, "closing_kernel", p.closingKernel);
 
 		// ── section 2 ──
-		p.segMethod = (AlgoH3SegMethod)jsonHelper::getInteger(h, "seg_method", 0);
+		/*
+		* Clamped, and defaulted to whatever the struct starts on rather than to 0.
+		*
+		* The clamp is what doSegment's "unknown method" branch assumes has happened: without
+		* it a recipe carrying a method number this build does not have would reach the switch
+		* and fail the stage, where falling back to the default and saying so is kinder. The
+		* struct default means a recipe with no method recorded gets the current one rather
+		* than being pinned to whichever happened to be written first.
+		*/
+		const int segM = jsonHelper::getInteger(h, "seg_method", (int)p.segMethod);
+		if (segM >= 0 && segM < kAlgoH3SegMethodCount) p.segMethod = (AlgoH3SegMethod)segM;
 		p.segCanvasWidthUm = jsonHelper::getDouble(h, "seg_canvas_width_um", 0.0);
 		p.segCanvasHeightUm = jsonHelper::getDouble(h, "seg_canvas_height_um", 0.0);
 		p.segBandStepRaw = jsonHelper::getDouble(h, "seg_band_step_raw", 250.0);
@@ -435,7 +445,8 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		p.segMaxAngleDeg = jsonHelper::getDouble(h, "seg_max_angle_deg", 0.0);
 
 		// ── section 3 ──
-		p.datumMethod = (AlgoH3DatumMethod)jsonHelper::getInteger(h, "datum_method", 0);
+		const int datM = jsonHelper::getInteger(h, "datum_method", (int)p.datumMethod);
+		if (datM >= 0 && datM < kAlgoH3DatumMethodCount) p.datumMethod = (AlgoH3DatumMethod)datM;
 		p.datumFlatnessUm = jsonHelper::getDouble(h, "datum_flatness_um", 15.0);
 		p.datumCheckTilt = jsonHelper::getBool(h, "datum_check_tilt", false);
 		p.datumMaxTiltDeg = jsonHelper::getDouble(h, "datum_max_tilt_deg", 0.0);

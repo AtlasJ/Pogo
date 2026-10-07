@@ -206,7 +206,15 @@ struct AlgoHeight3Params {
 	int closingKernel = 3;
 
 	// ── section 2: segmentation ──
-	AlgoH3SegMethod segMethod = AlgoH3SegMethod::LargestRegion;
+	/*
+	* Complete Block by default. It is the one that suits the parts this machine runs: a pogo
+	* field is several blocks and only one of them is ever captured whole, so the other choice
+	* poses whatever the scan happened to include. It also needs no canvas typed in before it
+	* will run at all.
+	*
+	* A recipe that saved a method keeps it - this is only what an untaught one starts on.
+	*/
+	AlgoH3SegMethod segMethod = AlgoH3SegMethod::CompleteBand;
 	/*
 	* The FIXED part frame. Segmentation rotates the part upright and places it at the
 	* CENTRE of a canvas of exactly this size: a smaller part is padded with 0 (which every
@@ -249,7 +257,12 @@ struct AlgoHeight3Params {
 	double segMinAngleDeg = 0.0, segMaxAngleDeg = 0.0;
 
 	// ── section 3: datum plane ──
-	AlgoH3DatumMethod datumMethod = AlgoH3DatumMethod::LeastSquares;
+	/*
+	* Auto Flat by default: it needs no ROIs placed, and it fits the whole plate rather than
+	* the few patches of it somebody found by hand. The ROI methods remain for a part whose
+	* datum is a specific named surface rather than whatever is flattest.
+	*/
+	AlgoH3DatumMethod datumMethod = AlgoH3DatumMethod::AutoFlat;
 	/*
 	* AutoFlat only: how much a patch of surface may vary, top to bottom, and still count as
 	* flat - in um, because this is a statement about the part rather than about the sensor.
