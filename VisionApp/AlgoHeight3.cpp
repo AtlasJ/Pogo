@@ -1293,9 +1293,18 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 * The result on the sample part is a plane with 4.4 um RMS where six hand-placed ROIs gave
 * 37.6 um - not because the fit is better arithmetic, but because it is fitted to the whole
 * plate rather than to three edges of it.
+*
+* roiMask confines the search. Empty, it reads the whole part, which is the method at its most
+* automatic and needs nothing taught. Given the datum ROIs, it reads only inside them - the
+* operator says WHERE the datum is and the method still decides WHICH pixels of it are flat
+* enough to fit. That matters on a part where the substrate is not the largest flat thing in
+* frame: left to itself the fit lands on whatever has the most area, and it reports a TIGHTER
+* RMS while doing it, so a wrong surface looks more convincing rather than less. A box round
+* the right surface removes the question.
 */
-static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const AlgoHeight3Params& p,
-	H3Plane& out, qint64& points, double& rmsUm, int& tilesUsed, QString& why)
+static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const cv::Mat& roiMask,
+	const AlgoHeight3Params& p, H3Plane& out, qint64& points, double& rmsUm,
+	int& tilesUsed, QString& why)
 {
 	const int w = crop16.cols, h = crop16.rows;
 	if (w < 64 || h < 64) { why = QStringLiteral("The segmented part is too small to find flat regions in"); return false; }
@@ -1315,23 +1324,32 @@ static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const AlgoHeight3Params& p
 	std::vector<Tile> tiles;
 	tiles.reserve((size_t)tw * th);
 
+	const bool haveRoi = !roiMask.empty();
+
 	std::vector<ushort> vals;
 	vals.reserve((size_t)T * T);
 
 	for (int tj = 0; tj < th; tj++) {
 		for (int ti = 0; ti < tw; ti++) {
 			vals.clear();
+			int inRoi = 0;
 			for (int y = tj * T; y < (tj + 1) * T; y++) {
 				const ushort* row = crop16.ptr<ushort>(y);
+				const uchar* mrow = haveRoi ? roiMask.ptr<uchar>(y) : nullptr;
 				for (int x = ti * T; x < (ti + 1) * T; x++) {
+					if (mrow && !mrow[x]) continue;
+					inRoi++;
 					const ushort z = row[x];
 					if (z < p.minValidRaw || z > p.maxValidRaw) continue;
 					vals.push_back(z);
 				}
 			}
-			//half the tile has to be measured; below that the spread says more about the
-			//dropouts than about the surface
-			if ((int)vals.size() < T * T / 2) continue;
+			//A tile only half inside an ROI describes the edge of the box as much as the
+			//surface, so it is skipped rather than allowed to vote.
+			if (inRoi < T * T / 2) continue;
+			//and half of what IS in the box has to be measured; below that the spread says
+			//more about the dropouts than about the surface
+			if ((int)vals.size() < inRoi / 2) continue;
 
 			const size_t lo = vals.size() / 10, mid = vals.size() / 2;
 			const size_t hiIdx = vals.size() - 1 - vals.size() / 10;
@@ -1347,8 +1365,11 @@ static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const AlgoHeight3Params& p
 	}
 
 	if (tiles.size() < 16) {
-		why = QStringLiteral("Only %1 flat region(s) found - raise Flatness, or check that the "
-			"part was segmented correctly.").arg(tiles.size());
+		why = haveRoi
+			? QStringLiteral("Only %1 flat region(s) found inside the datum ROIs - raise "
+				"Flatness, or make the ROIs larger.").arg(tiles.size())
+			: QStringLiteral("Only %1 flat region(s) found - raise Flatness, or check that the "
+				"part was segmented correctly.").arg(tiles.size());
 		return false;
 	}
 
@@ -1417,8 +1438,10 @@ static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const AlgoHeight3Params& p
 
 	for (int y = 0; y < h; y++) {
 		const ushort* row = crop16.ptr<ushort>(y);
+		const uchar* mrow = haveRoi ? roiMask.ptr<uchar>(y) : nullptr;
 		const double Y = y - cy;
 		for (int x = 0; x < w; x++) {
+			if (mrow && !mrow[x]) continue;
 			const ushort z = row[x];
 			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
 			if (std::fabs((z - planeZ(plane, x, y)) / zPerUm) >= bandUm) continue;
@@ -1449,7 +1472,9 @@ static bool h3FitDatumAutoFlat(const cv::Mat& crop16, const AlgoHeight3Params& p
 	double sumSq = 0.0;
 	for (int y = 0; y < h; y++) {
 		const ushort* row = crop16.ptr<ushort>(y);
+		const uchar* mrow = haveRoi ? roiMask.ptr<uchar>(y) : nullptr;
 		for (int x = 0; x < w; x++) {
+			if (mrow && !mrow[x]) continue;
 			const ushort z = row[x];
 			if (z < p.minValidRaw || z > p.maxValidRaw) continue;
 			if (std::fabs((z - planeZ(plane, x, y)) / zPerUm) >= bandUm) continue;
@@ -1496,11 +1521,46 @@ bool AlgoHeight3Pipeline::doDatum(const AlgoHeight3Params& p)
 	double autoRmsUm = 0.0;
 	int autoTiles = 0;
 	if (autoFlat) {
+		/*
+		* Every datum ROI, unioned into ONE mask and fitted as ONE plane.
+		*
+		* Not a plane per box averaged afterwards: three small boxes in a line would each fit
+		* their own patch almost perfectly and say nothing about the tilt between them, where
+		* the pooled fit is constrained by how far apart they are. Pooling is also what makes
+		* boxes of very different sizes behave sensibly - a large one simply contributes more
+		* points, which is the right weighting for a surface sampled unevenly.
+		*
+		* No ROIs at all leaves the mask empty, and the method reads the whole part.
+		*/
+		cv::Mat roiMask;
+		int roisInside = 0;
+		if (!p.datumRois.isEmpty()) {
+			roiMask = cv::Mat::zeros(h, w, CV_8U);
+			for (const auto& rel : p.datumRois) {
+				const QRectF abs = rel.translated(w / 2.0, h / 2.0);
+				cv::Rect r((int)std::floor(abs.left()), (int)std::floor(abs.top()),
+					(int)std::lround(abs.width()), (int)std::lround(abs.height()));
+				r &= bounds;
+				if (r.width <= 0 || r.height <= 0) continue;
+				roiMask(r).setTo(255);
+				roisInside++;
+			}
+			if (roisInside == 0)
+				return fail(QStringLiteral("Every datum ROI is outside the segmented image"));
+		}
+
 		QString autoWhy;
-		if (!h3FitDatumAutoFlat(m_cropHeight, p, autoPlane, autoPoints, autoRmsUm, autoTiles, autoWhy))
+		if (!h3FitDatumAutoFlat(m_cropHeight, roiMask, p, autoPlane, autoPoints,
+				autoRmsUm, autoTiles, autoWhy))
 			return fail(autoWhy);
-		res.note = QStringLiteral("Fitted to %1 flat regions, %2 points")
-			.arg(autoTiles).arg(autoPoints);
+
+		//which it used is not obvious from the numbers, and a stale ROI quietly narrowing the
+		//fit is exactly the kind of thing that should be on the record
+		res.note = roisInside > 0
+			? QStringLiteral("%1 flat regions in %2 datum ROI(s), %3 points")
+				.arg(autoTiles).arg(roisInside).arg(autoPoints)
+			: QStringLiteral("%1 flat regions across the whole part, %2 points")
+				.arg(autoTiles).arg(autoPoints);
 	}
 
 	std::vector<H3Point> pts;

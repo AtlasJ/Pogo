@@ -1544,26 +1544,22 @@ void VisionApp::buildAlgoH3DatumMethodRows()
 }
 
 /*
-* Auto Flat finds its own surface, so the datum ROI controls do nothing under it. Leaving Add
-* and Delete on screen would invite the operator to place boxes that are then ignored, which
-* reads as the page being broken rather than as the method not needing them.
+* Only the Flatness setting is method-specific. The datum ROIs are not: under Auto Flat they
+* are optional rather than ignored - with none it reads the whole part, with some it reads only
+* inside them and still picks the flat pixels itself. So the ROI controls stay on screen for
+* every method, and the label says which of the two Auto Flat is doing.
 */
 void VisionApp::updateAlgoH3DatumMethodUi()
 {
 	const auto method = (AlgoH3DatumMethod)ui.comboBox_algoH3DatumMethod->currentIndex();
 	const bool autoFlat = (method == AlgoH3DatumMethod::AutoFlat);
 
-	ui.toolButton_algoH3DatumAddRoi->setVisible(!autoFlat);
-	ui.toolButton_algoH3DatumDeleteRoi->setVisible(!autoFlat);
-	ui.label_algoH3DatumRoiCount->setVisible(!autoFlat);
-	ui.lineEdit_algoH3DatumRoiCount->setVisible(!autoFlat);
-
 	if (_algoH3DatumFlatnessLabel) _algoH3DatumFlatnessLabel->setVisible(autoFlat);
 	if (_algoH3DatumFlatness) _algoH3DatumFlatness->setVisible(autoFlat);
 
-	//the taught boxes stay in the recipe, but showing them under a method that ignores them
-	//would be claiming they are doing something
-	updateAlgoH3RoiVisibility();
+	ui.label_algoH3DatumRoiCount->setText(autoFlat
+		? tr("ROIs (optional - none = whole part)") : tr("ROIs"));
+
 	fitAlgoH3Sections();
 }
 
