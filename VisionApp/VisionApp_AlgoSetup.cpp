@@ -516,6 +516,21 @@ void VisionApp::copyShortcutPressed()
 	copyVisionObject();
 }
 
+/*
+* Delete. Only the algo pages claim it, and only for ROIs - everywhere else the key keeps
+* whatever meaning the focused widget gives it, which is why the text guard comes first.
+*
+* There is deliberately no confirmation. An ROI is cheap to put back, Delete is a key people
+* press on purpose, and a dialog on every press would make deleting fifty of them a chore.
+*/
+void VisionApp::deleteShortcutPressed()
+{
+	if (copyPasteGoesToText()) return;
+	if (!isPage(UIPage::ALGO_SETUP)) return;
+
+	if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3DeleteSelectedRois();
+}
+
 void VisionApp::pasteShortcutPressed()
 {
 	if (copyPasteGoesToText()) return;

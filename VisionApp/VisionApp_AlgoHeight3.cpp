@@ -1250,6 +1250,37 @@ void VisionApp::refreshAlgoH3RoiBoxes()
 }
 
 /*
+* Delete the selected ROIs of whichever kind the open section owns.
+*
+* The same rule copy and paste use, and for the same reason: which boxes are on screen is not
+* a safe guide, because a section can show one kind while another is selected underneath. The
+* section decides.
+*
+* It presses the section's own Delete button rather than repeating what that button does. The
+* button already handles renumbering the remaining boxes, the type counts and the auto-save,
+* and a second copy of that would be a second thing to keep in step - and it inherits the
+* button's enabled state for free, so the key cannot do what the button would refuse.
+*/
+void VisionApp::algoH3DeleteSelectedRois()
+{
+	const H3RoiOwner owner = h3SectionOwner(algoH3CurrentSection());
+	if (owner == H3RoiOwner::None) {
+		showStatus(QStringLiteral("This section has no ROIs to delete. %1").arg(kH3RoiSectionHint));
+		return;
+	}
+
+	//nothing selected is not worth a message - the operator pressed Delete with no selection,
+	//which is a miss rather than a mistake
+	const auto& boxes = (owner == H3RoiOwner::Datum) ? _algoH3DatumBoxes : _algoH3RoiBoxes;
+	int selected = 0;
+	for (auto* b : boxes) if (b && b->isVisible() && b->isSelected()) selected++;
+	if (selected == 0) return;
+
+	if (owner == H3RoiOwner::Datum) ui.toolButton_algoH3DatumDeleteRoi->click();
+	else ui.toolButton_algoH3RoiDelete->click();
+}
+
+/*
 * Ctrl+C / Ctrl+V for V3's ROIs. Both are gated on the OPEN SECTION, which is the page's
 * own rule: section 3 owns the datum ROIs, 5 and 6 own the measurement ROIs, and no other
 * section owns either. So a copy can only take the kind the section owns, and a paste is

@@ -1421,6 +1421,14 @@ void VisionApp::connectShortcuts()
 	QShortcut *shortcut_ctrlV = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_V), this);
 	connect(shortcut_ctrlV, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; pasteShortcutPressed(); });
 
+	/*
+	* Delete removes the selected ROIs on the algo pages. A QShortcut like the two above, and
+	* for the same reason: Qt fires shortcuts BEFORE key events exist, so an eventFilter
+	* watching for KeyPress would never see it.
+	*/
+	QShortcut *shortcut_del = new QShortcut(QKeySequence(Qt::Key_Delete), this);
+	connect(shortcut_del, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; deleteShortcutPressed(); });
+
 	QShortcut *shortcut_ctrlB = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_B), this);
 	connect(shortcut_ctrlB, &QShortcut::activated, [=]() {
 		if (notAllowToAccess(AccessLevel::ENGINEER)) return;

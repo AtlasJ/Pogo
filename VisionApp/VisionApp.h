@@ -842,6 +842,8 @@ private:
 	//VisionApp_Shortcuts.cpp - NOT from eventFilter, which never sees these keys.
 	void copyShortcutPressed();
 	void pasteShortcutPressed();
+	void deleteShortcutPressed();
+	void algoH3DeleteSelectedRois();   //whichever kind the open section owns
 	bool copyPasteGoesToText() const;
 
 	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
