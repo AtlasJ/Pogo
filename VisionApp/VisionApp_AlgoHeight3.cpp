@@ -1450,9 +1450,22 @@ void VisionApp::buildAlgoH3SegMethodRows()
 	form->insertRow(3, _algoH3SegBandMinLabel, _algoH3SegBandMin);
 	form->insertRow(3, _algoH3SegBandStepLabel, _algoH3SegBandStep);
 
-	auto rerun = [=](double) { captureAlgoH3ParamsFromUI(); };
-	connect(_algoH3SegBandStep, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, rerun);
-	connect(_algoH3SegBandMin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, rerun);
+	/*
+	* Both hooks, and the auto-save one is not optional.
+	*
+	* initAlgoSetupPage() wires every spin box, combo and checkbox on the algo page to
+	* algoSettingsTouched() by walking its children - but it does that walk BEFORE this
+	* function runs, so a widget built here is never found by it. Left to the walk, these two
+	* would save only when some OTHER control on the page happened to be nudged, which is a
+	* worse failure than not saving at all: the setting survives or vanishes depending on what
+	* else was touched afterwards.
+	*/
+	auto edited = [=](double) {
+		captureAlgoH3ParamsFromUI();   //live immediately, for a Run before the debounce fires
+		algoSettingsTouched();         //and into the recipe 600 ms later
+	};
+	connect(_algoH3SegBandStep, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, edited);
+	connect(_algoH3SegBandMin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, edited);
 }
 
 /*
