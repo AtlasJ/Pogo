@@ -134,7 +134,10 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 	int minValidRaw, int maxValidRaw,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
 	AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled,
-	bool fillHoles = true);
+	bool fillHoles = true,
+	//the fitted datum as z = a*x + b*y + c in the SOURCE map's own pixels, drawn as a
+	//translucent sheet over the part; null draws none
+	const double* planeABC = nullptr);
 
 /*
 * Top-down relief (hillshade): the surface lit by a raking light, at FULL resolution.

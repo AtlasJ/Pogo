@@ -113,7 +113,10 @@ public:
 	QImage height3Surface(bool preprocessed, bool segmented,
 		double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
 		AlgoH3SurfaceStyle style = AlgoH3SurfaceStyle::Filled,
-		bool fillHoles = true) const;
+		bool fillHoles = true,
+		//draw the fitted datum over the part. Only means anything on the segmented view -
+		//the plane is fitted in the crop's coordinates and has no place on the full map.
+		bool showPlane = false) const;
 	QImage height3Relief(bool preprocessed, bool segmented,
 		double zExaggeration, bool colorMapped) const;
 

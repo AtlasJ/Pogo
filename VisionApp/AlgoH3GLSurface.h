@@ -45,6 +45,16 @@ struct AlgoH3GLScene {
 	//256-entry colour ramp (0xAARRGGBB) used when the style is not textured; the caller passes
 	//the app's own JET table so the 3D view and every flat height view agree.
 	const unsigned int* ramp = nullptr;
+
+	/*
+	* The fitted datum, as its height at the four grid corners - (0,0), (w-1,0), (w-1,h-1),
+	* (0,h-1), in the same raw units as z. Corners rather than the plane's own a/b/c, because
+	* the display grid is a decimated copy of the crop and converting the coefficients into its
+	* coordinates is a units mistake waiting to happen; a plane is flat, so four heights say
+	* everything there is to say about it.
+	*/
+	bool hasPlane = false;
+	float planeCorner[4] = { 0, 0, 0, 0 };
 };
 
 //Can this thread render? Cheap after the first call; the context is made once and reused.

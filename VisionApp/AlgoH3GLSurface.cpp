@@ -80,7 +80,9 @@ void main() {
 		float d = abs(dot(normalize(vN), uLight));
 		c *= uAmbient + (1.0 - uAmbient) * min(1.0, d);
 	}
-	frag = vec4(c * uDarken, 1.0);
+	//only the flat-colour mode is ever translucent, and it is the datum sheet that needs to be
+	float a = (uMode == 2) ? uColor.a : 1.0;
+	frag = vec4(c * uDarken, a);
 })";
 
 /*
@@ -490,6 +492,43 @@ QImage GLBackend::render(const AlgoH3GLScene& scene, double yawDeg, double pitch
 			f->glDisable(GL_POLYGON_OFFSET_LINE);
 			m_prog->setUniformValue("uDarken", 1.0f);
 		}
+	}
+
+	/*
+	* The datum, over the part.
+	*
+	* Translucent and not depth-writing, so the pins stay visible through it and nothing behind
+	* it is lost - the point is to see how the part sits against the plane, which a solid sheet
+	* would defeat by hiding exactly the half that is below it.
+	*
+	* Drawn last and blended, which on a single convex quad needs no sorting.
+	*/
+	if (scene.hasPlane) {
+		const float z00 = scene.planeCorner[0], z10 = scene.planeCorner[1];
+		const float z11 = scene.planeCorner[2], z01 = scene.planeCorner[3];
+		auto corner = [&](int i, int j, float zraw) {
+			Vtx v{};
+			v.x = (float)(2.0 * i / (double)(gw - 1) - 1.0) * (float)ax;
+			v.y = (float)(2.0 * j / (double)(gh - 1) - 1.0) * (float)ay;
+			const float t = (float)((zraw - scene.zMin) / zRange);
+			v.z = (t - 0.5f) * 2.0f * (float)zSpan;
+			v.gx = v.gy = 0.0f; v.t = 0.0f;
+			return v;
+		};
+		const Vtx quad[6] = {
+			corner(0, 0, z00), corner(gw - 1, 0, z10), corner(gw - 1, gh - 1, z11),
+			corner(0, 0, z00), corner(gw - 1, gh - 1, z11), corner(0, gh - 1, z01)
+		};
+		f->glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(quad), quad, GL_STREAM_DRAW);
+		f->glEnable(GL_BLEND);
+		f->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		f->glDepthMask(GL_FALSE);
+		m_prog->setUniformValue("uMode", 2);
+		m_prog->setUniformValue("uLit", 0);
+		m_prog->setUniformValue("uColor", QVector4D(1.0f, 1.0f, 1.0f, 0.28f));
+		f->glDrawArrays(GL_TRIANGLES, 0, 6);
+		f->glDepthMask(GL_TRUE);
+		f->glDisable(GL_BLEND);
 	}
 
 	m_prog->release();

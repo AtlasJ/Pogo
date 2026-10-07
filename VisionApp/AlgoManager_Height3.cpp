@@ -324,7 +324,7 @@ QImage AlgoManager::height3Image(bool intensity, bool preprocessed, bool segment
 
 QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
-	AlgoH3SurfaceStyle style, bool fillHoles) const
+	AlgoH3SurfaceStyle style, bool fillHoles, bool showPlane) const
 {
 	const AlgoHeight3Params p = height3Params();
 
@@ -333,9 +333,15 @@ QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 
 	//the texture has to come from the SAME segmentation state as the geometry, or a
 	//straightened crop would be painted with the uncropped map and slide off the part
+	//the plane lives in the crop's coordinate system, so it can only be drawn on the crop
+	const AlgoHeight3Output out = m_height3.output();
+	double abc[3] = { out.planeA, out.planeB, out.planeC };
+	const bool drawPlane = showPlane && segmented && out.planeValid;
+
 	return algoH3RenderSurface3D(m_height3.heightForDisplay(preprocessed, segmented),
 		m_height3.intensityForDisplay(segmented),
-		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style, fillHoles);
+		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style, fillHoles,
+		drawPlane ? abc : nullptr);
 }
 
 QImage AlgoManager::height3Relief(bool preprocessed, bool segmented,

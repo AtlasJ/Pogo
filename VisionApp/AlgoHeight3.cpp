@@ -1961,6 +1961,8 @@ struct H3Quad {
 	QPolygonF poly;
 	double depth = 0.0;
 	QRgb color = 0;
+	//the datum sheet: painted translucent and unstroked, so the part shows through it
+	bool plane = false;
 };
 
 /*
@@ -2040,7 +2042,7 @@ h3fill::Report algoH3FillDisplayGrid(cv::Mat& grid16, int minValidRaw, int maxVa
 QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 	int minValidRaw, int maxValidRaw,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
-	AlgoH3SurfaceStyle style, bool fillHoles)
+	AlgoH3SurfaceStyle style, bool fillHoles, const double* planeABC)
 {
 	const bool mesh = (style == AlgoH3SurfaceStyle::ShadedMesh);
 	const bool wire = (style == AlgoH3SurfaceStyle::Wireframe);
@@ -2152,6 +2154,20 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 			}
 		}
 
+		if (planeABC) {
+			//the grid is a resize of the map, so a grid node at (i, j) is map pixel
+			//(i * cols/gw, j * rows/gh) - evaluate the plane there and let the quad interpolate
+			const double sx = (double)src.cols / gw, sy = (double)src.rows / gh;
+			auto at = [&](int i, int j) {
+				return (float)(planeABC[0] * i * sx + planeABC[1] * j * sy + planeABC[2]);
+			};
+			scene.hasPlane = true;
+			scene.planeCorner[0] = at(0, 0);
+			scene.planeCorner[1] = at(gw - 1, 0);
+			scene.planeCorner[2] = at(gw - 1, gh - 1);
+			scene.planeCorner[3] = at(0, gh - 1);
+		}
+
 		const QImage rendered = algoH3RenderSurfaceGL(scene, yawDeg, pitchDeg,
 			zExaggeration, size, style);
 		if (!rendered.isNull()) return rendered;
@@ -2213,6 +2229,24 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 
 	auto toScreen = [&](size_t idx) {
 		return QPointF(offX + (px[idx] - minX) * s, offY + (py[idx] - minY) * s);
+	};
+
+	/*
+	* The same projection the grid went through, for a point that is NOT on the grid - which is
+	* what the datum sheet needs. Taking the sheet through the identical arithmetic is what
+	* keeps it in register with the part; working it out a second way would leave it a pixel or
+	* two out at every angle.
+	*/
+	auto project = [&](double gi, double gj, double rawZ, double& ox, double& oy, double& depth) {
+		const double t = (rawZ - zMin) / (zMax - zMin);
+		const double x = (2.0 * gi / (double)(gw - 1) - 1.0) * ax;
+		const double y = (2.0 * gj / (double)(gh - 1) - 1.0) * ay;
+		const double z = (t - 0.5) * 2.0 * zSpan;
+		const double xr = x * cy - y * sy;
+		const double yr = x * sy + y * cy;
+		depth = yr * ce + z * se;
+		ox = offX + (xr - minX) * s;
+		oy = offY + (yr * se - z * ce - minY) * s;
 	};
 
 	const QRgb* lut = jetTable();
@@ -2317,6 +2351,41 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 		}
 	}
 
+	/*
+	* The datum, as a sheet of its own quads.
+	*
+	* Subdivided rather than drawn as one: this renderer resolves occlusion by painting
+	* far-to-near, and a single quad carries a single depth - so one big sheet would land either
+	* wholly in front of the part or wholly behind it. Cut into a grid it sorts with the part,
+	* and the pins come through it where they stand above it.
+	*/
+	if (planeABC) {
+		const int N = 24;
+		const double psx = (double)src.cols / gw, psy = (double)src.rows / gh;
+		auto planeRaw = [&](double gi, double gj) {
+			return planeABC[0] * gi * psx + planeABC[1] * gj * psy + planeABC[2];
+		};
+		for (int j = 0; j < N; j++) {
+			for (int i = 0; i < N; i++) {
+				const double g0 = (double)i * (gw - 1) / N, g1 = (double)(i + 1) * (gw - 1) / N;
+				const double h0 = (double)j * (gh - 1) / N, h1 = (double)(j + 1) * (gh - 1) / N;
+				const double gx[4] = { g0, g1, g1, g0 };
+				const double gy[4] = { h0, h0, h1, h1 };
+				H3Quad q;
+				q.plane = true;
+				q.color = qRgba(255, 255, 255, 70);
+				double ox, oy, dp, acc = 0.0;
+				for (int k = 0; k < 4; k++) {
+					project(gx[k], gy[k], planeRaw(gx[k], gy[k]), ox, oy, dp);
+					q.poly << QPointF(ox, oy);
+					acc += dp;
+				}
+				q.depth = acc / 4.0;
+				quads.push_back(std::move(q));
+			}
+		}
+	}
+
 	if (quads.empty()) return img;
 
 	//painter's algorithm: far first, so nearer geometry paints over it
@@ -2328,6 +2397,14 @@ QImage algoH3RenderSurface3D(const cv::Mat& height16, const cv::Mat& intensity8,
 
 	const QColor bg(24, 26, 32);
 	for (const auto& q : quads) {
+		if (q.plane) {
+			//translucent and unstroked: a stroked grid would read as a mesh of its own rather
+			//than as the one flat reference surface it is
+			painter.setPen(Qt::NoPen);
+			painter.setBrush(QColor::fromRgba(q.color));
+			painter.drawPolygon(q.poly);
+			continue;
+		}
 		const QColor c(q.color);
 		if (wire) {
 			/*
