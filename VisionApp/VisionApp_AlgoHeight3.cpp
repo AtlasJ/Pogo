@@ -326,7 +326,7 @@ void VisionApp::initAlgoHeight3Page()
 		"lineEdit_algoH3SegCanvasPx",
 		"lineEdit_algoH3SegMeasuredWidthUm", "lineEdit_algoH3SegMeasuredHeightUm", "lineEdit_algoH3SegMeasuredAngleDeg",
 		"lineEdit_algoH3SegResult", "lineEdit_algoH3SegFailReason", "lineEdit_algoH3SegTimeMs",
-		"lineEdit_algoH3DatumRoiCount", "lineEdit_algoH3DatumCoeffA", "lineEdit_algoH3DatumCoeffB",
+		"lineEdit_algoH3DatumCoeffA", "lineEdit_algoH3DatumCoeffB",
 		"lineEdit_algoH3DatumCoeffC", "lineEdit_algoH3DatumMeasuredTiltDeg", "lineEdit_algoH3DatumResult",
 		"lineEdit_algoH3DatumFailReason", "lineEdit_algoH3DatumTimeMs",
 		"lineEdit_algoH3RoiCount",
@@ -343,6 +343,17 @@ void VisionApp::initAlgoHeight3Page()
 		auto* le = ui.widget_algoHeight3Page->findChild<QLineEdit*>(name);
 		h3SetReadonly(le);
 		h3SetNonExpanding(le);
+	}
+
+	/*
+	* The two datum counts share a line with a stretching spacer, and there the Ignored policy
+	* above backfires: Qt sizes an Ignored box from a 0 width hint, and with no stretch of its
+	* own it can be crushed to a sliver. They only ever hold a small number, so a fixed width.
+	*/
+	for (QLineEdit* le : { ui.lineEdit_algoH3DatumRoiCount, ui.lineEdit_algoH3DatumRoiRequired }) {
+		h3SetReadonly(le);
+		le->setSizePolicy(QSizePolicy::Fixed, le->sizePolicy().verticalPolicy());
+		le->setFixedWidth(60);
 	}
 
 	//the rest of the page's variable text: the type status, the result instruction, and the
@@ -1740,7 +1751,8 @@ void VisionApp::buildAlgoH3DatumMethodRows()
 * Only the Flatness setting is method-specific. The datum ROIs are not: under Auto Flat they
 * are optional rather than ignored - with none it reads the whole part, with some it reads only
 * inside them and still picks the flat pixels itself. So the ROI controls stay on screen for
-* every method, and the label says which of the two Auto Flat is doing.
+* every method. The labels are the same for every method too; only the ROI Required value
+* changes, so switching method never moves the layout.
 */
 void VisionApp::updateAlgoH3DatumMethodUi()
 {
@@ -1750,8 +1762,13 @@ void VisionApp::updateAlgoH3DatumMethodUi()
 	if (_algoH3DatumFlatnessLabel) _algoH3DatumFlatnessLabel->setVisible(autoFlat);
 	if (_algoH3DatumFlatness) _algoH3DatumFlatness->setVisible(autoFlat);
 
-	ui.label_algoH3DatumRoiCount->setText(autoFlat
-		? tr("ROIs (optional - none = whole part)") : tr("ROIs"));
+	//the least number of datum ROIs a Run needs - Auto Flat reads the whole part without any
+	ui.lineEdit_algoH3DatumRoiRequired->setText(autoFlat ? QStringLiteral("0") : QStringLiteral("1"));
+	const QString why = autoFlat
+		? tr("Auto Flat needs no datum ROIs: with none it reads the whole part, with some it reads only inside them.")
+		: tr("This method fits the plane inside the datum ROIs, so it needs at least one.");
+	ui.label_algoH3DatumRoiRequired->setToolTip(why);
+	ui.lineEdit_algoH3DatumRoiRequired->setToolTip(why);
 
 	fitAlgoH3Sections();
 }

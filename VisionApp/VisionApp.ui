@@ -23777,47 +23777,82 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Datum">
                                  <item row="0" column="0" colspan="2">
-                                  <layout class="QHBoxLayout" name="horizontalLayout_algoH3DatumRoi">
+                                  <layout class="QVBoxLayout" name="verticalLayout_algoH3DatumRoi">
                                    <item>
-                                    <widget class="QToolButton" name="toolButton_algoH3DatumAddRoi">
-                                     <property name="text">
-                                      <string>Add Datum ROI</string>
-                                     </property>
-                                    </widget>
+                                    <layout class="QHBoxLayout" name="horizontalLayout_algoH3DatumRoi">
+                                     <item>
+                                      <widget class="QToolButton" name="toolButton_algoH3DatumAddRoi">
+                                       <property name="text">
+                                        <string>Add Datum ROI</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QToolButton" name="toolButton_algoH3DatumDeleteRoi">
+                                       <property name="text">
+                                        <string>Delete Selected Datum ROI</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <spacer name="horizontalSpacer_algoH3DatumRoi">
+                                       <property name="orientation">
+                                        <enum>Qt::Horizontal</enum>
+                                       </property>
+                                       <property name="sizeHint" stdset="0">
+                                        <size>
+                                         <width>40</width>
+                                         <height>20</height>
+                                        </size>
+                                       </property>
+                                      </spacer>
+                                     </item>
+                                    </layout>
                                    </item>
                                    <item>
-                                    <widget class="QToolButton" name="toolButton_algoH3DatumDeleteRoi">
-                                     <property name="text">
-                                      <string>Delete Selected Datum ROI</string>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <widget class="QLabel" name="label_algoH3DatumRoiCount">
-                                     <property name="text">
-                                      <string>Total Datum ROI Count:</string>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <widget class="QLineEdit" name="lineEdit_algoH3DatumRoiCount">
-                                     <property name="readOnly">
-                                      <bool>true</bool>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <spacer name="horizontalSpacer_algoH3DatumRoi">
-                                     <property name="orientation">
-                                      <enum>Qt::Horizontal</enum>
-                                     </property>
-                                     <property name="sizeHint" stdset="0">
-                                      <size>
-                                       <width>40</width>
-                                       <height>20</height>
-                                      </size>
-                                     </property>
-                                    </spacer>
+                                    <layout class="QHBoxLayout" name="horizontalLayout_algoH3DatumRoiCount">
+                                     <item>
+                                      <widget class="QLabel" name="label_algoH3DatumRoiCount">
+                                       <property name="text">
+                                        <string>ROI Count</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLineEdit" name="lineEdit_algoH3DatumRoiCount">
+                                       <property name="readOnly">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLabel" name="label_algoH3DatumRoiRequired">
+                                       <property name="text">
+                                        <string>Minimum ROI Required</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLineEdit" name="lineEdit_algoH3DatumRoiRequired">
+                                       <property name="readOnly">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <spacer name="horizontalSpacer_algoH3DatumRoiCount">
+                                       <property name="orientation">
+                                        <enum>Qt::Horizontal</enum>
+                                       </property>
+                                       <property name="sizeHint" stdset="0">
+                                        <size>
+                                         <width>40</width>
+                                         <height>20</height>
+                                        </size>
+                                       </property>
+                                      </spacer>
+                                     </item>
+                                    </layout>
                                    </item>
                                   </layout>
                                  </item>
@@ -23888,13 +23923,6 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="4" column="0">
-                                  <widget class="QLabel" name="label_algoH3DatumCoeffs">
-                                   <property name="text">
-                                    <string>Plane Coefficients</string>
-                                   </property>
-                                  </widget>
-                                 </item>
                                  <item row="6" column="0">
                                   <widget class="QLabel" name="label_algoH3DatumResult">
                                    <property name="text">
@@ -23923,62 +23951,60 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="1">
-                                  <layout class="QHBoxLayout" name="horizontalLayout_algoH3DatumCoeffs">
+                                 <item row="4" column="0" colspan="2">
+                                  <layout class="QVBoxLayout" name="verticalLayout_algoH3DatumCoeffs">
                                    <item>
-                                    <widget class="QLabel" name="label_algoH3DatumCoeffA">
+                                    <widget class="QLabel" name="label_algoH3DatumCoeffs">
                                      <property name="text">
-                                      <string>a:</string>
+                                      <string>Plane Coefficients</string>
                                      </property>
                                     </widget>
                                    </item>
                                    <item>
-                                    <widget class="QLineEdit" name="lineEdit_algoH3DatumCoeffA">
-                                     <property name="readOnly">
-                                      <bool>true</bool>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <widget class="QLabel" name="label_algoH3DatumCoeffB">
-                                     <property name="text">
-                                      <string>b:</string>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <widget class="QLineEdit" name="lineEdit_algoH3DatumCoeffB">
-                                     <property name="readOnly">
-                                      <bool>true</bool>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <widget class="QLabel" name="label_algoH3DatumCoeffC">
-                                     <property name="text">
-                                      <string>c:</string>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <widget class="QLineEdit" name="lineEdit_algoH3DatumCoeffC">
-                                     <property name="readOnly">
-                                      <bool>true</bool>
-                                     </property>
-                                    </widget>
-                                   </item>
-                                   <item>
-                                    <spacer name="horizontalSpacer_algoH3DatumCoeffs">
-                                     <property name="orientation">
-                                      <enum>Qt::Horizontal</enum>
-                                     </property>
-                                     <property name="sizeHint" stdset="0">
-                                      <size>
-                                       <width>40</width>
-                                       <height>20</height>
-                                      </size>
-                                     </property>
-                                    </spacer>
+                                    <layout class="QHBoxLayout" name="horizontalLayout_algoH3DatumCoeffs" stretch="0,1,0,1,0,1">
+                                     <item>
+                                      <widget class="QLabel" name="label_algoH3DatumCoeffA">
+                                       <property name="text">
+                                        <string>a:</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLineEdit" name="lineEdit_algoH3DatumCoeffA">
+                                       <property name="readOnly">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLabel" name="label_algoH3DatumCoeffB">
+                                       <property name="text">
+                                        <string>b:</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLineEdit" name="lineEdit_algoH3DatumCoeffB">
+                                       <property name="readOnly">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLabel" name="label_algoH3DatumCoeffC">
+                                       <property name="text">
+                                        <string>c:</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item>
+                                      <widget class="QLineEdit" name="lineEdit_algoH3DatumCoeffC">
+                                       <property name="readOnly">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                    </layout>
                                    </item>
                                   </layout>
                                  </item>
