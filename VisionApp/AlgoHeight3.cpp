@@ -1173,9 +1173,9 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	double canvasHeightUm = p.segCanvasHeightUm;
 
 	/*
-	* CompleteBand sizes the frame to the block it found, and the page hides the canvas boxes
-	* for it. The block is bounded by its own plate edges rather than by whatever the scan
-	* happened to include, so its extent is a property of the PART and repeats unit to unit -
+	* CompleteBand with no canvas set sizes the frame to the block it found. The block is
+	* bounded by its own plate edges rather than by whatever the scan happened to include, so
+	* its extent is a property of the PART and repeats unit to unit -
 	* which is the thing the fixed canvas exists to guarantee. It is not quite as strong a
 	* guarantee: a block that measures a little differently still moves the frame a little,
 	* where a typed canvas cannot move at all. Set a canvas anyway and it is honoured.
@@ -1247,9 +1247,14 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 	* centre at the centre of the canvas - so a 60 MB map is never rotated whole.
 	*
 	* The centring is what the two translation terms already did; they now target a FIXED
-	* canvas instead of one sized to this part. Anything the part does not cover is filled
-	* with BORDER_CONSTANT 0, and 0 is already "dropout" to the mask, the plane fit and the
-	* measurement - so the letterboxing needs no special handling anywhere downstream.
+	* canvas instead of one sized to this part. Only what lies beyond the edge of the SCAN is
+	* filled with BORDER_CONSTANT 0, and 0 is already "dropout" to the mask, the plane fit and
+	* the measurement - so that letterboxing needs no special handling anywhere downstream.
+	*
+	* Everything else in the canvas is REAL map data, not just the part: a canvas larger than
+	* the part also takes in whatever surrounds it - the neighbouring blocks, the rails. That
+	* is harmless to the ROIs, which are placed on the part, but Auto Flat with no datum ROIs
+	* reads the whole crop, so a generous margin feeds those neighbours into the datum fit.
 	*
 	* INTER_NEAREST is not a performance choice, it is a correctness one: interpolating
 	* two height samples invents a height that was never measured, and blending a real

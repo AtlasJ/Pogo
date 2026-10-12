@@ -1193,11 +1193,15 @@ void VisionApp::updateAlgoH3CanvasPxLabel()
 	const double sy = ui.doubleSpinBox_algoH3InputYScaleUmPx->value();
 
 	if (wUm <= 0.0 || hUm <= 0.0) {
-		ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("not set"));
+		const bool band = ((AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex()
+			== AlgoH3SegMethod::CompleteBand);
+		h3SetMessage(ui.lineEdit_algoH3SegCanvasPx, band
+			? QStringLiteral("not set - sized to the block found")
+			: QStringLiteral("not set"));
 		return;
 	}
 	if (sx <= 0.0 || sy <= 0.0) {
-		ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("set the X/Y scale first"));
+		h3SetMessage(ui.lineEdit_algoH3SegCanvasPx, QStringLiteral("set the X/Y scale first"));
 		return;
 	}
 
@@ -1208,7 +1212,7 @@ void VisionApp::updateAlgoH3CanvasPxLabel()
 		if (px % 2) px++;
 		return px;
 	};
-	ui.lineEdit_algoH3SegCanvasPx->setText(QStringLiteral("%1 x %2 px")
+	h3SetMessage(ui.lineEdit_algoH3SegCanvasPx, QStringLiteral("%1 x %2 px")
 		.arg(evenPx(wUm, sx)).arg(evenPx(hUm, sy)));
 }
 
@@ -1621,8 +1625,9 @@ void VisionApp::algoH3ShownStage(bool& preprocessed, bool& segmented) const
 * explicitly, so adding a row in the middle there means renumbering every row below it, and a
 * mis-numbered QFormLayout fails quietly by stacking two widgets in the same cell.
 *
-* They go straight after the canvas rows, which is where the method's own settings belong -
-* above the width, height and angle checks, which every method shares.
+* They go directly under the method combo, so the settings that change with the method sit
+* next to it - above the canvas and the width, height and angle checks, which every method
+* shares.
 */
 void VisionApp::buildAlgoH3SegMethodRows()
 {
@@ -1658,9 +1663,9 @@ void VisionApp::buildAlgoH3SegMethodRows()
 		"landed close together from being taken for one.\n\n"
 		"0 = an eighth of the map."));
 
-	//row 2 is the Canvas (px) readout, so 3 puts these directly under the canvas block
-	form->insertRow(3, _algoH3SegBandMinLabel, _algoH3SegBandMin);
-	form->insertRow(3, _algoH3SegBandStepLabel, _algoH3SegBandStep);
+	//row 0 is the method combo, so 1 puts these directly under it (Step first, then Min)
+	form->insertRow(1, _algoH3SegBandMinLabel, _algoH3SegBandMin);
+	form->insertRow(1, _algoH3SegBandStepLabel, _algoH3SegBandStep);
 
 	/*
 	* Both hooks, and the auto-save one is not optional.
@@ -1683,30 +1688,24 @@ void VisionApp::buildAlgoH3SegMethodRows()
 /*
 * Show only the settings the chosen method actually reads.
 *
-* The canvas is the clearest case: Largest Connected Region cannot work without one - it has
-* no idea how big the part is meant to be, so the frame has to be typed in - while Complete
-* Block is bounded by the plate edges it found and sizes the frame to those. Leaving the
-* canvas boxes on screen under Complete Block would be offering a setting that does nothing,
-* which is worse than not offering it.
+* Only Plate Step and Min Block Height belong to one method. The canvas does not: both methods
+* use it when it is set, and a typed canvas is the stronger guarantee - it cannot move unit to
+* unit. What differs is a canvas left at 0: Largest Connected Region refuses, Complete Block
+* falls back to the block it found. So the canvas stays on screen for both, and its readout
+* says which of the two a 0 means.
 */
 void VisionApp::updateAlgoH3SegMethodUi()
 {
 	const auto method = (AlgoH3SegMethod)ui.comboBox_algoH3SegMethod->currentIndex();
-	const bool canvas = (method == AlgoH3SegMethod::LargestRegion);
 	const bool band = (method == AlgoH3SegMethod::CompleteBand);
-
-	ui.label_algoH3SegCanvas->setVisible(canvas);
-	ui.label_algoH3SegCanvasWidthUm->setVisible(canvas);
-	ui.doubleSpinBox_algoH3SegCanvasWidthUm->setVisible(canvas);
-	ui.label_algoH3SegCanvasHeightUm->setVisible(canvas);
-	ui.doubleSpinBox_algoH3SegCanvasHeightUm->setVisible(canvas);
-	ui.label_algoH3SegCanvasPx->setVisible(canvas);
-	ui.lineEdit_algoH3SegCanvasPx->setVisible(canvas);
 
 	if (_algoH3SegBandStepLabel) _algoH3SegBandStepLabel->setVisible(band);
 	if (_algoH3SegBandStep) _algoH3SegBandStep->setVisible(band);
 	if (_algoH3SegBandMinLabel) _algoH3SegBandMinLabel->setVisible(band);
 	if (_algoH3SegBandMin) _algoH3SegBandMin->setVisible(band);
+
+	//what a canvas of 0 means depends on the method
+	updateAlgoH3CanvasPxLabel();
 
 	//the section just changed height, so the toolbox has to be remeasured
 	fitAlgoH3Sections();
