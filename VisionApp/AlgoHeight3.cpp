@@ -919,7 +919,12 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 		else if (any) level[u] = held;
 	}
 	if (!any) { why = QStringLiteral("No line across the part carried enough data to find a plate level"); return false; }
-	for (int u = 0; u < uCount && !hasLevel[u]; u++) level[u] = level[std::min(uCount - 1, u + 1)];
+	//lines before the first level take that level; filled BACKWARD from it, because a forward
+	//copy reads each line's still-empty neighbour and leaves them all 0 - a false 0->plate step
+	//that makes a block clipped at the top of the scan look complete
+	int first = 0;
+	while (!hasLevel[first]) first++;
+	for (int u = first - 1; u >= 0; u--) level[u] = level[u + 1];
 
 	// ── 3. median filter ──
 	int k = std::min(51, (minBand | 1));

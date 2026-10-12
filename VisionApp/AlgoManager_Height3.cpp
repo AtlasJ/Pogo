@@ -572,7 +572,7 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 	//negative is meaningless; 0 stays 0 because it means "not set" and must keep refusing
 	if (p.segCanvasWidthUm < 0.0) p.segCanvasWidthUm = 0.0;
 	if (p.segCanvasHeightUm < 0.0) p.segCanvasHeightUm = 0.0;
-	if ((int)p.datumMethod < 0 || (int)p.datumMethod > (int)AlgoH3DatumMethod::PcaSvd)
+	if ((int)p.datumMethod < 0 || (int)p.datumMethod >= kAlgoH3DatumMethodCount)
 		p.datumMethod = AlgoH3DatumMethod::LeastSquares;
 	if (!algoH3MethodValid(p.methodId)) p.methodId = 0;
 
