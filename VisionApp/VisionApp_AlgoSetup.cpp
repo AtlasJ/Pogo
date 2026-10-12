@@ -867,14 +867,18 @@ void VisionApp::renderAlgoOverlay(const QVector<AlgoOverlayItem>& overlay)
 		switch (item.type) {
 		case AlgoOverlayItem::Rect: {
 			auto rect = new QGraphicsRectItem(item.rect);
-			rect->setPen(QPen(item.color, 2));
+			QPen pen(item.color, item.penWidth);
+			pen.setCosmetic(item.cosmeticPen);
+			rect->setPen(pen);
 			rect->setBrush(item.fill);
 			gfx = rect;
 			break;
 		}
 		case AlgoOverlayItem::Polygon: {
 			auto poly = new QGraphicsPolygonItem(item.poly);
-			poly->setPen(QPen(item.color, 2));
+			QPen pen(item.color, item.penWidth);
+			pen.setCosmetic(item.cosmeticPen);
+			poly->setPen(pen);
 			gfx = poly;
 			break;
 		}

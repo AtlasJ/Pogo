@@ -84,6 +84,10 @@ struct AlgoOverlayItem {
 	QColor color = QColor(0, 255, 127);
 	QColor fill = Qt::transparent;
 	int pointSize = 12;
+	//Rect / Polygon outline. Image pixels by default, so it scales with the zoom; a cosmetic
+	//pen is in SCREEN pixels instead and keeps its width however far the image is shrunk
+	qreal penWidth = 2.0;
+	bool cosmeticPen = false;
 
 	static AlgoOverlayItem makeRect(const QRectF& r, const QColor& c, const QColor& f = Qt::transparent) {
 		AlgoOverlayItem i; i.type = Rect; i.rect = r; i.color = c; i.fill = f; return i;

@@ -1976,7 +1976,12 @@ void VisionApp::refreshAlgoH3Overlay()
 		&& _algoH3Output.segCorners.size() == 4) {
 		QPolygonF poly;
 		for (const auto& pt : _algoH3Output.segCorners) poly << pt;
-		overlay.append(AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127)));
+		//a 10000 px map is shown at a tenth of that or less, where a 2 px image line is a
+		//fraction of a screen pixel - so this outline is sized in screen pixels instead
+		auto outline = AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127));
+		outline.penWidth = 3.0;
+		outline.cosmeticPen = true;
+		overlay.append(outline);
 	}
 	else if (section == SEC_OVERALL && _algoH3Output.measure.ran && _algoH3BoxCropW > 0) {
 		//no flat-view test needed any more: the 3D early-return above covers it
