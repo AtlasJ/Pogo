@@ -1356,6 +1356,25 @@ void VisionApp::algoH3DeleteSelectedRois()
 	else ui.toolButton_algoH3RoiDelete->click();
 }
 
+//Ctrl+A: the kind the open section owns, like Copy - never both kinds at once
+void VisionApp::algoH3SelectAllRois()
+{
+	const H3RoiOwner owner = h3SectionOwner(algoH3CurrentSection());
+	if (owner == H3RoiOwner::None) {
+		showStatus(QStringLiteral("This section has no ROIs to select. %1").arg(kH3RoiSectionHint));
+		return;
+	}
+
+	const auto& boxes = (owner == H3RoiOwner::Datum) ? _algoH3DatumBoxes : _algoH3RoiBoxes;
+	int selected = 0;
+	for (auto* b : boxes) {
+		if (!b || !b->isVisible()) continue;
+		b->setSelected(true);
+		selected++;
+	}
+	if (selected > 0) showStatus(QStringLiteral("%1 ROI(s) selected").arg(selected));
+}
+
 /*
 * Ctrl+C / Ctrl+V for V3's ROIs. Both are gated on the OPEN SECTION, which is the page's
 * own rule: section 3 owns the datum ROIs, 5 and 6 own the measurement ROIs, and no other

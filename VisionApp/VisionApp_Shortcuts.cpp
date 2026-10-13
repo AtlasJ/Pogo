@@ -1416,8 +1416,14 @@ void VisionApp::connectShortcuts()
 		//progressBarRelease();
 	});
 
+	//Ctrl+A is select all; the grid intensity analysis it used to run (inherited from IM430)
+	//moved to Ctrl+Shift+G, because that analysis overwrites the auto-cal report's input
+	//(3DCalReadings/GridIntensity.csv) and Ctrl+A is pressed by habit
 	QShortcut *shortcut_ctrlA = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_A), this);
-	connect(shortcut_ctrlA, &QShortcut::activated, [=]() {
+	connect(shortcut_ctrlA, &QShortcut::activated, [=]() { if (notAllowToAccess(AccessLevel::OPERATOR)) return; selectAllShortcutPressed(); });
+
+	QShortcut *shortcut_ctrlShiftG = new QShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_G), this);
+	connect(shortcut_ctrlShiftG, &QShortcut::activated, [=]() {
 		if (notAllowToAccess(AccessLevel::ENGINEER)) return;
 		if (notAllowToAccess(AccessLevel::OPERATOR)) return;
 

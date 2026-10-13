@@ -864,6 +864,9 @@ private:
 	//true when the key was consumed, so the recipe page's own Delete handling stands down
 	bool deleteShortcutPressed();
 	void algoH3DeleteSelectedRois();   //whichever kind the open section owns
+	//Ctrl+A: every ROI the open algo page shows; nothing anywhere else
+	void selectAllShortcutPressed();
+	void algoH3SelectAllRois();        //whichever kind the open section owns
 	bool copyPasteGoesToText() const;
 
 	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page

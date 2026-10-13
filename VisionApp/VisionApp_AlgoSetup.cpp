@@ -535,6 +535,29 @@ bool VisionApp::deleteShortcutPressed()
 	return true;
 }
 
+/*
+* Select all. Only the algo pages claim it - anywhere else Ctrl+A does nothing, rather than
+* reaching some other page's function. A text field keeps its own select-all.
+*
+* Visible boxes only: setSelected() is a no-op on a hidden item anyway, and a box the page
+* is hiding belongs to another algo or another section.
+*/
+void VisionApp::selectAllShortcutPressed()
+{
+	if (copyPasteGoesToText()) return;
+	if (!isPage(UIPage::ALGO_SETUP)) return;
+
+	if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+		algoH3SelectAllRois();
+		return;
+	}
+
+	int selected = 0;
+	for (auto* b : _algoPlaneBoxes) if (b && b->isVisible()) { b->setSelected(true); selected++; }
+	for (auto* b : _algoHeightBoxes) if (b && b->isVisible()) { b->setSelected(true); selected++; }
+	if (selected > 0) showStatus(QStringLiteral("%1 ROI(s) selected").arg(selected));
+}
+
 void VisionApp::pasteShortcutPressed()
 {
 	if (copyPasteGoesToText()) return;
