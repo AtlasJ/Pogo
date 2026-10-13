@@ -415,30 +415,39 @@ bool AlgoManager::height3CopyDisplayHeight(bool preprocessed, bool segmented, cv
 // Runs
 // =============================================================================
 
+//queued to V3's own thread (see AlgoManager::init); before init() it falls back to the shared one
 void AlgoManager::runHeight3(AlgoH3Stage stage)
 {
-	QMetaObject::invokeMethod(this, "doRunHeight3", Qt::QueuedConnection,
-		Q_ARG(int, (int)stage));
+	if (m_height3Runner)
+		QMetaObject::invokeMethod(m_height3Runner, "run", Qt::QueuedConnection, Q_ARG(int, (int)stage));
+	else
+		QMetaObject::invokeMethod(this, "doRunHeight3", Qt::QueuedConnection, Q_ARG(int, (int)stage));
 }
 
 void AlgoManager::runHeight3UpTo(int stage)
 {
-	QMetaObject::invokeMethod(this, "doRunHeight3UpTo", Qt::QueuedConnection, Q_ARG(int, stage));
+	if (m_height3Runner)
+		QMetaObject::invokeMethod(m_height3Runner, "runUpTo", Qt::QueuedConnection, Q_ARG(int, stage));
+	else
+		QMetaObject::invokeMethod(this, "doRunHeight3UpTo", Qt::QueuedConnection, Q_ARG(int, stage));
 }
+
+//on V3's thread: the work is AlgoManager's, under the same pipeline lock as always
+void AlgoH3Runner::run(int stage) { m_mgr->doRunHeight3(stage); }
+void AlgoH3Runner::runUpTo(int stage) { m_mgr->doRunHeight3UpTo(stage); }
 
 /*
 * Re-run every stage up to `stage`, which is how a reopened recipe gets back to where it was.
 *
-* The same worker, the same lock and the same finished signal as a stage the operator asked
-* for - the page cannot tell the difference, and so needs no second path for showing results
-* that arrived on their own.
+* The same worker (V3's own thread), the same lock and the same finished signal as a stage the
+* operator asked for - the page cannot tell the difference, and so needs no second path for
+* showing results that arrived on their own.
 */
 void AlgoManager::doRunHeight3UpTo(int stage)
 {
 	if (stage < 0 || stage >(int)AlgoH3Stage::Overall) return;
 
-	m_busy = true;
-	emit busyChanged(true);
+	setBusy(true);
 
 	const AlgoHeight3Params p = height3Params();
 
@@ -449,8 +458,7 @@ void AlgoManager::doRunHeight3UpTo(int stage)
 		out = m_height3.output();
 	}
 
-	m_busy = false;
-	emit busyChanged(false);
+	setBusy(false);
 	emit height3Finished(stage, out);
 }
 
@@ -463,8 +471,7 @@ void AlgoManager::doRunHeight3(int stage)
 		return;
 	}
 
-	m_busy = true;
-	emit busyChanged(true);
+	setBusy(true);
 
 	const AlgoHeight3Params p = height3Params();
 
@@ -475,8 +482,7 @@ void AlgoManager::doRunHeight3(int stage)
 		out = m_height3.output();
 	}
 
-	m_busy = false;
-	emit busyChanged(false);
+	setBusy(false);
 	emit height3Finished(stage, out);
 }
 

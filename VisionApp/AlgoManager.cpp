@@ -212,6 +212,19 @@ void AlgoManager::init()
 
 	ct::logger::info("[Algo] Manager worker thread started");
 
+	/*
+	* V3 gets a thread of its own. Everything queued to m_thread runs in turn, and the first
+	* job there is the PaddleOCR warm-up below, which can block for up to two minutes - every
+	* V3 stage, the page's reopen re-run and production's per-unit 3D run used to wait behind
+	* it, and production gives a 3D result 60 s. Nothing OCR does can delay V3 any more. V3's
+	* data is behind its own m_height3Mutex and its results go out by signal, so its callers
+	* see no difference. The runner has no parent: a child must live in its parent's thread.
+	*/
+	m_height3Runner = new AlgoH3Runner(this);
+	m_height3Runner->moveToThread(&m_height3Thread);
+	m_height3Thread.start();
+	ct::logger::info("[Algo] V3 worker thread started");
+
 	//Paddle environment check + warm-up: the server import takes many seconds,
 	//so start it now in the background instead of on the first OCR of the day.
 	//This only STARTS an existing environment - it does not install anything;
@@ -234,9 +247,27 @@ void AlgoManager::init()
 
 void AlgoManager::release()
 {
+	if (m_height3Thread.isRunning()) {
+		m_height3Thread.quit();
+		m_height3Thread.wait(3000);
+	}
+	//the thread has stopped, so the runner can be deleted from here
+	delete m_height3Runner;
+	m_height3Runner = nullptr;
+
 	if (!m_thread.isRunning()) return;
 	m_thread.quit();
 	m_thread.wait(3000);
+}
+
+void AlgoManager::setBusy(bool on)
+{
+	if (on) {
+		if (++m_busyCount == 1) emit busyChanged(true);
+	}
+	else {
+		if (--m_busyCount == 0) emit busyChanged(false);
+	}
 }
 
 // =============================================================================
@@ -1160,8 +1191,7 @@ void AlgoManager::applyPatternMatching(const cv::Mat& fovGray, QVector<AlgoOcrBo
 
 void AlgoManager::doRunOcr(QImage fov)
 {
-	m_busy = true;
-	emit busyChanged(true);
+	setBusy(true);
 
 	QElapsedTimer timer;
 	timer.start();
@@ -1253,8 +1283,7 @@ void AlgoManager::doRunOcr(QImage fov)
 		out.elapsedMs, out.roi1Key.toStdString().c_str(),
 		out.message.toStdString().c_str());
 
-	m_busy = false;
-	emit busyChanged(false);
+	setBusy(false);
 	emit ocrFinished(out);
 }
 
@@ -1366,8 +1395,7 @@ void AlgoManager::runHeight()
 
 void AlgoManager::doRunHeight()
 {
-	m_busy = true;
-	emit busyChanged(true);
+	setBusy(true);
 
 	QElapsedTimer timer;
 	timer.start();
@@ -1506,7 +1534,6 @@ void AlgoManager::doRunHeight()
 		out.elapsedMs, out.roiResults.size(),
 		out.tiltXDeg, out.tiltYDeg, out.pass ? 1 : 0, out.message.toStdString().c_str());
 
-	m_busy = false;
-	emit busyChanged(false);
+	setBusy(false);
 	emit heightFinished(out);
 }

@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QDataStream>
 #include <QCoreApplication>
+#include <QThread>
 
 static const quint32 MSG_TEXT = 1;
 static const quint32 MSG_FRAME = 2;
@@ -81,6 +82,25 @@ bool PaddleOcrClient::ensureStarted(int timeoutMs)
 		m_socket->abort();
 		m_socket->connectToHost(QStringLiteral("127.0.0.1"), m_port);
 		if (m_socket->waitForConnected(2000)) break;
+
+		/*
+		* A python that has already exited will never open the port, so stop retrying it.
+		* Without this the loop spun for the whole timeout - two minutes, holding the algo
+		* thread - whenever python died before binding, and its output only reached the log
+		* afterwards. waitForFinished(0) rather than state(): nothing pumps this thread's event
+		* loop while we sit here, so state() would still say Running.
+		*/
+		if (m_process && (m_process->waitForFinished(0) || m_process->state() == QProcess::NotRunning)) {
+			for (const auto& line : m_process->readAllStandardOutput().split('\n')) {
+				const QString msg = QString::fromUtf8(line).trimmed();
+				if (!msg.isEmpty()) ct::logger::info("[PaddleOCR] %s", msg.toStdString().c_str());
+			}
+			ct::logger::error("[PaddleOCR] Python exited (code %d) before opening port %d - not waiting any longer",
+				m_process->exitCode(), m_port);
+			return false;
+		}
+		//a refused connection returns at once; without a pause this loop would spin a core
+		QThread::msleep(250);
 	}
 
 	//3) wait for "Initialization Complete" (model load — slow on first connect)

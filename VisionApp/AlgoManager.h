@@ -15,6 +15,24 @@
 #include "MbufWrapper.h"
 
 class PaddleOcrClient;
+class AlgoManager;
+
+/*
+* V3's own worker: a queue on a thread of its own, so its stages never wait behind anything on
+* the shared algo thread - above all the PaddleOCR warm-up, which can hold that thread for two
+* minutes after every launch (and in production a 3D unit gives up after 60 s). A QObject only
+* so a queued call can be posted to its thread; the work itself is AlgoManager's.
+*/
+class AlgoH3Runner : public QObject {
+	Q_OBJECT
+public:
+	explicit AlgoH3Runner(AlgoManager* mgr) : m_mgr(mgr) {}
+public slots:
+	void run(int stage);
+	void runUpTo(int stage);
+private:
+	AlgoManager* m_mgr;
+};
 
 //one pixel of the 3D maps behind the FOV, for the hover readout
 struct FovMapPixel {
@@ -161,7 +179,7 @@ public:
 	void runHeight();
 	void runHeight3(AlgoH3Stage stage);
 
-	bool isBusy() const { return m_busy; }
+	bool isBusy() const { return m_busyCount > 0; }
 
 signals:
 	void ocrFinished(AlgoOcrOutput output);
@@ -177,10 +195,16 @@ private slots:
 	void doRunHeight3UpTo(int stage);
 
 private:
+	friend class AlgoH3Runner;   //calls doRunHeight3 / doRunHeight3UpTo on V3's own thread
+
 	AlgoManager();
 	~AlgoManager();
 	AlgoManager(const AlgoManager&) = delete;
 	AlgoManager& operator=(const AlgoManager&) = delete;
+
+	//a COUNT, not a flag: OCR and V3 run on different threads, and one finishing must not
+	//report the manager idle while the other is still going
+	void setBusy(bool on);
 
 	//OCR internals (worker thread)
 	struct OcrRoiTransform {
@@ -212,9 +236,11 @@ private:
 	void height3FromJson(const QJsonObject& root);
 	QJsonObject height3ToJson() const;
 
-	QThread m_thread;
+	QThread m_thread;          //OCR, its PaddleOCR warm-up, V1 height
+	QThread m_height3Thread;   //V3 only - see AlgoH3Runner
+	AlgoH3Runner* m_height3Runner = nullptr;
 	bool m_initialized = false;
-	std::atomic<bool> m_busy = false;
+	std::atomic<int> m_busyCount{ 0 };
 
 	mutable std::mutex m_mutex; //guards params, configs, pattern maps, heightmap
 
