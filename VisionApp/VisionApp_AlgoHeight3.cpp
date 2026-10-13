@@ -1918,7 +1918,11 @@ void VisionApp::updateAlgoH3Display()
 	if (img.isNull()) return; //nothing loaded yet, or a stage is running - keep the view
 
 	const bool sizeChanged = (_pixmapFOV.width() != img.width() || _pixmapFOV.height() != img.height());
-	displayFOV(img);
+	//the hover readout reads the same map this view was drawn from; a 3D render is a
+	//projection, so it has no map pixels to read
+	_fovH3Preprocessed = preprocessed;
+	_fovH3Segmented = segmented;
+	displayFOV(img, h3IsSurfaceMode(mode) ? FovPixelSource::None : FovPixelSource::Height3);
 
 	//the scene rect moved with the image, so the boxes' movement limits must follow it
 	for (auto* b : _algoH3DatumBoxes) if (b) b->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());

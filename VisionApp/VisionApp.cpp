@@ -6,6 +6,7 @@
 #include <QGraphicsPixmapItem>
 #include "VisionAppQDragBox.h"
 #include "QDragBox.h"
+#include "QGrabber.h"
 #include "QCrossItem.h"
 #include "QRectItem.h"
 #include "QLineItem.h"
@@ -1538,6 +1539,40 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.graphicsViewMain, SIGNAL(mousePress(QPointF, bool)), this, SLOT(graphicsViewMousePress(QPointF, bool)));
 	connect(ui.graphicsViewMain, SIGNAL(mouseReleased(QPointF, bool)), this, SLOT(graphicsViewMouseReleased(QPointF, bool)));
 	connect(ui.graphicsViewFOV, SIGNAL(mousePress(QPointF, bool)), this, SLOT(graphicsViewMousePress(QPointF, bool)));
+	//hover readout in the bar under the FOV: the value under the cursor, and where it is
+	connect(ui.graphicsViewFOV, &QMainGraphicsView::mousePress, this, [=](QPointF pt, bool leftClick) {
+		_fovResizeBox = leftClick ? fovGrabbedBox(pt) : nullptr;
+		if (_fovResizeBox) showFovBox(_fovResizeBox->getGeometry());
+	});
+	connect(ui.graphicsViewFOV, &QMainGraphicsView::mouseMove, this, [=](QPoint pt) {
+		updateFovPixelReadout(pt);
+		//an ROI only changes shape while a button is held - moving or resizing it
+		if (_fovBandActive || !(QApplication::mouseButtons() & Qt::LeftButton)) return;
+		if (_fovResizeBox) showFovBox(_fovResizeBox->getGeometry());
+		else updateFovBoxFromSelection();
+	});
+	connect(ui.graphicsViewFOV, &QMainGraphicsView::mouseLeft, this, [=]() { clearFovPixelReadout(); });
+	connect(ui.graphicsViewFOV, &QMainGraphicsView::mouseReleased, this, [=](QPointF, bool leftClick) {
+		if (!leftClick) return;
+		if (_fovResizeBox) {
+			showFovBox(_fovResizeBox->getGeometry());
+			_fovResizeBox = nullptr;
+		}
+		else if (!_fovBandActive) {
+			updateFovBoxFromSelection();
+		}
+	});
+	//Qt reports the band in scene coordinates while it is dragged, then once with a null
+	//rect when it ends - the last band stays on show until the selection changes
+	connect(ui.graphicsViewFOV, &QGraphicsView::rubberBandChanged, this,
+		[=](QRect viewRect, QPointF fromScene, QPointF toScene) {
+		_fovBandActive = !viewRect.isNull();
+		if (_fovBandActive) showFovBox(QRectF(fromScene, toScene).normalized());
+	});
+	//a band selects what it covers as it goes, so its own selection changes are ignored
+	connect(_pGraphicsSceneFOV, &QGraphicsScene::selectionChanged, this, [=]() {
+		if (!_fovBandActive) updateFovBoxFromSelection();
+	});
 	connect(ui.graphicsViewMain, SIGNAL(rubberBandChanged(QRect, QPointF, QPointF)), this, SLOT(processROIOption(QRect, QPointF, QPointF)));
 	connect(ui.graphicsViewMain, SIGNAL(mouseDoubleClick(bool)), this, SLOT(setdragMode(bool)));
 	connect(ui.graphicsViewMain, SIGNAL(rightMouseBtnPressed(QPoint)), this, SLOT(setRightMousePressed(QPoint)));
@@ -2510,7 +2545,7 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 			//production: show the finished height scan so the operator sees each unit
 			if (_processType == ProcessType::PRODUCTION) {
 				const QImage hmImg = AlgoManager::instance().heightMapImage(true);
-				if (!hmImg.isNull()) displayFOV(hmImg);
+				if (!hmImg.isNull()) displayFOV(hmImg, FovPixelSource::LastScanMaps);
 			}
 
 			//production: hand the scan to the inspection thread for the 3D algo
@@ -2741,7 +2776,7 @@ void VisionApp::displayImage(const QImage& img)
 	qDebug() << "Displaying world image done....";
 }
 
-void VisionApp::displayFOV(const QImage & img)
+void VisionApp::displayFOV(const QImage & img, FovPixelSource source)
 {
 	clearDrawingFromFOV();
 	_fidLocatedRegion.hide();
@@ -2750,6 +2785,10 @@ void VisionApp::displayFOV(const QImage & img)
 
 	_pixmapFOV = QPixmap::fromImage(img);
 	_pPixmapItemFOV->setPixmap(_pixmapFOV);
+
+	//before the processEvents() below, so a mouse move it delivers reads the new image
+	_fovShownImage = img;
+	setFovPixelSource(source);
 
 	_sceneFOV.setRect(0, 0, _pixmapFOV.width(), _pixmapFOV.height());
 	_pGraphicsSceneFOV->setSceneRect(_sceneFOV);
@@ -2783,6 +2822,140 @@ void VisionApp::displayFOV(const QImage & img)
 	if (!ui.toolButton_showCrossHair->isChecked()) showCrossHair(false);
 
 	QGuiApplication::processEvents();
+}
+
+/*
+* The hover readout under the FOV. Only resets when the KIND of image changes: live view
+* calls displayFOV() every frame, and wiping the readout each time would leave it blank
+* until the mouse moved again.
+*/
+void VisionApp::setFovPixelSource(FovPixelSource source)
+{
+	if (source == _fovPixelSource) return;
+	_fovPixelSource = source;
+
+	switch (source) {
+	case FovPixelSource::LastScanMaps:
+	case FovPixelSource::Height3:
+		ui.toolButton_fovPixel->setText(QStringLiteral("3D"));
+		ui.lineEdit_fovPixel->setPlaceholderText(QStringLiteral("Height (um), Intensity"));
+		break;
+	case FovPixelSource::None:
+		ui.toolButton_fovPixel->setText(QStringLiteral("3D"));
+		ui.lineEdit_fovPixel->setPlaceholderText(QStringLiteral("No pixel values on a 3D render"));
+		break;
+	case FovPixelSource::Image:
+	default:
+		ui.toolButton_fovPixel->setText(QStringLiteral("RGB"));
+		ui.lineEdit_fovPixel->setPlaceholderText(QStringLiteral("R, G, B"));
+		break;
+	}
+	clearFovPixelReadout();
+}
+
+void VisionApp::clearFovPixelReadout()
+{
+	ui.lineEdit_fovPixel->clear();
+	ui.lineEdit_fovMousePos->clear();
+}
+
+//scene coordinates are image pixels, top-left origin - the same frame as Pos
+void VisionApp::showFovBox(const QRectF& r)
+{
+	ui.lineEdit_fovDragBox->setText(QStringLiteral("X:%1 Y:%2 W:%3 H:%4")
+		.arg(qRound(r.x())).arg(qRound(r.y())).arg(qRound(r.width())).arg(qRound(r.height())));
+}
+
+/*
+* The selected ROI's own geometry, live while it is moved or resized - not the extent of
+* the mouse drag, which is what IM430 shows and which for a moved ROI is only how far it
+* travelled. Qt's selection is read, never QDragBox::getSelected() (uninitialised).
+*/
+void VisionApp::updateFovBoxFromSelection()
+{
+	QDragBox* box = nullptr;
+	int count = 0;
+	for (auto* item : _pGraphicsSceneFOV->selectedItems()) {
+		auto* b = dynamic_cast<QDragBox*>(item);
+		if (!b || !b->isVisible()) continue;
+		box = b;
+		count++;
+	}
+
+	if (count == 1) showFovBox(box->getGeometry());
+	else if (count > 1) ui.lineEdit_fovDragBox->setText(QStringLiteral("%1 ROIs selected").arg(count));
+	else ui.lineEdit_fovDragBox->clear();
+}
+
+/*
+* The ROI whose resize grabber is under a press, or null. Resizing from a grabber does not
+* select the box, so without this a resize of an unselected ROI showed nothing. Grabbers
+* are child items of their box and only exist while it is hovered - which it is, at the
+* moment one is pressed.
+*/
+QDragBox* VisionApp::fovGrabbedBox(const QPointF& scenePt) const
+{
+	const auto items = _pGraphicsSceneFOV->items(scenePt, Qt::IntersectsItemShape,
+		Qt::DescendingOrder, ui.graphicsViewFOV->transform());
+	for (auto* item : items) {
+		if (!dynamic_cast<QGrabber*>(item)) continue;
+		if (auto* box = dynamic_cast<QDragBox*>(item->parentItem())) return box;
+	}
+	return nullptr;
+}
+
+/*
+* pt is in scene coordinates, which are image pixels: the FOV pixmap item sits at the
+* scene origin and the scene rect is the image.
+*
+* A 3D map is read from the 16-bit height and the intensity map behind it, never off the
+* screen - what is painted there is a rescaled 8-bit grey or a JET colour, neither of
+* which is a height.
+*/
+void VisionApp::updateFovPixelReadout(const QPoint& pt)
+{
+	const bool inside = pt.x() >= 0 && pt.y() >= 0
+		&& pt.x() < _pixmapFOV.width() && pt.y() < _pixmapFOV.height();
+	//a 3D render is a projection, so its pixels are not map pixels and not a position either
+	if (!inside || _fovPixelSource == FovPixelSource::None) {
+		clearFovPixelReadout();
+		return;
+	}
+	ui.lineEdit_fovMousePos->setText(QStringLiteral("%1, %2").arg(pt.x()).arg(pt.y()));
+
+	if (_fovPixelSource == FovPixelSource::Image) {
+		if (_fovShownImage.isNull() || !_fovShownImage.rect().contains(pt)) {
+			ui.lineEdit_fovPixel->clear();
+			return;
+		}
+		const QColor c(_fovShownImage.pixel(pt));
+		ui.lineEdit_fovPixel->setText(QStringLiteral("%1, %2, %3").arg(c.red()).arg(c.green()).arg(c.blue()));
+		return;
+	}
+
+	auto& mgr = AlgoManager::instance();
+	FovMapPixel px;
+	const bool have = (_fovPixelSource == FovPixelSource::Height3)
+		? mgr.height3Pixel(_fovH3Preprocessed, _fovH3Segmented, pt.x(), pt.y(), px)
+		: mgr.lastScanPixel(pt.x(), pt.y(), px);
+	if (!have) {
+		ui.lineEdit_fovPixel->clear();
+		return;
+	}
+
+	//0 is the profiler's "no measurement", not a very low surface
+	QString text;
+	if (px.raw == 0) {
+		text = QStringLiteral("Height no data");
+	}
+	else {
+		const double zScale = mgr.height3Params().zScaleRawPerUm;
+		text = zScale > 0.0
+			? QStringLiteral("Height %1 (%2 um)").arg(px.raw).arg(px.raw / zScale, 0, 'f', 1)
+			: QStringLiteral("Height %1").arg(px.raw);
+	}
+	if (px.hasIntensity) text += QStringLiteral(", Intensity %1").arg(px.intensity);
+	ui.lineEdit_fovPixel->setText(text);
 }
 
 void VisionApp::clearDrawingFromFOV()

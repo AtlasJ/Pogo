@@ -328,6 +328,26 @@ QImage AlgoManager::height3Image(bool intensity, bool preprocessed, bool segment
 		p.minValidRaw, p.maxValidRaw, colorMapped);
 }
 
+bool AlgoManager::height3Pixel(bool preprocessed, bool segmented, int x, int y, FovMapPixel& out) const
+{
+	out = FovMapPixel();
+
+	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
+	if (!lock.owns_lock()) return false;
+
+	//the same maps height3Image() draws from, so the pixel read is the pixel shown
+	const cv::Mat h = m_height3.heightForDisplay(preprocessed, segmented);
+	if (h.empty() || h.type() != CV_16U || x < 0 || y < 0 || x >= h.cols || y >= h.rows) return false;
+	out.raw = h.at<ushort>(y, x);
+
+	const cv::Mat in = m_height3.intensityForDisplay(segmented);
+	if (!in.empty() && in.type() == CV_8U && in.size() == h.size()) {
+		out.hasIntensity = true;
+		out.intensity = in.at<uchar>(y, x);
+	}
+	return true;
+}
+
 QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
 	AlgoH3SurfaceStyle style, bool fillHoles, bool showPlane) const

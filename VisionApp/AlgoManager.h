@@ -16,6 +16,13 @@
 
 class PaddleOcrClient;
 
+//one pixel of the 3D maps behind the FOV, for the hover readout
+struct FovMapPixel {
+	int raw = 0;                //16-bit height; 0 is a dropout
+	bool hasIntensity = false;  //false when there is no intensity map that lines up
+	int intensity = 0;
+};
+
 /*
 * Runs the Algo Setup page's inspections on a dedicated worker thread so the
 * UI stays live and production can trigger runs in the background.
@@ -82,6 +89,8 @@ public:
 	mtrx::SharedMilID heightMap() const;
 	mtrx::SharedMilID lastScanIntensityMap() const;
 	QImage heightMapImage(bool colorMapped) const;          //for 2D/3D display
+	//the pixel under the FOV cursor while heightMapImage() is shown; false outside the map
+	bool lastScanPixel(int x, int y, FovMapPixel& out) const;
 
 	// ── 3D Height Measurement 3 (AlgoHeight3Pipeline) ──
 	//sources: either the last scan's pair, or files loaded on the page for offline work
@@ -118,6 +127,10 @@ public:
 	void runHeight3UpTo(int stage);
 	QSize height3CropSize() const;
 	AlgoHeight3Output height3Output() const;
+
+	//the pixel under the FOV cursor on a flat V3 view; false outside the map, and while a stage
+	//holds the pipeline - it never waits, because it runs on every mouse move
+	bool height3Pixel(bool preprocessed, bool segmented, int x, int y, FovMapPixel& out) const;
 
 	//display renders, taken under the same lock the worker writes under
 	QImage height3Image(bool intensity, bool preprocessed, bool segmented, bool colorMapped) const;

@@ -1323,6 +1323,42 @@ QImage AlgoManager::heightMapImage(bool colorMapped) const
 	return img.copy();
 }
 
+//one pixel of a single-band 8 or 16 bit MIL buffer, read in place - no copy of the map
+static bool milPixel(const mtrx::SharedMilID& buf, int x, int y, int& value)
+{
+	if (!buf || buf->id() == M_NULL) return false;
+	const MIL_ID id = buf->id();
+	if (x < 0 || y < 0 || x >= (int)mtrx::get_width(id) || y >= (int)mtrx::get_height(id)) return false;
+	if (MbufInquire(id, M_SIZE_BAND, M_NULL) != 1) return false;
+
+	switch (MbufInquire(id, M_SIZE_BIT, M_NULL)) {
+	case 8:  { MIL_UINT8 v = 0;  MbufGet2d(id, x, y, 1, 1, &v); value = v; return true; }
+	case 16: { MIL_UINT16 v = 0; MbufGet2d(id, x, y, 1, 1, &v); value = v; return true; }
+	default: return false;
+	}
+}
+
+bool AlgoManager::lastScanPixel(int x, int y, FovMapPixel& out) const
+{
+	out = FovMapPixel();
+
+	mtrx::SharedMilID h, i;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		h = m_heightMap;
+		i = m_lastScanIntensity;
+	}
+	if (!milPixel(h, x, y, out.raw)) return false;
+
+	//loadHeightMapFromFile replaces only the height map, so the stored intensity can be an
+	//older scan's - use it only when it is at least the same size
+	if (i && i->id() != M_NULL
+		&& mtrx::get_width(i->id()) == mtrx::get_width(h->id())
+		&& mtrx::get_height(i->id()) == mtrx::get_height(h->id()))
+		out.hasIntensity = milPixel(i, x, y, out.intensity);
+	return true;
+}
+
 void AlgoManager::runHeight()
 {
 	QMetaObject::invokeMethod(this, "doRunHeight", Qt::QueuedConnection);

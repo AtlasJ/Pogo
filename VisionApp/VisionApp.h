@@ -304,6 +304,18 @@ private:
 	QImage _imageMain;
 	QPixmap _pixmapFOV;
 	QImage _imageFOV;
+	/*
+	* What the FOV hover readout reads under the cursor. A 2D image is read off the picture
+	* itself; a 3D map never is, because what is painted is a rescaled 8-bit (or JET) view of
+	* it - the readout goes back to the 16-bit height and the intensity map behind it.
+	*/
+	enum class FovPixelSource { Image, LastScanMaps, Height3, None };
+	FovPixelSource _fovPixelSource = FovPixelSource::Image;
+	QImage _fovShownImage;          //the image displayFOV() last showed - shared, not copied
+	bool _fovH3Preprocessed = false; //which V3 map is on screen, for FovPixelSource::Height3
+	bool _fovH3Segmented = false;
+	bool _fovBandActive = false;     //a rubber band is being dragged on the FOV right now
+	QPointer<QDragBox> _fovResizeBox; //the ROI being resized from a grabber, until release
 	QImage _qRedBuffer;
 	QImage _qGreenBuffer;
 	QImage _qBlueBuffer;
@@ -617,7 +629,14 @@ private:
 	std::string charsToStr(char* pCharArray);
 	void strToChars(char* pCharArr, int arrSize, std::string src);
 	void displayImage(const QImage& img);
-	void displayFOV(const QImage& img);
+	//source: what the hover readout reads - the image itself, or the 3D map it was rendered from
+	void displayFOV(const QImage& img, FovPixelSource source = FovPixelSource::Image);
+	void setFovPixelSource(FovPixelSource source);
+	void updateFovPixelReadout(const QPoint& pt);
+	void clearFovPixelReadout();
+	void showFovBox(const QRectF& r);
+	void updateFovBoxFromSelection();
+	QDragBox* fovGrabbedBox(const QPointF& scenePt) const;
 	void clearDrawingFromFOV();
 	void drawFOVInWorld(double cx, double cy);
 	void displayPlane();

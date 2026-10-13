@@ -842,7 +842,7 @@ void VisionApp::showAlgoHeightMap(bool view3D)
 		return;
 	}
 
-	displayFOV(img);
+	displayFOV(img, FovPixelSource::LastScanMaps);
 	ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
 }
 

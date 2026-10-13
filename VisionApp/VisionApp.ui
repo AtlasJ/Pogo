@@ -2108,6 +2108,138 @@ QToolButton:hover {
               <item row="1" column="0" colspan="2">
                <layout class="QHBoxLayout" name="horizontalLayout_61">
                 <item>
+                 <widget class="QToolButton" name="toolButton_fovPixel">
+                  <property name="focusPolicy">
+                   <enum>Qt::NoFocus</enum>
+                  </property>
+                  <property name="text">
+                   <string>RGB</string>
+                  </property>
+                  <property name="icon">
+                   <iconset resource="VisionApp.qrc">
+                    <normaloff>:/8Icon/Icon/icon8/color-palette_1.png</normaloff>:/8Icon/Icon/icon8/color-palette_1.png</iconset>
+                  </property>
+                  <property name="iconSize">
+                   <size>
+                    <width>16</width>
+                    <height>16</height>
+                   </size>
+                  </property>
+                  <property name="toolButtonStyle">
+                   <enum>Qt::ToolButtonTextBesideIcon</enum>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="lineEdit_fovPixel">
+                  <property name="minimumSize">
+                   <size>
+                    <width>240</width>
+                    <height>0</height>
+                   </size>
+                  </property>
+                  <property name="toolTip">
+                   <string>Value under the cursor: R, G, B on a 2D image; raw height (um) and intensity on a 3D map</string>
+                  </property>
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                  <property name="placeholderText">
+                   <string>R, G, B</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QToolButton" name="toolButton_fovMousePos">
+                  <property name="focusPolicy">
+                   <enum>Qt::NoFocus</enum>
+                  </property>
+                  <property name="text">
+                   <string>Pos</string>
+                  </property>
+                  <property name="icon">
+                   <iconset resource="VisionApp.qrc">
+                    <normaloff>:/8Icon/Icon/icon8/icons8-crosshair-80.png</normaloff>:/8Icon/Icon/icon8/icons8-crosshair-80.png</iconset>
+                  </property>
+                  <property name="iconSize">
+                   <size>
+                    <width>16</width>
+                    <height>16</height>
+                   </size>
+                  </property>
+                  <property name="toolButtonStyle">
+                   <enum>Qt::ToolButtonTextBesideIcon</enum>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="lineEdit_fovMousePos">
+                  <property name="minimumSize">
+                   <size>
+                    <width>90</width>
+                    <height>0</height>
+                   </size>
+                  </property>
+                  <property name="maximumSize">
+                   <size>
+                    <width>110</width>
+                    <height>16777215</height>
+                   </size>
+                  </property>
+                  <property name="toolTip">
+                   <string>Image pixel under the cursor</string>
+                  </property>
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                  <property name="placeholderText">
+                   <string>X, Y</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QToolButton" name="toolButton_fovDragBox">
+                  <property name="focusPolicy">
+                   <enum>Qt::NoFocus</enum>
+                  </property>
+                  <property name="text">
+                   <string>Box</string>
+                  </property>
+                  <property name="icon">
+                   <iconset resource="VisionApp.qrc">
+                    <normaloff>:/8Icon/Icon/icon8/bounding-box.png</normaloff>:/8Icon/Icon/icon8/bounding-box.png</iconset>
+                  </property>
+                  <property name="iconSize">
+                   <size>
+                    <width>16</width>
+                    <height>16</height>
+                   </size>
+                  </property>
+                  <property name="toolButtonStyle">
+                   <enum>Qt::ToolButtonTextBesideIcon</enum>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLineEdit" name="lineEdit_fovDragBox">
+                  <property name="minimumSize">
+                   <size>
+                    <width>200</width>
+                    <height>0</height>
+                   </size>
+                  </property>
+                  <property name="toolTip">
+                   <string>The rubber band being dragged, or the selected ROI: top-left X, Y and size W, H in image pixels</string>
+                  </property>
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                  <property name="placeholderText">
+                   <string>X, Y, W, H</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
                  <spacer name="horizontalSpacer_25">
                   <property name="orientation">
                    <enum>Qt::Horizontal</enum>
