@@ -943,6 +943,8 @@ void VisionApp::initImageDisplayWidget()
 
 	_sceneBound.setRect(0, 0, _imageSize.width(), _imageSize.height());
 	_pGraphicsSceneMain = new QMainGraphicsScene(QRectF());
+	//no spatial index, for the same reason as the FOV scene below: it holds QDragBoxes too
+	_pGraphicsSceneMain->setItemIndexMethod(QGraphicsScene::NoIndex);
 	_imageMain = QImage(_imageSize.width(), _imageSize.height(), QImage::Format_RGB32);
 	_pixmapMain = QPixmap(_imageSize.width(), _imageSize.height());
 	_pixmapMain.fill(QColor(50, 50, 50));
@@ -972,6 +974,15 @@ void VisionApp::initImageDisplayWidget()
 
 	_sceneFOV.setRect(0, 0, cam_w, cam_h);
 	_pGraphicsSceneFOV = new QMainGraphicsScene(QRectF());
+	/*
+	* NO spatial index. QDragBox (Common) changes its size BEFORE prepareGeometryChange(), so
+	* Qt's default BSP index keeps a stale entry for the area a shrunk box used to cover. After
+	* the box is deleted that entry dangles, and the next repaint over it aborts with a pure
+	* virtual call (crash of 2026-10-13: purecall <- effectiveBoundingRect <- drawItems).
+	* Without an index nothing can go stale, and a few hundred items are cheap to scan - Qt
+	* recommends NoIndex for scenes whose items move and resize anyway.
+	*/
+	_pGraphicsSceneFOV->setItemIndexMethod(QGraphicsScene::NoIndex);
 	_imageFOV = QImage(cam_w, cam_h, QImage::Format_RGB32);
 	_pixmapFOV = QPixmap(cam_w, cam_h);
 	_pixmapFOV.fill(QColor(50, 50, 50));

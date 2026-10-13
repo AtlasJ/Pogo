@@ -254,6 +254,14 @@ void DatasetPage::initGraphicsView()
 
 	_sceneBound.setRect(0, 0, 1430, 870);
 	_pGraphicsSceneMain = new QMainGraphicsScene(QRectF());
+	/*
+	* No spatial index. QDragBox (Common) changes its size BEFORE prepareGeometryChange(), so
+	* Qt's default BSP index can keep a pointer to a box after it is deleted, and the next
+	* repaint aborts with a pure virtual call - the FOV crash of 2026-10-13, see
+	* VisionApp::initImageDisplayWidget. updateImagesSelected() already scans every item on
+	* each mouse move, so a linear scene costs nothing noticeable here.
+	*/
+	_pGraphicsSceneMain->setItemIndexMethod(QGraphicsScene::NoIndex);
 	_pGraphicsSceneMain->setSceneRect(_sceneBound);
 	ui.graphicsView->setScene(_pGraphicsSceneMain);
 
