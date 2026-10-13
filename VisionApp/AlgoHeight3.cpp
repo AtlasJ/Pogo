@@ -486,11 +486,18 @@ bool AlgoHeight3Pipeline::runUpTo(AlgoH3Stage last, const AlgoHeight3Params& p)
 
 int AlgoHeight3Pipeline::furthestPassed() const
 {
-	if (m_out.overall.ran && m_out.overall.pass) return (int)AlgoH3Stage::Overall;
-	if (m_measureDone) return (int)AlgoH3Stage::Measure;
-	if (m_datumDone)   return (int)AlgoH3Stage::Datum;
-	if (m_segmentDone) return (int)AlgoH3Stage::Segment;
-	if (m_preprocessDone) return (int)AlgoH3Stage::Preprocess;
+	return algoH3FurthestReached(m_out);
+}
+
+int algoH3FurthestReached(const AlgoHeight3Output& out)
+{
+	//Overall's only real error is "no measurement yet", which measure.pass rules out - past
+	//that it always computes a verdict, and a failing unit is still a finished Overall
+	if (out.measure.pass && out.overall.ran) return (int)AlgoH3Stage::Overall;
+	if (out.measure.pass)    return (int)AlgoH3Stage::Measure;
+	if (out.datum.pass)      return (int)AlgoH3Stage::Datum;
+	if (out.segment.pass)    return (int)AlgoH3Stage::Segment;
+	if (out.preprocess.pass) return (int)AlgoH3Stage::Preprocess;
 	return -1;
 }
 

@@ -974,6 +974,7 @@ private:
 	*/
 	int _algoH3BoxCropW = 0;
 	int _algoH3BoxCropH = 0;
+	bool _algoH3RestoreRunPending = false; //the reopen's re-run is in flight; its result saves nothing
 	int _algoH3GridRows = 2;              //By Rows / Columns: last count used, offered again next time
 	int _algoH3GridCols = 2;
 	bool _algoH3Updating = false;         //re-entrancy guard while rebuilding the type list

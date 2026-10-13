@@ -126,6 +126,9 @@ public:
 	* AlgoHeight3Pipeline::furthestPassed for why.
 	*/
 	int height3SavedStage() const { return m_height3SavedStage; }
+	//how far the PAGE last got - what the recipe's last_stage records. Set only when a run the
+	//operator started on the page finishes; every save writes it (see height3ToJson)
+	void setHeight3LastStage(int stage) { m_height3LastStage = stage; }
 	void runHeight3UpTo(int stage);
 	QSize height3CropSize() const;
 	AlgoHeight3Output height3Output() const;
@@ -235,6 +238,7 @@ private:
 	AlgoHeight3Params m_height3Params;
 	mutable std::mutex m_height3Mutex;
 	int m_height3SavedStage = -1;   //from the recipe; -1 = nothing had passed
+	std::atomic<int> m_height3LastStage{ -1 };   //written as last_stage; GUI sets, saves read
 	AlgoHeight3Pipeline m_height3;
 
 	PaddleOcrClient* m_paddle = nullptr; //created on worker thread

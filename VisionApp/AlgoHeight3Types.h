@@ -378,4 +378,12 @@ struct AlgoHeight3Output {
 */
 QString algoH3RunSummary(const AlgoHeight3Output& out);
 
+/*
+* The furthest stage a run REACHED, as an AlgoH3Stage, or -1 for none - read off the results, so
+* the page can tell from a finished run how far it got. Running a stage resets every later
+* result, so these say exactly what the pipeline holds. Overall counts once it has computed a
+* verdict, PASS or FAIL: its own pass is the unit's verdict, not whether the stage worked.
+*/
+int algoH3FurthestReached(const AlgoHeight3Output& out);
+
 Q_DECLARE_METATYPE(AlgoHeight3Output)

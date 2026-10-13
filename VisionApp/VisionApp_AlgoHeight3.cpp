@@ -1099,6 +1099,22 @@ void VisionApp::initAlgoHeight3Page()
 				ct::logger::info("[Algo H3] Page Run All: pass=%d, %s (%lld ms)",
 					out.overallPass ? 1 : 0, algoH3RunSummary(out).toStdString().c_str(),
 					(long long)out.totalElapsedMs);
+
+			/*
+			* Remember how far the page got, and save it. last_stage used to be read off the live
+			* pipeline at whatever moment the recipe happened to be saved, so a run on its own
+			* recorded nothing, and a save while the page was still reopening wrote -1 over the
+			* stage the last session had reached. Now only a finished run the operator started
+			* here moves it. Not production's own runs (this page is not showing), and not the
+			* reopen's re-run, which only re-creates the stage it was given.
+			*/
+			if (_algoH3RestoreRunPending) {
+				_algoH3RestoreRunPending = false;
+			}
+			else if (isPage(UIPage::ALGO_SETUP) && currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+				AlgoManager::instance().setHeight3LastStage(algoH3FurthestReached(out));
+				algoSettingsTouched();
+			}
 		});
 
 	//last: every section's contents are configured by now, so their heights are meaningful
@@ -2195,6 +2211,7 @@ void VisionApp::restoreAlgoH3Inputs()
 	if (stage >= 0 && !mgr.isBusy()) {
 		showStatus(QStringLiteral("Re-running the stages this recipe had completed..."));
 		ui.label_algoStatus->setText(QStringLiteral("Restoring the last run..."));
+		_algoH3RestoreRunPending = true;   //its result must not trigger a save - see height3Finished
 		mgr.runHeight3UpTo(stage);
 	}
 }

@@ -76,7 +76,8 @@ public:
 	//a ceiling. Puts a reopened recipe back where it left off without running past it.
 	bool runUpTo(AlgoH3Stage last, const AlgoHeight3Params& p);
 	/*
-	* The furthest stage that has PASSED, as an AlgoH3Stage, or -1 for none.
+	* The furthest stage that has PASSED, as an AlgoH3Stage, or -1 for none. Overall counts once
+	* it has computed a verdict, pass OR fail - a failed unit is still a finished Overall.
 	*
 	* Recorded in the recipe so reopening it can re-run exactly that far. The number is all that
 	* is kept - not the results. A stored result could outlive the settings it was computed

@@ -488,6 +488,10 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 {
 	AlgoHeight3Params p; //defaults, so a recipe with no height3 block is simply untaught
 
+	//reset first: a recipe with no height3 block must not inherit the previous recipe's stage
+	m_height3SavedStage = -1;
+	m_height3LastStage = -1;
+
 	const QJsonObject h = root.value("height3").toObject();
 	if (!h.isEmpty()) {
 		// ── section 0 ──
@@ -542,6 +546,7 @@ void AlgoManager::height3FromJson(const QJsonObject& root)
 		p.datumFlatnessUm = jsonHelper::getDouble(h, "datum_flatness_um", 15.0);
 		m_height3SavedStage = jsonHelper::getInteger(h, "last_stage", -1);
 		if (m_height3SavedStage > (int)AlgoH3Stage::Overall) m_height3SavedStage = -1;
+		m_height3LastStage = m_height3SavedStage;   //what the next save writes, until a page run moves it
 		p.datumCheckTilt = jsonHelper::getBool(h, "datum_check_tilt", false);
 		p.datumMaxTiltDeg = jsonHelper::getDouble(h, "datum_max_tilt_deg", 0.0);
 		p.datumRois.clear();
@@ -679,8 +684,14 @@ QJsonObject AlgoManager::height3ToJson() const
 	* was computed from, and this pipeline is built on the opposite rule - running a stage
 	* invalidates every stage after it, so a number on screen is never older than the data
 	* behind it. Re-running reproduces the state instead of restoring it, and cannot go stale.
+	*
+	* The REMEMBERED stage, not the live pipeline. Saves happen for many reasons - a setting
+	* touched, the page opening - and reading the pipeline at that moment wrote whatever it held
+	* just then: on a page that had only reloaded its maps that was -1, overwriting the stage the
+	* last session reached before the reopen could even re-run it. Only a finished page run moves
+	* the remembered stage (setHeight3LastStage); production's own runs never do.
 	*/
-	h.insert("last_stage", m_height3.furthestPassed());
+	h.insert("last_stage", m_height3LastStage.load());
 	h.insert("datum_check_tilt", p.datumCheckTilt);
 	h.insert("datum_max_tilt_deg", p.datumMaxTiltDeg);
 	QJsonArray datumRois;
