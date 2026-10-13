@@ -2206,13 +2206,20 @@ void VisionApp::refreshAlgoH3Overlay()
 
 	QVector<AlgoOverlayItem> overlay;
 
-	if (section == SEC_SEG && !segmented && _algoH3Output.segment.ran && _algoH3Output.segment.pass
+	/*
+	* Drawn on a FAIL too, in red. doSegment publishes the outline it found BEFORE it applies the
+	* canvas and the width / height / angle checks, so a part that failed one of those still has
+	* corners - and seeing what was found is how the operator tells a half-found part from a wrong
+	* limit. Only a method that found nothing at all leaves no corners, and then nothing is drawn.
+	*/
+	if (section == SEC_SEG && !segmented && _algoH3Output.segment.ran
 		&& _algoH3Output.segCorners.size() == 4) {
 		QPolygonF poly;
 		for (const auto& pt : _algoH3Output.segCorners) poly << pt;
 		//a 10000 px map is shown at a tenth of that or less, where a 2 px image line is a
 		//fraction of a screen pixel - so this outline is sized in screen pixels instead
-		auto outline = AlgoOverlayItem::makePoly(poly, QColor(0, 255, 127));
+		auto outline = AlgoOverlayItem::makePoly(poly,
+			_algoH3Output.segment.pass ? QColor(0, 255, 127) : kAlgoH3FailColor);
 		outline.penWidth = 3.0;
 		outline.cosmeticPen = true;
 		overlay.append(outline);
