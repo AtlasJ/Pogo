@@ -85,7 +85,7 @@ void VisionApp::initAlgoSetupPage()
 		* working when nothing of it exists.
 		*/
 		if (!algoIsImplemented(currentAlgoPageAlgo())) {
-			ui.label_algoStatus->setText(ui.comboBox_algoType->currentText()
+			setAlgoStatus(ui.comboBox_algoType->currentText()
 				+ ": layout only, no algorithm yet");
 			return;
 		}
@@ -99,7 +99,7 @@ void VisionApp::initAlgoSetupPage()
 
 		captureAlgoParamsFromUI();
 		clearAlgoOverlay();
-		ui.label_algoStatus->setText("Running...");
+		setAlgoStatus("Running...");
 
 		if (currentAlgoPageAlgo() == AlgoPageAlgo::OCR_READ) {
 			AlgoManager::instance().runOcr(_imageFOV);
@@ -415,7 +415,7 @@ void VisionApp::initAlgoSetupPage()
 	connect(&AlgoManager::instance(), &AlgoManager::ocrFinished, this, [=](const AlgoOcrOutput& out) {
 		ui.lineEdit_algoOcr1Result->setText(out.roi1Key.isEmpty() ? out.roi1Text : out.roi1Key + "   (" + out.roi1Text + ")");
 		ui.label_algoOcrTime->setText(QStringLiteral("%1 ms").arg(out.elapsedMs));
-		ui.label_algoStatus->setText(out.ok ? out.message : "Failed: " + out.message);
+		setAlgoStatus(out.ok ? out.message : "Failed: " + out.message);
 
 		//super-resolution preview: paint the enhanced crop over its ROI in the display.
 		//_imageFOV itself stays raw, so every run starts from the original image.
@@ -458,13 +458,13 @@ void VisionApp::initAlgoSetupPage()
 			ui.label_algoHPass->setStyleSheet("");
 		}
 		ui.label_algoHTime->setText(QStringLiteral("%1 ms").arg(out.elapsedMs));
-		ui.label_algoStatus->setText(out.ok ? out.message : "Failed: " + out.message);
+		setAlgoStatus(out.ok ? out.message : "Failed: " + out.message);
 		renderAlgoOverlay(out.overlay);
 	});
 
 	connect(&AlgoManager::instance(), &AlgoManager::busyChanged, this, [=](bool busy) {
 		ui.toolButton_algoRun->setEnabled(!busy);
-		if (busy) ui.label_algoStatus->setText("Running...");
+		if (busy) setAlgoStatus("Running...");
 		updateAlgoH3Enables(); //V3's per-section Run buttons follow the same busy state
 	});
 
@@ -1052,5 +1052,20 @@ void VisionApp::refreshAlgoPatternList()
 void VisionApp::algoSettingsTouched()
 {
 	if (_algoAutoSaveTimer) _algoAutoSaveTimer->start();
+}
+
+/*
+* The status line in the algo page header, shared by every algo. A flat read-only line edit
+* rather than a label: it never resizes the header, and a message longer than the room it has
+* can still be read to the end (Home/End, drag) or copied - a label just cut it off. The whole
+* text is on the tooltip too.
+*/
+void VisionApp::setAlgoStatus(const QString& text)
+{
+	ui.lineEdit_algoStatus->setText(text);
+	ui.lineEdit_algoStatus->setToolTip(text);
+	//setText leaves the cursor at the end, and a line edit too narrow for its text then shows
+	//the TAIL - keep the start of the message in view
+	ui.lineEdit_algoStatus->setCursorPosition(0);
 }
 

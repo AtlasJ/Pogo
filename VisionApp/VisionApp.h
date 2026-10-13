@@ -872,6 +872,7 @@ private:
 	QRectF algoH3NewBoxRect(const QSizeF& size, const QVector<QDragBox*>& existing) const;
 	void algoH3SelectOnly(QDragBox* box);
 	bool copyPasteGoesToText() const;
+	void setAlgoStatus(const QString& text);   //the algo page header's status line, every algo
 
 	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
 	void algoHPasteRois();        //Ctrl+V: paste offset 10 px

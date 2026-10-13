@@ -366,7 +366,7 @@ void VisionApp::initAlgoHeight3Page()
 	h3SetNonExpanding(ui.lineEdit_algoH3RoiTypeStatus, 120);
 	h3SetNonExpanding(ui.label_algoH3ResultInstruction, 120);
 	h3SetNonExpanding(ui.label_algoH3DatumEquation, 120);
-	h3SetNonExpanding(ui.label_algoStatus, 120);
+	h3SetNonExpanding(ui.lineEdit_algoStatus, 120);
 
 	//Ctrl+C / Ctrl+V has no button of its own, so say so where the operator is looking
 	const QString copyHint = QStringLiteral(
@@ -831,7 +831,7 @@ void VisionApp::initAlgoHeight3Page()
 		QString why;
 		if (!mgr.height3FindPins(haveSeed ? &seedRect : nullptr, found, why)) {
 			showMsg(why);
-			ui.label_algoStatus->setText(QStringLiteral("By Pin Detection: ") + why);
+			setAlgoStatus(QStringLiteral("By Pin Detection: ") + why);
 			return;
 		}
 
@@ -916,7 +916,7 @@ void VisionApp::initAlgoHeight3Page()
 		refreshAlgoH3Overlay();
 		algoSettingsTouched();
 
-		ui.label_algoStatus->setText(QStringLiteral("By Pin Detection: ") + found.note);
+		setAlgoStatus(QStringLiteral("By Pin Detection: ") + found.note);
 		ct::logger::info("[Algo H3] Auto Assign by pin detection: %s", found.note.toStdString().c_str());
 		AuditLog::instance().log(QStringLiteral("ALGO_H3_AUTO_ASSIGN"),
 			QStringLiteral("%1 ROIs").arg(found.boxes.size()));
@@ -1044,7 +1044,7 @@ void VisionApp::initAlgoHeight3Page()
 				else status = out.overallPass ? "Overall: PASS" : "Overall: FAIL - " + out.overall.failReason;
 				break;
 			}
-			ui.label_algoStatus->setText(status);
+			setAlgoStatus(status);
 
 			/*
 			* One log line per stage THIS job ran. A single-stage run carries the earlier
@@ -1701,7 +1701,7 @@ void VisionApp::algoH3AutoAssignGrid()
 	const QString note = QStringLiteral("%1 x %2 = %3 ROIs on a %4 x %5 um pitch, type '%6'")
 		.arg(rows).arg(cols).arg(cells.size())
 		.arg(pitchText(cols, pitchX, p.xScaleUmPx)).arg(pitchText(rows, pitchY, p.yScaleUmPx)).arg(typeName);
-	ui.label_algoStatus->setText(QStringLiteral("By Rows / Columns: ") + note);
+	setAlgoStatus(QStringLiteral("By Rows / Columns: ") + note);
 	ct::logger::info("[Algo H3] Auto Assign by rows/columns: %s", note.toStdString().c_str());
 	AuditLog::instance().log(QStringLiteral("ALGO_H3_AUTO_GRID"), QStringLiteral("%1 ROIs").arg(cells.size()));
 }
@@ -2210,7 +2210,7 @@ void VisionApp::restoreAlgoH3Inputs()
 	const int stage = mgr.height3SavedStage();
 	if (stage >= 0 && !mgr.isBusy()) {
 		showStatus(QStringLiteral("Re-running the stages this recipe had completed..."));
-		ui.label_algoStatus->setText(QStringLiteral("Restoring the last run..."));
+		setAlgoStatus(QStringLiteral("Restoring the last run..."));
 		_algoH3RestoreRunPending = true;   //its result must not trigger a save - see height3Finished
 		mgr.runHeight3UpTo(stage);
 	}
@@ -3102,7 +3102,7 @@ void VisionApp::algoH3RunStage(AlgoH3Stage stage)
 	//the widgets are the source of truth, so push them down before anything runs
 	captureAlgoParamsFromUI();
 	clearAlgoOverlay();
-	ui.label_algoStatus->setText("Running...");
+	setAlgoStatus("Running...");
 
 	mgr.runHeight3(stage);
 

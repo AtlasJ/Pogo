@@ -20136,24 +20136,17 @@ Stop SR Management Tool services to free port 21.</string>
                             </widget>
                            </item>
                            <item>
-                            <widget class="QLabel" name="label_algoStatus">
-                             <property name="text">
-                              <string/>
+                            <widget class="QLineEdit" name="lineEdit_algoStatus">
+                             <property name="styleSheet">
+                              <string notr="true">QLineEdit#lineEdit_algoStatus { background: transparent; border: none; }</string>
+                             </property>
+                             <property name="frame">
+                              <bool>false</bool>
+                             </property>
+                             <property name="readOnly">
+                              <bool>true</bool>
                              </property>
                             </widget>
-                           </item>
-                           <item>
-                            <spacer name="hs_algoHeader">
-                             <property name="orientation">
-                              <enum>Qt::Horizontal</enum>
-                             </property>
-                             <property name="sizeHint" stdset="0">
-                              <size>
-                               <width>40</width>
-                               <height>20</height>
-                              </size>
-                             </property>
-                            </spacer>
                            </item>
                           </layout>
                          </item>
