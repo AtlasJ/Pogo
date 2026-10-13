@@ -36,7 +36,7 @@ const char* kImageJExe = "C:/Program Files/ImageJ/ImageJ.exe";
 //the plot window's title contains this whatever file it shows - compared lower-case
 const char* kPlotTitle = "interactive 3d surface plot";
 
-constexpr int kCloseTimeoutMs = 0;  //polite WM_CLOSE before terminating, as in the Python
+constexpr int kCloseTimeoutMs = 0;  //wait after WM_CLOSE before terminating; 0 = terminate at once, ImageJ never quits on WM_CLOSE
 constexpr int kPlotTimeoutMs = 20000;  //the Python waited 10 s; a JVM start plus a 64 MB map wants headroom
 constexpr int kPollMs = 200;
 
@@ -202,6 +202,8 @@ bool pause(int ms, const std::atomic<bool>& abort)
 
 /*
 * The Python close_imagej_windows(): polite first, forceful after the timeout.
+* With kCloseTimeoutMs at 0 there is no wait - in 17 of 17 closes with a 5 s wait ImageJ
+* never quit on WM_CLOSE - so the terminate is the normal way out and is not a warning.
 *
 * WM_CLOSE goes to every TITLED ImageJ window, hidden ones included - after an open the
 * main ImageJ window is hidden, and closing it is what makes ImageJ quit. Untitled windows
@@ -231,17 +233,18 @@ int closeImageJ(const std::atomic<bool>& abort, const std::function<void(const Q
 		(int)pids.size(), posted);
 
 	//nothing to ask politely means nothing to wait for
-	if (posted > 0) {
+	const bool politeWait = posted > 0 && kCloseTimeoutMs > 0;
+	if (politeWait) {
 		for (int waited = 0; waited < kCloseTimeoutMs; waited += kPollMs) {
 			if (imageJProcesses().empty()) return (int)pids.size();
 			if (waited > 0 && waited % 1000 == 0)
 				say(QStringLiteral("%1\n\nWaiting for ImageJ to quit... %2 s").arg(headline).arg(waited / 1000));
 			if (!pause(kPollMs, abort)) return -1;
 		}
+		say(QStringLiteral("%1\n\nImageJ did not quit by itself - forcing it to close...").arg(headline));
 	}
 
 	//the Python's taskkill /F /T - but only for processes that really are ImageJ's
-	say(QStringLiteral("%1\n\nImageJ did not quit by itself - forcing it to close...").arg(headline));
 	for (DWORD pid : imageJProcesses()) {
 		HANDLE h = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pid);
 		if (!h) {
@@ -251,7 +254,11 @@ int closeImageJ(const std::atomic<bool>& abort, const std::function<void(const Q
 		TerminateProcess(h, 1);
 		WaitForSingleObject(h, 2000);
 		CloseHandle(h);
-		ct::logger::warn("[External3D] ImageJ process %lu did not quit on WM_CLOSE - terminated", pid);
+		if (politeWait)
+			ct::logger::warn("[External3D] ImageJ process %lu did not quit on WM_CLOSE within %d ms - terminated",
+				pid, kCloseTimeoutMs);
+		else
+			ct::logger::info("[External3D] ImageJ process %lu terminated (no close wait configured)", pid);
 	}
 	return (int)pids.size();
 }
