@@ -372,9 +372,9 @@ void VisionApp::initAlgoHeight3Page()
 	const QString copyHint = QStringLiteral(
 		"\n\nSelect ROIs on the image and press Ctrl+C to copy, Ctrl+V to paste them offset by 10 px.");
 	ui.toolButton_algoH3RoiAdd->setToolTip(
-		"Add one ROI of the selected type, at the centre of the segmented part." + copyHint);
+		"Add one ROI of the selected type, in the middle of the part of the image you are looking at." + copyHint);
 	ui.toolButton_algoH3DatumAddRoi->setToolTip(
-		"Add one datum ROI, at the centre of the segmented part." + copyHint);
+		"Add one datum ROI, in the middle of the part of the image you are looking at." + copyHint);
 
 	// ── display mode + section: both decide what is on screen ──
 	connect(ui.comboBox_algoH3Display, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -562,13 +562,12 @@ void VisionApp::initAlgoHeight3Page()
 			return;
 		}
 		const int n = _algoH3DatumBoxes.size();
-		const QSize crop = AlgoManager::instance().height3CropSize();
-		//stagger new boxes so several added in a row do not stack invisibly
-		const QRectF sceneRect(crop.width() / 2.0 - 60 + n * 24, crop.height() / 2.0 - 60 + n * 24, 120, 120);
+		const QRectF sceneRect = algoH3NewBoxRect(QSizeF(120, 120), _algoH3DatumBoxes);
 
 		auto* box = makeAlgoH3Box(sceneRect, kAlgoH3DatumColor, QStringLiteral("Datum %1").arg(n + 1));
 		_algoH3DatumBoxes.append(box);
 		updateAlgoH3RoiVisibility();
+		algoH3SelectOnly(box);
 		algoSettingsTouched();
 		ui.lineEdit_algoH3DatumRoiCount->setText(QString::number(_algoH3DatumBoxes.size()));
 	});
@@ -764,8 +763,7 @@ void VisionApp::initAlgoHeight3Page()
 		const QColor color = algoH3SelectedTypeColor();
 
 		const int n = _algoH3RoiBoxes.size();
-		const QSize crop = AlgoManager::instance().height3CropSize();
-		const QRectF sceneRect(crop.width() / 2.0 - 30 + n * 18, crop.height() / 2.0 - 30 + n * 18, 60, 60);
+		const QRectF sceneRect = algoH3NewBoxRect(QSizeF(60, 60), _algoH3RoiBoxes);
 
 		auto* box = makeAlgoH3Box(sceneRect, color, QStringLiteral("R%1 %2").arg(n + 1).arg(typeName));
 		box->setTag(typeName);
@@ -774,6 +772,7 @@ void VisionApp::initAlgoHeight3Page()
 		ui.lineEdit_algoH3RoiCount->setText(QString::number(_algoH3RoiBoxes.size()));
 		updateAlgoH3TypeStatus();
 		updateAlgoH3RoiVisibility();
+		algoH3SelectOnly(box);
 		algoSettingsTouched();
 	});
 
@@ -1229,6 +1228,70 @@ void VisionApp::updateAlgoH3CanvasPxLabel()
 // =============================================================================
 // ROI boxes
 // =============================================================================
+
+/*
+* Where a new ROI goes: the middle of what the operator is LOOKING at, not the middle of the
+* crop. Zoomed in on one corner of a 10000 px part, a box dropped at the centre is off-screen
+* and has to be hunted for - and the old "+18 px per existing box" stagger put the 69th box
+* 1200 px away from even that.
+*
+* The view centre only means something while the crop itself is on screen. A 3D render, or a
+* section still showing the full map, falls back to the crop centre (boxes are hidden there
+* anyway). The box is kept wholly inside the crop, and only if another box of the same kind
+* already sits exactly there - Add pressed twice without moving the view - is it stepped by a
+* quarter of its size, so the earlier one stays visible underneath.
+*/
+QRectF VisionApp::algoH3NewBoxRect(const QSizeF& size, const QVector<QDragBox*>& existing) const
+{
+	const QSize crop = (_algoH3BoxCropW > 0 && _algoH3BoxCropH > 0)
+		? QSize(_algoH3BoxCropW, _algoH3BoxCropH)
+		: AlgoManager::instance().height3CropSize();
+	const double cw = crop.width(), ch = crop.height();
+
+	QPointF centre(cw / 2.0, ch / 2.0);
+	const bool cropOnScreen = _fovPixelSource == FovPixelSource::Height3 && _fovH3Segmented
+		&& !h3IsSurfaceMode(algoH3DisplayMode());
+	if (cropOnScreen)
+		centre = ui.graphicsViewFOV->mapToScene(ui.graphicsViewFOV->viewport()->rect().center());
+
+	//whole box inside the crop; a box bigger than the crop is simply centred on it
+	auto clampToCrop = [&](QPointF c) {
+		const double hx = size.width() / 2.0, hy = size.height() / 2.0;
+		c.setX(cw > size.width() ? qBound(hx, c.x(), cw - hx) : cw / 2.0);
+		c.setY(ch > size.height() ? qBound(hy, c.y(), ch - hy) : ch / 2.0);
+		return c;
+	};
+	centre = clampToCrop(centre);
+
+	const double step = std::max(size.width(), size.height()) / 4.0;
+	for (int tries = 0; tries < 50; tries++) {
+		bool taken = false;
+		for (auto* b : existing) {
+			if (!b) continue;
+			const QPointF d = b->getGeometry().center() - centre;
+			if (std::fabs(d.x()) < 0.5 && std::fabs(d.y()) < 0.5) { taken = true; break; }
+		}
+		if (!taken) break;
+		const QPointF next = clampToCrop(centre + QPointF(step, step));
+		if (next == centre) break;   //pinned in a corner: stacking beats looping forever
+		centre = next;
+	}
+
+	return QRectF(centre.x() - size.width() / 2.0, centre.y() - size.height() / 2.0,
+		size.width(), size.height());
+}
+
+/*
+* Make a freshly added box the selection, so it is highlighted, the Box readout shows it, and
+* Delete or Ctrl+C act on it straight away. Called AFTER updateAlgoH3RoiVisibility(): a hidden
+* item ignores setSelected().
+*/
+void VisionApp::algoH3SelectOnly(QDragBox* box)
+{
+	if (!box) return;
+	_pGraphicsSceneFOV->clearSelection();
+	box->setSelected(true);
+}
 
 QDragBox* VisionApp::makeAlgoH3Box(const QRectF& sceneRect, const QColor& color, const QString& name)
 {

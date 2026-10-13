@@ -868,6 +868,9 @@ private:
 	void selectAllShortcutPressed();
 	void algoH3SelectAllRois();        //whichever kind the open section owns
 	void algoH3AutoAssignGrid();       //Auto Assignment: By Rows / Columns, from two selected ROIs
+	//Add ROI / Add datum ROI: where a new box of `size` goes - the middle of the visible crop
+	QRectF algoH3NewBoxRect(const QSizeF& size, const QVector<QDragBox*>& existing) const;
+	void algoH3SelectOnly(QDragBox* box);
 	bool copyPasteGoesToText() const;
 
 	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
