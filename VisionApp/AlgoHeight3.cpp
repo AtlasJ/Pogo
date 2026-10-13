@@ -2779,7 +2779,7 @@ bool AlgoHeight3Pipeline::findPins(const AlgoHeight3Params& p, const QRectF* see
 
 	if (!latticeOk && !seed) {
 		why = QStringLiteral("Could not read a repeating pin pattern (confidence %1 across, %2 "
-			"down; %3 needed). Place one ROI on a single pin and press Auto Assign again - its "
+			"down; %3 needed). Place one ROI on a single pin and press By Pin Detection again - its "
 			"size and position are enough to lay out the rest.")
 			.arg(confX, 0, 'f', 2).arg(confY, 0, 'f', 2).arg(kMinConfidence, 0, 'f', 2);
 		return false;

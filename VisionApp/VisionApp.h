@@ -867,6 +867,7 @@ private:
 	//Ctrl+A: every ROI the open algo page shows; nothing anywhere else
 	void selectAllShortcutPressed();
 	void algoH3SelectAllRois();        //whichever kind the open section owns
+	void algoH3AutoAssignGrid();       //Auto Assignment: By Rows / Columns, from two selected ROIs
 	bool copyPasteGoesToText() const;
 
 	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
@@ -970,6 +971,8 @@ private:
 	*/
 	int _algoH3BoxCropW = 0;
 	int _algoH3BoxCropH = 0;
+	int _algoH3GridRows = 2;              //By Rows / Columns: last count used, offered again next time
+	int _algoH3GridCols = 2;
 	bool _algoH3Updating = false;         //re-entrancy guard while rebuilding the type list
 	/*
 	* Which ROI type the per-type widgets currently hold. NOT the combo's currentIndex:

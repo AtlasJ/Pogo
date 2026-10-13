@@ -30,14 +30,18 @@
 #include "External3DViewer.h"
 
 #include <QColorDialog>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFormLayout>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QRadioButton>
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QTableWidgetItem>
@@ -774,7 +778,7 @@ void VisionApp::initAlgoHeight3Page()
 	});
 
 	/*
-	* ── Auto Assign Pins ──
+	* ── Auto Assignment: By Pin Detection ──
 	*
 	* Two hundred boxes placed by hand is the job this replaces. The pipeline finds the pins and
 	* the lattice; this turns what it found into types and ROIs.
@@ -820,14 +824,14 @@ void VisionApp::initAlgoHeight3Page()
 		QString why;
 		if (!mgr.height3FindPins(haveSeed ? &seedRect : nullptr, found, why)) {
 			showMsg(why);
-			ui.label_algoStatus->setText(QStringLiteral("Auto Assign: ") + why);
+			ui.label_algoStatus->setText(QStringLiteral("By Pin Detection: ") + why);
 			return;
 		}
 
 		if (!_algoH3RoiBoxes.isEmpty()) {
-			const auto reply = QMessageBox::warning(this, "Auto Assign Pins",
+			const auto reply = QMessageBox::warning(this, "Auto Assignment - By Pin Detection",
 				QStringLiteral("%1 ROI(s) are already taught.\n\n"
-					"Auto Assign replaces all of them with %2 new ones. Continue?")
+					"By Pin Detection replaces all of them with %2 new ones. Continue?")
 					.arg(_algoH3RoiBoxes.size()).arg(found.boxes.size()),
 				QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 			if (reply != QMessageBox::Yes) return;
@@ -862,17 +866,23 @@ void VisionApp::initAlgoHeight3Page()
 		}
 		mgr.setHeight3Params(p);
 
+		//the old results are index-matched to the old boxes, so they would label the new ones
+		//wrongly until Measure ran again - the same reason By Rows / Columns clears them
+		_algoH3Output.roiResults.clear();
 		refreshAlgoH3TypeList();
 		refreshAlgoH3RoiBoxes();
 		updateAlgoH3RoiVisibility();
+		refreshAlgoH3ResultSection();
 		refreshAlgoH3Overlay();
 		algoSettingsTouched();
 
-		ui.label_algoStatus->setText(QStringLiteral("Auto Assign: ") + found.note);
-		ct::logger::info("[Algo H3] Auto Assign: %s", found.note.toStdString().c_str());
+		ui.label_algoStatus->setText(QStringLiteral("By Pin Detection: ") + found.note);
+		ct::logger::info("[Algo H3] Auto Assign by pin detection: %s", found.note.toStdString().c_str());
 		AuditLog::instance().log(QStringLiteral("ALGO_H3_AUTO_ASSIGN"),
 			QStringLiteral("%1 ROIs").arg(found.boxes.size()));
 	});
+
+	connect(ui.toolButton_algoH3RoiAutoGrid, &QToolButton::clicked, this, [=]() { algoH3AutoAssignGrid(); });
 
 	connect(ui.toolButton_algoH3RoiDelete, &QToolButton::clicked, this, [=]() {
 		bool removed = false;
@@ -1373,6 +1383,207 @@ void VisionApp::algoH3SelectAllRois()
 		selected++;
 	}
 	if (selected > 0) showStatus(QStringLiteral("%1 ROI(s) selected").arg(selected));
+}
+
+/*
+* Auto Assignment: By Rows / Columns. The operator puts an ROI on the first and on the last
+* pin of the field - opposite corners - selects both and gives the row and column count; the
+* spacing comes from the two ROIs, so nothing has to be measured or typed in um.
+*
+* The crop is already straightened by segmentation, so the grid is a plain rectangle. Which
+* corner pair was used, and which ROI was clicked first, does not matter: the grid spans the
+* rectangle between the two centres.
+*
+* EVERY cell gets an ROI, unlike By Pin Detection. On an inspection that is the point - a
+* missing pin must show up as a failed ROI, not as a cell that was quietly left out.
+*/
+void VisionApp::algoH3AutoAssignGrid()
+{
+	auto& mgr = AlgoManager::instance();
+	if (mgr.isBusy()) {
+		showMsg("Algo is still running, please wait.");
+		return;
+	}
+	if (_algoH3BoxCropW <= 0 || _algoH3BoxCropH <= 0) {
+		showMsg("Run segmentation first - an ROI only exists relative to the segmented part.");
+		return;
+	}
+
+	QVector<QDragBox*> picked;
+	for (auto* b : _algoH3RoiBoxes) if (b && b->isVisible() && b->isSelected()) picked.append(b);
+	if (picked.size() != 2) {
+		showMsg("Select exactly 2 ROIs first (Ctrl+click): one on the first pin and one on the "
+			"last pin, at opposite corners of the field.");
+		return;
+	}
+	//the upper one first, so the dialog lists them in the order they appear on the image.
+	//QPointer, because the dialog below runs its own event loop: anything that rebuilds the
+	//boxes meanwhile (a stage finishing, a recipe reload) deletes these two under us
+	QPointer<QDragBox> a = picked[0];
+	QPointer<QDragBox> b = picked[1];
+	if (b->getGeometry().center().y() < a->getGeometry().center().y()) std::swap(a, b);
+
+	//before anything is read from the params: the widgets are the source of truth
+	captureAlgoH3ParamsFromUI();
+	AlgoHeight3Params p = mgr.height3Params();
+
+	const QRectF ra = a->getGeometry(), rb = b->getGeometry();
+	const bool sameSize = std::fabs(ra.width() - rb.width()) < 0.5 && std::fabs(ra.height() - rb.height()) < 0.5;
+	const bool sameType = (a->getTag() == b->getTag());
+
+	auto describe = [&](QDragBox* box) {
+		const QRectF r = box->getGeometry();
+		return QStringLiteral("%1  -  %2 x %3 um")
+			.arg(box->getName())
+			.arg(r.width() * p.xScaleUmPx, 0, 'f', 0).arg(r.height() * p.yScaleUmPx, 0, 'f', 0);
+	};
+
+	// ── the dialog: rows, columns, and which ROI the new ones copy when the two differ ──
+	QDialog dlg(this);
+	dlg.setWindowTitle(QStringLiteral("Auto Assignment - By Rows / Columns"));
+	auto* form = new QFormLayout(&dlg);
+
+	auto* rowsBox = new QSpinBox(&dlg);
+	rowsBox->setRange(1, 1000);
+	rowsBox->setValue(_algoH3GridRows);
+	auto* colsBox = new QSpinBox(&dlg);
+	colsBox->setRange(1, 1000);
+	colsBox->setValue(_algoH3GridCols);
+	form->addRow(QStringLiteral("Rows"), rowsBox);
+	form->addRow(QStringLiteral("Columns"), colsBox);
+
+	QRadioButton* followA = nullptr;
+	QRadioButton* followB = nullptr;
+	if (!sameSize || !sameType) {
+		form->addRow(new QLabel(QStringLiteral("The two ROIs differ. Every new ROI takes the size and "
+			"type of:"), &dlg));
+		followA = new QRadioButton(describe(a), &dlg);
+		followB = new QRadioButton(describe(b), &dlg);
+		followA->setChecked(true);
+		form->addRow(followA);
+		form->addRow(followB);
+	}
+
+	auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+	connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+	form->addRow(buttons);
+
+	if (dlg.exec() != QDialog::Accepted) return;
+
+	if (!a || !b || !_algoH3RoiBoxes.contains(a.data()) || !_algoH3RoiBoxes.contains(b.data())) {
+		showMsg("The ROIs were rebuilt while the dialog was open - select the two ROIs again "
+			"and press By Rows / Columns again.");
+		return;
+	}
+
+	const int rows = rowsBox->value();
+	const int cols = colsBox->value();
+	_algoH3GridRows = rows;
+	_algoH3GridCols = cols;
+
+	if (rows * cols < 2) {
+		showMsg("A grid needs at least 2 cells - set more than one row or column.");
+		return;
+	}
+	//a hard stop, not a warning: a slipped digit (1000 rows) would otherwise build a million
+	//ROI boxes and hang the window. Far above any pin field this page has seen.
+	const int kMaxGridRois = 5000;
+	if (rows * cols > kMaxGridRois) {
+		showMsg(QStringLiteral("%1 x %2 = %3 ROIs is more than the %4 this page allows - check the "
+			"row and column count.").arg(rows).arg(cols).arg(rows * cols).arg(kMaxGridRois));
+		return;
+	}
+	//re-read after the dialog's event loop, so a stale snapshot is never written back below
+	p = mgr.height3Params();
+
+	QDragBox* follow = (followB && followB->isChecked()) ? b : a;
+	const double bw = follow->getGeometry().width();
+	const double bh = follow->getGeometry().height();
+	const QString typeName = follow->getTag();
+
+	// ── the lattice between the two centres ──
+	const QPointF ca = ra.center(), cb = rb.center();
+	const double x0 = std::min(ca.x(), cb.x()), x1 = std::max(ca.x(), cb.x());
+	const double y0 = std::min(ca.y(), cb.y()), y1 = std::max(ca.y(), cb.y());
+
+	//a single row or column cannot absorb a spread in that direction - say so rather than lay
+	//the line through the middle of two pins that are not on it
+	if (cols == 1 && (x1 - x0) > bw / 2.0) {
+		showMsg(QStringLiteral("With 1 column the two ROIs must be in the same column, but they are "
+			"%1 um apart across.").arg((x1 - x0) * p.xScaleUmPx, 0, 'f', 0));
+		return;
+	}
+	if (rows == 1 && (y1 - y0) > bh / 2.0) {
+		showMsg(QStringLiteral("With 1 row the two ROIs must be on the same row, but they are "
+			"%1 um apart down.").arg((y1 - y0) * p.yScaleUmPx, 0, 'f', 0));
+		return;
+	}
+
+	const double pitchX = (cols > 1) ? (x1 - x0) / (cols - 1) : 0.0;
+	const double pitchY = (rows > 1) ? (y1 - y0) / (rows - 1) : 0.0;
+	const double startX = (cols > 1) ? x0 : (x0 + x1) / 2.0;
+	const double startY = (rows > 1) ? y0 : (y0 + y1) / 2.0;
+
+	const bool overlap = (cols > 1 && pitchX < bw) || (rows > 1 && pitchY < bh);
+
+	QVector<QRectF> cells;   //scene (crop) coordinates, row by row from the top left
+	int outside = 0;
+	const QRectF crop(0, 0, _algoH3BoxCropW, _algoH3BoxCropH);
+	for (int r = 0; r < rows; r++) {
+		for (int c = 0; c < cols; c++) {
+			const QRectF cell(startX + c * pitchX - bw / 2.0, startY + r * pitchY - bh / 2.0, bw, bh);
+			if (!crop.contains(cell)) outside++;
+			cells.append(cell);
+		}
+	}
+
+	// ── say what is about to happen, warnings included, and let the operator back out ──
+	auto pitchText = [](int n, double pitchPx, double scale) {
+		return (n > 1) ? QString::number(pitchPx * scale, 'f', 0) : QStringLiteral("-");
+	};
+	QString text = QStringLiteral("%1 x %2 = %3 ROIs\nPitch %4 x %5 um, box %6 x %7 um, type '%8'.")
+		.arg(rows).arg(cols).arg(cells.size())
+		.arg(pitchText(cols, pitchX, p.xScaleUmPx)).arg(pitchText(rows, pitchY, p.yScaleUmPx))
+		.arg(bw * p.xScaleUmPx, 0, 'f', 0).arg(bh * p.yScaleUmPx, 0, 'f', 0).arg(typeName);
+	if (overlap)
+		text += QStringLiteral("\n\nWARNING: the pitch is smaller than the box, so neighbouring ROIs "
+			"will overlap. Check the row and column count.");
+	if (outside > 0)
+		text += QStringLiteral("\n\nWARNING: %1 ROI(s) reach past the edge of the segmented part and "
+			"will measure less of their pin.").arg(outside);
+	text += QStringLiteral("\n\nThis replaces all %1 existing ROI(s). Continue?").arg(_algoH3RoiBoxes.size());
+
+	const auto reply = (overlap || outside > 0)
+		? QMessageBox::warning(this, dlg.windowTitle(), text, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+		: QMessageBox::question(this, dlg.windowTitle(), text, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+	if (reply != QMessageBox::Yes) return;
+
+	// ── replace the ROIs, in the part frame like every other ROI ──
+	const double ox = _algoH3BoxCropW / 2.0, oy = _algoH3BoxCropH / 2.0;
+	p.rois.clear();
+	for (const QRectF& cell : cells) {
+		AlgoH3Roi roi;
+		roi.rel = cell.translated(-ox, -oy);
+		roi.typeName = typeName;
+		p.rois.append(roi);
+	}
+	mgr.setHeight3Params(p);
+
+	//the old results are index-matched to the old boxes, so they would label the new ones wrongly
+	_algoH3Output.roiResults.clear();
+	refreshAlgoH3RoiBoxes();
+	updateAlgoH3RoiVisibility();
+	refreshAlgoH3ResultSection();
+	refreshAlgoH3Overlay();
+	algoSettingsTouched();
+
+	const QString note = QStringLiteral("%1 x %2 = %3 ROIs on a %4 x %5 um pitch, type '%6'")
+		.arg(rows).arg(cols).arg(cells.size())
+		.arg(pitchText(cols, pitchX, p.xScaleUmPx)).arg(pitchText(rows, pitchY, p.yScaleUmPx)).arg(typeName);
+	ui.label_algoStatus->setText(QStringLiteral("By Rows / Columns: ") + note);
+	ct::logger::info("[Algo H3] Auto Assign by rows/columns: %s", note.toStdString().c_str());
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_AUTO_GRID"), QStringLiteral("%1 ROIs").arg(cells.size()));
 }
 
 /*
@@ -2197,6 +2408,7 @@ void VisionApp::updateAlgoH3Enables()
 	ui.toolButton_algoH3RoiAdd->setEnabled(!busy && segReady);
 	ui.toolButton_algoH3RoiDelete->setEnabled(!busy && segReady);
 	ui.toolButton_algoH3RoiAssignType->setEnabled(!busy && segReady);
+	ui.toolButton_algoH3RoiAutoGrid->setEnabled(!busy && segReady);
 
 	//the external display shows whichever map is on screen, so Open needs one; while a job
 	//is running (it can take ~25 s) neither button may start a second
