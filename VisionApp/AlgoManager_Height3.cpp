@@ -265,6 +265,12 @@ bool AlgoManager::height3HasIntensity() const
 	return m_height3.hasIntensity();
 }
 
+bool AlgoManager::height3PreprocessReady() const
+{
+	std::lock_guard<std::mutex> lock(m_height3Mutex);
+	return m_height3.preprocessReady();
+}
+
 bool AlgoManager::height3SegmentReady() const
 {
 	std::lock_guard<std::mutex> lock(m_height3Mutex);

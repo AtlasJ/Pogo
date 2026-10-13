@@ -57,7 +57,7 @@ public:
 	QSize cropSize() const;
 
 	// ── stage state ──
-	bool preprocessReady() const { return m_preprocessDone; }
+	bool preprocessReady() const { return m_preprocessDone && !m_work.empty(); }
 	bool segmentReady() const { return m_segmentDone && !m_cropHeight.empty(); }
 	bool datumReady() const { return m_datumDone; }
 	bool measureReady() const { return m_measureDone; }
@@ -107,9 +107,6 @@ private:
 	bool doDatum(const AlgoHeight3Params& p);
 	bool doMeasure(const AlgoHeight3Params& p);
 	bool doOverall(const AlgoHeight3Params& p);
-
-	//the height map a stage should read: preprocessed when it exists, raw otherwise
-	const cv::Mat& workingHeight() const;
 
 	cv::Mat m_height;        //CV_16U source height map
 	cv::Mat m_intensity;     //CV_8U source intensity map, same size as m_height

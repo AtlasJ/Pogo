@@ -403,11 +403,6 @@ QSize AlgoHeight3Pipeline::cropSize() const
 	return QSize(m_cropHeight.cols, m_cropHeight.rows);
 }
 
-const cv::Mat& AlgoHeight3Pipeline::workingHeight() const
-{
-	return (m_preprocessDone && !m_work.empty()) ? m_work : m_height;
-}
-
 /*
 * Invalidate this stage and every stage after it. Called before any stage runs and
 * whenever the source maps change, so a displayed number is never older than the data
@@ -1105,8 +1100,14 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 		return false;
 	};
 
-	const cv::Mat& src = workingHeight();
-	if (src.empty()) return fail(QStringLiteral("No height map loaded"));
+	/*
+	* Always the preprocessed map, never a fallback to raw. Segmenting raw when preprocess had
+	* not run (or had failed) gave a different part from a Run All on the same scan, with
+	* nothing on screen to say which map was used. "None" is the way to skip filtering, and it
+	* still applies the valid-range mask, which raw does not.
+	*/
+	if (!preprocessReady()) return fail(QStringLiteral("Run preprocessing first"));
+	const cv::Mat& src = m_work;
 	if (p.xScaleUmPx <= 0.0 || p.yScaleUmPx <= 0.0)
 		return fail(QStringLiteral("X and Y scale must be greater than 0"));
 

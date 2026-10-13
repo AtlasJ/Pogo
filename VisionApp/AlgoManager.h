@@ -101,6 +101,7 @@ public:
 
 	bool height3HasHeight() const;
 	bool height3HasIntensity() const;
+	bool height3PreprocessReady() const;
 	bool height3SegmentReady() const;
 	bool height3DatumReady() const;
 	//Place one ROI per pin. seed = a taught ROI to lay the grid out from, or null.

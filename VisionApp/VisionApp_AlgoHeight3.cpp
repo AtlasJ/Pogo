@@ -2156,6 +2156,7 @@ void VisionApp::updateAlgoH3Enables()
 	auto& mgr = AlgoManager::instance();
 	const bool busy = mgr.isBusy();
 	const bool haveHeight = mgr.height3HasHeight();
+	const bool preReady = mgr.height3PreprocessReady();
 	const bool segReady = mgr.height3SegmentReady();
 	const bool datumReady = mgr.height3DatumReady();
 	const bool measured = _algoH3Output.measure.ran && _algoH3Output.measure.pass;
@@ -2163,7 +2164,7 @@ void VisionApp::updateAlgoH3Enables()
 	//each Run is gated on the stage before it having actually passed, so the pipeline
 	//can never be entered halfway with stale state behind it
 	ui.toolButton_algoH3PreprocessRun->setEnabled(!busy && haveHeight);
-	ui.toolButton_algoH3SegRun->setEnabled(!busy && haveHeight);
+	ui.toolButton_algoH3SegRun->setEnabled(!busy && preReady);
 	ui.toolButton_algoH3DatumRun->setEnabled(!busy && segReady);
 	ui.toolButton_algoH3ResultRun->setEnabled(!busy && datumReady);
 	ui.toolButton_algoH3OverallRun->setEnabled(!busy && measured);
