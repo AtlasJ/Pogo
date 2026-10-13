@@ -780,7 +780,7 @@ void VisionApp::initAlgoHeight3Page()
 	* ── Auto Assignment: By Pin Detection ──
 	*
 	* Two hundred boxes placed by hand is the job this replaces. The pipeline finds the pins and
-	* the lattice; this turns what it found into types and ROIs.
+	* the lattice; this turns what it found into ROIs of the operator's own existing types.
 	*
 	* A single SELECTED ROI is passed down as a seed - its size and position lay the grid out,
 	* which is the way through when the field is too broken for the pattern to be read on its
@@ -800,8 +800,15 @@ void VisionApp::initAlgoHeight3Page()
 			return;
 		}
 		captureAlgoH3ParamsFromUI();
+		//the new ROIs take the operator's own types, criteria and all - so there must be one
+		if (mgr.height3Params().roiTypes.isEmpty()) {
+			showMsg("Add an ROI type first - By Pin Detection gives the new ROIs one of your "
+				"existing types.");
+			return;
+		}
 
 		QRectF seedRect;
+		QString seedType;
 		bool haveSeed = false;
 		int selected = 0;
 		for (auto* b : _algoH3RoiBoxes) if (b && b->isSelected()) selected++;
@@ -810,6 +817,7 @@ void VisionApp::initAlgoHeight3Page()
 			for (auto* b : _algoH3RoiBoxes) {
 				if (!b || !b->isSelected()) continue;
 				seedRect = b->getGeometry().translated(-crop.width() / 2.0, -crop.height() / 2.0);
+				seedType = b->getTag();
 				haveSeed = true;
 			}
 		}
@@ -827,34 +835,67 @@ void VisionApp::initAlgoHeight3Page()
 			return;
 		}
 
-		if (!_algoH3RoiBoxes.isEmpty()) {
-			const auto reply = QMessageBox::warning(this, "Auto Assignment - By Pin Detection",
-				QStringLiteral("%1 ROI(s) are already taught.\n\n"
-					"By Pin Detection replaces all of them with %2 new ones. Continue?")
-					.arg(_algoH3RoiBoxes.size()).arg(found.boxes.size()),
-				QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-			if (reply != QMessageBox::Yes) return;
-		}
-
 		AlgoHeight3Params p = mgr.height3Params();
 
 		/*
-		* One type per size of pin, white, created only if it is missing - a second Auto Assign
-		* must not wipe the criteria the operator has since typed into "Pin".
+		* Which EXISTING type the new ROIs get - one choice per size of pin found. No type is
+		* created any more: a made-up "Pin" type has no criteria, so it judged nothing until the
+		* operator went and filled it in, and a second run sprouted "Pin 1", "Pin 2"... beside
+		* the types they had actually set up. The replace warning lives in the same dialog, so
+		* there is one prompt, not two.
+		*
+		* Groups come sorted by how much pin each box holds, smallest first (findPins), so they
+		* are labelled by size. Default: the seed ROI's type if one was given, else the type
+		* chosen in the ROI Type combo.
 		*/
-		QStringList typeNames;
+		QVector<int> groupCount(found.groups, 0);
+		for (int g : found.group) if (g >= 0 && g < found.groups) groupCount[g]++;
+
+		QStringList existingTypes;
+		for (const auto& t : p.roiTypes) existingTypes << t.name;
+		const QString defaultType = (haveSeed && existingTypes.contains(seedType))
+			? seedType : ui.comboBox_algoH3RoiType->currentText();
+
+		QDialog dlg(this);
+		dlg.setWindowTitle(QStringLiteral("Auto Assignment - By Pin Detection"));
+		auto* form = new QFormLayout(&dlg);
+		form->addRow(new QLabel(QStringLiteral("Found %1.").arg(found.note), &dlg));
+		if (found.groups > 1)
+			form->addRow(new QLabel(QStringLiteral("The pins come in %1 sizes - choose a type for each:")
+				.arg(found.groups), &dlg));
+
+		QVector<QComboBox*> typeBoxes;
 		for (int g = 0; g < found.groups; g++) {
-			const QString name = (found.groups == 1)
-				? QStringLiteral("Pin") : QStringLiteral("Pin %1").arg(g + 1);
-			typeNames << name;
-			if (p.hasType(name)) continue;
-			AlgoH3RoiType t;
-			t.name = name;
-			t.color = QColor(255, 255, 255);
-			t.methodId = p.methodId;
-			p.roiTypes.append(t);
+			auto* combo = new QComboBox(&dlg);
+			combo->addItems(existingTypes);
+			const int at = combo->findText(defaultType);
+			combo->setCurrentIndex(at >= 0 ? at : 0);
+			typeBoxes << combo;
+
+			QString label = QStringLiteral("Type for the %1 new ROIs").arg(groupCount[g]);
+			if (found.groups > 1) {
+				const QString size = (g == 0) ? QStringLiteral("smallest")
+					: (g == found.groups - 1) ? QStringLiteral("largest") : QStringLiteral("middle");
+				label = QStringLiteral("Size %1 (%2, %3 pins)").arg(g + 1).arg(size).arg(groupCount[g]);
+			}
+			form->addRow(label, combo);
 		}
 
+		if (!_algoH3RoiBoxes.isEmpty())
+			form->addRow(new QLabel(QStringLiteral("This replaces all %1 existing ROI(s).")
+				.arg(_algoH3RoiBoxes.size()), &dlg));
+
+		auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+		connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+		connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+		form->addRow(buttons);
+		if (dlg.exec() != QDialog::Accepted) return;
+
+		QStringList typeNames;
+		for (auto* combo : typeBoxes) typeNames << combo->currentText();
+
+		//re-read after the dialog's event loop, so a stale snapshot is never written back
+		p = mgr.height3Params();
 		p.rois.clear();
 		for (int i = 0; i < found.boxes.size(); i++) {
 			AlgoH3Roi roi;
