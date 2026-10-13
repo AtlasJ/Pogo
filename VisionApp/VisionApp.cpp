@@ -2965,8 +2965,16 @@ void VisionApp::updateFovPixelReadout(const QPoint& pt)
 			? QStringLiteral("Height %1 (%2 um)").arg(px.raw).arg(px.raw / zScale, 0, 'f', 1)
 			: QStringLiteral("Height %1").arg(px.raw);
 	}
+	//only on the V3 crop once Datum has passed - left out rather than shown as a placeholder
+	if (px.hasDatum)
+		text += QStringLiteral(", above datum %1%2 um")
+			.arg(px.aboveDatumUm >= 0.0 ? QStringLiteral("+") : QString())
+			.arg(px.aboveDatumUm, 0, 'f', 1);
 	if (px.hasIntensity) text += QStringLiteral(", Intensity %1").arg(px.intensity);
 	ui.lineEdit_fovPixel->setText(text);
+	//setText leaves the cursor at the end, and a line edit too narrow for the text then shows its
+	//TAIL - keep the start, which is the height, in view
+	ui.lineEdit_fovPixel->setCursorPosition(0);
 }
 
 void VisionApp::clearDrawingFromFOV()

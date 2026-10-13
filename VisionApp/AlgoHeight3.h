@@ -61,6 +61,12 @@ public:
 	bool segmentReady() const { return m_segmentDone && !m_cropHeight.empty(); }
 	bool datumReady() const { return m_datumDone; }
 	bool measureReady() const { return m_measureDone; }
+	//the fitted datum, z = a*x + b*y + c in raw grey over crop px; false until Datum has passed
+	bool datumPlane(double& a, double& b, double& c) const {
+		if (!m_datumDone || !m_out.planeValid) return false;
+		a = m_out.planeA; b = m_out.planeB; c = m_out.planeC;
+		return true;
+	}
 	void invalidateFrom(AlgoH3Stage stage);
 
 	// ── running ──

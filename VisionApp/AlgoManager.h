@@ -21,6 +21,8 @@ struct FovMapPixel {
 	int raw = 0;                //16-bit height; 0 is a dropout
 	bool hasIntensity = false;  //false when there is no intensity map that lines up
 	int intensity = 0;
+	bool hasDatum = false;      //true only on the V3 crop with a fitted datum and a valid pixel
+	double aboveDatumUm = 0.0;  //exactly what Measure computes for this pixel
 };
 
 /*

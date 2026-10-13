@@ -332,6 +332,9 @@ bool AlgoManager::height3Pixel(bool preprocessed, bool segmented, int x, int y, 
 {
 	out = FovMapPixel();
 
+	//params first, then the pipeline - the two locks are never held together (see height3Image)
+	const AlgoHeight3Params p = height3Params();
+
 	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
 	if (!lock.owns_lock()) return false;
 
@@ -344,6 +347,20 @@ bool AlgoManager::height3Pixel(bool preprocessed, bool segmented, int x, int y, 
 	if (!in.empty() && in.type() == CV_8U && in.size() == h.size()) {
 		out.hasIntensity = true;
 		out.intensity = in.at<uchar>(y, x);
+	}
+
+	/*
+	* Height above the datum, the way doMeasure computes it: vertical distance to the plane,
+	* valid-range pixels only. The plane is fitted in CROP pixels, so this exists only while the
+	* crop is what is shown - and it is read under the same lock as the pixel, so the plane and
+	* the crop can never come from two different runs. A re-run of Preprocess or Segment wipes
+	* the datum, and the value simply disappears until Datum passes again.
+	*/
+	double a = 0.0, b = 0.0, c = 0.0;
+	if (segmented && m_height3.segmentReady() && m_height3.datumPlane(a, b, c)
+		&& p.zScaleRawPerUm > 0.0 && out.raw >= p.minValidRaw && out.raw <= p.maxValidRaw) {
+		out.hasDatum = true;
+		out.aboveDatumUm = (out.raw - (a * x + b * y + c)) / p.zScaleRawPerUm;
 	}
 	return true;
 }
