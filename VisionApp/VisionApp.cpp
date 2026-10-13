@@ -2533,18 +2533,20 @@ void VisionApp::imageReady(QVector<FrameInfo> infos)
 				/*
 				* Point cloud of the same scan. The scales are read HERE, on the UI thread, while the
 				* profiler still describes the scan that produced this frame - the worker runs later, by
-				* which time the sensor may have moved on or disconnected. X comes from the head's
-				* lateral FOV spread across the map width; Y is the encoder line pitch.
+				* which time the sensor may have moved on or disconnected.
+				*
+				* X and Y are both the pitch rotate_heightMap resampled this map to: it produces SQUARE
+				* pixels (native 5 um, world scale ~27.5 um, or coarser past 100 Mpx) and, for an X-axis
+				* scan, turns the map 90 degrees so image X is the scan. The old X = laser FOV / map
+				* width therefore divided the 16 mm laser line by the SCAN length (1.6 um instead of 5,
+				* so a 45 mm part came out ~14 mm), and Y = encoder line pitch was right only while that
+				* pitch happened to equal the output pitch. A 0 here skips the PLY rather than writing
+				* it in the wrong units.
 				*/
 				task.plyPath = (root + saveName + "_height.ply").toStdString();
-				{
-					auto& pm = ProfilerManager::instance();
-					const double xFovMm = pm.liveXFovMm(_profilerID);
-					const int mapW = info.pHeightMap ? (int)mtrx::get_width(info.pHeightMap->id()) : 0;
-					task.xPitchMm = (xFovMm > 0.0 && mapW > 0) ? xFovMm / mapW : 0.0;
-					task.yPitchMm = pm.getLinePitchUm() / 1000.0;
-					task.zPitchUm = pm.getZPitchUm(_profilerID);
-				}
+				task.xPitchMm = info.heightMapPitchUm / 1000.0;
+				task.yPitchMm = info.heightMapPitchUm / 1000.0;
+				task.zPitchUm = ProfilerManager::instance().getZPitchUm(_profilerID);
 				if (info.pImage) {
 					task.imgBuf = info.pImage;
 					task.imgPath = (root + saveName + "_intensity.jpg").toStdString();

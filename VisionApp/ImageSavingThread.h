@@ -17,8 +17,8 @@ struct ImageSaveInfo {
      * A zero scale means "unknown" and the PLY is skipped rather than written in wrong units.
      */
     std::string plyPath;
-    double xPitchMm = 0.0;   //lateral, per height-map column
-    double yPitchMm = 0.0;   //scan direction, per height-map row
+    double xPitchMm = 0.0;   //per height-map column (the processed map's pitch - see VisionApp::imageReady)
+    double yPitchMm = 0.0;   //per height-map row - equal to xPitchMm, the map has square pixels
     double zPitchUm = 0.0;   //microns per grey level (grey 0 = invalid, 32768 = zero height)
     std::string copyPath;
     mtrx::SharedMilID imgBuf = nullptr;   

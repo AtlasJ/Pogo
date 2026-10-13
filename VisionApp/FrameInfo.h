@@ -31,6 +31,9 @@ struct FrameInfo {
 	ICAM_pixelFormat pixelFormat;
 	uint64_t timeStamp;
 	QString type = "";
+	//um per pixel of pHeightMap, the SAME on both axes: ImageManager::rotate_heightMap resamples
+	//every height map to square pixels at one pitch. 0 = not a processed height map
+	double heightMapPitchUm = 0.0;
 
 	//linkage
 	QString cameraID = "";

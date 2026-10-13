@@ -20,6 +20,7 @@ FrameInfo::FrameInfo(const FrameInfo& other)
 	channel = other.channel;
 	pixelFormat = other.pixelFormat;
 	timeStamp = other.timeStamp;
+	heightMapPitchUm = other.heightMapPitchUm;
 
 	cameraID = other.cameraID;
 	viewID = other.viewID;
@@ -47,6 +48,7 @@ FrameInfo& FrameInfo::operator=(const FrameInfo& other)
 	channel = other.channel;
 	pixelFormat = other.pixelFormat;
 	timeStamp = other.timeStamp;
+	heightMapPitchUm = other.heightMapPitchUm;
 
 	cameraID = other.cameraID;
 	viewID = other.viewID;

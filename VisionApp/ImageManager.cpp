@@ -459,8 +459,10 @@ void ImageManager::preprocess_info(FrameInfo& info)
 		ct::logger::debug("[IM] Preprocess 5: Heightmap");
 
 		MIL_ID rotatedHM = M_NULL, rotatedIM = M_NULL;
-		rotate_heightMap(info.pHeightMap->id(), rotatedHM, rotationAgle, info.postTask.scanReversed);
+		double pitchUm = 0.0;
+		rotate_heightMap(info.pHeightMap->id(), rotatedHM, rotationAgle, info.postTask.scanReversed, &pitchUm);
 		preprocessedInfo.pHeightMap = mtrx::MbufPoolManager::instance().attach(rotatedHM, mtrx::PoolDestructorType::FREE_BUFFER);
+		preprocessedInfo.heightMapPitchUm = pitchUm;   //travels with the frame to the PLY export
 
 		if (info.pImage) {
 			rotate_heightMap(info.pImage->id(), rotatedIM, rotationAgle, info.postTask.scanReversed);
@@ -879,8 +881,10 @@ void ImageManager::printOptic3D()
 	}
 }
 
-void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle, bool scanReversed)
+void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle, bool scanReversed,
+	double* pitchUmOut)
 {
+	if (pitchUmOut) *pitchUmOut = 0.0;
 	if (mSrc == M_NULL) return;
 
 	/*
@@ -919,6 +923,8 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 
 	auto scale = ScaleManager::instance().um_per_px();
 	double extraPx= ScaleManager::instance().mm_to_px(SystemData::instance().m_extraMoveFor3DLaser);
+	//every branch below resizes BOTH axes to `scale` um/px; only Keyence's native mode overrides it
+	if (pitchUmOut) *pitchUmOut = scale;
 
 	//X-axis scans need the raw frame remapped 90 degrees so the scan direction lies along image X;
 	//Y-axis scans keep the raw orientation (profiles already stack along image Y)
@@ -1279,6 +1285,7 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 
 		MIL_INT sw = w * KEYENCE_X_PITCH_UM / outPitchUm;
 		MIL_INT sh = h * linePitchUm / outPitchUm;
+		if (pitchUmOut) *pitchUmOut = outPitchUm;   //native 5 um, coarsened past 100 Mpx, or world scale
 
 		ct::logger::info("[ImageManager] Keyence height map: %lld x %lld px at %.3f um/px (%s), "
 			"from %lld x %lld raw at %.2f um across x %.3f um along",
@@ -1328,6 +1335,7 @@ void ImageManager::rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngl
 
 	else {
 		ct::logger::error("[Image Manager] Failed to get sensor api type", api.toStdString().c_str());
+		if (pitchUmOut) *pitchUmOut = 0.0;   //nothing was produced, so there is no pitch to report
 	}
 
 
@@ -2016,6 +2024,7 @@ void ImageManager::mechanical_stitch_linescan(QString sID)
 		QString camID;
 		QString linescanID;
 		bool hasIMAP = false;
+		double tilePitchUm = 0.0;   //the tiles are copied pixel for pixel, so the stitch keeps their pitch
 
 		for (auto vID : vIDs) {
 			if (!m_linescans->contains(vID)) continue;
@@ -2026,6 +2035,7 @@ void ImageManager::mechanical_stitch_linescan(QString sID)
 			pixelFormat = iinfo.pixelFormat;
 			optID = iinfo.opticID;
 			camID = iinfo.cameraID;
+			tilePitchUm = iinfo.heightMapPitchUm;
 
 			// Calculate the transformed positions
 			auto w = mtrx::get_width(iinfo.pHeightMap->id());
@@ -2099,6 +2109,7 @@ void ImageManager::mechanical_stitch_linescan(QString sID)
 		info.stitchID = sID;
 		info.opticID = optID;
 		info.type = ct::s_height_map;
+		info.heightMapPitchUm = tilePitchUm;
 		info.pImage = mtrx::MPM::instance().attach(simage8);
 		info.pHeightMap = mtrx::MPM::instance().attach(simage16);
 		infos.push_back(info);
