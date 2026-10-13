@@ -20,14 +20,15 @@
 
 void VisionApp::newRecipe()
 {
-	bool ok1;
-	bool ok2;
+	bool ok1 = false;
 	bool flag = true;
 	QString recipeName;
 
 	recipeName = QInputDialog::getText(this, tr("New Recipe"), tr("Recipe:"), QLineEdit::Normal, "", &ok1, Qt::CoverWindow);
 
-	if (ok1 && ok2 && !recipeName.isEmpty())
+	//only the one dialog sets anything: a second flag (ok2) used to be tested here without ever
+	//being assigned, so whether a recipe got created depended on leftover stack memory (C4700)
+	if (ok1 && !recipeName.isEmpty())
 	{
 		QDir dir(Common::Directory::LocalPath + QStringLiteral("recipe/"));
 
