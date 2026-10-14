@@ -1343,6 +1343,9 @@ public slots:
 	bool saveUserAccounts(const QVector<AccountInfo>& accounts);
 	void openUserManagementDialog();
 	bool readSystemInfo(QJsonObject& systemObj);
+	//every device address this installation is configured for, and the PC's own NICs, to the
+	//log at startup - so the next time a network is rebuilt the answer is already written down
+	void logDeviceInventory();
 	bool updateSystemInfo(const QJsonObject& systemObj);
 	bool readBufferInfo(QJsonObject& bufferInfoObj);
 	bool createBufferInfo(QJsonObject& bufferInfoObj, QSize & imgSize);

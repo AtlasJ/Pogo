@@ -1,3 +1,4 @@
+#include <QNetworkInterface>
 #include "VisionApp.h"
 #include "SRXManager.h"
 #include "AlgoManager.h"
@@ -303,6 +304,10 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 		// Loads barcodeReader.json, connects both readers and starts the image FTP server
 		SRXManager::instance().init();
 	}
+
+	//after the profiler and barcode managers have loaded their files, so it reports what they
+	//actually use rather than what the files say
+	logDeviceInventory();
 
 	ct::logger::info("Initializing read buffer...");
 	readBufferInfo(_bufferInfoObj);
@@ -8963,6 +8968,79 @@ bool VisionApp::readUserInfo(QJsonObject& userObj)
 	}
 
 	return flag;
+}
+
+/*
+* Everything on the network this installation depends on, written to the log at every start.
+*
+* Prompted by losing the EMX-100's address in an IT reinstall. None of these addresses lived
+* anywhere a person would look: the EMX is discovered by APS and never recorded by us, the
+* profiler's is in profiler.json, the barcode reader's in barcodeReader.json, the light
+* controller's in system.json - and the PC's own adapter settings, which are the OTHER half of
+* every one of those links and the half IT actually changed, are in Windows and nowhere else.
+* So the one place that had all of it was nobody's memory.
+*
+* The local adapters go first and deliberately: a device that stops answering has usually not
+* moved, the PC has, and seeing 169.254.x.x against an adapter that used to be static is the
+* whole diagnosis in one line.
+*
+* Reads the same files the managers load, so it reports live values; the EMX is logged by
+* Motion_APS itself when the card enumerates, since only APS knows it.
+*/
+void VisionApp::logDeviceInventory()
+{
+	ct::logger::info("[Devices] ---- network inventory ----");
+
+	//this PC first - the half of every link that IT can change without telling anyone
+	for (const QNetworkInterface& nic : QNetworkInterface::allInterfaces()) {
+		if (!(nic.flags() & QNetworkInterface::IsUp) || (nic.flags() & QNetworkInterface::IsLoopBack)) continue;
+		for (const QNetworkAddressEntry& e : nic.addressEntries()) {
+			if (e.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
+			const bool apipa = e.ip().toString().startsWith(QStringLiteral("169.254."));
+			ct::logger::info("[Devices] PC adapter '%s': %s / %s  (%s)%s",
+				nic.humanReadableName().toStdString().c_str(),
+				e.ip().toString().toStdString().c_str(),
+				e.netmask().toString().toStdString().c_str(),
+				nic.hardwareAddress().toStdString().c_str(),
+				apipa ? "  <- link-local: no static IP and no DHCP answered" : "");
+		}
+	}
+
+	//profiler(s): what profiler.json says, which is what ProfilerManager loaded
+	{
+		QJsonObject root;
+		const QString path = Common::Directory::ConfigPath() + QStringLiteral("profiler.json");
+		if (jsonHelper::loadJson(path, root)) {
+			for (const QJsonValue& v : root.value(QStringLiteral("Profilers")).toArray()) {
+				const QJsonObject p = v.toObject();
+				const QString id = p.value(QStringLiteral("ID")).toString();
+				ct::logger::info("[Devices] Profiler '%s' (%s): %s  connected=%d",
+					id.toStdString().c_str(),
+					p.value(QStringLiteral("API")).toString().toStdString().c_str(),
+					p.value(QStringLiteral("IP")).toString().toStdString().c_str(),
+					ProfilerManager::instance().isConnected(id) ? 1 : 0);
+			}
+		}
+		else ct::logger::warn("[Devices] Profiler: %s not readable", path.toStdString().c_str());
+	}
+
+	//barcode readers: live config from the manager
+	for (const QString& id : SRXManager::instance().ids()) {
+		const auto cfg = SRXManager::instance().readerConfig(id);
+		ct::logger::info("[Devices] Barcode reader '%s': %s:%d  enabled=%d",
+			id.toStdString().c_str(), cfg.ip.toStdString().c_str(), cfg.port, cfg.enabled ? 1 : 0);
+	}
+
+	//the rest live in system.json
+	auto sys = [&](const char* key) { return jsonHelper::getString(_systemObj, QString::fromLatin1(key)).toStdString(); };
+	ct::logger::info("[Devices] Light controller (LSC): %s", sys("LSC_IP_Address").c_str());
+	ct::logger::info("[Devices] IM310 link: %s:%d", sys("IM310_IP_Address").c_str(),
+		jsonHelper::getInteger(_systemObj, QStringLiteral("IM310_Listening_Port"), 0));
+	ct::logger::info("[Devices] Verification station: %s", sys("Verification_Station_Ip_Address").c_str());
+	ct::logger::info("[Devices] AOI listening port: %d",
+		jsonHelper::getInteger(_systemObj, QStringLiteral("AOI_Listening_Port"), 0));
+	ct::logger::info("[Devices] EMX-100: discovered by APS - see the [Motion_APS] card line above");
+	ct::logger::info("[Devices] ---- end inventory ----");
 }
 
 bool VisionApp::readSystemInfo(QJsonObject& systemObj)

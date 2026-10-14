@@ -152,7 +152,19 @@ bool Motion_APS::init()
 			
 			if (cardName == 23) { //23:EMX-100
 				m_cardIDs.push_back(i);
-				ct::logger::info("Card ID: %lu", i);
+				/*
+				* Log the EMX's address every time it comes up. The EMX is found by APS, not by
+				* an IP in our config, so nothing of ours ever recorded where it was - and when
+				* an IT reinstall moved the PC off its subnet the address was simply gone, with
+				* nothing to read it back from but ADLINK's discovery tool. One line here and it
+				* is in every startup log forever.
+				*
+				* The string is the library's; read it, do not free it.
+				*/
+				char* ip = nullptr;
+				const I32 ipRet = APS_get_deviceIP(i, &ip);
+				ct::logger::info("[Motion_APS] EMX-100 card %lu at %s", i,
+					(ipRet == ERR_NoError && ip && *ip) ? ip : "<unknown IP>");
 			}
 		}
 	}
