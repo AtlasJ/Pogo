@@ -7026,6 +7026,22 @@ void JobThread::jogBasedOnFiducial(double x, double y, double z, QString type, b
 
 bool JobThread::jogRelative(int axis, double mm)
 {
+	/*
+	* In debug mode the motion gate stays open through an error, so the healthy axes can be
+	* jogged while one drive is alarmed - which is the point. But a jog aimed at the alarmed
+	* axis itself would be accepted by the EMX and then sit in waitAxis() for its full timeout.
+	* Say so instead.
+	*/
+	if (axis >= (int)Axis::X && axis <= (int)Axis::Z
+		&& MachineController::instance().hasDriverAlarm((Axis)axis)) {
+		static const char* names[3] = { "X", "Y", "Z" };
+		ct::logger::warn("[Motion] Jog refused: axis %s has a driver alarm", names[axis]);
+		emit promptMsg(QStringLiteral(
+			"Axis %1 has a driver alarm and cannot be jogged.\n\n"
+			"Reset the alarm first. The other axes can still be jogged.").arg(names[axis]));
+		return false;
+	}
+
 	if (MotionController::instance().relative_move(m_motionID, axis, mm)) return true;
 
 	/*
@@ -7235,8 +7251,15 @@ void JobThread::homeXYZ()
 	* Note the single-axis homeX/homeY/homeZ have never had this guard, which is why pressing
 	* Home X individually was the only way out before this.
 	*/
+	/*
+	* In debug mode an alarmed drive need not stop the OTHER axes from homing - a technician
+	* with a dead X drive still has to be able to park Y and Z. debugHomeSkipAxes() says yes
+	* only when the drives are the whole problem; anything else outstanding refuses as before.
+	*/
+	QSet<int> skip;
 	if (MachineController::instance().getMachineState() == MachineState::S_ERROR
-		&& !MachineController::instance().limitRecoveryOnly()) return;
+		&& !MachineController::instance().limitRecoveryOnly()
+		&& !MachineController::instance().debugHomeSkipAxes(skip)) return;
 
 	MachineController::instance().notifyEvent(MachineEvent::HOMING);
 
@@ -7244,59 +7267,73 @@ void JobThread::homeXYZ()
 
 	MachineController::instance().safelyReleaseBrake();
 
-	auto axisX = (int)im390::Axis::X;
-	auto axisY = (int)im390::Axis::Y;
-	auto axisZ = (int)im390::Axis::Z;
-	
-	auto ret = MotionController::instance().home(m_motionID, axisX);
-	ret &= MotionController::instance().home(m_motionID, axisY);
-	ret &= MotionController::instance().home(m_motionID, axisZ);
-
-	os_tool::doNothing(m_motionReadDelay_ms);
-	waitAxis(axisX);
-	waitAxis(axisY);
-	waitAxis(axisZ);
-
-	MotionController::instance().set_position_mm(m_motionID, 0, axisX, 0.0);
-	MotionController::instance().set_position_mm(m_motionID, 0, axisY, 0.0);
-	MotionController::instance().set_position_mm(m_motionID, 0, axisZ, 0.0);
-
-	MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
+	homeAxesExcept(skip);
 }
 
 void JobThread::homeAll()
 {
 	m_stopRun = false;
 
-	if (!MachineController::instance().isServoOn(Axis::X)) MachineController::instance().notifyError(MachineError::X_SERVO_OFF);
-	if (!MachineController::instance().isServoOn(Axis::Y)) MachineController::instance().notifyError(MachineError::Y_SERVO_OFF);
-	if (!MachineController::instance().isServoOn(Axis::Z)) MachineController::instance().notifyError(MachineError::Z_SERVO_OFF);
+	//an alarmed drive is already an error; raising servo-off on it as well would be noise, and
+	//in debug mode would re-block the home that is about to leave that axis out
+	auto& mc = MachineController::instance();
+	if (!mc.isServoOn(Axis::X) && !mc.hasDriverAlarm(Axis::X)) mc.notifyError(MachineError::X_SERVO_OFF);
+	if (!mc.isServoOn(Axis::Y) && !mc.hasDriverAlarm(Axis::Y)) mc.notifyError(MachineError::Y_SERVO_OFF);
+	if (!mc.isServoOn(Axis::Z) && !mc.hasDriverAlarm(Axis::Z)) mc.notifyError(MachineError::Z_SERVO_OFF);
 
+	//Same limit-hit exemption as homeXYZ(), and the same debug-mode skip - see the notes there.
+	QSet<int> skip;
+	if (mc.getMachineState() == MachineState::S_ERROR
+		&& !mc.limitRecoveryOnly()
+		&& !mc.debugHomeSkipAxes(skip)) return;
 
-	//Same limit-hit exemption as homeXYZ() - see the note there.
-	if (MachineController::instance().getMachineState() == MachineState::S_ERROR
-		&& !MachineController::instance().limitRecoveryOnly()) return;
+	mc.notifyEvent(MachineEvent::HOMING);
 
-	MachineController::instance().notifyEvent(MachineEvent::HOMING);
+	homeAxesExcept(skip);
+}
 
-	auto axisX = (int)im390::Axis::X;
-	auto axisY = (int)im390::Axis::Y;
-	auto axisZ = (int)im390::Axis::Z;
+/*
+* Home X, Y and Z in that order, leaving out the axes in `skip`.
+*
+* A skipped axis is not homed, not waited on - waitAxis() on an alarmed drive sits out its full
+* two-minute timeout - and not zeroed, because zeroing an axis that never reached its switch
+* would plant a false origin on it.
+*
+* A complete home reports HOME_SUCCESS as it always has. A PARTIAL one reports IDLE instead,
+* which is what a single-axis home reports: a machine with an axis left unhomed must not be
+* told it is homed, or the next absolute move on that axis goes somewhere nobody chose.
+*/
+void JobThread::homeAxesExcept(const QSet<int>& skip)
+{
+	const int axes[3] = { (int)im390::Axis::X, (int)im390::Axis::Y, (int)im390::Axis::Z };
+	static const char* names[3] = { "X", "Y", "Z" };
 
-	MotionController::instance().home(m_motionID, axisX);
-	MotionController::instance().home(m_motionID, axisY);
-	MotionController::instance().home(m_motionID, axisZ);
+	if (!skip.isEmpty()) {
+		QStringList left;
+		for (int i = 0; i < 3; i++) if (skip.contains(axes[i])) left << names[i];
+		ct::logger::warn("[Motion] DEBUG MODE: homing without %s - drive alarm on that axis",
+			left.join("/").toStdString().c_str());
+		emit promptMsg(QStringLiteral(
+			"Debug mode: homing WITHOUT axis %1, which has a driver alarm.\n\n"
+			"The other axes will home normally. The machine will NOT be reported as homed "
+			"until %1 is recovered and homed too.").arg(left.join("/")));
+	}
+
+	for (int i = 0; i < 3; i++)
+		if (!skip.contains(axes[i])) MotionController::instance().home(m_motionID, axes[i]);
 
 	os_tool::doNothing(m_motionReadDelay_ms);
-	waitAxis(axisX);
-	waitAxis(axisY);
-	waitAxis(axisZ);
+	for (int i = 0; i < 3; i++)
+		if (!skip.contains(axes[i])) waitAxis(axes[i]);
 
-	MotionController::instance().set_position_mm(m_motionID, 0, axisX, 0.0);
-	MotionController::instance().set_position_mm(m_motionID, 0, axisY, 0.0);
-	MotionController::instance().set_position_mm(m_motionID, 0, axisZ, 0.0);
+	for (int i = 0; i < 3; i++)
+		if (!skip.contains(axes[i])) MotionController::instance().set_position_mm(m_motionID, 0, axes[i], 0.0);
 
-	MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
+	if (skip.isEmpty()) MachineController::instance().notifyEvent(MachineEvent::HOME_SUCCESS);
+	else {
+		ct::logger::warn("[Motion] Partial home complete; the machine is NOT homed");
+		MachineController::instance().notifyEvent(MachineEvent::IDLE);
+	}
 }
 
 void JobThread::dryRun(QVector<QVector3D> coords, int loops)

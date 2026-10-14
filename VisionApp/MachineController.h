@@ -157,6 +157,21 @@ public:
 
     MachineState getMachineState();
     bool isServoOn(Axis axis);
+    bool hasDriverAlarm(Axis axis);   //the drive's latched ALM, as last polled
+
+    /*
+    * Debug mode only: may homing go ahead with the alarmed axes left out?
+    *
+    * True when every active error that is not a limit hit is a per-axis error (driver alarm,
+    * servo off, homing or move timeout) on an axis whose drive is alarmed - i.e. there is
+    * nothing wrong with the machine except those drives. skipAxes receives those axes. Any
+    * other outstanding error (e-stop, curtain, trolley guard, a timeout on a healthy axis)
+    * means no, exactly as today.
+    *
+    * Outside debug mode this is always false: a partially homed machine must never be offered
+    * to production.
+    */
+    bool debugHomeSkipAxes(QSet<int>& skipAxes);
 
     bool setBypassAxis(Axis axis, bool bypass);
     bool isBypassAxis(Axis axis);

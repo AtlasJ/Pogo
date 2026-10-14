@@ -1202,6 +1202,44 @@ bool MachineController::isServoOn(Axis axis)
     return false;
 }
 
+bool MachineController::hasDriverAlarm(Axis axis)
+{
+    if (axis == Axis::X) return m_x.alarm;
+    else if (axis == Axis::Y) return m_y.alarm;
+    else if (axis == Axis::Z) return m_z.alarm;
+    return false;
+}
+
+bool MachineController::debugHomeSkipAxes(QSet<int>& skipAxes)
+{
+    skipAxes.clear();
+    if (!SystemData::instance()._machineDebugMode) return false;
+
+    //which axis an error belongs to, or -1 for an error that is about the whole machine
+    auto axisOf = [](MachineError e) -> int {
+        switch (e) {
+        case MachineError::X_DRIVER_ALARM: case MachineError::X_SERVO_OFF:
+        case MachineError::X_HOMING_TIMEOUT: case MachineError::X_MOVE_TIMEOUT: return (int)Axis::X;
+        case MachineError::Y_DRIVER_ALARM: case MachineError::Y_SERVO_OFF:
+        case MachineError::Y_HOMING_TIMEOUT: case MachineError::Y_MOVE_TIMEOUT: return (int)Axis::Y;
+        case MachineError::Z_DRIVER_ALARM: case MachineError::Z_SERVO_OFF:
+        case MachineError::Z_HOMING_TIMEOUT: case MachineError::Z_MOVE_TIMEOUT: return (int)Axis::Z;
+        default: return -1;
+        }
+    };
+
+    const QSet<int> errors = getErrorStatus();
+    for (int s : errors) {
+        const MachineError e = (MachineError)s;
+        if (isLimitError(e)) continue;                 //recoverable on its own, as today
+        const int ax = axisOf(e);
+        if (ax < 0) return false;                      //an error about the machine, not an axis
+        if (!hasDriverAlarm((Axis)ax)) return false;   //a timeout on a HEALTHY drive is not this case
+        skipAxes.insert(ax);
+    }
+    return !skipAxes.isEmpty();
+}
+
 bool MachineController::setBypassAxis(Axis axis, bool bypass)
 {
     m_bypassAxes[(int)axis] = bypass;

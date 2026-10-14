@@ -403,6 +403,8 @@ public slots:
 	void homeZ();
 	void homeXYZ();
 	void homeAll();
+	//X, Y, Z in order, leaving out `skip` (debug-mode homing round an alarmed drive)
+	void homeAxesExcept(const QSet<int>& skip);
 	//setup
 	void autoSetFiducialPoint(int currentFid);
 	void testFiducial(int index, bool online);
