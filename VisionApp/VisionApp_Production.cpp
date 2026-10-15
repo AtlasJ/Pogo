@@ -943,7 +943,15 @@ void VisionApp::clearInspectionLogs()
 
 void VisionApp::addLogLine(const QString& line)
 {
-	ui.toolButton_machineState->setText(line);
+	/*
+	* Every log line used to become the state button's text, so "Curtain Sensor Triggered"
+	* lasted only until the servo-off and drive-alarm lines that follow a trip replaced it -
+	* and the operator was left reading a consequence instead of the cause. A latched trip
+	* owns the button until reset clears it; the state change that follows writes the normal
+	* text back.
+	*/
+	if (MachineController::instance().curtainTripped()) ui.toolButton_machineState->setText("Curtain Sensor Triggered");
+	else ui.toolButton_machineState->setText(line);
 
 	// Add new line
 	m_logStatus.append(line);

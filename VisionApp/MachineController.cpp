@@ -391,8 +391,14 @@ void MachineController::assessError(bool good, MachineError e)
             * every later poll skips this block and a failed DO write would never be sent again.
             * An e-stop is exactly when the motion card might not answer first time.
             */
+            /*
+            * The curtain is in this list for the brake ONLY. Its safety relay drops the drives
+            * exactly as an e-stop does (that is why reset re-servos all three axes), so Z is
+            * just as unheld - but see below for why it does NOT demote the ready state.
+            */
             if (e == MachineError::ESTOP_PRESSED ||
-                e == MachineError::ESTOP_RELAY_FAULT)
+                e == MachineError::ESTOP_RELAY_FAULT ||
+                e == MachineError::CURTAIN_RELAY_FAULT)
             {
                 bool braked = false;
                 for (int attempt = 1; attempt <= 3 && !braked; ++attempt) {
@@ -403,7 +409,7 @@ void MachineController::assessError(bool good, MachineError e)
                     }
                 }
                 if (!braked) {
-                    ct::logger::error("[MachineController] Could NOT apply the Z brake after an e-stop "
+                    ct::logger::error("[MachineController] Could NOT apply the Z brake after a safety trip "
                         "- the axis may be unheld. Check DO %d (Y108) and the motion card.",
                         (int)DOA::BRAKE_RELEASE);
                 }
@@ -419,8 +425,16 @@ void MachineController::assessError(bool good, MachineError e)
                 * it never fires. Same command-echo trap as the brake release and the reset
                 * trigger. resetAlarm() restores m_readyState, so setting it here is what makes
                 * the recovery land on Uninitialized.
+                *
+                * A curtain trip on its own is deliberately NOT demoted. Someone reaching into the
+                * machine mid-run is a routine event, and asking for a full re-home after every
+                * one made the operators stop treating the curtain as a safety device. The brake
+                * above holds Z through the trip, the scales keep counting on X and Y, and reset
+                * re-servos the drives before anything moves - so the position the machine had is
+                * still the position it has, and resetAlarm() can return it to the state it was
+                * in. If an e-stop is ALSO active, that branch demotes as it always has.
                 */
-                m_readyState = MachineState::NOT_READY;
+                if (e != MachineError::CURTAIN_RELAY_FAULT) m_readyState = MachineState::NOT_READY;
             }
 
             setMachineState(MachineState::S_ERROR);
@@ -819,9 +833,19 @@ void MachineController::handleAxisState()
         }
     }
 
-    //force user home when servo is off
+    /*
+    * Force the user to home when the servo is off - EXCEPT while a curtain trip is the reason
+    * it is off. The curtain relay drops the drives, so without this exception the demotion
+    * happened here one poll after every trip, and the decision in assessError() to keep the
+    * ready state through a curtain-only trip was undone before reset could restore it.
+    * setMachineState() records m_readyState even when it then returns early for S_ERROR, which
+    * is exactly the write this skips. An e-stop on top of the curtain still demotes.
+    */
     if (!servo_on) {
-        setMachineState(MachineState::NOT_READY);
+        const bool curtainOnly = m_curtainTripped
+            && !m_errorStatuses.contains((int)MachineError::ESTOP_PRESSED)
+            && !m_errorStatuses.contains((int)MachineError::ESTOP_RELAY_FAULT);
+        if (!curtainOnly) setMachineState(MachineState::NOT_READY);
     }
 
     //Every error has now been re-assessed this cycle, so a reset press from handleDIA can
