@@ -2145,8 +2145,18 @@ void VisionApp::connectSignalAndSlot()
 		// RECIPE_Z_CONVEYOR_DISABLED_END
 #endif
 
+		/*
+		* One Z for everything the recipe drives to. This used to stop at the plane, the 2D views
+		* and the line scans - which is every Z a PLANE-mode run reads, and none of the ones a
+		* PITCH-mode run reads: there the barcode read and the 3D scan of every unit take their
+		* height from the region's taught point 1 (JobThread::acquireBarcodeAndOcr, scan3DUnit),
+		* so production kept running at the old height however many times Update Z was pressed.
+		* The fiducial and barcode teach points are the remaining Z the run jogs to; they were
+		* saved here already but never changed, which is the same bug one layer down.
+		*/
 		auto new_z = SystemData::instance().currentCoordinate().wz;
 		ui.lineEdit_viewZ->setText(QString::number(new_z));
+		_recipeZ = new_z;
 
 		_plane.corner_points[(int)Corner::FRONTLEFT].wz = new_z;
 		_plane.corner_points[(int)Corner::BACKRIGHT].wz = new_z;
@@ -2164,11 +2174,33 @@ void VisionApp::connectSignalAndSlot()
 			scan.end_point.wz = new_z;
 		}
 
+		//the units: every pitch region's taught points, which is where a pitch-mode run
+		//takes the barcode and 3D height of each unit from
+		{
+			auto& sd = SystemData::instance();
+			auto regions = sd.pitchRegions();
+			for (auto& r : regions) {
+				if (r.p1Set) r.p1z = new_z;
+				if (r.p2Set) r.p2z = new_z;
+			}
+			sd.setPitchRegions(regions);
+			if (_refreshPitchLabels) _refreshPitchLabels();
+		}
+
+		//the teach points the run jogs to before it reads anything
+		for (auto& f : _fiducialInfos) {
+			if (f.hasTeachPoint) f.teach_point.wz = new_z;
+		}
+		for (auto& b : _barcodeInfos) {
+			if (b.hasTeachPoint) b.teach_point.wz = new_z;
+		}
+
 		savePlane();
 		saveFiducial();
 		saveBarcode();
 		saveRecipe();
 		saveLineScans();
+		saveRecipeConfig(); //the pitch regions live here
 		AuditLog::instance().log(QStringLiteral("VIEW_Z_UPDATE"), QStringLiteral("z=%1").arg(new_z));
 		});
 
