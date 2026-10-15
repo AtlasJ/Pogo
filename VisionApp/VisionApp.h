@@ -10,6 +10,7 @@
 #include <QGraphicsItem>
 #include <QObject>
 #include <QProgressDialog>
+#include <QProgressBar>
 #include <QMetaObject>
 #include <QElapsedTimer>
 
@@ -270,9 +271,18 @@ private:
 	//progress Dialog
 	QProgressDialog* _progressDialog = nullptr;
 	int _progressValue = 0;
-	void progressBarSetup(QString displayText, int maxValue, bool enableCancel = false); //enable cancel works for run inspection only
+	/*
+	* embedded = true draws the progress in a bar on the production page instead of the modal
+	* dialog, so the rest of the UI stays usable for the run's duration. enableCancel is for the
+	* dialog only; the embedded bar has the production page's own Stop button beside it.
+	*/
+	void progressBarSetup(QString displayText, int maxValue, bool enableCancel = false, bool embedded = false);
 	void incrementProgressBar();
 	void progressBarRelease(bool directCancel = false);
+
+	//the production page's own bar (created on first use, parked under the machine status log)
+	QProgressBar* _prodProgressBar = nullptr;
+	bool _progressEmbedded = false; //the current progress is the bar, not the dialog
 
 	QProgressDialog* _loadingDialog = nullptr;
 	void loadingBarSetup(QString title);

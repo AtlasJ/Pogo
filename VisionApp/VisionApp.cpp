@@ -6315,9 +6315,36 @@ void VisionApp::testcase_mbufpool()
 	mtrx::MPM::instance().release_pools();
 }
 
-void VisionApp::progressBarSetup(QString displayText, int maxValue, bool enableCancel)
+void VisionApp::progressBarSetup(QString displayText, int maxValue, bool enableCancel, bool embedded)
 {
 	_progressValue = 0;
+
+	/*
+	* The inspection run used to put up the application-modal dialog below, which locked every
+	* page for the length of the run - the operator could not even read the unit table. An
+	* inspection is the one job long enough for that to matter, so it reports into a bar that
+	* lives on the production page instead, and the dialog stays for the short blocking jobs
+	* (recipe open, image loads) where a locked UI is the honest state.
+	*/
+	if (embedded) {
+		if (!_prodProgressBar) {
+			_prodProgressBar = new QProgressBar(ui.frame_machineStatus);
+			_prodProgressBar->setTextVisible(true);
+			_prodProgressBar->setAlignment(Qt::AlignCenter);
+			_prodProgressBar->setFixedHeight(26);
+			_prodProgressBar->setStyleSheet(
+				"QProgressBar { border-radius: 6px; color: #F0F0F0; background-color: rgb(27, 29, 35); text-align: center; }"
+				"QProgressBar::chunk { background-color: #2E7D32; border-radius: 6px; }");
+			ui.gridLayout_162->addWidget(_prodProgressBar, 2, 0);
+		}
+		_progressEmbedded = true;
+		_prodProgressBar->setRange(0, maxValue + 1);
+		_prodProgressBar->setValue(0);
+		_prodProgressBar->setFormat(displayText + QStringLiteral("  %p%"));
+		_prodProgressBar->show();
+		return;
+	}
+
 	_progressDialog = new QProgressDialog(displayText, "Cancel", 0, 10000, this);
 	_progressDialog->setAttribute(Qt::WA_DeleteOnClose);
 	_progressDialog->setParent(ui.centralWidget);
@@ -6372,6 +6399,12 @@ void VisionApp::progressBarSetup(QString displayText, int maxValue, bool enableC
 
 void VisionApp::incrementProgressBar()
 {
+	if (_progressEmbedded && _prodProgressBar)
+	{
+		_progressValue++;
+		_prodProgressBar->setValue(_progressValue);
+		return;
+	}
 
 	if (_progressDialog)
 	{		
@@ -6384,6 +6417,17 @@ void VisionApp::incrementProgressBar()
 
 void VisionApp::progressBarRelease(bool directCancel)
 {
+	if (_progressEmbedded && _prodProgressBar)
+	{
+		_progressEmbedded = false;
+		//stays on the page as the run's last word, until the next run resets it
+		if (directCancel) _prodProgressBar->setFormat(QStringLiteral("Inspection stopped"));
+		else {
+			_prodProgressBar->setValue(_prodProgressBar->maximum());
+			_prodProgressBar->setFormat(QStringLiteral("Inspection complete"));
+		}
+		return;
+	}
 
 	if (_progressDialog)
 	{

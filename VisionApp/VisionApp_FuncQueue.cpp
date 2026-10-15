@@ -91,7 +91,8 @@ void VisionApp::inspect2D3D()
 
 	if (!sd._setupRegionPitchMode && ui.checkBox_runOneFOVonly->isChecked()) numView = 2;
 
-	progressBarSetup("Running Inspection...", numView, true);
+	//on the production page, not in a modal dialog: the operator keeps the UI during the run
+	progressBarSetup("Running Inspection...", numView, true, true);
 
 	_imageManager.attach(&_views, &_recipeOptics);
 	_imageManager.attach(&_lineScans, &_recipeOptics3D);
