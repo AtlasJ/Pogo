@@ -914,8 +914,23 @@ bool Profiler_Keyence::startLive()
 		return false;
 	}
 
+	/*
+	* The settings alone are not a live view. JobThread::liveProfile() calls stop() before
+	* this - LJX8IF_StopMeasure - and a stopped LJ-X sits in standby: no exposures, so no
+	* laser and no fresh profile for GetProfile to read. That is why the head only lit up
+	* when the gantry moved (an encoder pulse is the one thing that still clocks a stopped
+	* batch). Measurement has to be started again under the live settings, and the laser
+	* told to emit in case it was stopped as well. Neither is fatal if it fails: the
+	* settings are in place and GetProfile may still answer, so log and carry on.
+	*/
+	LONG rc = LJX8IF_ControlLaser(m_deviceId, 1);
+	if (rc != LJX8IF_RC_OK) ct::logger::warn("[Profiler_Keyence] ControlLaser(on) rc=0x%X", rc);
+
+	rc = LJX8IF_StartMeasure(m_deviceId);
+	if (rc != LJX8IF_RC_OK) ct::logger::warn("[Profiler_Keyence] StartMeasure(live) rc=0x%X - the live view may show no profile", rc);
+
 	m_liveMode = true;
-	ct::logger::info("[Profiler_Keyence] Live mode ON (continuous trigger, batch off)");
+	ct::logger::info("[Profiler_Keyence] Live mode ON (continuous trigger, batch off, measuring)");
 	return true;
 }
 
@@ -923,6 +938,11 @@ bool Profiler_Keyence::stopLive()
 {
 	if (!m_liveMode) return true;
 	if (!safeGuard()) return false;
+
+	//stop the free-running measurement started by startLive() before the trigger source
+	//is switched back, so the mode change is not made under a running acquisition
+	const LONG rcStop = LJX8IF_StopMeasure(m_deviceId);
+	if (rcStop != LJX8IF_RC_OK) ct::logger::info("[Profiler_Keyence] StopMeasure(live) rc=0x%X (harmless if not measuring)", rcStop);
 
 	//restore what production scans require: encoder trigger, batch measurement on
 	int32_t trig = 2, batch = 1;
