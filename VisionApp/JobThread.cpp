@@ -4479,8 +4479,8 @@ bool JobThread::acquireBarcodeAndOcr()
 			ct::logger::info("[Acq] Region %d: %dx%d units, pitch %.3f / %.3f mm",
 				(int)ri + 1, unitsX, unitsY, r.pitchX, r.pitchY);
 
-			for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
-				for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+			for (const auto& u : pitchUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
+				const int ix = u.first, iy = u.second; if (m_stopRun) break; {
 					const QString unitID = pitchUnitID(r, ix, iy);
 					ct::logger::info("[Acq] Region %d unit (%d, %d) -> %s",
 						(int)ri + 1, ix + 1, iy + 1, unitID.toStdString().c_str());
@@ -4956,6 +4956,40 @@ em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int 
 }
 
 /*
+* The order the units of a region are visited.
+*
+* Every scan travels the SAME way along the scan axis (the recipe's line scan direction), so a
+* scan ends at the far side of its unit - and the cheapest next unit is the one that side, whose
+* own start is right there. Walking the row in the direction of travel turns the move between
+* units into a short hop; walking it the other way (the old ascending index order with a
+* right-to-left scan) made every hop a full return across the unit. The row index therefore
+* runs WITH the scan: scanning towards negative X on a grid whose pitch points to positive X
+* starts from the rightmost unit, and the sign of the pitch is folded in so a grid taught the
+* other way round still walks the right way. The other axis advances row by row.
+*/
+std::vector<std::pair<int, int>> JobThread::pitchUnitOrder(const SystemData::PitchRegion& r)
+{
+	auto& sd = SystemData::instance();
+	const int nx = std::max(1, r.unitsX), ny = std::max(1, r.unitsY);
+	const bool alongY = sd.isLineScanAxisY();
+	const bool negative = sd.isLineScanDirectionNegative();
+
+	std::vector<std::pair<int, int>> order;
+	order.reserve((size_t)nx * ny);
+	if (!alongY) {
+		const bool descending = negative != (r.pitchX < 0);
+		for (int iy = 0; iy < ny; iy++)
+			for (int k = 0; k < nx; k++) order.emplace_back(descending ? nx - 1 - k : k, iy);
+	}
+	else {
+		const bool descending = negative != (r.pitchY < 0);
+		for (int ix = 0; ix < nx; ix++)
+			for (int k = 0; k < ny; k++) order.emplace_back(ix, descending ? ny - 1 - k : k);
+	}
+	return order;
+}
+
+/*
 * Unit ID, continuous across every region.
 *
 * Region 1's point 1 is the board origin and its pitch defines the lattice, so a unit is named
@@ -5055,8 +5089,8 @@ void JobThread::acquire3DImagesPitch()
 		const int unitsY = std::max(1, r.unitsY);
 		ct::logger::info("[Acq] Region %d: 3D scan of %dx%d units", (int)ri + 1, unitsX, unitsY);
 
-		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
-			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+		for (const auto& u : pitchUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
+			const int ix = u.first, iy = u.second; if (m_stopRun) break; {
 				scan3DUnit(r, ix, iy, opticsSeq);
 			}
 		}
@@ -5089,8 +5123,8 @@ void JobThread::acquire2D3DAlternatePitch()
 		ct::logger::info("[Acq] Alternate sequence, region %d: %dx%d units (barcode %s, 3D %s)",
 			(int)ri + 1, unitsX, unitsY, sd._pitchEnableBarcode ? "on" : "off", sd._pitchEnable3D ? "on" : "off");
 
-		for (int iy = 0; iy < unitsY && !m_stopRun; iy++) {
-			for (int ix = 0; ix < unitsX && !m_stopRun; ix++) {
+		for (const auto& u : pitchUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
+			const int ix = u.first, iy = u.second; if (m_stopRun) break; {
 				const QString unitID = pitchUnitID(r, ix, iy);
 
 				if (sd._pitchEnableBarcode) {

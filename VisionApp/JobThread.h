@@ -273,6 +273,7 @@ private:
 	void searchDoubleFiducial();
 	Fiducial* fiducialForPoint(double x, double y);
 	em::V2d pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int iy); //fiducial-compensated grid point
+	std::vector<std::pair<int, int>> pitchUnitOrder(const SystemData::PitchRegion& r); //(ix, iy) visiting order along the scan direction
 
 	void saveFiducialResult();
 
