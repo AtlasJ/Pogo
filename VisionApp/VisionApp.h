@@ -622,6 +622,7 @@ private:
 	void guidedTeachFiducial(int i);
 	void guidedTeachUnit(bool last);
 	void guidedTeachUnitRight(); //unit (1,1)'s right circle: unit centre and 3D scan length
+	void guidedTeachFocusZ();    //the 2D camera's in-focus Z, applied to every view and teach point
 	void guidedRecomputePitch(SystemData::PitchRegion& r);
 	int guidedRegion(); //the selected pitch region (shared with the Setup Region page), created if none
 	bool guidedBoardAngleDeg(double& deg, QString& why); //rotation of the taught fiducial rectangle in the machine frame
@@ -1714,6 +1715,7 @@ public slots:
 	bool jogToCamView(double x, double y, double z, QString type = "2D");
 	bool jogToLaserView(double x, double y, double z, QString type = "2D");
 	bool getCurrentPoint(double &x, double &y, double& z);
+	void applyViewZ(double new_z); //one Z for every view, scan, region and teach point (Update Z / Teach Focus Height)
 
 	//EZ mode
 	void generateRecipeSetupTemplate();

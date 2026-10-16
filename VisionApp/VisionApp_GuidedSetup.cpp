@@ -167,6 +167,14 @@ void VisionApp::initGuidedSetupPage()
 	connect(ui.toolButton_gsJogUnitFirst, &QToolButton::clicked, this, [=]() { jogUnit(false); });
 	connect(ui.toolButton_gsJogUnitLast, &QToolButton::clicked, this, [=]() { jogUnit(true); });
 
+	connect(ui.toolButton_gsTeachFocusZ, &QToolButton::clicked, this, [=]() { guidedTeachFocusZ(); });
+	connect(ui.toolButton_gsJogFocusZ, &QToolButton::clicked, this, [=]() {
+		if (!_guidedSetup.focusZSet) { showMsg("The focus height has not been taught yet."); return; }
+		double x, y, z;
+		getCurrentPoint(x, y, z);
+		emit jogTo(x, y, _guidedSetup.focusZ, "2D", true);
+	});
+
 	connect(ui.toolButton_gsTeachUnitFirstRight, &QToolButton::clicked, this, [=]() { guidedTeachUnitRight(); });
 	connect(ui.toolButton_gsJogUnitFirstRight, &QToolButton::clicked, this, [=]() {
 		const auto r = SystemData::instance().pitchRegion(guidedRegion());
@@ -253,6 +261,11 @@ void VisionApp::refreshGuidedSetupPage()
 	//the last unit only means something once the first is down and the counts are in
 	ui.toolButton_gsTeachUnitLast->setEnabled(r.p1Set);
 	ui.toolButton_gsJogUnitLast->setEnabled(r.p2Set);
+	ui.label_gsFocusZ->setText(_guidedSetup.focusZSet
+		? QStringLiteral("Focus height: Z %1 mm (applied to every view and teach point)").arg(_guidedSetup.focusZ, 0, 'f', 3)
+		: QStringLiteral("Focus height: not taught"));
+	ui.toolButton_gsJogFocusZ->setEnabled(_guidedSetup.focusZSet);
+
 	ui.toolButton_gsJogUnitFirst->setEnabled(r.p1Set);
 	ui.toolButton_gsTeachUnitFirstRight->setEnabled(r.p1Set);
 	ui.toolButton_gsJogUnitFirstRight->setEnabled(r.p1RightSet);
@@ -540,6 +553,26 @@ void VisionApp::guidedTeachUnitRight()
 	showStatus(QStringLiteral("Right circle taught - 3D scan length %1 mm").arg(scanLen, 0, 'f', 2));
 	AuditLog::instance().log(QStringLiteral("GUIDED_TEACH_UNIT_RIGHT"),
 		QStringLiteral("region %1: %2, %3 span %4 scan %5").arg(idx + 1).arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(span, 0, 'f', 3).arg(scanLen, 0, 'f', 2));
+}
+
+/*
+* The 2D camera's in-focus height. The operator focuses by eye (or with the live view), presses,
+* and the current Z becomes THE Z of the recipe: applyViewZ() writes it into the plane, every
+* view, every line scan, every region's taught points and every fiducial and barcode teach
+* point, so nothing in the run is left at whatever height it happened to be taught at.
+*/
+void VisionApp::guidedTeachFocusZ()
+{
+	double x, y, z;
+	getCurrentPoint(x, y, z);
+
+	_guidedSetup.focusZSet = true;
+	_guidedSetup.focusZ = z;
+	applyViewZ(z); //saves the recipe files and recipeConfig, which carries _guidedSetup too
+
+	refreshGuidedSetupPage();
+	showStatus(QStringLiteral("Focus height %1 mm applied to every view and teach point").arg(z, 0, 'f', 3));
+	AuditLog::instance().log(QStringLiteral("GUIDED_TEACH_FOCUS_Z"), QStringLiteral("z=%1").arg(z, 0, 'f', 3));
 }
 
 //pitch from the FAR corner, measured along the BOARD's axes: the span is rotated back by the

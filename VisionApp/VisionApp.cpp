@@ -2161,54 +2161,7 @@ void VisionApp::connectSignalAndSlot()
 		* The fiducial and barcode teach points are the remaining Z the run jogs to; they were
 		* saved here already but never changed, which is the same bug one layer down.
 		*/
-		auto new_z = SystemData::instance().currentCoordinate().wz;
-		ui.lineEdit_viewZ->setText(QString::number(new_z));
-		_recipeZ = new_z;
-
-		_plane.corner_points[(int)Corner::FRONTLEFT].wz = new_z;
-		_plane.corner_points[(int)Corner::BACKRIGHT].wz = new_z;
-
-		for (auto& v : _plane.views) {
-			v.world.wz = new_z;
-		}
-
-		for (auto& v : _views) {
-			v.world.wz = new_z;
-		}
-
-		for (auto& scan : _lineScans) {
-			scan.start_point.wz = new_z;
-			scan.end_point.wz = new_z;
-		}
-
-		//the units: every pitch region's taught points, which is where a pitch-mode run
-		//takes the barcode and 3D height of each unit from
-		{
-			auto& sd = SystemData::instance();
-			auto regions = sd.pitchRegions();
-			for (auto& r : regions) {
-				if (r.p1Set) r.p1z = new_z;
-				if (r.p2Set) r.p2z = new_z;
-			}
-			sd.setPitchRegions(regions);
-			if (_refreshPitchLabels) _refreshPitchLabels();
-		}
-
-		//the teach points the run jogs to before it reads anything
-		for (auto& f : _fiducialInfos) {
-			if (f.hasTeachPoint) f.teach_point.wz = new_z;
-		}
-		for (auto& b : _barcodeInfos) {
-			if (b.hasTeachPoint) b.teach_point.wz = new_z;
-		}
-
-		savePlane();
-		saveFiducial();
-		saveBarcode();
-		saveRecipe();
-		saveLineScans();
-		saveRecipeConfig(); //the pitch regions live here
-		AuditLog::instance().log(QStringLiteral("VIEW_Z_UPDATE"), QStringLiteral("z=%1").arg(new_z));
+		applyViewZ(SystemData::instance().currentCoordinate().wz);
 		});
 
 
@@ -12904,6 +12857,51 @@ bool VisionApp::jogToLaserView(double x, double y, double z, QString type)
 
 	emit jogTo(point.wx, point.wy, point.wz, "2D");
 	return true;
+}
+
+/*
+* One Z for everything the recipe drives to - the body of the setup page's Update Z button, and
+* of the guided setup's Teach Focus Height. Writes the height into the plane, the 2D views, the
+* line scans, every pitch region's taught points (where a pitch-mode run takes each unit's
+* barcode and 3D height from) and the fiducial and barcode teach points, then saves them all.
+*/
+void VisionApp::applyViewZ(double new_z)
+{
+	ui.lineEdit_viewZ->setText(QString::number(new_z));
+	_recipeZ = new_z;
+
+	_plane.corner_points[(int)Corner::FRONTLEFT].wz = new_z;
+	_plane.corner_points[(int)Corner::BACKRIGHT].wz = new_z;
+
+	for (auto& v : _plane.views) v.world.wz = new_z;
+	for (auto& v : _views) v.world.wz = new_z;
+
+	for (auto& scan : _lineScans) {
+		scan.start_point.wz = new_z;
+		scan.end_point.wz = new_z;
+	}
+
+	{
+		auto& sd = SystemData::instance();
+		auto regions = sd.pitchRegions();
+		for (auto& r : regions) {
+			if (r.p1Set) r.p1z = new_z;
+			if (r.p2Set) r.p2z = new_z;
+		}
+		sd.setPitchRegions(regions);
+		if (_refreshPitchLabels) _refreshPitchLabels();
+	}
+
+	for (auto& f : _fiducialInfos) if (f.hasTeachPoint) f.teach_point.wz = new_z;
+	for (auto& b : _barcodeInfos) if (b.hasTeachPoint) b.teach_point.wz = new_z;
+
+	savePlane();
+	saveFiducial();
+	saveBarcode();
+	saveRecipe();
+	saveLineScans();
+	saveRecipeConfig(); //the pitch regions live here
+	AuditLog::instance().log(QStringLiteral("VIEW_Z_UPDATE"), QStringLiteral("z=%1").arg(new_z));
 }
 
 bool VisionApp::getCurrentPoint(double& x, double& y, double& z)

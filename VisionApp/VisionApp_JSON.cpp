@@ -1497,6 +1497,8 @@ bool VisionApp::saveRecipeConfig()
 		gs.insert(QStringLiteral("roiY"), _guidedSetup.roi.y());
 		gs.insert(QStringLiteral("roiW"), _guidedSetup.roi.width());
 		gs.insert(QStringLiteral("roiH"), _guidedSetup.roi.height());
+		gs.insert(QStringLiteral("focusZSet"), _guidedSetup.focusZSet);
+		gs.insert(QStringLiteral("focusZ"), _guidedSetup.focusZ);
 		obj.insert(QStringLiteral("guidedSetup"), gs);
 	}
 
@@ -2029,6 +2031,8 @@ bool VisionApp::loadRecipeConfig()
 				jsonHelper::getDouble(gs, QStringLiteral("roiY"), 0.0),
 				jsonHelper::getDouble(gs, QStringLiteral("roiW"), 0.0),
 				jsonHelper::getDouble(gs, QStringLiteral("roiH"), 0.0));
+			_guidedSetup.focusZSet = jsonHelper::getBool(gs, QStringLiteral("focusZSet"), false);
+			_guidedSetup.focusZ = jsonHelper::getDouble(gs, QStringLiteral("focusZ"), 0.0);
 		}
 
 		double defaultSpeed = 0;
