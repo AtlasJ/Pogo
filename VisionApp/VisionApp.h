@@ -622,6 +622,7 @@ private:
 	void guidedTeachFiducial(int i);
 	void guidedTeachUnit(bool last);
 	void guidedRecomputePitch(SystemData::PitchRegion& r);
+	int guidedRegion(); //the selected pitch region (shared with the Setup Region page), created if none
 	GuidedSetupConfig _guidedSetup;
 	QDragBox* _guidedRoiBox = nullptr;      //reference box whose size is read off live
 	int _guidedSignX = 1, _guidedSignY = 1; //pixel-to-jog sense; flipped if a jog makes the offset grow

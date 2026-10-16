@@ -28,6 +28,18 @@ namespace {
 	constexpr double kCentredPx = 1.5; //close enough: well under the finder's own scatter
 }
 
+/*
+* The region the guided teaches act on. It is the SAME selection the Setup Region page uses
+* (_pitchRegionSel), so switching regions on either page switches it on both - there is one
+* list of regions, and two pages that edit it. A recipe with no region yet gets one here.
+*/
+int VisionApp::guidedRegion()
+{
+	auto& sd = SystemData::instance();
+	if (sd.pitchRegionCount() == 0) sd.addPitchRegion(SystemData::PitchRegion());
+	return std::max(0, std::min(sd._pitchRegionSel.load(), sd.pitchRegionCount() - 1));
+}
+
 void VisionApp::initGuidedSetupPage()
 {
 	_guidedRoiBox = new QDragBox();
@@ -88,27 +100,66 @@ void VisionApp::initGuidedSetupPage()
 		});
 	}
 
-	//unit counts edit region 1 directly, like the Setup Region page; the pitch follows if P2 is taught
-	auto unitsChanged = [=]() {
+	//regions: the same list the Setup Region page edits, selected through the same index
+	connect(ui.comboBox_gsRegion, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+		if (idx < 0) return;
+		SystemData::instance()._pitchRegionSel = idx;
+		if (_refreshPitchLabels) _refreshPitchLabels();
+		refreshGuidedSetupPage();
+	});
+	connect(ui.toolButton_gsAddRegion, &QToolButton::clicked, this, [=]() {
 		auto& sd = SystemData::instance();
-		if (sd.pitchRegionCount() == 0) sd.addPitchRegion(SystemData::PitchRegion());
-		auto r = sd.pitchRegion(0);
-		r.unitsX = std::max(1, ui.spinBox_gsUnitsX->value());
-		r.unitsY = std::max(1, ui.spinBox_gsUnitsY->value());
+		//same seed as the Setup Region page: another array of the same parts, numbered after this one
+		const auto cur = sd.pitchRegion(guidedRegion());
+		SystemData::PitchRegion fresh;
+		fresh.pitchX = cur.pitchX;
+		fresh.pitchY = cur.pitchY;
+		fresh.unitsX = cur.unitsX;
+		fresh.unitsY = cur.unitsY;
+		fresh.startX = std::max(1, cur.startX);
+		fresh.startY = std::max(1, cur.startY) + std::max(1, cur.unitsY);
+		sd._pitchRegionSel = sd.addPitchRegion(fresh);
+		if (_refreshPitchLabels) _refreshPitchLabels();
+		refreshGuidedSetupPage();
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("PITCH_REGION_ADD"), QStringLiteral("region %1 (guided)").arg(sd._pitchRegionSel.load() + 1));
+	});
+	connect(ui.toolButton_gsRemoveRegion, &QToolButton::clicked, this, [=]() {
+		auto& sd = SystemData::instance();
+		const int idx = guidedRegion();
+		if (sd.pitchRegionCount() <= 1) { showMsg("At least one region is required."); return; }
+		sd.removePitchRegion(idx);
+		sd._pitchRegionSel = std::max(0, std::min(idx, sd.pitchRegionCount() - 1));
+		{ QSignalBlocker b(ui.comboBox_gsRegion); ui.comboBox_gsRegion->clear(); } //force the rebuild below
+		if (_refreshPitchLabels) _refreshPitchLabels();
+		refreshGuidedSetupPage();
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("PITCH_REGION_REMOVE"), QStringLiteral("region %1 (guided)").arg(idx + 1));
+	});
+
+	//unit counts and numbering edit the selected region directly, like the Setup Region page;
+	//the pitch follows the counts when both units are taught
+	auto regionEdited = [=](std::function<void(SystemData::PitchRegion&)> apply) {
+		auto& sd = SystemData::instance();
+		const int idx = guidedRegion();
+		auto r = sd.pitchRegion(idx);
+		apply(r);
 		guidedRecomputePitch(r);
-		sd.setPitchRegion(0, r);
+		sd.setPitchRegion(idx, r);
 		if (_refreshPitchLabels) _refreshPitchLabels();
 		refreshGuidedSetupPage();
 		saveRecipeConfig();
 	};
-	connect(ui.spinBox_gsUnitsX, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int) { unitsChanged(); });
-	connect(ui.spinBox_gsUnitsY, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int) { unitsChanged(); });
+	connect(ui.spinBox_gsUnitsX, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int v) { regionEdited([v](SystemData::PitchRegion& r) { r.unitsX = std::max(1, v); }); });
+	connect(ui.spinBox_gsUnitsY, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int v) { regionEdited([v](SystemData::PitchRegion& r) { r.unitsY = std::max(1, v); }); });
+	connect(ui.spinBox_gsStartX, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int v) { regionEdited([v](SystemData::PitchRegion& r) { r.startX = std::max(1, v); }); });
+	connect(ui.spinBox_gsStartY, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int v) { regionEdited([v](SystemData::PitchRegion& r) { r.startY = std::max(1, v); }); });
 
 	connect(ui.toolButton_gsTeachUnitFirst, &QToolButton::clicked, this, [=]() { guidedTeachUnit(false); });
 	connect(ui.toolButton_gsTeachUnitLast, &QToolButton::clicked, this, [=]() { guidedTeachUnit(true); });
 
 	auto jogUnit = [=](bool last) {
-		const auto r = SystemData::instance().pitchRegion(0);
+		const auto r = SystemData::instance().pitchRegion(guidedRegion());
 		if (last ? !r.p2Set : !r.p1Set) { showMsg("This unit has not been taught yet."); return; }
 		if (last) emit jogSnap(r.p2x, r.p2y, r.p2z, _mainOptics[_camID]);
 		else emit jogSnap(r.p1x, r.p1y, r.p1z, _mainOptics[_camID]);
@@ -135,6 +186,8 @@ void VisionApp::refreshGuidedSetupPage()
 	QSignalBlocker b4(ui.spinBox_gsUnitMaxDia);
 	QSignalBlocker b5(ui.spinBox_gsUnitsX);
 	QSignalBlocker b6(ui.spinBox_gsUnitsY);
+	QSignalBlocker b7(ui.spinBox_gsStartX);
+	QSignalBlocker b8(ui.spinBox_gsStartY);
 
 	if (ui.comboBox_gsRecipeType->findText(_guidedSetup.recipeType) >= 0)
 		ui.comboBox_gsRecipeType->setCurrentText(_guidedSetup.recipeType);
@@ -157,12 +210,28 @@ void VisionApp::refreshGuidedSetupPage()
 		else label->setText(QStringLiteral("Fiducial %1: not taught").arg(i + 1));
 	}
 
-	const auto r = SystemData::instance().pitchRegion(0);
+	auto& sd = SystemData::instance();
+	const int sel = guidedRegion();
+	const int regionCount = sd.pitchRegionCount();
+	if (ui.comboBox_gsRegion->count() != regionCount) {
+		QSignalBlocker b(ui.comboBox_gsRegion);
+		ui.comboBox_gsRegion->clear();
+		for (int i = 0; i < regionCount; i++) ui.comboBox_gsRegion->addItem(QStringLiteral("Region %1").arg(i + 1));
+	}
+	if (ui.comboBox_gsRegion->currentIndex() != sel) {
+		QSignalBlocker b(ui.comboBox_gsRegion);
+		ui.comboBox_gsRegion->setCurrentIndex(sel);
+	}
+	ui.toolButton_gsRemoveRegion->setEnabled(regionCount > 1);
+
+	const auto r = sd.pitchRegion(sel);
 	ui.spinBox_gsUnitsX->setValue(std::max(1, r.unitsX));
 	ui.spinBox_gsUnitsY->setValue(std::max(1, r.unitsY));
+	ui.spinBox_gsStartX->setValue(std::max(1, r.startX));
+	ui.spinBox_gsStartY->setValue(std::max(1, r.startY));
 	ui.label_gsUnitFirst->setText(r.p1Set
-		? QStringLiteral("Unit (1,1): %1, %2, %3").arg(r.p1x, 0, 'f', 3).arg(r.p1y, 0, 'f', 3).arg(r.p1z, 0, 'f', 3)
-		: QStringLiteral("Unit (1,1): not taught"));
+		? QStringLiteral("Region %1 unit (1,1): %2, %3, %4").arg(sel + 1).arg(r.p1x, 0, 'f', 3).arg(r.p1y, 0, 'f', 3).arg(r.p1z, 0, 'f', 3)
+		: QStringLiteral("Region %1 unit (1,1): not taught").arg(sel + 1));
 	ui.label_gsUnitLast->setText(r.p2Set
 		? QStringLiteral("Unit (%1,%2): %3, %4, %5").arg(std::max(1, r.unitsX)).arg(std::max(1, r.unitsY))
 			.arg(r.p2x, 0, 'f', 3).arg(r.p2y, 0, 'f', 3).arg(r.p2z, 0, 'f', 3)
@@ -177,9 +246,13 @@ void VisionApp::refreshGuidedSetupPage()
 	ui.toolButton_gsJogUnitLast->setEnabled(r.p2Set);
 	ui.toolButton_gsJogUnitFirst->setEnabled(r.p1Set);
 
+	//every region counts towards "ready", not only the one on screen
+	int regionsReady = 0;
+	for (const auto& rr : sd.pitchRegions()) if (rr.p1Set && rr.p2Set) regionsReady++;
+
 	QString summary = QStringLiteral("Fiducials taught: %1 of %2.  ").arg(taught).arg(kGuidedFiducials);
-	if (r.p1Set && r.p2Set) summary += QStringLiteral("Layout: %1 x %2 units, ready for a pitch-mode run.").arg(std::max(1, r.unitsX)).arg(std::max(1, r.unitsY));
-	else summary += QStringLiteral("Layout: teach unit (1,1) and the last unit.");
+	if (regionsReady == regionCount) summary += QStringLiteral("Regions: %1 of %1 taught - ready for a pitch-mode run.").arg(regionCount);
+	else summary += QStringLiteral("Regions: %1 of %2 taught - teach unit (1,1) and the last unit of each.").arg(regionsReady).arg(regionCount);
 	if (taught > 0 && taught < 2) summary += QStringLiteral("  At least two fiducials are needed for compensation.");
 	ui.label_gsSummary->setText(summary);
 
@@ -380,8 +453,8 @@ void VisionApp::guidedTeachUnit(bool last)
 	if (!MotionController::instance().is_init(_motionID)) { showMsg("Motion is not initialised."); return; }
 
 	auto& sd = SystemData::instance();
-	if (sd.pitchRegionCount() == 0) sd.addPitchRegion(SystemData::PitchRegion());
-	auto r = sd.pitchRegion(0);
+	const int idx = guidedRegion();
+	auto r = sd.pitchRegion(idx);
 	r.unitsX = std::max(1, ui.spinBox_gsUnitsX->value());
 	r.unitsY = std::max(1, ui.spinBox_gsUnitsY->value());
 
@@ -423,7 +496,7 @@ void VisionApp::guidedTeachUnit(bool last)
 		r.p2TeachMs = now;
 	}
 	guidedRecomputePitch(r);
-	sd.setPitchRegion(0, r);
+	sd.setPitchRegion(idx, r);
 
 	//this is the layout production runs: pitch mode, from here on
 	sd._setupRegionPitchMode = true;
@@ -438,5 +511,5 @@ void VisionApp::guidedTeachUnit(bool last)
 	refreshGuidedSetupPage();
 	showStatus(last ? QStringLiteral("Last unit taught") : QStringLiteral("Unit (1,1) taught"));
 	AuditLog::instance().log(last ? QStringLiteral("GUIDED_TEACH_UNIT_LAST") : QStringLiteral("GUIDED_TEACH_UNIT_FIRST"),
-		QStringLiteral("%1, %2, %3 units %4x%5").arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(z, 0, 'f', 3).arg(r.unitsX).arg(r.unitsY));
+		QStringLiteral("region %1: %2, %3, %4 units %5x%6").arg(idx + 1).arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(z, 0, 'f', 3).arg(r.unitsX).arg(r.unitsY));
 }
