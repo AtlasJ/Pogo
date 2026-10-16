@@ -1319,8 +1319,18 @@ bool JobThread::locateFiducial(int index, int fidIndex, InspStatus::FiducialDeta
 			located.x() - learnt.x(), located.y() - learnt.y());
 		fid->setLearntFid(fidIndex, learnt);
 		fid->setShiftedFid(fidIndex, located);
+
+		/*
+		* The fiducial's actual machine position, for the four-corner fit. NOT `located` itself:
+		* getFiducialPointInMM() returns teach point + the ABSOLUTE pixel converted to mm, a
+		* quantity that is only meaningful once `learnt`, built the same way, is subtracted. The
+		* fit compares against the teach point, so it needs teach + (located - learnt) - storing
+		* the raw value shifted every unit of the 16 Oct 2026 runs by 32.97/28.68 mm, which is
+		* exactly the image centre (1224, 1024 px) in millimetres.
+		*/
 		if (index >= 0 && index < (int)m_fidLocatedMm.size()) {
-			m_fidLocatedMm[index] = located;
+			m_fidLocatedMm[index] = em::V2d(fidInfo[index].teach_point.wx + (located.x() - learnt.x()),
+				fidInfo[index].teach_point.wy + (located.y() - learnt.y()));
 			m_fidLocatedOk[index] = true;
 		}
 		fid->compute();
@@ -7197,6 +7207,10 @@ void JobThread::jogUser(double x, double y, double z, QString type, bool waitJog
 void JobThread::testPitchUnits(bool threeD)
 {
 	m_stopRun = false;
+
+	//the test shows the TAUGHT layout: no fiducial compensation, and in particular none left
+	//over from an earlier run against fiducials that may since have been re-taught
+	resetFiducial();
 
 	auto& sd = SystemData::instance();
 	const auto regions = sd.pitchRegions();
