@@ -393,6 +393,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initImageFiltering();
 	initProductionUI();
 	initSafetyCheckPage();
+	initGuidedSetupPage();
 	initPmfPage();
 
 	ct::logger::info("Initializing Startup State...");
@@ -1494,6 +1495,7 @@ void VisionApp::connectSignalAndSlot()
 	connect(_rightMenu, &ExtendedMenu::showNamingConvention, this, [=]() { toPage(UIPage::NAMING_CONVENTION); });
 	connect(_rightMenu, &ExtendedMenu::showUnitConfigTab, this, [=]() {toPage(UIPage::UNIT_CONFIG);});
 	connect(_rightMenu, &ExtendedMenu::showSafetyCheckTab, this, [=]() {toPage(UIPage::SAFETY_CHECK);});
+	connect(_rightMenu, &ExtendedMenu::showGuidedSetupTab, this, [=]() {toPage(UIPage::GUIDED_SETUP);});
 	connect(_rightMenu, &ExtendedMenu::showPmfTab, this, [=]() {toPage(UIPage::PMF);});
 
 	/*
@@ -2512,6 +2514,7 @@ void VisionApp::imagePreprocessed(FrameInfo info)
 	if (info.type == ct::s_height_map) return;
 
 	_imageFOV = mtrx::to_qimg(info.pImage->id());
+	_fovSerial++;
 
 	displayFOV(_imageFOV);
 
@@ -7153,6 +7156,12 @@ bool VisionApp::toPage(UIPage page) {
 		refreshSafetyCheckPage();
 		showRightTab((int)page, QStringLiteral("Open Safety Check"));
 		return true;
+	case UIPage::GUIDED_SETUP:
+		unlockAllROIs();
+		toggleFOVView(); //teaching centres circles in the single camera FOV
+		refreshGuidedSetupPage();
+		showRightTab((int)page, QStringLiteral("Open Guided Setup"));
+		return true;
 	case UIPage::UNIT_CONFIG:
 		lockAllROIs();
 		saveBorderColors();
@@ -7514,6 +7523,7 @@ bool VisionApp::showRightTab(int index, QString status)
 		if (_safetyLearnBox) _safetyLearnBox->hide();
 		clearSafetyMarks();
 	}
+	if (index != (int)UIPage::GUIDED_SETUP && _guidedRoiBox) _guidedRoiBox->hide();
 
 	showStatus(status);
 	return propertyShown;

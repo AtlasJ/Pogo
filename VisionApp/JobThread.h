@@ -5,6 +5,7 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <QSet>
+#include <array>
 #include <QHash>
 #include <QListWidget>
 #include <QCoreApplication>
@@ -232,6 +233,10 @@ private:
 	//fid
 	bool m_enableFiducial = false;
 	QSet<QString> m_locatedFidID;
+	//where each fiducial (by index) was LOCATED this run, machine mm - the four-corner fit in
+	//pitchUnitPoint() reads these; Fiducial itself only has two slots
+	std::array<em::V2d, 4> m_fidLocatedMm;
+	std::array<bool, 4> m_fidLocatedOk{ false, false, false, false };
 	int m_currentFidIndex = 0;
 	bool m_testFidOnline = true;
 

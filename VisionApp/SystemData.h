@@ -205,6 +205,10 @@ public:
 		int fidRefMask = 0; //bit0 = fid slot 0 captured, bit1 = slot 1
 		double fidRef1x = 0.0, fidRef1y = 0.0;
 		double fidRef2x = 0.0, fidRef2y = 0.0;
+		//slots 3 and 4 (mask bits 2 and 3): the guided setup teaches four corner fiducials and the
+		//run compensates from all of them at once - see JobThread::pitchUnitPoint()
+		double fidRef3x = 0.0, fidRef3y = 0.0;
+		double fidRef4x = 0.0, fidRef4y = 0.0;
 
 		/*
 		* Which fiducial teach the reference above was measured against. The reference is a
@@ -237,6 +241,13 @@ public:
 	* instead of silently wrong.
 	*/
 	std::atomic<int> _fiducialTeachRev = 0;
+
+	/*
+	* Four-corner fiducial layout (guided setup): the run locates every taught fiducial, not just
+	* the first two, and the unit grid is placed by a best fit through all of them. Off = the
+	* original two-fiducial (or two-island) behaviour. Persisted in recipeConfig.json.
+	*/
+	std::atomic<bool> _fourPointFiducial = false;
 	std::string _currentUnitID = "board"; //unit currently in the barcode/OCR flow (written by JobThread)
 	std::atomic<bool> _saveInspImages = false; //mirror of the Save Inspection Images toggle for worker threads
 	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow

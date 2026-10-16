@@ -30,6 +30,7 @@
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
 #include "SafetyCheckTypes.h"
+#include "GuidedSetupTypes.h"
 #include "AlgoHeight3Types.h"
 #include "InspectionThread.h"
 #include "AlgoDefectResult.h"
@@ -155,7 +156,7 @@ enum class Direction {
 enum class UIPage {
 	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
-	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK, PMF
+	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK, GUIDED_SETUP, PMF
 };
 
 enum class UIHierarchy {
@@ -610,6 +611,21 @@ private:
 	QDragBox* _safetyLearnBox = nullptr;     //pattern learn region (blue)
 	QVector<QGraphicsItem*> _safetyMarkItems; //boxes drawn over what the last test found
 	void drawSafetyMarks(const SafetyCheckResult& res);
+
+	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
+	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data
+	void initGuidedSetupPage();
+	void refreshGuidedSetupPage();
+	bool guidedSnapFov(QImage& img, int timeoutMs);
+	bool guidedFindCircleNearCentre(const QImage& fov, int minDiaPx, int maxDiaPx, mtrx::Circle& out, int& count);
+	bool guidedCentreOnCircle(int minDiaPx, int maxDiaPx, mtrx::Circle& found, QString& why);
+	void guidedTeachFiducial(int i);
+	void guidedTeachUnit(bool last);
+	void guidedRecomputePitch(SystemData::PitchRegion& r);
+	GuidedSetupConfig _guidedSetup;
+	QDragBox* _guidedRoiBox = nullptr;      //reference box whose size is read off live
+	int _guidedSignX = 1, _guidedSignY = 1; //pixel-to-jog sense; flipped if a jog makes the offset grow
+	quint64 _fovSerial = 0;                 //bumped on every new FOV frame, so a synchronous snap can wait for one
 	void clearSafetyMarks();
 	QImage buildSafetyRender(const QImage& fov, const QRect& roi, const cv::Mat& mask);
 	void updateOpticComboBoxUI();
@@ -1185,6 +1201,7 @@ private:
 public slots:
 	void algoSettingsTouched(); //any algo-setup edit: debounce then save
 	void safetyRoiTouched();   //safety-check ROI moved: capture and save
+	void guidedRoiTouched();   //guided-setup reference box moved: capture and save
 	void refreshAlgoH3Overlay(); //V3's scene overlay only, without repainting the image
 
 	void enableFiducial(bool enable);

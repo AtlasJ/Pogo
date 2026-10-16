@@ -46,6 +46,7 @@ ExtendedMenu::ExtendedMenu(int index,int width, int height, QWidget *parent)
 	connect(ui.toolButtonUnitConfig, &QToolButton::pressed, this, [=]() { emit showUnitConfigTab(); });
 	connect(ui.toolButtonSafetyCheck, &QToolButton::pressed, this, [=]() { emit showSafetyCheckTab(); });
 	connect(ui.toolButtonPMF, &QToolButton::pressed, this, [=]() { emit showPmfTab(); });
+	connect(ui.toolButtonGuidedSetup, &QToolButton::pressed, this, [=]() { emit showGuidedSetupTab(); });
 
 	// hide ui
 	ui.toolButtonScaling->hide();

@@ -159,6 +159,7 @@ void JobThread::enableRun1stFOVOnly(bool enable)
 void JobThread::resetFiducial()
 {
 	m_locatedFidID.clear();
+	m_fidLocatedOk.fill(false);
 	m_fiducialAlgo->reset();
 	if (m_fiducialAlgo2) m_fiducialAlgo2->reset();
 }
@@ -1318,6 +1319,10 @@ bool JobThread::locateFiducial(int index, int fidIndex, InspStatus::FiducialDeta
 			located.x() - learnt.x(), located.y() - learnt.y());
 		fid->setLearntFid(fidIndex, learnt);
 		fid->setShiftedFid(fidIndex, located);
+		if (index >= 0 && index < (int)m_fidLocatedMm.size()) {
+			m_fidLocatedMm[index] = located;
+			m_fidLocatedOk[index] = true;
+		}
 		fid->compute();
 
 		fDetail.fiducialScore = output.score;
@@ -1362,6 +1367,9 @@ void JobThread::searchFiducial()
 	resetFiducial();
 	auto& fidInfo = *m_fiducialInfos;
 
+	//four-corner layout: every taught fiducial is located, not just the first two
+	const bool fourPoint = SystemData::instance()._fourPointFiducial;
+
 	int index = 0;
 	for (const auto& f : fidInfo) {
 
@@ -1401,7 +1409,7 @@ void JobThread::searchFiducial()
 		m_inspStatus->fiducialHash.insert(fDetail.index, fDetail);
 		//emit updateFiducialStatus(fDetail);
 
-		if (m_locatedFidID.size() == 2) {
+		if (!fourPoint && m_locatedFidID.size() == 2) {
 			emit fiducialDone();
 			return;
 		}
@@ -1412,6 +1420,10 @@ void JobThread::searchFiducial()
 	if (m_locatedFidID.size() < 2) {
 		stopRun();
 		emit fiducialFailed();
+	}
+	else if (fourPoint) {
+		ct::logger::info("[Fid] Four-corner layout: %d of %d fiducials located", m_locatedFidID.size(), (int)fidInfo.size());
+		emit fiducialDone();
 	}
 }
 
@@ -4853,6 +4865,53 @@ em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int 
 
 	em::V2d shifted = p;
 	const int mask = r.fidRefMask;
+
+	/*
+	* Four-corner layout (guided setup). The reference is where each taught fiducial stood when
+	* unit (1,1) was taught, the measurement is where each was located this run, and the grid
+	* follows the best rigid fit through every pair that has both: the mean shift, plus - when
+	* fiducial rotation is enabled and two or more pairs exist - the least-squares rotation about
+	* the reference centroid. One missing fiducial costs nothing but a little averaging.
+	*/
+	if (SystemData::instance()._fourPointFiducial) {
+		const double rx[4] = { r.fidRef1x, r.fidRef2x, r.fidRef3x, r.fidRef4x };
+		const double ry[4] = { r.fidRef1y, r.fidRef2y, r.fidRef3y, r.fidRef4y };
+		std::vector<em::V2d> ref, loc;
+		for (int i = 0; i < 4; i++) {
+			if (((mask >> i) & 1) && m_fidLocatedOk[i]) {
+				ref.push_back(em::V2d(rx[i], ry[i]));
+				loc.push_back(m_fidLocatedMm[i]);
+			}
+		}
+		if (!ref.empty()) {
+			const int n = (int)ref.size();
+			double crx = 0, cry = 0, clx = 0, cly = 0;
+			for (int i = 0; i < n; i++) { crx += ref[i].x(); cry += ref[i].y(); clx += loc[i].x(); cly += loc[i].y(); }
+			crx /= n; cry /= n; clx /= n; cly /= n;
+
+			double theta = 0.0;
+			if (SystemData::instance()._enableFiducialRotate && n >= 2) {
+				double s = 0, c = 0; //2D Kabsch: theta = atan2(sum(rx*ly - ry*lx), sum(rx*lx + ry*ly)) on centred points
+				for (int i = 0; i < n; i++) {
+					const double ax = ref[i].x() - crx, ay = ref[i].y() - cry;
+					const double bx = loc[i].x() - clx, by = loc[i].y() - cly;
+					s += ax * by - ay * bx;
+					c += ax * bx + ay * by;
+				}
+				theta = std::atan2(s, c);
+			}
+			const double dx = p.x() - crx, dy = p.y() - cry;
+			shifted = em::V2d(clx + std::cos(theta) * dx - std::sin(theta) * dy,
+				cly + std::sin(theta) * dx + std::cos(theta) * dy);
+
+			if (ix == 0 && iy == 0) {
+				ct::logger::info("[Acq] Fiducial compensation (four-corner fit, %d point(s)): shift %.3f/%.3f mm, rotation %.4f deg; origin %.3f/%.3f -> %.3f/%.3f",
+					n, clx - crx, cly - cry, theta * 180.0 / 3.14159265358979, p.x(), p.y(), shifted.x(), shifted.y());
+			}
+			return shifted;
+		}
+		if (ix == 0 && iy == 0) ct::logger::warn("[Acq] Four-corner layout but no fiducial has both a reference and a locate - falling back to the two-point compensation");
+	}
 	const bool haveRef = mask
 		&& ((mask & 1) == 0 || m_fiducialAlgo->isSet(0))
 		&& ((mask & 2) == 0 || m_fiducialAlgo->isSet(1));

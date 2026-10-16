@@ -1413,6 +1413,10 @@ bool VisionApp::saveRecipeConfig()
 			ro.insert(QStringLiteral("fidRef1y"), r.fidRef1y);
 			ro.insert(QStringLiteral("fidRef2x"), r.fidRef2x);
 			ro.insert(QStringLiteral("fidRef2y"), r.fidRef2y);
+			ro.insert(QStringLiteral("fidRef3x"), r.fidRef3x);
+			ro.insert(QStringLiteral("fidRef3y"), r.fidRef3y);
+			ro.insert(QStringLiteral("fidRef4x"), r.fidRef4x);
+			ro.insert(QStringLiteral("fidRef4y"), r.fidRef4y);
 			ro.insert(QStringLiteral("fidRefTeachRev"), r.fidRefTeachRev);
 			ro.insert(QStringLiteral("p1TeachMs"), r.p1TeachMs);
 			ro.insert(QStringLiteral("p2TeachMs"), r.p2TeachMs);
@@ -1472,6 +1476,23 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("prodSequence"), (int)SystemData::instance()._prodSequence);
 	obj.insert(QStringLiteral("autoLockTrolley"), (bool)SystemData::instance()._autoLockTrolley);
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
+	obj.insert(QStringLiteral("fourPointFiducial"), (bool)SystemData::instance()._fourPointFiducial);
+
+	//guided setup: only what the page needs to teach again; the taught layout lives in the
+	//fiducials and pitch region 1 like any other recipe's
+	{
+		QJsonObject gs;
+		gs.insert(QStringLiteral("recipeType"), _guidedSetup.recipeType);
+		gs.insert(QStringLiteral("fidMinDiaPx"), _guidedSetup.fidMinDiaPx);
+		gs.insert(QStringLiteral("fidMaxDiaPx"), _guidedSetup.fidMaxDiaPx);
+		gs.insert(QStringLiteral("unitMinDiaPx"), _guidedSetup.unitMinDiaPx);
+		gs.insert(QStringLiteral("unitMaxDiaPx"), _guidedSetup.unitMaxDiaPx);
+		gs.insert(QStringLiteral("roiX"), _guidedSetup.roi.x());
+		gs.insert(QStringLiteral("roiY"), _guidedSetup.roi.y());
+		gs.insert(QStringLiteral("roiW"), _guidedSetup.roi.width());
+		gs.insert(QStringLiteral("roiH"), _guidedSetup.roi.height());
+		obj.insert(QStringLiteral("guidedSetup"), gs);
+	}
 
 	int speed, speed3d;
 	_jobThread.getXSpeed(speed, speed3d);
@@ -1988,6 +2009,21 @@ bool VisionApp::loadRecipeConfig()
 		_enableSingleViewRecipe = jsonHelper::getBool(root, QStringLiteral("_enableSingleViewRecipe"), false);
 		_passYieldPerc = jsonHelper::getDouble(root, QStringLiteral("_passYieldPercentage"), 100.00);
 		SystemData::instance()._doubleFiducialChecking = jsonHelper::getBool(root, QStringLiteral("_doubleFiducialChecking"), false);
+		SystemData::instance()._fourPointFiducial = jsonHelper::getBool(root, QStringLiteral("fourPointFiducial"), false);
+		{
+			const QJsonObject gs = root.value(QStringLiteral("guidedSetup")).toObject();
+			_guidedSetup = GuidedSetupConfig(); //absent section = defaults
+			_guidedSetup.recipeType = jsonHelper::getString(gs, QStringLiteral("recipeType"));
+			if (_guidedSetup.recipeType.isEmpty()) _guidedSetup.recipeType = QStringLiteral("Pogo");
+			_guidedSetup.fidMinDiaPx = jsonHelper::getInteger(gs, QStringLiteral("fidMinDiaPx"), 280);
+			_guidedSetup.fidMaxDiaPx = jsonHelper::getInteger(gs, QStringLiteral("fidMaxDiaPx"), 320);
+			_guidedSetup.unitMinDiaPx = jsonHelper::getInteger(gs, QStringLiteral("unitMinDiaPx"), 200);
+			_guidedSetup.unitMaxDiaPx = jsonHelper::getInteger(gs, QStringLiteral("unitMaxDiaPx"), 400);
+			_guidedSetup.roi = QRectF(jsonHelper::getDouble(gs, QStringLiteral("roiX"), 0.0),
+				jsonHelper::getDouble(gs, QStringLiteral("roiY"), 0.0),
+				jsonHelper::getDouble(gs, QStringLiteral("roiW"), 0.0),
+				jsonHelper::getDouble(gs, QStringLiteral("roiH"), 0.0));
+		}
 
 		double defaultSpeed = 0;
 		if (_motions.contains(_motionID)) defaultSpeed = _motions[_motionID].axes[(int)Axis::X].move_max_velocity;
@@ -2088,6 +2124,10 @@ bool VisionApp::loadRecipeConfig()
 					r.fidRef1y = jsonHelper::getDouble(ro, QStringLiteral("fidRef1y"), 0.0);
 					r.fidRef2x = jsonHelper::getDouble(ro, QStringLiteral("fidRef2x"), 0.0);
 					r.fidRef2y = jsonHelper::getDouble(ro, QStringLiteral("fidRef2y"), 0.0);
+					r.fidRef3x = jsonHelper::getDouble(ro, QStringLiteral("fidRef3x"), 0.0);
+					r.fidRef3y = jsonHelper::getDouble(ro, QStringLiteral("fidRef3y"), 0.0);
+					r.fidRef4x = jsonHelper::getDouble(ro, QStringLiteral("fidRef4x"), 0.0);
+					r.fidRef4y = jsonHelper::getDouble(ro, QStringLiteral("fidRef4y"), 0.0);
 					r.fidRefTeachRev = jsonHelper::getInteger(ro, QStringLiteral("fidRefTeachRev"), 0);
 					r.p1TeachMs = (qint64)ro.value(QStringLiteral("p1TeachMs")).toDouble(0);
 					r.p2TeachMs = (qint64)ro.value(QStringLiteral("p2TeachMs")).toDouble(0);

@@ -40,6 +40,7 @@ void VisionApp::connectJobThread() {
 
 	QObject::connect(&_jobThread, &JobThread::displayFOV, this, [=](MIL_ID mBuf) {
 		_imageFOV = mtrx::to_qimg(mBuf);
+		_fovSerial++;
 		mtrx::free_buffer(mBuf);
 		displayFOV(_imageFOV);
 	});

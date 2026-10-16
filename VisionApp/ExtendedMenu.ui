@@ -706,6 +706,35 @@ Tab</string>
                 </property>
                </widget>
               </item>
+              <item row="11" column="0">
+               <widget class="QToolButton" name="toolButtonGuidedSetup">
+                <property name="minimumSize">
+                 <size>
+                  <width>95</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Teach the fiducials and the unit grid step by step, with the camera centring itself on each circle.</string>
+                </property>
+                <property name="text">
+                 <string>Guided Setup</string>
+                </property>
+                <property name="icon">
+                 <iconset resource="VisionApp.qrc">
+                  <normaloff>:/8Icon/Icon/icon8/icons8-crosshair-80.png</normaloff>:/8Icon/Icon/icon8/icons8-crosshair-80.png</iconset>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>60</width>
+                  <height>60</height>
+                 </size>
+                </property>
+                <property name="toolButtonStyle">
+                 <enum>Qt::ToolButtonTextUnderIcon</enum>
+                </property>
+               </widget>
+              </item>
               <item row="10" column="0">
                <widget class="QToolButton" name="toolButtonPMF">
                 <property name="minimumSize">
