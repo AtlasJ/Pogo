@@ -135,6 +135,61 @@ void VisionApp::createRecipe(const QString& recipeName)
 	toPage(UIPage::LIGHTING);
 }
 
+/*
+* The recipe as the run will read it, in the log, every time one is opened. A wrong scan region
+* or a unit that lands off its circle used to need the recipe files from the machine to explain;
+* this puts the same facts next to the run's own lines, where whoever reads the log already is.
+*/
+void VisionApp::logRecipeSummary()
+{
+	auto& sd = SystemData::instance();
+	const auto& off = _laserConfig.offset;
+
+	ct::logger::info("[Recipe] ===== %s =====", Common::Directory::CurrentRecipe.toStdString().c_str());
+	ct::logger::info("[Recipe] Setup region: %s; line scan along %s travelling %s; pitch scan length %.2f mm; laser line %.2f mm wide; laser offset %.3f/%.3f/%.3f mm",
+		sd._setupRegionPitchMode ? "PITCH" : "PLANE", sd.isLineScanAxisY() ? "Y" : "X",
+		sd.isLineScanDirectionNegative() ? "negative" : "positive", sd._pitchScanLen_mm.load(),
+		ScaleManager::instance().laser_fov_mm(), off.wx, off.wy, off.wz);
+	ct::logger::info("[Recipe] Fiducials: %s, %s, rotation %s, four-corner layout %s; barcode %s, pitch barcode %s, pitch 3D %s",
+		_useFiducial ? "enabled" : "DISABLED", sd._doubleFiducialChecking ? "two islands" : "single set",
+		sd._enableFiducialRotate ? "on" : "off", sd._fourPointFiducial ? "on" : "off",
+		_enableBarcode ? "on" : "off", sd._pitchEnableBarcode ? "on" : "off", sd._pitchEnable3D ? "on" : "off");
+
+	for (int i = 0; i < (int)_fiducialInfos.size(); i++) {
+		const auto& f = _fiducialInfos[i];
+		static const char* methods[] = { "pattern", "geometry", "circle", "cross" };
+		const char* m = (f.fiducial_method >= 0 && f.fiducial_method < 4) ? methods[f.fiducial_method] : "?";
+		if (f.hasTeachPoint)
+			ct::logger::info("[Recipe]   %s: %s, teach %.3f/%.3f/%.3f, inspect %dx%d at %d/%d px, search %dx%d, dia %d..%d px, score %d",
+				f.id.toStdString().c_str(), m, f.teach_point.wx, f.teach_point.wy, f.teach_point.wz,
+				(int)f.inspect_region.w, (int)f.inspect_region.h, (int)f.inspect_region.cx, (int)f.inspect_region.cy,
+				(int)f.search_region.w, (int)f.search_region.h, f.min_diameter, f.max_diameter, f.score);
+		else ct::logger::info("[Recipe]   %s: %s, NOT taught", f.id.toStdString().c_str(), m);
+	}
+
+	const auto regions = sd.pitchRegions();
+	for (int i = 0; i < (int)regions.size(); i++) {
+		const auto& r = regions[i];
+		ct::logger::info("[Recipe] Region %d: %dx%d units from X%dY%d; P1 %s %.3f/%.3f/%.3f; right circle %s %.3f/%.3f (centre offset %.3f/%.3f); P2 %s %.3f/%.3f/%.3f; pitch %.4f/%.4f mm; board angle %.3f deg; fid ref mask %d rev %d (%.3f/%.3f, %.3f/%.3f, %.3f/%.3f, %.3f/%.3f)",
+			i + 1, std::max(1, r.unitsX), std::max(1, r.unitsY), std::max(1, r.startX), std::max(1, r.startY),
+			r.p1Set ? "set" : "NOT SET", r.p1x, r.p1y, r.p1z,
+			r.p1RightSet ? "set" : "not set", r.p1RightX, r.p1RightY, r.unitCentreDx, r.unitCentreDy,
+			r.p2Set ? "set" : "NOT SET", r.p2x, r.p2y, r.p2z,
+			r.pitchX, r.pitchY, r.gridAngleDeg, r.fidRefMask, r.fidRefTeachRev,
+			r.fidRef1x, r.fidRef1y, r.fidRef2x, r.fidRef2y, r.fidRef3x, r.fidRef3y, r.fidRef4x, r.fidRef4y);
+	}
+
+	ct::logger::info("[Recipe] Guided setup: type %s; fiducial circle %d..%d px; unit circle %d..%d px; focus Z %s %.3f",
+		_guidedSetup.recipeType.toStdString().c_str(), _guidedSetup.fidMinDiaPx, _guidedSetup.fidMaxDiaPx,
+		_guidedSetup.unitMinDiaPx, _guidedSetup.unitMaxDiaPx, _guidedSetup.focusZSet ? "taught" : "not taught", _guidedSetup.focusZ);
+	ct::logger::info("[Recipe] Safety check: %s, method %s, point %s %.3f/%.3f/%.3f, reference height %s %.3f mm slope %.3f, max Z compensation %.1f mm",
+		_safetyCheck.enabled ? "enabled" : "off", _safetyCheck.method == 1 ? "pattern" : "colour",
+		_safetyCheck.pointSet ? "set" : "NOT SET", _safetyCheck.pointX, _safetyCheck.pointY, _safetyCheck.pointZ,
+		_safetyCheck.refHeightSet ? "taught" : "not taught", _safetyCheck.refHeightMm, _safetyCheck.heightSlope, _safetyCheck.maxZCompMm);
+	ct::logger::info("[Recipe] Plane: %d views at Z %.3f; %d line scans; recipe Z %.3f",
+		_views.size(), _plane.corner_points[(int)Corner::FRONTLEFT].wz, _lineScans.size(), _recipeZ);
+}
+
 bool VisionApp::openRecipe(const QString& recentOpenRecipe)
 {
 	TimeLogger timer;
@@ -313,6 +368,7 @@ bool VisionApp::openRecipe(const QString& recentOpenRecipe)
 	updateSetupCheckList();
 
 	udpateRecipeVersion(Common::Directory::getRecipeCurrentPath());
+	logRecipeSummary();
 	//loadStitchingMethod();
 	ui.label_recipeName->setText(QString("Recipe: %1").arg(Common::Directory::CurrentRecipe));
 

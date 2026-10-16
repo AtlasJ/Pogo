@@ -1715,6 +1715,7 @@ public slots:
 	bool jogToCamView(double x, double y, double z, QString type = "2D");
 	bool jogToLaserView(double x, double y, double z, QString type = "2D");
 	bool getCurrentPoint(double &x, double &y, double& z);
+	void logRecipeSummary(); //[Recipe] lines: every setting a pitch-mode run reads, written at each recipe open
 	void applyViewZ(double new_z, bool everything = true); //Update Z: every view, scan, region and teach point; everything=false (Teach Focus Height): 2D views and unit grid only
 
 	//EZ mode
