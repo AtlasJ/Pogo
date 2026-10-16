@@ -479,6 +479,7 @@ bool VisionApp::safetyCheckPassedForProduction()
 {
 	//a new run starts from the taught heights; the measurement below may shift them again
 	SystemData::instance()._platformZOffset = 0.0;
+	showPlatformZCompensation();
 
 	if (!_safetyCheck.enabled) return true;
 
@@ -546,6 +547,7 @@ bool VisionApp::safetyCheckPassedForProduction()
 		}
 
 		SystemData::instance()._platformZOffset = dz;
+		showPlatformZCompensation();
 		addLogLine(QStringLiteral("Platform Z compensation %1%2 mm").arg(dz >= 0 ? "+" : "").arg(dz, 0, 'f', 3));
 	}
 

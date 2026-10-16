@@ -739,6 +739,18 @@ void VisionApp::unloadBoard()
 * with it. Units still inspecting are counted in the total but are neither good nor bad,
 * so good + bad < total while the run is in flight.
 */
+/*
+* The one readout of the run-wide Z shift. Called wherever _platformZOffset is written - the
+* safety check that measures it and the two places that clear it - so the page never shows a
+* compensation that is not the one jog() is applying right now.
+*/
+void VisionApp::showPlatformZCompensation()
+{
+	const double dz = SystemData::instance()._platformZOffset.load();
+	if (dz == 0.0) ui.label_prodPlatformZ->setText(QStringLiteral("Platform Z: --"));
+	else ui.label_prodPlatformZ->setText(QStringLiteral("Platform Z: %1%2 mm").arg(dz >= 0 ? "+" : "").arg(dz, 0, 'f', 3));
+}
+
 void VisionApp::updateProductionSummary()
 {
 	auto* t = ui.tableWidget_prodStatus;

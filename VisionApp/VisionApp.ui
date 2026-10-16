@@ -6303,6 +6303,24 @@ color: #F0F0F0;
                        </widget>
                       </item>
                       <item>
+                       <widget class="QLabel" name="label_prodPlatformZ">
+                        <property name="font">
+                         <font>
+                          <pointsize>11</pointsize>
+                         </font>
+                        </property>
+                        <property name="styleSheet">
+                         <string notr="true">color:#F0F0F0;</string>
+                        </property>
+                        <property name="toolTip">
+                         <string>Z added to every move of the current run: this platform's height against the one the recipe was taught on, measured by the safety check's reference height.</string>
+                        </property>
+                        <property name="text">
+                         <string>Platform Z: --</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
                        <spacer name="hs_prodSummary">
                         <property name="orientation">
                          <enum>Qt::Horizontal</enum>

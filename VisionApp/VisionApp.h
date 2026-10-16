@@ -565,6 +565,7 @@ private:
 	void addLogLine(const QString& line);
 	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
 	void updateProductionSummary(); //recount good/bad/total from the production table
+	void showPlatformZCompensation(); //production page readout of SystemData::_platformZOffset
 	bool pitchTeachIsConsistent(QString& why); //stale or out-of-order pitch/fiducial teaches
 	void refreshPitchOverlapWarning();         //live X#Y# clash notice on the pitch page
 	void discardUnitImages(const QString& unitID); //remove a passed unit's saved images
