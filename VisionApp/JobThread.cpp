@@ -7208,9 +7208,27 @@ void JobThread::testPitchUnits(bool threeD)
 {
 	m_stopRun = false;
 
-	//the test shows the TAUGHT layout: no fiducial compensation, and in particular none left
-	//over from an earlier run against fiducials that may since have been re-taught
-	resetFiducial();
+	/*
+	* The test gets the SAME compensation a run gets. The safety check has already run on the UI
+	* side before this was queued (feature present, platform Z measured and applied through
+	* SystemData::_platformZOffset); the fiducials are located here, before any unit is visited,
+	* so every point below is shifted and rotated exactly as production would shift it. A locate
+	* that fails stops the test the way it stops a run.
+	*/
+	if (m_enableFiducial) {
+		searchFiducial();
+		if (m_stopRun) {
+			ct::logger::warn("[GuidedTest] stopped: the fiducials could not be located");
+			SystemData::instance()._platformZOffset = 0.0;
+			emit testPitchUnitsDone();
+			emit promptMsg("Test stopped: the fiducials could not be located.");
+			return;
+		}
+	}
+	else {
+		resetFiducial();
+		ct::logger::warn("[GuidedTest] fiducials are disabled - the taught layout is tested without compensation");
+	}
 
 	auto& sd = SystemData::instance();
 	const auto regions = sd.pitchRegions();
@@ -7258,6 +7276,10 @@ void JobThread::testPitchUnits(bool threeD)
 	}
 
 	ct::logger::info("[GuidedTest] %s test %s after %d unit(s)", threeD ? "3D" : "2D", m_stopRun ? "STOPPED" : "complete", visited);
+
+	//the platform Z compensation belongs to the test that measured it, as it belongs to a run
+	SystemData::instance()._platformZOffset = 0.0;
+	emit testPitchUnitsDone();
 	emit promptMsg(QStringLiteral("%1 test %2: %3 unit(s) visited.")
 		.arg(threeD ? "3D" : "2D").arg(m_stopRun ? "stopped" : "complete").arg(visited));
 }

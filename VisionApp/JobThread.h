@@ -595,6 +595,7 @@ signals:
 	void signalBoardUnloaded();
 
 	void liveProfileData(QVector<double> profile, double xFovMm, double zRangeMm);
+	void testPitchUnitsDone(); //guided test finished or stopped; the platform Z compensation has been cleared
 
 	//gvTable
 	void calibrationFinished(QString summaryMsg, QHash<QString, double> proposedLimits);
