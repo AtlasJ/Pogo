@@ -272,6 +272,7 @@
     <ClInclude Include="AlgoSetupTypes.h" />
     <ClInclude Include="SafetyCheckTypes.h" />
     <ClInclude Include="GuidedSetupTypes.h" />
+    <ClInclude Include="NoWheelOnInputs.h" />
     <ClInclude Include="DryRunTableWidget.h" />
     <QtMoc Include="SRXFtpServer.h" />
     <QtMoc Include="SRXManager.h" />

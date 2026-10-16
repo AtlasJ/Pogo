@@ -8,6 +8,7 @@
 #include "Timer.h"
 #include "OnnxInference.h"
 #include "FrameInfo.h"
+#include "NoWheelOnInputs.h"
 
 #define _CRTDBG_MAP_ALLOC
 #include <stdio.h>
@@ -71,6 +72,9 @@ int main(int argc, char *argv[])
 	QApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
 
 	QApplication a(argc, argv);
+
+	//the mouse wheel scrolls pages, it does not step combo boxes and spin boxes - see the header
+	a.installEventFilter(new NoWheelOnInputs(&a));
 
 	a.setAttribute(Qt::AA_EnableHighDpiScaling);
 	a.setAttribute(Qt::AA_UseHighDpiPixmaps);
