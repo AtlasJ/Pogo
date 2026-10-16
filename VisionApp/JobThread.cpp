@@ -5005,8 +5005,15 @@ void JobThread::scan3DUnit(const SystemData::PitchRegion& r, int ix, int iy, con
 	}
 
 	const QString unitID = pitchUnitID(r, ix, iy);
-	ct::logger::info("[Acq] 3D scan %s: %.3f..%.3f", unitID.toStdString().c_str(),
-		scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx);
+	//everything that decides WHERE this scan lands, in one line - the axis, the window, the
+	//line width and the Z - so a wrong scan region can be read off the log without a second run
+	ct::logger::info("[Acq] 3D scan %s: along %s %.3f..%.3f (length %.2f mm, unit centre %.3f/%.3f, centre offset %.3f/%.3f), "
+		"laser line %.2f mm wide across, Z %.3f + laser offset %.3f/%.3f/%.3f",
+		unitID.toStdString().c_str(), scanAlongY ? "Y" : "X",
+		scanAlongY ? start.wy : start.wx, scanAlongY ? end.wy : end.wx, 2.0 * halfLen,
+		baseX, baseY, r.unitCentreDx, r.unitCentreDy,
+		ScaleManager::instance().laser_fov_mm(), r.p1z,
+		m_laserOffset ? m_laserOffset->wx : 0.0, m_laserOffset ? m_laserOffset->wy : 0.0, m_laserOffset ? m_laserOffset->wz : 0.0);
 
 	bool firstRun = true;
 	for (auto o : opticsSeq) {
