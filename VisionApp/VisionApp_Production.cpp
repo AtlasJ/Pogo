@@ -526,6 +526,9 @@ void VisionApp::startProduction()
 		return;
 	}
 
+	//a PMF and the template mapping it is laid out on (skipped in debug mode)
+	if (!liveMappingReadyForProduction()) return;
+
 	/*
 	* Last gate before anything moves for real: jog to the taught position, look for the feature,
 	* and refuse the run if it is not there. Placed after the machine-state and selector checks so
@@ -622,6 +625,9 @@ void VisionApp::startProductionS()
 		showMsg("Turn the production mode selector ON to start production!");
 		return;
 	}
+
+	//a PMF and the template mapping it is laid out on (skipped in debug mode)
+	if (!liveMappingReadyForProduction()) return;
 
 	/*
 	* Last gate before anything moves for real: jog to the taught position, look for the feature,

@@ -31,6 +31,8 @@
 #include "AlgoSetupTypes.h"
 #include "SafetyCheckTypes.h"
 #include "GuidedSetupTypes.h"
+#include "TemplateMapping.h"
+#include "LiveMappingTypes.h"
 #include "AlgoHeight3Types.h"
 #include "InspectionThread.h"
 #include "AlgoDefectResult.h"
@@ -224,6 +226,13 @@ public:
 
 	QElapsedTimer vs_elapsedTimer;
 	bool isStartTimer = false;
+
+	//── Live Mapping: pogo block positions by number (VisionApp_LiveMapping.cpp)
+	std::optional<PogoUnitInfo> getUnitInfo(int position) const;  //empty when the PMF does not list it
+	UnitState unitState(int position) const;                        //NotExist when the PMF does not list it
+	void updateUnitState(int position, UnitState state);            //safe from any thread; repaints its cell
+	void resetUnitStates();                                         //every PMF position back to Pending (GUI thread)
+	QVector<int> liveMappingPositions() const;                      //PMF positions on the grid, Y1 X1 first, row by row
 
 protected:
 	bool eventFilter(QObject *obj, QEvent *event) override;
@@ -594,11 +603,44 @@ private:
 	//── Pogo Mapping File (VisionApp_PMF.cpp)
 	static const int kPmfContextColumns = 4; //Slot, Board, Description, Cable before column A
 	static const int kPmfWorkspacePage = 7;  //pagePMF in stackedWidgetViewSelection
-	void buildPmfXyTable();                  //continuous XY grid for the whole file
-	QVector<int> _pmfRowFirstY;              //table row -> its first Y row, -1 when it has none
 	void initPmfPage();
+	enum class PmfStatus { Empty, Busy, Ready, Failed };
+	PmfStatus _pmfStatus = PmfStatus::Empty; //what the PMF lamp shows; only Ready lets production start
+	void browsePmfFile();                    //Load on the PMF page or the production page
 	void loadPmfFile(const QString& path);
+	void clearPmf();                         //Clear on either page
+	void showPmfStatus(PmfStatus status, const QString& summary, const QString& detail);
 	QString _pmfLastDir;
+	QHash<int, PogoUnitInfo> _pmfUnits;      //every position the loaded PMF lists, by position number
+	QVector<int> _pmfDuplicates;             //positions the PMF lists more than once - the first listing is kept
+
+	//── Live Mapping, production page (VisionApp_LiveMapping.cpp)
+	QHash<int, UnitState> _unitStates;       //per PMF position; kept across template changes, reset by a new PMF
+	QHash<int, QPoint> _liveMappingCells;    //position -> its cell (x, y) on the live mapping
+	void initLiveMapping();
+	void rebuildLiveMapping();               //after the PMF, the template mappings or the name typed for one change
+	void paintLiveMappingCell(int position);
+	void applyUnitState(int position, UnitState state);
+	QString _pmfFile;                        //the PMF loaded now - remembered, with the template name, for the next start
+	QTimer* _setupSaveTimer = nullptr;       //a typed template name is saved once it settles, not per keystroke
+	void restoreProductionSetup();           //startup: bring back the PMF and template mapping used last time
+	QStringList liveMappingProblems() const; //why production cannot start yet; empty when the PMF and template are ready
+	bool liveMappingReadyForProduction();    //start gate: refuses with the list above, except in machine debug mode
+	void saveProductionSetup();
+
+	//── Template Mapping Setup, on the PMF page (VisionApp_TemplateMapping.cpp)
+	TemplateMappingStore _templateMappings;  //app-wide, template_mapping.json
+	bool _tmEditing = false;
+	QVector<QVector<QString>> _tmScratch;    //cell texts while editing - kept past a shrink, so growing back restores them
+	void initTemplateMappingSetup();
+	void listTemplateMappings(const QString& selectId);
+	void showTemplateMapping();              //the selected mapping as saved, in view mode
+	void setTemplateMappingEditing(bool editing);
+	void fillTemplateMappingTable(int xCount, int yCount);
+	void keepTemplateMappingEdits();
+	QString askTemplateMappingName(const QString& title, const QString& current, const QString& ignoreId);
+	bool saveTemplateMappings(const TemplateMappingStore& before);
+	void refreshProdTemplateMapping();       //production page: the lamp (green while the typed name is a mapping) and the live mapping
 	void refreshSafetyCheckPage();
 	void captureSafetyCheckFromUI();
 	void showSafetyCheckResult(const SafetyCheckResult& res);
@@ -1815,6 +1857,7 @@ public slots:
 	void handleCalibrationFinished(QString msg, QHash<QString, double> limits);
 
 signals:
+	void unitStateRequested(int position, int state);  //updateUnitState from another thread, queued to the GUI thread
 	void updateMsgBoxBorderSignal();
 	void viewBoxPressed(QDragBox* pDragBox, QString name, QPointF pos);
 	void signalEncoderChanged(double x, double y, double z);

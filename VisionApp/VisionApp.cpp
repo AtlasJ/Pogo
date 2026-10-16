@@ -395,6 +395,9 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initSafetyCheckPage();
 	initGuidedSetupPage();
 	initPmfPage();
+	initTemplateMappingSetup();
+	initLiveMapping();
+	restoreProductionSetup();
 
 	ct::logger::info("Initializing Startup State...");
 	initStartupState();

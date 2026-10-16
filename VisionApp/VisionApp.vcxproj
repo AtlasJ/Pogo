@@ -255,6 +255,9 @@
     <ClCompile Include="VisionApp_SafetyCheck.cpp" />
     <ClCompile Include="VisionApp_GuidedSetup.cpp" />
     <ClCompile Include="VisionApp_PMF.cpp" />
+    <ClCompile Include="VisionApp_TemplateMapping.cpp" />
+    <ClCompile Include="TemplateMapping.cpp" />
+    <ClCompile Include="VisionApp_LiveMapping.cpp" />
     <ClCompile Include="VisionApp_Recipe.cpp" />
     <ClCompile Include="VisionApp_ServerComms.cpp" />
     <ClCompile Include="VisionApp_ViewEditor.cpp" />
@@ -273,6 +276,9 @@
     <ClInclude Include="SafetyCheckTypes.h" />
     <ClInclude Include="GuidedSetupTypes.h" />
     <ClInclude Include="NoWheelOnInputs.h" />
+    <ClInclude Include="TemplateMapping.h" />
+    <ClInclude Include="LiveMappingTypes.h" />
+    <ClInclude Include="CellFillDelegate.h" />
     <ClInclude Include="DryRunTableWidget.h" />
     <QtMoc Include="SRXFtpServer.h" />
     <QtMoc Include="SRXManager.h" />
