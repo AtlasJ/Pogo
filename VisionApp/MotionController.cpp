@@ -360,6 +360,12 @@ bool MotionController::set_servo(QString id, int cardID, int axis, bool on)
 	return m_motion[id]->set_servo(cardID, axis, on);
 }
 
+bool MotionController::sync_command_to_feedback(QString id, int axis)
+{
+	if (!valid(id)) return false;
+	return m_motion[id]->sync_command_to_feedback(axis);
+}
+
 bool MotionController::set_DO(QString id, int cardID, int no, bool state)
 {
 	if (!valid(id)) return false;

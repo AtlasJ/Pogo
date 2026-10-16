@@ -95,6 +95,7 @@ namespace nvs {
 			bool set_move_max_velocity(int axis, double value);
 			bool set_position_mm(int cardID, int axis, double pos_mm);
 			bool set_servo(int cardID, int axis, bool on);
+			bool sync_command_to_feedback(int axis) override;
 			bool set_DO(int cardID, int bit, bool state);
 			bool set_all_DO(int cardID, const std::vector<bool>& states);
 

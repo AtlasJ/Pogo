@@ -1152,6 +1152,15 @@ bool MachineController::servoOnAllAxes()
     }
 
     if (allOn) {
+        /*
+        * The drives are holding again: make sure the card plans the next move from where the
+        * axes actually ARE. set_servo() already synced each axis before commanding it on; this
+        * second pass catches anything that moved in the window between that and the drive
+        * engaging, and logs the residual if there was one. Without it the first jog after an
+        * e-stop or curtain recovery lands the pushed distance away from its target.
+        */
+        for (int axis : axes) MotionController::instance().sync_command_to_feedback(m_motionID, axis);
+
         //servo-off errors are raised externally (notifyError), not re-assessed each
         //poll - clear them here so the reset that follows can succeed
         assessError(true, MachineError::X_SERVO_OFF);

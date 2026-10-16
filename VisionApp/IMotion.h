@@ -118,6 +118,16 @@ namespace nvs {
             virtual bool set_position_mm(int cardID, int axis, double pos_mm) = 0;
             virtual bool set_servo(int cardID, int axis, bool on) = 0;
 
+            /*
+            * Make the card's COMMAND counter equal to its FEEDBACK (encoder) counter for this
+            * axis. A card plans every absolute move from the command counter, and the encoder
+            * is the only one of the two that knows the axis was pushed by hand while the servo
+            * was off - so without this, the first move after an e-stop or curtain recovery
+            * lands exactly the pushed distance away from where it was told to go. Non-pure, a
+            * no-op by default, for backends whose card keeps the two in step itself.
+            */
+            virtual bool sync_command_to_feedback(int axis) { return true; }
+
             virtual bool set_DO(int cardID, int bit, bool state) = 0;
             virtual bool set_all_DO(int cardID, const std::vector<bool>& states) = 0;
 

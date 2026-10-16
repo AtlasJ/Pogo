@@ -231,6 +231,9 @@ bool Motion_APS::reset_alarm(int axis)
 		return false;
 	}
 
+	//the axis may have been pushed while the drive was alarmed and unpowered
+	sync_command_to_feedback(axis);
+
 	ret = APS_set_servo_on(axis, 1);
 	if (log_error_code("Failed to set servo on after alarm reset", ret)) return false;
 
@@ -490,8 +493,40 @@ bool Motion_APS::set_position_mm(int cardID, int axis, double pos_mm)
 	return true;
 }
 
+/*
+* See IMotion.h. On the EMX-100 the two counters are APS_get_command / APS_get_position: the
+* position (feedback) counter follows the drive's encoder over EtherCAT whether the servo is on
+* or not, the command counter only moves when THIS card commands a move. Dragging an axis with
+* the drives dropped therefore opens a gap between them that nothing closes on servo-on - the
+* log of 16 Oct 2026 shows a jog to X 59.9 / Y 38.0 reporting "in position" at X 64.3 / Y 94.1,
+* 4.3 and 56.1 mm off, which was precisely how far the gantry had been pushed.
+*/
+bool Motion_APS::sync_command_to_feedback(int axis)
+{
+	if (invalid_axis("Failed to sync command to feedback", axis)) return false;
+
+	I32 cmd = 0, fbk = 0;
+	auto ret = APS_get_command(axis, &cmd);
+	if (log_error_code("Failed to read command position", ret)) return false;
+	ret = APS_get_position(axis, &fbk);
+	if (log_error_code("Failed to read feedback position", ret)) return false;
+
+	if (cmd == fbk) return true;
+
+	ret = APS_set_command(axis, fbk);
+	if (log_error_code("Failed to set command position", ret)) return false;
+
+	ct::logger::warn("[Motion_APS] Axis %d command counter re-synced to the encoder: %.3f -> %.3f mm "
+		"(the axis moved %.3f mm while the servo was off)",
+		axis, to_mm(axis, cmd), to_mm(axis, fbk), to_mm(axis, fbk) - to_mm(axis, cmd));
+	return true;
+}
+
 bool Motion_APS::set_servo(int cardID, int axis, bool on)
 {
+	//before the drive takes the command counter as its target - see sync_command_to_feedback()
+	if (on) sync_command_to_feedback(axis);
+
 	auto ret = APS_set_servo_on(axis, (on) ? 1 : 0);
 	if (log_error_code("Failed to set servo", ret)) return false;
 

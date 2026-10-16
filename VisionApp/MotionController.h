@@ -61,6 +61,7 @@ public:
 
     bool set_position_mm(QString id, int cardID, int axis, double pos_mm);
     bool set_servo(QString id, int cardID, int axis, bool on);
+    bool sync_command_to_feedback(QString id, int axis); //command counter := encoder, see IMotion.h
 
     bool set_DO(QString id, int cardID, int bit, bool state);
     bool set_all_DO(QString id, int cardID, const std::vector<bool>& states);
