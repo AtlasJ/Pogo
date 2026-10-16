@@ -4865,7 +4865,9 @@ em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int 
 	//taught corners off by its distance from the origin times sin(angle).
 	const double ga = r.gridAngleDeg * 3.14159265358979 / 180.0;
 	const double lx = ix * r.pitchX, ly = iy * r.pitchY;
-	em::V2d p(r.p1x + std::cos(ga) * lx - std::sin(ga) * ly, r.p1y + std::sin(ga) * lx + std::cos(ga) * ly);
+	//plus the left-circle-to-centre offset, so the point is the UNIT, not the circle it was taught on
+	em::V2d p(r.p1x + r.unitCentreDx + std::cos(ga) * lx - std::sin(ga) * ly,
+		r.p1y + r.unitCentreDy + std::sin(ga) * lx + std::cos(ga) * ly);
 	if (!m_enableFiducial) return p;
 
 	em::V2d shifted = p;

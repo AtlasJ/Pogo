@@ -191,6 +191,18 @@ public:
 		* sit on a rectangle aligned with the unit rows.
 		*/
 		double gridAngleDeg = 0.0;
+
+		/*
+		* A pogo unit has TWO circles, left and right. Point 1 is taught on the LEFT one (that is
+		* what the camera centres on); the right one, taught separately, gives the unit's centre
+		* as the midpoint and its width as the span. unitCentreDx/Dy is the machine-mm offset from
+		* the left circle to that centre, added to EVERY unit of the region at run time so the
+		* barcode read and the 3D scan sit on the unit, not on its left circle. Zero (right circle
+		* never taught) keeps the old behaviour: the taught point IS the unit centre.
+		*/
+		bool p1RightSet = false;
+		double p1RightX = 0.0, p1RightY = 0.0;
+		double unitCentreDx = 0.0, unitCentreDy = 0.0;
 		int unitsX = 1, unitsY = 1;
 
 		/*

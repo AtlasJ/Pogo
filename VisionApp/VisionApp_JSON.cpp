@@ -1405,6 +1405,11 @@ bool VisionApp::saveRecipeConfig()
 			ro.insert(QStringLiteral("pitchX"), r.pitchX);
 			ro.insert(QStringLiteral("pitchY"), r.pitchY);
 			ro.insert(QStringLiteral("gridAngleDeg"), r.gridAngleDeg);
+			ro.insert(QStringLiteral("p1RightSet"), r.p1RightSet);
+			ro.insert(QStringLiteral("p1RightX"), r.p1RightX);
+			ro.insert(QStringLiteral("p1RightY"), r.p1RightY);
+			ro.insert(QStringLiteral("unitCentreDx"), r.unitCentreDx);
+			ro.insert(QStringLiteral("unitCentreDy"), r.unitCentreDy);
 			ro.insert(QStringLiteral("unitsX"), r.unitsX);
 			ro.insert(QStringLiteral("unitsY"), r.unitsY);
 			ro.insert(QStringLiteral("startX"), r.startX);
@@ -2117,6 +2122,11 @@ bool VisionApp::loadRecipeConfig()
 					r.pitchX = jsonHelper::getDouble(ro, QStringLiteral("pitchX"), 0.0);
 					r.pitchY = jsonHelper::getDouble(ro, QStringLiteral("pitchY"), 0.0);
 					r.gridAngleDeg = jsonHelper::getDouble(ro, QStringLiteral("gridAngleDeg"), 0.0);
+					r.p1RightSet = jsonHelper::getBool(ro, QStringLiteral("p1RightSet"), false);
+					r.p1RightX = jsonHelper::getDouble(ro, QStringLiteral("p1RightX"), 0.0);
+					r.p1RightY = jsonHelper::getDouble(ro, QStringLiteral("p1RightY"), 0.0);
+					r.unitCentreDx = jsonHelper::getDouble(ro, QStringLiteral("unitCentreDx"), 0.0);
+					r.unitCentreDy = jsonHelper::getDouble(ro, QStringLiteral("unitCentreDy"), 0.0);
 					r.unitsX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsX"), 1));
 					r.unitsY = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsY"), 1));
 					r.startX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("startX"), 1));

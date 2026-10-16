@@ -621,6 +621,7 @@ private:
 	bool guidedCentreOnCircle(int minDiaPx, int maxDiaPx, mtrx::Circle& found, QString& why);
 	void guidedTeachFiducial(int i);
 	void guidedTeachUnit(bool last);
+	void guidedTeachUnitRight(); //unit (1,1)'s right circle: unit centre and 3D scan length
 	void guidedRecomputePitch(SystemData::PitchRegion& r);
 	int guidedRegion(); //the selected pitch region (shared with the Setup Region page), created if none
 	bool guidedBoardAngleDeg(double& deg, QString& why); //rotation of the taught fiducial rectangle in the machine frame

@@ -167,6 +167,13 @@ void VisionApp::initGuidedSetupPage()
 	connect(ui.toolButton_gsJogUnitFirst, &QToolButton::clicked, this, [=]() { jogUnit(false); });
 	connect(ui.toolButton_gsJogUnitLast, &QToolButton::clicked, this, [=]() { jogUnit(true); });
 
+	connect(ui.toolButton_gsTeachUnitFirstRight, &QToolButton::clicked, this, [=]() { guidedTeachUnitRight(); });
+	connect(ui.toolButton_gsJogUnitFirstRight, &QToolButton::clicked, this, [=]() {
+		const auto r = SystemData::instance().pitchRegion(guidedRegion());
+		if (!r.p1RightSet) { showMsg("The right circle of unit (1,1) has not been taught yet."); return; }
+		emit jogSnap(r.p1RightX, r.p1RightY, r.p1z, _mainOptics[_camID]);
+	});
+
 	refreshGuidedSetupPage();
 }
 
@@ -247,6 +254,18 @@ void VisionApp::refreshGuidedSetupPage()
 	ui.toolButton_gsTeachUnitLast->setEnabled(r.p1Set);
 	ui.toolButton_gsJogUnitLast->setEnabled(r.p2Set);
 	ui.toolButton_gsJogUnitFirst->setEnabled(r.p1Set);
+	ui.toolButton_gsTeachUnitFirstRight->setEnabled(r.p1Set);
+	ui.toolButton_gsJogUnitFirstRight->setEnabled(r.p1RightSet);
+	ui.label_gsUnitFirstRight->setText(r.p1RightSet
+		? QStringLiteral("Unit (1,1) right circle: %1, %2").arg(r.p1RightX, 0, 'f', 3).arg(r.p1RightY, 0, 'f', 3)
+		: QStringLiteral("Unit (1,1) right circle: not taught"));
+	if (r.p1RightSet) {
+		const double span = std::hypot(r.p1RightX - r.p1x, r.p1RightY - r.p1y);
+		ui.label_gsUnitSpan->setText(QStringLiteral("Unit centre: %1, %2 mm from the left circle; circle span %3 mm; 3D scan length %4 mm")
+			.arg(r.unitCentreDx, 0, 'f', 3).arg(r.unitCentreDy, 0, 'f', 3).arg(span, 0, 'f', 3)
+			.arg(sd._pitchScanLen_mm.load(), 0, 'f', 2));
+	}
+	else ui.label_gsUnitSpan->setText(QStringLiteral("Unit centre: the left circle (right circle not taught)"));
 
 	//every region counts towards "ready", not only the one on screen
 	int regionsReady = 0;
@@ -474,6 +493,55 @@ bool VisionApp::guidedBoardAngleDeg(double& deg, QString& why)
 	return true;
 }
 
+/*
+* The right circle of unit (1,1). Centred on like everything else; from it and the taught left
+* circle come two things the run needs: the unit CENTRE, as the midpoint (stored as an offset
+* from the left circle and added to every unit of the region), and the unit's WIDTH, which sets
+* the 3D scan length to span + one circle diameter + 2 mm so both circles are inside the scan.
+*/
+void VisionApp::guidedTeachUnitRight()
+{
+	if (!MotionController::instance().is_init(_motionID)) { showMsg("Motion is not initialised."); return; }
+
+	auto& sd = SystemData::instance();
+	const int idx = guidedRegion();
+	auto r = sd.pitchRegion(idx);
+	if (!r.p1Set) { showMsg("Teach the left circle of unit (1,1) first."); return; }
+
+	mtrx::Circle c;
+	QString why;
+	if (!guidedCentreOnCircle(_guidedSetup.unitMinDiaPx, _guidedSetup.unitMaxDiaPx, c, why)) {
+		showMsg(QStringLiteral("The right circle was not taught.\n\n%1").arg(why));
+		return;
+	}
+
+	double x, y, z;
+	getCurrentPoint(x, y, z);
+	r.p1RightX = x; r.p1RightY = y;
+	r.p1RightSet = true;
+	r.unitCentreDx = (x - r.p1x) / 2.0;
+	r.unitCentreDy = (y - r.p1y) / 2.0;
+	sd.setPitchRegion(idx, r);
+
+	const double span = std::hypot(x - r.p1x, y - r.p1y);
+	const double diaMm = ScaleManager::instance().to_horizontal_mm(2.0 * c.radius);
+	const double scanLen = span + diaMm + 2.0;
+	sd._pitchScanLen_mm = scanLen;
+	{
+		QSignalBlocker b(ui.lineEdit_pitchScanLen);
+		ui.lineEdit_pitchScanLen->setText(QString::number(scanLen, 'f', 2));
+	}
+	ct::logger::info("[GuidedSetup] Unit (1,1) right circle at %.3f, %.3f: centre offset %.3f/%.3f mm, span %.3f mm, circle %.3f mm -> 3D scan length %.2f mm",
+		x, y, r.unitCentreDx, r.unitCentreDy, span, diaMm, scanLen);
+
+	if (_refreshPitchLabels) _refreshPitchLabels();
+	saveRecipeConfig();
+	refreshGuidedSetupPage();
+	showStatus(QStringLiteral("Right circle taught - 3D scan length %1 mm").arg(scanLen, 0, 'f', 2));
+	AuditLog::instance().log(QStringLiteral("GUIDED_TEACH_UNIT_RIGHT"),
+		QStringLiteral("region %1: %2, %3 span %4 scan %5").arg(idx + 1).arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(span, 0, 'f', 3).arg(scanLen, 0, 'f', 2));
+}
+
 //pitch from the FAR corner, measured along the BOARD's axes: the span is rotated back by the
 //board angle before it is divided over the unit count, so a tilted board does not leak Y pitch
 //into X. The circle-centre error is divided over the whole board instead of one spacing.
@@ -522,6 +590,11 @@ void VisionApp::guidedTeachUnit(bool last)
 		r.p1x = x; r.p1y = y; r.p1z = z;
 		r.p1Set = true;
 		r.p1TeachMs = now;
+
+		//the right circle was measured against the OLD left circle - it has to be taught again
+		if (r.p1RightSet) ct::logger::info("[GuidedSetup] Left circle re-taught - the right circle teach is cleared");
+		r.p1RightSet = false;
+		r.unitCentreDx = r.unitCentreDy = 0.0;
 
 		int mask = 0;
 		const double* refx[4] = { &r.fidRef1x, &r.fidRef2x, &r.fidRef3x, &r.fidRef4x };
