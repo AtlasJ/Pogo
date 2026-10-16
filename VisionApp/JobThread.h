@@ -394,6 +394,7 @@ public slots:
 	void dryRun(QVector<QVector3D> coords, int loops);
 	void reconnectMotion();
 	void jogSnap(double x, double y, double z, const OpticsInfo& optic);
+	void testPitchUnits(bool threeD); //guided setup test: every unit in run order, 2D snap at its centre or the 3D scan
 	void jogLeft(double mm, const OpticsInfo& optic);
 	void jogRight(double mm, const OpticsInfo& optic);
 	void jogBack(double mm, const OpticsInfo& optic);

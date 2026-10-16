@@ -7180,6 +7180,66 @@ void JobThread::jogUser(double x, double y, double z, QString type, bool waitJog
 	jog(x, y, z, type, waitJogDone);
 }
 
+/*
+* The Guided Setup page's Test 2D / Test 3D. Every taught region, every unit, in exactly the
+* order a run visits them (pitchUnitOrder, along the scan direction) and at exactly the point a
+* run computes (pitchUnitPoint, with the centre offset and whatever fiducial compensation is
+* current). 2D parks the camera on the unit centre and snaps so the operator can see what the
+* barcode read will see; 3D performs the unit's real scan. Stop is honoured between units - the
+* snap path deliberately does not go through jogSnap(), which clears the stop flag on entry.
+*/
+void JobThread::testPitchUnits(bool threeD)
+{
+	m_stopRun = false;
+
+	auto& sd = SystemData::instance();
+	const auto regions = sd.pitchRegions();
+	if (std::none_of(regions.begin(), regions.end(), [](const SystemData::PitchRegion& r) { return r.p1Set; })) {
+		emit promptMsg("No region has unit (1,1) taught - nothing to test.");
+		return;
+	}
+	if (threeD && !ProfilerManager::instance().isConnected(m_profilerID)) {
+		emit promptMsg("The 3D profiler is not connected.");
+		return;
+	}
+
+	const auto opticsSeq = threeD ? build3DOpticsSeq() : std::deque<QString>();
+	const OpticsInfo mainOptic = getMainOptics();
+	int visited = 0;
+
+	ct::logger::info("[GuidedTest] %s test: along %s travelling %s", threeD ? "3D" : "2D",
+		sd.isLineScanAxisY() ? "Y" : "X", sd.isLineScanDirectionNegative() ? "negative" : "positive");
+
+	for (size_t ri = 0; ri < regions.size() && !m_stopRun; ri++) {
+		const auto& r = regions[ri];
+		if (!r.p1Set) continue;
+
+		for (const auto& u : pitchUnitOrder(r)) {
+			if (m_stopRun) break;
+			const int ix = u.first, iy = u.second;
+			const QString id = pitchUnitID(r, ix, iy);
+
+			if (threeD) {
+				scan3DUnit(r, ix, iy, opticsSeq);
+			}
+			else {
+				const em::V2d p = pitchUnitPoint(r, ix, iy);
+				ct::logger::info("[GuidedTest] 2D %s (region %d unit %d,%d): %.3f, %.3f, %.3f",
+					id.toStdString().c_str(), (int)ri + 1, ix + 1, iy + 1, p.x(), p.y(), r.p1z);
+				jog(p.x(), p.y(), r.p1z, "2D");
+				if (m_stopRun) break;
+				if (sd._snapDelay_ms != 0) os_tool::doNothing(sd._snapDelay_ms);
+				snapOptic(mainOptic, "", "");
+			}
+			visited++;
+		}
+	}
+
+	ct::logger::info("[GuidedTest] %s test %s after %d unit(s)", threeD ? "3D" : "2D", m_stopRun ? "STOPPED" : "complete", visited);
+	emit promptMsg(QStringLiteral("%1 test %2: %3 unit(s) visited.")
+		.arg(threeD ? "3D" : "2D").arg(m_stopRun ? "stopped" : "complete").arg(visited));
+}
+
 void JobThread::jogSnap(double x, double y, double z, const OpticsInfo& optic)
 {
 	m_stopRun = false; //stale stop flag must not abort waitAxis - snap needs the jog finished

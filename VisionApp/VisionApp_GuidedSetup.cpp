@@ -167,6 +167,19 @@ void VisionApp::initGuidedSetupPage()
 	connect(ui.toolButton_gsJogUnitFirst, &QToolButton::clicked, this, [=]() { jogUnit(false); });
 	connect(ui.toolButton_gsJogUnitLast, &QToolButton::clicked, this, [=]() { jogUnit(true); });
 
+	//tests run on the job thread, like a run; Stop sets the same flag a run's stop sets
+	connect(ui.toolButton_gsTest2D, &QToolButton::clicked, this, [=]() {
+		if (!MotionController::instance().is_init(_motionID)) { showMsg("Motion is not initialised."); return; }
+		AuditLog::instance().log(QStringLiteral("GUIDED_TEST"), QStringLiteral("2D"));
+		QMetaObject::invokeMethod(&_jobThread, "testPitchUnits", Qt::QueuedConnection, Q_ARG(bool, false));
+	});
+	connect(ui.toolButton_gsTest3D, &QToolButton::clicked, this, [=]() {
+		if (!MotionController::instance().is_init(_motionID)) { showMsg("Motion is not initialised."); return; }
+		AuditLog::instance().log(QStringLiteral("GUIDED_TEST"), QStringLiteral("3D"));
+		QMetaObject::invokeMethod(&_jobThread, "testPitchUnits", Qt::QueuedConnection, Q_ARG(bool, true));
+	});
+	connect(ui.toolButton_gsTestStop, &QToolButton::clicked, this, [=]() { _jobThread.stopRun(); });
+
 	connect(ui.toolButton_gsTeachFocusZ, &QToolButton::clicked, this, [=]() { guidedTeachFocusZ(); });
 	connect(ui.toolButton_gsJogFocusZ, &QToolButton::clicked, this, [=]() {
 		if (!_guidedSetup.focusZSet) { showMsg("The focus height has not been taught yet."); return; }
