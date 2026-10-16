@@ -432,9 +432,18 @@ void MachineController::assessError(bool good, MachineError e)
                 * above holds Z through the trip, the scales keep counting on X and Y, and reset
                 * re-servos the drives before anything moves - so the position the machine had is
                 * still the position it has, and resetAlarm() can return it to the state it was
-                * in. If an e-stop is ALSO active, that branch demotes as it always has.
+                * in. If an e-stop BUTTON is pressed as well, demote as before.
+                *
+                * Judged by cause, not by error code. The curtain opens the safety chain, so a
+                * trip also raises ESTOP_RELAY_FAULT (X106) and ESTOP_PRESSED (the drives' EMG
+                * input) within the same cycle - and the first version of this exemption, which
+                * only spared the CURTAIN code itself, was demoted by those two every single time.
+                * With the curtain latched and both e-stop buttons released, the relay and the EMG
+                * are the curtain's doing, whichever code happens to report them.
                 */
-                if (e != MachineError::CURTAIN_RELAY_FAULT) m_readyState = MachineState::NOT_READY;
+                const bool curtainCaused = m_curtainTripped && m_estopButtonsOk;
+                if (!curtainCaused) m_readyState = MachineState::NOT_READY;
+                else ct::logger::info("[MachineController] Error %d raised by the curtain trip - ready state kept for reset", (int)e);
             }
 
             setMachineState(MachineState::S_ERROR);
@@ -674,13 +683,23 @@ void MachineController::handleDIA()
     //pressed one, because both map to the single ESTOP_PRESSED code and the last call wins.
     m_estopButtonsOk = io[(int)DIA::ESTOP_1] && io[(int)DIA::ESTOP_2];
 
+    /*
+    * Curtain sensor: X107 reads HIGH while the beam is broken (inverted wiring). The trip
+    * LATCHES: the error stays active after the beam clears and never self-resets - the
+    * operator must press reset (which also re-servos X/Y/Z) to acknowledge the break.
+    *
+    * Latched BEFORE the safety relay is assessed, on purpose. The curtain opens the same
+    * safety chain an e-stop does, so X106 and the drives' EMG inputs drop in the same poll
+    * cycle as X107 rises - and assessError() decides whether a relay fault demotes the ready
+    * state by asking whether the curtain caused it. Assess the relay first and that question
+    * is answered against last cycle's curtain, which was fine, and every curtain trip ends in
+    * Uninitialized after all.
+    */
+    if (io[(int)DIA::CURTAIN_SAFETY_RELAY]) m_curtainTripped = true;
+
     //Check safety relays, high = OK
     assessError(io[(int)DIA::ESTOP_SAFETY_RELAY], MachineError::ESTOP_RELAY_FAULT);
 
-    //Curtain sensor: X107 reads HIGH while the beam is broken (inverted wiring). The trip
-    //LATCHES: the error stays active after the beam clears and never self-resets - the
-    //operator must press reset (which also re-servos X/Y/Z) to acknowledge the break.
-    if (io[(int)DIA::CURTAIN_SAFETY_RELAY]) m_curtainTripped = true;
     assessError(!m_curtainTripped, MachineError::CURTAIN_RELAY_FAULT);
 
     //Check trolley lock guard, bypassed in debug mode or when config\interlock.json exists
@@ -842,9 +861,9 @@ void MachineController::handleAxisState()
     * is exactly the write this skips. An e-stop on top of the curtain still demotes.
     */
     if (!servo_on) {
-        const bool curtainOnly = m_curtainTripped
-            && !m_errorStatuses.contains((int)MachineError::ESTOP_PRESSED)
-            && !m_errorStatuses.contains((int)MachineError::ESTOP_RELAY_FAULT);
+        //same test as assessError(): the curtain is latched and no e-stop button is pressed.
+        //Not the error set - a curtain trip puts ESTOP_RELAY_FAULT and ESTOP_PRESSED in it too.
+        const bool curtainOnly = m_curtainTripped && m_estopButtonsOk;
         if (!curtainOnly) setMachineState(MachineState::NOT_READY);
     }
 
