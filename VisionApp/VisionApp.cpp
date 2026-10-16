@@ -16028,7 +16028,15 @@ void VisionApp::vs_stopElapseTimer()
 
 bool VisionApp::blockJogSignal()
 {
-	if (ui.stackedWidgetViewSelection->currentIndex() == 6) return false;
+	/*
+	* The production page used to refuse every keyboard jog outright. The reason behind that
+	* rule is sound only WHILE a run is in progress - the gantry is already being driven and a
+	* key press on top of it has no business moving anything. With no run active the page is
+	* just another page, and the operator setting up or recovering from here needs the arrows
+	* as much as anywhere else. isStartTimer is the run's elapsed-time flag: set when a run
+	* starts, cleared when it stops or finishes.
+	*/
+	if (ui.stackedWidgetViewSelection->currentIndex() == 6 && isStartTimer) return false;
 
 	if (SystemData::instance()._MotoIsMoving) return false;
 	SystemData::instance()._MotoIsMoving = true;
