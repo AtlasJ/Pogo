@@ -16,6 +16,8 @@
 #include "ScaleManager.h"
 
 #include <QTimer>
+#include <QGraphicsEllipseItem>
+#include <QGraphicsLineItem>
 #include <QDateTime>
 #include <QCoreApplication>
 #include <cmath>
@@ -185,6 +187,8 @@ void VisionApp::initGuidedSetupPage()
 	connect(ui.toolButton_gsTest2D, &QToolButton::clicked, this, [=]() { startTest(false); });
 	connect(ui.toolButton_gsTest3D, &QToolButton::clicked, this, [=]() { startTest(true); });
 	connect(ui.toolButton_gsTestStop, &QToolButton::clicked, this, [=]() { _jobThread.stopRun(); });
+	connect(ui.toolButton_gsFindFidCircle, &QToolButton::clicked, this, [=]() { guidedFindCircleTest(false); });
+	connect(ui.toolButton_gsFindUnitCircle, &QToolButton::clicked, this, [=]() { guidedFindCircleTest(true); });
 	connect(&_jobThread, &JobThread::testPitchUnitsDone, this, [=]() { showPlatformZCompensation(); }, Qt::QueuedConnection);
 
 	connect(ui.toolButton_gsTeachFocusZ, &QToolButton::clicked, this, [=]() { guidedTeachFocusZ(); });
@@ -593,6 +597,99 @@ void VisionApp::guidedTeachFocusZ()
 	refreshGuidedSetupPage();
 	showStatus(QStringLiteral("Focus height %1 mm applied to the 2D views and units").arg(z, 0, 'f', 3));
 	AuditLog::instance().log(QStringLiteral("GUIDED_TEACH_FOCUS_Z"), QStringLiteral("z=%1").arg(z, 0, 'f', 3));
+}
+
+/*
+* Find Circle: the circle finder on its own, with nothing moved. Snaps, runs the same search a
+* teach runs (every circle in the chosen diameter range), draws each one on the image - the one
+* nearest the centre, which a teach would centre on, in green, the rest in orange - and says
+* what it found. "No circle" with the range shown is the answer that tells the operator to go
+* and read the diameter off the reference box.
+*/
+void VisionApp::guidedFindCircleTest(bool unitRange)
+{
+	const int minDia = unitRange ? _guidedSetup.unitMinDiaPx : _guidedSetup.fidMinDiaPx;
+	const int maxDia = unitRange ? _guidedSetup.unitMaxDiaPx : _guidedSetup.fidMaxDiaPx;
+	const char* what = unitRange ? "unit" : "fiducial";
+
+	clearGuidedMarks();
+
+	QImage fov;
+	if (!guidedSnapFov(fov, 4000)) {
+		ui.label_gsFindResult->setText(QStringLiteral("Find circle: FAILED - no image from the camera"));
+		return;
+	}
+	if (minDia <= 0 || maxDia < minDia) {
+		ui.label_gsFindResult->setText(QStringLiteral("Find circle: FAILED - the %1 diameter range %2..%3 px is not valid").arg(what).arg(minDia).arg(maxDia));
+		return;
+	}
+
+	MIL_ID mBuf = mtrx::to_milID(fov);
+	MIL_ID mMono = mtrx::to_mono(mBuf);
+	std::vector<mtrx::Circle> circles;
+	mtrx::find_circles(circles, mMono, minDia / 2.0, maxDia / 2.0, mtrx::FOREGROUND_ANY);
+	mtrx::free_buffer(mMono);
+	mtrx::free_buffer(mBuf);
+
+	if (circles.empty()) {
+		ui.label_gsFindResult->setText(QStringLiteral("Find circle: FAILED - no %1 circle between %2 and %3 px in the image").arg(what).arg(minDia).arg(maxDia));
+		ct::logger::info("[GuidedSetup] Find %s circle: none between %d and %d px", what, minDia, maxDia);
+		return;
+	}
+
+	const double cx = fov.width() / 2.0, cy = fov.height() / 2.0;
+	int nearest = 0;
+	double best = std::numeric_limits<double>::max();
+	for (int i = 0; i < (int)circles.size(); i++) {
+		const double d = std::hypot(circles[i].cx - cx, circles[i].cy - cy);
+		if (d < best) { best = d; nearest = i; }
+	}
+	const auto& c = circles[nearest];
+	drawGuidedCircles(circles, nearest);
+
+	ui.label_gsFindResult->setText(QStringLiteral("Find circle: %1 %2 circle(s). Nearest: diameter %3 px at (%4, %5), %6 / %7 px off centre, score %8")
+		.arg(circles.size()).arg(what).arg(2.0 * c.radius, 0, 'f', 1).arg(c.cx, 0, 'f', 1).arg(c.cy, 0, 'f', 1)
+		.arg(c.cx - cx, 0, 'f', 1).arg(c.cy - cy, 0, 'f', 1).arg(c.score, 0, 'f', 2));
+	ct::logger::info("[GuidedSetup] Find %s circle: %d found, nearest dia %.1f px at (%.1f, %.1f), off centre (%.1f, %.1f)",
+		what, (int)circles.size(), 2.0 * c.radius, c.cx, c.cy, c.cx - cx, c.cy - cy);
+}
+
+void VisionApp::clearGuidedMarks()
+{
+	for (auto* item : _guidedMarkItems) {
+		if (!item) continue;
+		if (item->scene()) item->scene()->removeItem(item);
+		delete item;
+	}
+	_guidedMarkItems.clear();
+}
+
+//green for the circle a teach would centre on, orange for the others; a cross marks each centre
+void VisionApp::drawGuidedCircles(const std::vector<mtrx::Circle>& circles, int nearest)
+{
+	clearGuidedMarks();
+	if (!_pGraphicsSceneFOV) return;
+
+	for (int i = 0; i < (int)circles.size(); i++) {
+		const auto& c = circles[i];
+		const QColor colour = (i == nearest) ? QColor(0, 220, 0) : kGuidedRoiColor;
+		const QPen pen(colour, (i == nearest) ? 3 : 2);
+
+		auto* ring = new QGraphicsEllipseItem(c.cx - c.radius, c.cy - c.radius, 2 * c.radius, 2 * c.radius);
+		ring->setPen(pen);
+		ring->setBrush(Qt::NoBrush);
+		ring->setZValue((int)UIHierarchy::SHAPE);
+		_pGraphicsSceneFOV->addItem(ring);
+		_guidedMarkItems.append(ring);
+
+		const double arm = std::max(8.0, c.radius * 0.25);
+		auto* h = new QGraphicsLineItem(c.cx - arm, c.cy, c.cx + arm, c.cy);
+		auto* v = new QGraphicsLineItem(c.cx, c.cy - arm, c.cx, c.cy + arm);
+		h->setPen(pen); v->setPen(pen);
+		h->setZValue((int)UIHierarchy::SHAPE); v->setZValue((int)UIHierarchy::SHAPE);
+		_pGraphicsSceneFOV->addItem(h); _pGraphicsSceneFOV->addItem(v);
+		_guidedMarkItems.append(h); _guidedMarkItems.append(v);
+	}
 }
 
 //pitch from the FAR corner, measured along the BOARD's axes: the span is rotated back by the

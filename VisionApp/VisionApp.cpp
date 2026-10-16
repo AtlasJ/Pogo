@@ -7484,7 +7484,10 @@ bool VisionApp::showRightTab(int index, QString status)
 		if (_safetyLearnBox) _safetyLearnBox->hide();
 		clearSafetyMarks();
 	}
-	if (index != (int)UIPage::GUIDED_SETUP && _guidedRoiBox) _guidedRoiBox->hide();
+	if (index != (int)UIPage::GUIDED_SETUP) {
+		if (_guidedRoiBox) _guidedRoiBox->hide();
+		clearGuidedMarks();
+	}
 
 	showStatus(status);
 	return propertyShown;

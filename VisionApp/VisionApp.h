@@ -668,6 +668,10 @@ private:
 	void guidedRecomputePitch(SystemData::PitchRegion& r);
 	int guidedRegion(); //the selected pitch region (shared with the Setup Region page), created if none
 	bool guidedBoardAngleDeg(double& deg, QString& why); //rotation of the taught fiducial rectangle in the machine frame
+	void guidedFindCircleTest(bool unitRange);           //Find Circle button: snap, find, draw every circle, name the nearest
+	void drawGuidedCircles(const std::vector<mtrx::Circle>& circles, int nearest);
+	void clearGuidedMarks();
+	QVector<QGraphicsItem*> _guidedMarkItems;            //circles drawn by the last Find Circle
 	GuidedSetupConfig _guidedSetup;
 	QDragBox* _guidedRoiBox = nullptr;      //reference box whose size is read off live
 	int _guidedSignX = 1, _guidedSignY = 1; //pixel-to-jog sense; flipped if a jog makes the offset grow
