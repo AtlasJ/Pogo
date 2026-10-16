@@ -50,6 +50,7 @@ public:
     dat::WorldEnvironment world_env() const;
 
     void set_laser_fov_mm(double fov_mm);
+    double laser_fov_mm() const { return m_laserFov_mm; } //the laser line's width across the scan, mm
 
     //=> Conversion
     double mm_to_px(double mm);
