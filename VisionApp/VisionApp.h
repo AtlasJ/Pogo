@@ -1715,7 +1715,7 @@ public slots:
 	bool jogToCamView(double x, double y, double z, QString type = "2D");
 	bool jogToLaserView(double x, double y, double z, QString type = "2D");
 	bool getCurrentPoint(double &x, double &y, double& z);
-	void applyViewZ(double new_z); //one Z for every view, scan, region and teach point (Update Z / Teach Focus Height)
+	void applyViewZ(double new_z, bool everything = true); //Update Z: every view, scan, region and teach point; everything=false (Teach Focus Height): 2D views and unit grid only
 
 	//EZ mode
 	void generateRecipeSetupTemplate();

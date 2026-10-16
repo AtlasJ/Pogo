@@ -25,8 +25,9 @@ struct GuidedSetupConfig {
 	//the on-screen reference box: its size is shown live so the operator can read a diameter off it
 	QRectF roi;
 
-	//the 2D camera's in-focus height. Taught once and pushed into every view, scan, region and
-	//teach point through applyViewZ(); kept here so the page can show it and jog back to it.
+	//the 2D camera's in-focus height. Taught once and pushed into the plane, the 2D views and the
+	//unit grid through applyViewZ(z, false); fiducials, barcode teach points and line scans are
+	//NOT touched. Kept here so the page can show it and jog back to it.
 	bool focusZSet = false;
 	double focusZ = 0.0;
 };

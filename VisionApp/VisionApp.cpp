@@ -12860,12 +12860,16 @@ bool VisionApp::jogToLaserView(double x, double y, double z, QString type)
 }
 
 /*
-* One Z for everything the recipe drives to - the body of the setup page's Update Z button, and
-* of the guided setup's Teach Focus Height. Writes the height into the plane, the 2D views, the
-* line scans, every pitch region's taught points (where a pitch-mode run takes each unit's
-* barcode and 3D height from) and the fiducial and barcode teach points, then saves them all.
+* The setup page's Update Z (everything = true): one Z for all the recipe drives to - plane, 2D
+* views, line scans, every pitch region's taught points (where a pitch-mode run takes each
+* unit's barcode and 3D height from) and the fiducial and barcode teach points.
+*
+* The guided setup's Teach Focus Height (everything = false) is narrower on purpose: it is the
+* 2D CAMERA's focus, so it sets the plane, the 2D views and the unit grid the camera reads the
+* barcodes from, and leaves the line scans, the fiducials and the barcode teach points at the
+* height they were taught at.
 */
-void VisionApp::applyViewZ(double new_z)
+void VisionApp::applyViewZ(double new_z, bool everything)
 {
 	ui.lineEdit_viewZ->setText(QString::number(new_z));
 	_recipeZ = new_z;
@@ -12876,9 +12880,11 @@ void VisionApp::applyViewZ(double new_z)
 	for (auto& v : _plane.views) v.world.wz = new_z;
 	for (auto& v : _views) v.world.wz = new_z;
 
-	for (auto& scan : _lineScans) {
-		scan.start_point.wz = new_z;
-		scan.end_point.wz = new_z;
+	if (everything) {
+		for (auto& scan : _lineScans) {
+			scan.start_point.wz = new_z;
+			scan.end_point.wz = new_z;
+		}
 	}
 
 	{
@@ -12892,16 +12898,20 @@ void VisionApp::applyViewZ(double new_z)
 		if (_refreshPitchLabels) _refreshPitchLabels();
 	}
 
-	for (auto& f : _fiducialInfos) if (f.hasTeachPoint) f.teach_point.wz = new_z;
-	for (auto& b : _barcodeInfos) if (b.hasTeachPoint) b.teach_point.wz = new_z;
+	if (everything) {
+		for (auto& f : _fiducialInfos) if (f.hasTeachPoint) f.teach_point.wz = new_z;
+		for (auto& b : _barcodeInfos) if (b.hasTeachPoint) b.teach_point.wz = new_z;
+	}
 
 	savePlane();
-	saveFiducial();
-	saveBarcode();
 	saveRecipe();
-	saveLineScans();
 	saveRecipeConfig(); //the pitch regions live here
-	AuditLog::instance().log(QStringLiteral("VIEW_Z_UPDATE"), QStringLiteral("z=%1").arg(new_z));
+	if (everything) {
+		saveFiducial();
+		saveBarcode();
+		saveLineScans();
+	}
+	AuditLog::instance().log(QStringLiteral("VIEW_Z_UPDATE"), QStringLiteral("z=%1 scope=%2").arg(new_z).arg(everything ? "all" : "views+units"));
 }
 
 bool VisionApp::getCurrentPoint(double& x, double& y, double& z)

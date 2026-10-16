@@ -262,7 +262,7 @@ void VisionApp::refreshGuidedSetupPage()
 	ui.toolButton_gsTeachUnitLast->setEnabled(r.p1Set);
 	ui.toolButton_gsJogUnitLast->setEnabled(r.p2Set);
 	ui.label_gsFocusZ->setText(_guidedSetup.focusZSet
-		? QStringLiteral("Focus height: Z %1 mm (applied to every view and teach point)").arg(_guidedSetup.focusZ, 0, 'f', 3)
+		? QStringLiteral("Focus height: Z %1 mm (applied to the 2D views and units)").arg(_guidedSetup.focusZ, 0, 'f', 3)
 		: QStringLiteral("Focus height: not taught"));
 	ui.toolButton_gsJogFocusZ->setEnabled(_guidedSetup.focusZSet);
 
@@ -557,9 +557,9 @@ void VisionApp::guidedTeachUnitRight()
 
 /*
 * The 2D camera's in-focus height. The operator focuses by eye (or with the live view), presses,
-* and the current Z becomes THE Z of the recipe: applyViewZ() writes it into the plane, every
-* view, every line scan, every region's taught points and every fiducial and barcode teach
-* point, so nothing in the run is left at whatever height it happened to be taught at.
+* and the current Z becomes the Z the camera works at: applyViewZ(z, false) writes it into the
+* plane, every 2D view and every region's unit points. Fiducials, barcode teach points and the
+* line scans keep their own taught heights - they are not the camera's focus.
 */
 void VisionApp::guidedTeachFocusZ()
 {
@@ -568,10 +568,10 @@ void VisionApp::guidedTeachFocusZ()
 
 	_guidedSetup.focusZSet = true;
 	_guidedSetup.focusZ = z;
-	applyViewZ(z); //saves the recipe files and recipeConfig, which carries _guidedSetup too
+	applyViewZ(z, false); //2D views and the unit grid only; saves recipeConfig, which carries _guidedSetup too
 
 	refreshGuidedSetupPage();
-	showStatus(QStringLiteral("Focus height %1 mm applied to every view and teach point").arg(z, 0, 'f', 3));
+	showStatus(QStringLiteral("Focus height %1 mm applied to the 2D views and units").arg(z, 0, 'f', 3));
 	AuditLog::instance().log(QStringLiteral("GUIDED_TEACH_FOCUS_Z"), QStringLiteral("z=%1").arg(z, 0, 'f', 3));
 }
 
