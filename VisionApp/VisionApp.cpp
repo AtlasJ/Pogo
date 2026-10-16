@@ -13851,6 +13851,7 @@ void VisionApp::inspectionDone(QVector<ct::DefectResult>& defectResults, QVector
 	//here get lot info
 	_productionPage->inspectionDone();
 	progressBarRelease(_stopRun);
+	SystemData::instance()._platformZOffset = 0.0; //the platform compensation belongs to the run that measured it
 	reloadStyleSheet();
 	time.log_duration("[InspectionDone] UI Update");
 

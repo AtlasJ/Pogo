@@ -34,6 +34,21 @@ struct SafetyCheckConfig {
 	QRectF roi;
 
 	/*
+	* Reference height: the profiler's reading over the check point when the recipe was taught,
+	* so a run can tell how far THIS platform sits from that one and lift or lower every move by
+	* the difference. The feature check says the right part is there; this says at what height.
+	*
+	* heightSlope is d(reading)/d(machine Z), measured at teach by stepping Z 1 mm and reading
+	* again. It carries the profiler's sign convention AND the Z axis direction, neither of which
+	* this code assumes: compensation = -(reading - refHeightMm) / heightSlope, in machine Z.
+	* A platform that reads 1 where the reference read 3, with a slope of -1, needs +2 mm.
+	*/
+	bool refHeightSet = false;
+	double refHeightMm = 0.0;
+	double heightSlope = 0.0;
+	double maxZCompMm = 10.0; //a compensation beyond this is a wrong platform or a bad read, not a shim
+
+	/*
 	* Pattern matching needs a SECOND region: the model is learnt from learnRoi, then looked for
 	* inside roi. One box cannot do both - a learn box tight around the feature makes the best
 	* model, while the search box has to be loose enough to still contain the feature after the

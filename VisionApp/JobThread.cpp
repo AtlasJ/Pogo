@@ -6874,6 +6874,18 @@ void JobThread::simulateOnlineStitching()
 
 void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool waitJogDone)
 {
+	/*
+	* Platform height compensation. The safety check measures, before each run, how far this
+	* platform sits from the one the recipe was taught on and stores the difference in machine Z;
+	* every move of the run - fiducial, view, barcode read, 3D scan - is lifted or lowered by it
+	* here, at the one place all of them pass through. Outside a run it is 0.
+	*/
+	const double platformDz = SystemData::instance()._platformZOffset.load();
+	if (platformDz != 0.0) {
+		ct::logger::info("[Motion] Platform Z compensation %+.3f mm: Z %.3f -> %.3f", platformDz, z_mm, z_mm + platformDz);
+		z_mm += platformDz;
+	}
+
 	ScopedTimeLogger stl(QString("Jog to: %1, %2, %3").arg(x_mm).arg(y_mm).arg(z_mm).toStdString());
 	MachineController::instance().trackTime(QString("Jog %1").arg(type));
 
@@ -6957,6 +6969,47 @@ void JobThread::jogView(const QView& v, double z_offset)
 	jogBasedOnFiducial(v.world.wx, v.world.wy, new_z, "2D");
 
 	if (SystemData::instance()._snapDelay_ms != 0) os_tool::doNothing(SystemData::instance()._snapDelay_ms);
+}
+
+/*
+* The height of whatever is under the camera point, read by the profiler. jogLaser() puts the
+* laser line where the camera was looking (the camera-to-laser offset the 3D optics page taught),
+* then the head is switched to live mode - encoder-triggered batch mode cannot produce a profile
+* on a stationary gantry - and several single profiles are read. The MEDIAN of every valid point
+* is the height: a pin, an edge or a dropout inside the line must not swing a number that will
+* shift every move of the run.
+*/
+bool JobThread::measureProfileHeightAt(double x, double y, double z, double& heightMm, QString& why)
+{
+	m_stopRun = false; //a stale stop flag must not abort the jog below
+
+	auto& pm = ProfilerManager::instance();
+	if (!pm.isConnected(m_profilerID)) { why = QStringLiteral("profiler not connected"); return false; }
+
+	jogLaser(x, y, z, "2D");
+
+	pm.stop(m_profilerID); //a live read needs scan acquisition stopped
+	if (!pm.startLive(m_profilerID)) { why = QStringLiteral("profiler could not enter live mode"); return false; }
+
+	std::vector<double> vals;
+	for (int i = 0; i < 5; i++) {
+		if (pm.snapShot(m_profilerID)) {
+			if (auto* f = pm.getFrame(m_profilerID))
+				for (double v : f->profiles) if (std::isfinite(v)) vals.push_back(v);
+		}
+		os_tool::doNothing(60);
+	}
+
+	if (!pm.stopLive(m_profilerID))
+		ct::logger::error("[SafetyCheck] FAILED to restore the profiler's encoder batch mode after the height read");
+
+	if (vals.size() < 20) { why = QStringLiteral("no valid profile points under the laser"); return false; }
+
+	std::nth_element(vals.begin(), vals.begin() + vals.size() / 2, vals.end());
+	heightMm = vals[vals.size() / 2];
+	ct::logger::info("[SafetyCheck] Height at camera point (%.3f, %.3f, %.3f): %.3f mm from %d points",
+		x, y, z, heightMm, (int)vals.size());
+	return true;
 }
 
 void JobThread::jogLaser(double x, double y, double z, QString type)

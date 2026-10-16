@@ -242,6 +242,10 @@ public:
 	std::atomic<bool> _pitchEnableBarcode = true; //production runs the barcode reader flow
 	std::atomic<bool> _pitchEnable3D = true;      //production runs the 3D scan
 	std::atomic<double> _pitchScanLen_mm = 10.0;  //3D scan length, centered on each unit's mid point
+
+	//Z added to EVERY jog while a run is on: the platform's height relative to the one the recipe
+	//was taught on, measured by the safety check's reference height. 0 outside a run.
+	std::atomic<double> _platformZOffset = 0.0;
 	std::atomic<int> _prodSequence = 0;
 	std::atomic<bool> _autoLockTrolley = true;    //lock trolley when its guard attaches, release at production end           //production order: 0 = all 2D (barcode/OCR) then all 3D, 1 = alternate 2D+3D per unit
 

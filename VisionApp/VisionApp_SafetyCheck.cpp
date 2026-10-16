@@ -90,6 +90,55 @@ void VisionApp::initSafetyCheckPage()
 			QStringLiteral("%1, %2, %3").arg(wx, 0, 'f', 3).arg(wy, 0, 'f', 3).arg(wz, 0, 'f', 3));
 	});
 
+	connect(ui.dspin_scMaxZComp, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=](double v) {
+		_safetyCheck.maxZCompMm = v;
+		saveRecipeConfig();
+	});
+
+	/*
+	* Teach Reference Height. Two reads, not one: the second is taken with Z stepped 1 mm towards
+	* home, and the difference is the sensor's slope against machine Z - its sign convention and
+	* the axis direction in one number, measured rather than assumed. A slope far from +/-1 means
+	* the laser is not on the same surface both times (an edge, a pin, a dropout), and the teach
+	* is refused rather than stored.
+	*/
+	connect(ui.toolButton_scTeachHeight, &QToolButton::clicked, this, [=]() {
+		if (!_safetyCheck.pointSet) { showMsg("Teach the check position first."); return; }
+
+		const double px = _safetyCheck.pointX, py = _safetyCheck.pointY, pz = _safetyCheck.pointZ;
+		constexpr double kStepMm = -1.0; //towards home
+
+		ui.toolButton_scTeachHeight->setEnabled(false);
+		QString why;
+		double h0 = 0.0, h1 = 0.0;
+		const bool ok0 = _jobThread.measureProfileHeightAt(px, py, pz, h0, why);
+		const bool ok1 = ok0 && _jobThread.measureProfileHeightAt(px, py, pz + kStepMm, h1, why);
+		_jobThread.jogUser(px, py, pz, "2D", true); //back to the camera point, whatever happened
+		ui.toolButton_scTeachHeight->setEnabled(true);
+
+		if (!ok0 || !ok1) {
+			showMsg(QStringLiteral("Could not read the reference height.\n\n%1").arg(why));
+			return;
+		}
+
+		const double slope = (h1 - h0) / kStepMm;
+		if (std::abs(slope) < 0.5 || std::abs(slope) > 2.0) {
+			showMsg(QStringLiteral("Reference height NOT stored.\n\n"
+				"The profiler read %1 mm at the point and %2 mm with Z moved %3 mm, a slope of %4 per mm. "
+				"That is not a single flat surface - move the check point so the laser line lands on one.")
+				.arg(h0, 0, 'f', 3).arg(h1, 0, 'f', 3).arg(kStepMm, 0, 'f', 1).arg(slope, 0, 'f', 2));
+			return;
+		}
+
+		_safetyCheck.refHeightMm = h0;
+		_safetyCheck.heightSlope = slope;
+		_safetyCheck.refHeightSet = true;
+		refreshSafetyCheckPage();
+		saveRecipeConfig();
+		AuditLog::instance().log(QStringLiteral("SAFETY_CHECK_TEACH_HEIGHT"),
+			QStringLiteral("ref=%1 slope=%2").arg(h0, 0, 'f', 3).arg(slope, 0, 'f', 3));
+	});
+
 	connect(ui.toolButton_scJogTo, &QToolButton::clicked, this, [=]() {
 		if (!_safetyCheck.pointSet) { showMsg("Teach the check position first."); return; }
 		emit jogSnap(_safetyCheck.pointX, _safetyCheck.pointY, _safetyCheck.pointZ, _mainOptics[_camID]);
@@ -232,6 +281,17 @@ void VisionApp::refreshSafetyCheckPage()
 		? QStringLiteral("Point: %1, %2, %3").arg(_safetyCheck.pointX, 0, 'f', 3)
 			.arg(_safetyCheck.pointY, 0, 'f', 3).arg(_safetyCheck.pointZ, 0, 'f', 3)
 		: QStringLiteral("Point: not set"));
+
+	//reference height needs the point: it is measured AT the point
+	ui.toolButton_scTeachHeight->setEnabled(_safetyCheck.pointSet);
+	ui.label_scRefHeight->setText(_safetyCheck.refHeightSet
+		? QStringLiteral("Reference height: %1 mm  (slope %2 per mm of Z)")
+			.arg(_safetyCheck.refHeightMm, 0, 'f', 3).arg(_safetyCheck.heightSlope, 0, 'f', 2)
+		: QStringLiteral("Reference height: not taught"));
+	{
+		QSignalBlocker b(ui.dspin_scMaxZComp);
+		ui.dspin_scMaxZComp->setValue(_safetyCheck.maxZCompMm);
+	}
 
 	ui.label_scPatternState->setText(QFile::exists(safetyPatternPath())
 		? QStringLiteral("Pattern learnt") : QStringLiteral("No pattern learnt"));
@@ -417,6 +477,9 @@ bool VisionApp::runSafetyCheck(const QImage& fov, SafetyCheckResult& res)
 */
 bool VisionApp::safetyCheckPassedForProduction()
 {
+	//a new run starts from the taught heights; the measurement below may shift them again
+	SystemData::instance()._platformZOffset = 0.0;
+
 	if (!_safetyCheck.enabled) return true;
 
 	if (!_safetyCheck.pointSet) {
@@ -449,9 +512,44 @@ bool VisionApp::safetyCheckPassedForProduction()
 		showMsg(QStringLiteral("Trolley did not dock properly - production will not start.\n\n"
 			"The safety check could not find the expected feature at the taught position.\n(%1)")
 			.arg(res.message));
+		return false;
 	}
 
-	return ok;
+	/*
+	* The feature is there; now at what height. A platform that reads 1 mm where the reference
+	* read 3 mm sits 2 mm lower (or higher - the slope settles which), and every move of the run
+	* is shifted by that much through SystemData::_platformZOffset, which jog() applies. Only a
+	* difference past the configured cap is refused: that is a different platform or a bad read,
+	* not something to shim.
+	*/
+	if (_safetyCheck.refHeightSet) {
+		double h = 0.0;
+		QString why;
+		if (!_jobThread.measureProfileHeightAt(_safetyCheck.pointX, _safetyCheck.pointY, _safetyCheck.pointZ, h, why)) {
+			addLogLine(QStringLiteral("Safety check FAILED: height read - %1").arg(why));
+			showMsg(QStringLiteral("Production will not start.\n\nThe reference height could not be measured: %1").arg(why));
+			return false;
+		}
+
+		const double dz = -(h - _safetyCheck.refHeightMm) / _safetyCheck.heightSlope;
+		const QString detail = QStringLiteral("height %1 mm, reference %2 mm, Z compensation %3 mm")
+			.arg(h, 0, 'f', 3).arg(_safetyCheck.refHeightMm, 0, 'f', 3).arg(dz, 0, 'f', 3);
+		ct::logger::info("[SafetyCheck] %s", detail.toStdString().c_str());
+		AuditLog::instance().log(QStringLiteral("SAFETY_CHECK_HEIGHT"), detail);
+
+		if (std::abs(dz) > _safetyCheck.maxZCompMm) {
+			addLogLine(QStringLiteral("Safety check FAILED: %1").arg(detail));
+			showMsg(QStringLiteral("Production will not start.\n\n"
+				"This platform is %1 mm from the reference height, beyond the %2 mm limit set on the Safety Check page.\n(%3)")
+				.arg(dz, 0, 'f', 2).arg(_safetyCheck.maxZCompMm, 0, 'f', 1).arg(detail));
+			return false;
+		}
+
+		SystemData::instance()._platformZOffset = dz;
+		addLogLine(QStringLiteral("Platform Z compensation %1%2 mm").arg(dz >= 0 ? "+" : "").arg(dz, 0, 'f', 3));
+	}
+
+	return true;
 }
 
 /*

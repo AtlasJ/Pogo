@@ -1430,6 +1430,10 @@ bool VisionApp::saveRecipeConfig()
 		sc.insert(QStringLiteral("pointX"), _safetyCheck.pointX);
 		sc.insert(QStringLiteral("pointY"), _safetyCheck.pointY);
 		sc.insert(QStringLiteral("pointZ"), _safetyCheck.pointZ);
+		sc.insert(QStringLiteral("refHeightSet"), _safetyCheck.refHeightSet);
+		sc.insert(QStringLiteral("refHeightMm"), _safetyCheck.refHeightMm);
+		sc.insert(QStringLiteral("heightSlope"), _safetyCheck.heightSlope);
+		sc.insert(QStringLiteral("maxZCompMm"), _safetyCheck.maxZCompMm);
 		sc.insert(QStringLiteral("roiX"), _safetyCheck.roi.x());
 		sc.insert(QStringLiteral("roiY"), _safetyCheck.roi.y());
 		sc.insert(QStringLiteral("roiW"), _safetyCheck.roi.width());
@@ -2126,6 +2130,11 @@ bool VisionApp::loadRecipeConfig()
 			_safetyCheck.pointX = jsonHelper::getDouble(sc, QStringLiteral("pointX"), 0.0);
 			_safetyCheck.pointY = jsonHelper::getDouble(sc, QStringLiteral("pointY"), 0.0);
 			_safetyCheck.pointZ = jsonHelper::getDouble(sc, QStringLiteral("pointZ"), 0.0);
+			_safetyCheck.refHeightSet = jsonHelper::getBool(sc, QStringLiteral("refHeightSet"), false);
+			_safetyCheck.refHeightMm = jsonHelper::getDouble(sc, QStringLiteral("refHeightMm"), 0.0);
+			_safetyCheck.heightSlope = jsonHelper::getDouble(sc, QStringLiteral("heightSlope"), 0.0);
+			_safetyCheck.maxZCompMm = jsonHelper::getDouble(sc, QStringLiteral("maxZCompMm"), 10.0);
+			if (_safetyCheck.heightSlope == 0.0) _safetyCheck.refHeightSet = false; //cannot be applied without a slope
 			_safetyCheck.roi = QRectF(jsonHelper::getDouble(sc, QStringLiteral("roiX"), 0.0),
 				jsonHelper::getDouble(sc, QStringLiteral("roiY"), 0.0),
 				jsonHelper::getDouble(sc, QStringLiteral("roiW"), 0.0),

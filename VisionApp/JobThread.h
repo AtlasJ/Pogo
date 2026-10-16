@@ -383,6 +383,8 @@ public slots:
 	bool settleAxis(int axis, double target_mm);
 	void jog(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
 	void jogUser(double x, double y, double z, QString type = "2D", bool waitJogDone = true); //user-initiated: clears a stale stop flag first
+	//profiler over the CAMERA point (x, y, z) via the laser offset, live single-profile read, median height in mm
+	bool measureProfileHeightAt(double x, double y, double z, double& heightMm, QString& why);
 	void dryRun(QVector<QVector3D> coords, int loops);
 	void reconnectMotion();
 	void jogSnap(double x, double y, double z, const OpticsInfo& optic);
