@@ -855,11 +855,23 @@ bool VisionApp::pitchTeachIsConsistent(QString& why)
 	const int fidRev = SystemData::instance()._fiducialTeachRev;
 	QStringList problems;
 
+	/*
+	* The fiducial-reference checks below belong to the Setup Region page's way of teaching,
+	* where P1 captures the fiducials' LOCATED positions and that capture can go stale. The guided
+	* four-corner layout does not keep such a capture: its run-time reference is each fiducial's
+	* current teach point (JobThread::pitchUnitPoint), which cannot be older than itself. Only the
+	* unit-ID collision check still applies there.
+	*/
+	const bool fourPoint = SystemData::instance()._fourPointFiducial;
+
 	for (int i = 0; i < (int)regions.size(); i++) {
 		const auto& r = regions[i];
 		if (!r.p1Set) continue;
 
-		if (r.fidRefMask == 0) {
+		if (fourPoint) {
+			//nothing region-specific to check for the fiducials; the ID check below covers the rest
+		}
+		else if (r.fidRefMask == 0) {
 			problems << QStringLiteral("Region %1 has no fiducial reference - press Locate Fiducials, "
 				"then Set P1.").arg(i + 1);
 		}
