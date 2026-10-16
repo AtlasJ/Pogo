@@ -6922,8 +6922,22 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 			waitEncoderCheck(x_mm, y_mm, z_mm);
 		}
 
-		auto c = SystemData::instance().currentCoordinate();
-		ct::logger::info("Jog done: %f, %f, %f", c.wx, c.wy, c.wz);
+		//the card's own feedback, read now, decides whether each axis really landed
+		settleAxis(axisX, x_mm);
+		if (type != "3D") settleAxis(axisY, y_mm);
+		settleAxis(axisZ, z_mm);
+
+		/*
+		* Read from the card, not from SystemData's coordinate: that is the UI's 300 ms poll,
+		* so the old line could print a position up to 300 ms stale - 90 mm of X travel, or the
+		* 1.7 mm Z shortfall that looked like a landing error in the 16 Oct 2026 logs.
+		*/
+		const auto px = MotionController::instance().get_position_mm(m_motionID, 0, axisX);
+		const auto py = MotionController::instance().get_position_mm(m_motionID, 0, axisY);
+		const auto pz = MotionController::instance().get_position_mm(m_motionID, 0, axisZ);
+		const double nan = std::numeric_limits<double>::quiet_NaN();
+		ct::logger::info("Jog done: %f, %f, %f (card feedback; target %.3f, %.3f, %.3f)",
+			px.value_or(nan), py.value_or(nan), pz.value_or(nan), x_mm, y_mm, z_mm);
 	}
 
 	if (type == "3D") {
@@ -7520,6 +7534,63 @@ void JobThread::unloadBoard()
 	//NOTE: no board transport on this machine, just complete the run
 	emit signalBoardUnloaded();
 }
+/*
+* "In position" is not "on target". waitAxis() returns on MDN from the card (plus INP from the
+* drive on X/Y), and the 16 Oct 2026 logs show both asserted with the axis 1.1 to 1.6 mm from
+* where it was sent, every time after the gantry had been pushed by hand during a curtain trip -
+* even once the command counter had been re-synced to the encoder. Whatever the drive believes
+* about its own position, the card's feedback counter is the coordinate system this application
+* teaches, homes and inspects in, so that is the counter a move must satisfy.
+*
+* This reads that counter directly, gives the drive half a second to close the last fraction,
+* and if the axis is still off re-issues the SAME absolute move - at most twice. Every correction
+* is logged with its size on purpose: a machine that keeps needing them has a drive or linear
+* scale problem that belongs with the hardware, and the log is how that gets noticed.
+*/
+bool JobThread::settleAxis(int axis, double target_mm)
+{
+	constexpr double kTolMm = 0.05;
+	constexpr int kSettleMs = 500;
+	constexpr int kMaxCorrections = 2;
+	static const char* names[3] = { "X", "Y", "Z" };
+	const char* name = (axis >= 0 && axis < 3) ? names[axis] : "?";
+
+	auto& mc = MotionController::instance();
+	auto readErr = [&](double& err) {
+		auto p = mc.get_position_mm(m_motionID, 0, axis);
+		if (!p.has_value()) return false;
+		err = p.value() - target_mm;
+		return true;
+	};
+
+	double err = 0.0;
+	for (int attempt = 0; attempt <= kMaxCorrections; ++attempt) {
+		QElapsedTimer t;
+		t.start();
+		while (true) {
+			if (!readErr(err)) return false; //card not answering: nothing sensible to do here
+			if (std::abs(err) <= kTolMm) {
+				if (attempt > 0) ct::logger::warn("[Motion] Axis %s on target after %d correction(s): %.3f mm", name, attempt, target_mm + err);
+				return true;
+			}
+			if (m_stopRun || t.elapsed() >= kSettleMs) break;
+			os_tool::goSleep(20);
+		}
+		if (m_stopRun) return false;
+		if (attempt == kMaxCorrections) break;
+
+		ct::logger::warn("[Motion] Axis %s reported in position but sits %.3f mm from %.3f - re-issuing the move (%d of %d)",
+			name, err, target_mm, attempt + 1, kMaxCorrections);
+		if (!mc.absolute_move(m_motionID, axis, target_mm)) return false;
+		os_tool::doNothing(m_motionReadDelay_ms);
+		waitAxis(axis);
+	}
+
+	ct::logger::error("[Motion] Axis %s still %.3f mm from %.3f after %d corrections - check the drive feedback and the linear scale",
+		name, err, target_mm, kMaxCorrections);
+	return false;
+}
+
 void JobThread::waitEncoderCheck(double x_mm, double y_mm, double z_mm)
 {
 	double allowable_tolerance = 0.1;

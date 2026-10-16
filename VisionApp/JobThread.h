@@ -379,6 +379,8 @@ public slots:
 
 	void waitAxis(int axis);
 	void waitEncoderCheck(double x_mm, double y_mm, double z_mm);
+	//after waitAxis(): the card's feedback decides whether the move landed; re-issues it if not
+	bool settleAxis(int axis, double target_mm);
 	void jog(double x, double y, double z, QString type = "2D", bool waitJogDone = true);
 	void jogUser(double x, double y, double z, QString type = "2D", bool waitJogDone = true); //user-initiated: clears a stale stop flag first
 	void dryRun(QVector<QVector3D> coords, int loops);

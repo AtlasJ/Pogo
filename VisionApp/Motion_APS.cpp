@@ -517,8 +517,8 @@ bool Motion_APS::sync_command_to_feedback(int axis)
 	if (log_error_code("Failed to set command position", ret)) return false;
 
 	ct::logger::warn("[Motion_APS] Axis %d command counter re-synced to the encoder: %.3f -> %.3f mm "
-		"(the axis moved %.3f mm while the servo was off)",
-		axis, to_mm(axis, cmd), to_mm(axis, fbk), to_mm(axis, fbk) - to_mm(axis, cmd));
+		"(%d -> %d pulse; the axis moved %.3f mm while the servo was off)",
+		axis, to_mm(axis, cmd), to_mm(axis, fbk), (int)cmd, (int)fbk, to_mm(axis, fbk) - to_mm(axis, cmd));
 	return true;
 }
 
