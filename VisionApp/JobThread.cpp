@@ -4881,12 +4881,18 @@ em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int 
 	* the reference centroid. One missing fiducial costs nothing but a little averaging.
 	*/
 	if (SystemData::instance()._fourPointFiducial) {
-		const double rx[4] = { r.fidRef1x, r.fidRef2x, r.fidRef3x, r.fidRef4x };
-		const double ry[4] = { r.fidRef1y, r.fidRef2y, r.fidRef3y, r.fidRef4y };
+		/*
+		* The reference is each fiducial's CURRENT teach point, not a copy stored on the region.
+		* The guided setup teaches fiducials and units on the same board pose, so the teach points
+		* ARE the reference - and a copy taken when unit (1,1) was taught goes stale the moment a
+		* fiducial is re-taught afterwards, which the run would then read as the board having
+		* moved by exactly that re-teach. Reading the live teach point cannot go stale.
+		*/
+		const auto& fidInfo = *m_fiducialInfos;
 		std::vector<em::V2d> ref, loc;
-		for (int i = 0; i < 4; i++) {
-			if (((mask >> i) & 1) && m_fidLocatedOk[i]) {
-				ref.push_back(em::V2d(rx[i], ry[i]));
+		for (int i = 0; i < 4 && i < (int)fidInfo.size(); i++) {
+			if (fidInfo[i].hasTeachPoint && m_fidLocatedOk[i]) {
+				ref.push_back(em::V2d(fidInfo[i].teach_point.wx, fidInfo[i].teach_point.wy));
 				loc.push_back(m_fidLocatedMm[i]);
 			}
 		}
@@ -7207,8 +7213,10 @@ void JobThread::testPitchUnits(bool threeD)
 	const OpticsInfo mainOptic = getMainOptics();
 	int visited = 0;
 
-	ct::logger::info("[GuidedTest] %s test: along %s travelling %s", threeD ? "3D" : "2D",
-		sd.isLineScanAxisY() ? "Y" : "X", sd.isLineScanDirectionNegative() ? "negative" : "positive");
+	ct::logger::info("[GuidedTest] %s test: scan along %s travelling %s, scan length %.2f mm, laser line %.2f mm wide, laser offset %.3f/%.3f/%.3f mm",
+		threeD ? "3D" : "2D", sd.isLineScanAxisY() ? "Y" : "X", sd.isLineScanDirectionNegative() ? "negative" : "positive",
+		sd._pitchScanLen_mm.load(), ScaleManager::instance().laser_fov_mm(),
+		m_laserOffset ? m_laserOffset->wx : 0.0, m_laserOffset ? m_laserOffset->wy : 0.0, m_laserOffset ? m_laserOffset->wz : 0.0);
 
 	for (size_t ri = 0; ri < regions.size() && !m_stopRun; ri++) {
 		const auto& r = regions[ri];
