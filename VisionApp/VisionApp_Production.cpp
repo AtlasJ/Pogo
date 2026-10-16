@@ -57,9 +57,18 @@ void VisionApp::initProductionUI() {
 		return t->rowCount() - 1; //fallback: newest row
 	};
 
-	connect(&_jobThread, &JobThread::unitBarcode, this, [=](QString unitID, QString code, int reader) {
-		if (_processType != ProcessType::PRODUCTION) return;
+	//a unit's row, strictly - unlike findUnitRow there is no fallback
+	auto hasUnitRow = [=](const QString& unitID) -> bool {
+		auto* t = ui.tableWidget_prodStatus;
+		for (int r = t->rowCount() - 1; r >= 0; r--) {
+			auto* it = t->item(r, 0);
+			if (it && it->data(Qt::UserRole).toString() == unitID) return true;
+		}
+		return false;
+	};
 
+	//one row per unit, made from its barcode read - or, with barcode reading off, from the PMF
+	auto addUnitRow = [=](const QString& unitID, QTableWidgetItem* bItem, const QString& ocr, bool codeOk) {
 		auto* t = ui.tableWidget_prodStatus;
 		const int row = t->rowCount();
 		t->insertRow(row);
@@ -69,14 +78,8 @@ void VisionApp::initProductionUI() {
 		t->setItem(row, 0, tItem);
 
 		t->setItem(row, 1, new QTableWidgetItem(unitID)); //unit IDs are X#Y#
-
-		const bool codeOk = (code != "No_Barcode" && code != "Fail_to_read_barcode" && code != "ERROR");
-		auto* bItem = new QTableWidgetItem(code);
-		bItem->setForeground(codeOk ? QBrush(Qt::green) : QBrush(Qt::red));
-		bItem->setData(Qt::UserRole, reader); //which reader decoded - keys the saved images
 		t->setItem(row, 2, bItem);
-
-		t->setItem(row, 3, new QTableWidgetItem("-"));
+		t->setItem(row, 3, new QTableWidgetItem(ocr));
 
 		auto* rItem = new QTableWidgetItem(codeOk ? "Inspecting" : "FAIL");
 		rItem->setForeground(codeOk ? QBrush(QColor(255, 191, 0)) : QBrush(Qt::red));
@@ -91,9 +94,41 @@ void VisionApp::initProductionUI() {
 		rItem->setData(Qt::UserRole + 2, required);
 
 		t->setItem(row, 4, rItem);
+		if (!codeOk) showUnitOnLiveMapping(unitID, UnitState::Fail);
 
 		updateProductionSummary();
 		t->scrollToBottom();
+	};
+
+	connect(&_jobThread, &JobThread::unitBarcode, this, [=](QString unitID, QString code, int reader) {
+		if (_processType != ProcessType::PRODUCTION) return;
+
+		const bool codeOk = (code != "No_Barcode" && code != "Fail_to_read_barcode" && code != "ERROR");
+		auto* bItem = new QTableWidgetItem(code);
+		bItem->setForeground(codeOk ? QBrush(Qt::green) : QBrush(Qt::red));
+		bItem->setData(Qt::UserRole, reader); //which reader decoded - keys the saved images
+		addUnitRow(unitID, bItem, QStringLiteral("-"), codeOk);
+	}, Qt::QueuedConnection);
+
+	connect(&_jobThread, &JobThread::unitStarted, this, [=](QString unitID) {
+		if (_processType != ProcessType::PRODUCTION) return;
+
+		//Live Mapping: the unit being visited turns Scanning (only from Pending - see showUnitOnLiveMapping)
+		showUnitOnLiveMapping(unitID, UnitState::Scanning);
+
+		/*
+		* With barcode reading off, nothing reads the unit, so nothing made its row and every
+		* result after it had nowhere to land. Make the row from what the PMF already says the
+		* unit is: its cable and position stand in for the barcode (EK761P-230), and the PMF
+		* column it is listed under is its OCR letter - known, so not read.
+		*/
+		if (SystemData::instance()._pitchEnableBarcode || hasUnitRow(unitID)) return;
+		const int position = positionForUnit(unitID);
+		const std::optional<PogoUnitInfo> info = position >= 0 ? getUnitInfo(position) : std::nullopt;
+		auto* bItem = new QTableWidgetItem(info
+			? QStringLiteral("%1-%2").arg(info->cable, TemplateMappingStore::valueText(position)) : QStringLiteral("-"));
+		bItem->setData(Qt::UserRole, 0); //no reader decoded it
+		addUnitRow(unitID, bItem, info && !info->ocr.isNull() ? QString(info->ocr) : QStringLiteral("-"), true);
 	}, Qt::QueuedConnection);
 
 	//double click a unit's cell to review its saved images:
@@ -213,6 +248,7 @@ void VisionApp::initProductionUI() {
 				rItem->setForeground(QBrush(Qt::red));
 				rItem->setData(Qt::UserRole + 1, 0);
 				updateProductionSummary();
+				showUnitOnLiveMapping(unitID, UnitState::Fail);
 				return;
 			}
 
@@ -227,6 +263,7 @@ void VisionApp::initProductionUI() {
 				rItem->setForeground(QBrush(Qt::green));
 				rItem->setData(Qt::UserRole + 1, 0);
 				updateProductionSummary();
+				showUnitOnLiveMapping(unitID, UnitState::Pass);
 				if (ui.checkBox_saveFailedOnly->isChecked()) discardUnitImages(unitID);
 			}
 		}, Qt::QueuedConnection);
@@ -559,6 +596,7 @@ void VisionApp::startProduction()
 
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
+	resetUnitStates(); //Live Mapping: every fitted position back to Pending
 	updateProductionSummary();
 	clearErrorLogs();
 	clearInspectionLogs();
@@ -658,6 +696,7 @@ void VisionApp::startProductionS()
 
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
+	resetUnitStates(); //Live Mapping: every fitted position back to Pending
 	updateProductionSummary();
 	clearErrorLogs();
 	clearInspectionLogs();

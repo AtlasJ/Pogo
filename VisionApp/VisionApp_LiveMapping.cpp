@@ -28,7 +28,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QRegularExpression>
 #include <QSaveFile>
+#include <QStyle>
 #include <QThread>
 #include <QTimer>
 #include <algorithm>
@@ -287,6 +289,7 @@ void VisionApp::restoreProductionSetup()
 	const QString path = _pmfFile;
 	QTimer::singleShot(1000, this, [=]() {
 		if (_pmfFile != path) return; //a PMF was loaded or cleared in the meantime
+		if (_productionSetupLocked) return; //never under a run that is already using the PMF
 
 		if (!QFileInfo::exists(path)) {
 			//kept, not forgotten: a share that is offline now may be back next time
@@ -375,4 +378,79 @@ bool VisionApp::liveMappingReadyForProduction()
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"),
 		QStringLiteral("live mapping: %1").arg(missing.join(QLatin1Char(' '))));
 	return false;
+}
+
+/*
+* Where a production unit sits on the Live Mapping. A run names its units X#Y# (1-based,
+* JobThread::pitchUnitID) and the template mapping's cells are headed X1.. and Y1.., so unit
+* X3Y2 is the template's cell X3 Y2 and holds that cell's position. -1 when the unit is outside
+* the template or its cell holds no position. This is the one place that ties the two together.
+*/
+int VisionApp::positionForUnit(const QString& unitID) const
+{
+	static const QRegularExpression re(QStringLiteral("^X(\d+)Y(\d+)$"));
+	const QRegularExpressionMatch match = re.match(unitID);
+	if (!match.hasMatch()) return -1;
+
+	const int mi = _templateMappings.indexOfName(ui.lineEdit_prodTemplateMapping->text());
+	if (mi < 0) return -1;
+	const TemplateMapping& m = _templateMappings.mappings()[mi];
+	const int x = match.captured(1).toInt() - 1;
+	const int y = match.captured(2).toInt() - 1;
+	if (x < 0 || y < 0 || x >= m.xCount || y >= m.yCount) return -1;
+	return m.values[y][x] ? *m.values[y][x] : -1;
+}
+
+/*
+* The units a production run visits, by the rule above: those whose cell holds a position the
+* PMF lists. A recipe unit outside the template, or on a cell the PMF does not have, is not in
+* the set, so the run never goes there. std::nullopt - visit every unit, as before - when there
+* is no usable Live Mapping, which only a debug-mode run can start with.
+*/
+std::optional<QSet<QString>> VisionApp::fittedUnits() const
+{
+	const int mi = _templateMappings.indexOfName(ui.lineEdit_prodTemplateMapping->text());
+	if (mi < 0 || _pmfStatus != PmfStatus::Ready) return std::nullopt;
+
+	QSet<QString> units;
+	const TemplateMapping& m = _templateMappings.mappings()[mi];
+	for (int y = 0; y < m.yCount; y++)
+		for (int x = 0; x < m.xCount; x++)
+			if (m.values[y][x] && _pmfUnits.contains(*m.values[y][x]))
+				units.insert(QStringLiteral("X%1Y%2").arg(x + 1).arg(y + 1));
+	return units;
+}
+
+/*
+* A production unit's progress onto its cell. Scanning only ever moves a Pending cell: in a
+* "2D to 3D" run the 3D pass revisits units that may already have failed, and that must not
+* turn back to Scanning.
+*/
+void VisionApp::showUnitOnLiveMapping(const QString& unitID, UnitState state)
+{
+	const int position = positionForUnit(unitID);
+	if (position < 0 || !_pmfUnits.contains(position)) return;
+	if (state == UnitState::Scanning && unitState(position) != UnitState::Pending) return;
+	updateUnitState(position, state);
+}
+
+/*
+* A production run uses the PMF, the template mapping named for it and that mapping's cells the
+* whole way through - which units to visit, which cell each result colours. Changing any of them
+* mid-run would put results on the wrong positions, so they are locked from the moment the run
+* is queued until its last result is in (the production progress bar is released) or it is
+* stopped. Choosing a different mapping to look at on the PMF page stays allowed.
+*/
+void VisionApp::setProductionSetupLocked(bool locked)
+{
+	_productionSetupLocked = locked;
+	for (QToolButton* b : { ui.toolButton_pmfLoad, ui.toolButton_pmfClear, ui.toolButton_prodPmfLoad, ui.toolButton_prodPmfClear })
+		b->setEnabled(!locked);
+
+	auto* name = ui.lineEdit_prodTemplateMapping;
+	name->setReadOnly(locked);
+	name->style()->unpolish(name); //the [readOnly=true] stylesheet look follows only on a re-polish
+	name->style()->polish(name);
+
+	setTemplateMappingEditing(_tmEditing); //re-applies the Setup buttons with the lock taken into account
 }

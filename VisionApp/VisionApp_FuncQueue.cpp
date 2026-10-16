@@ -64,6 +64,7 @@ void VisionApp::collect2D3DView(QString rootPath)
 	_processType = ProcessType::IMAGE_COLLECTION;
 
 	_jobThread.setRootPath(rootPath);
+	_jobThread.setUnitFilter(std::nullopt); //image collection visits every unit
 	QMetaObject::invokeMethod(&_jobThread, "run2D3D", Qt::QueuedConnection);
 	return;
 }
@@ -99,6 +100,10 @@ void VisionApp::inspect2D3D()
 	_imageManager.reset();
 
 	_processType = ProcessType::PRODUCTION;
+
+	//visit only the units the PMF says are fitted (every unit when the Live Mapping is not ready - debug mode)
+	_jobThread.setUnitFilter(fittedUnits());
+	setProductionSetupLocked(true); //until the bar below is released: run end or stop
 
 	//setupProductionDir();
 	

@@ -6384,6 +6384,7 @@ void VisionApp::progressBarRelease(bool directCancel)
 	if (_progressEmbedded && _prodProgressBar)
 	{
 		_progressEmbedded = false;
+		setProductionSetupLocked(false); //the run is over: its PMF and template mapping may change again
 		//stays on the page as the run's last word, until the next run resets it
 		if (directCancel) _prodProgressBar->setFormat(QStringLiteral("Inspection stopped"));
 		else {

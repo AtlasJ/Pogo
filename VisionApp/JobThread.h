@@ -6,6 +6,7 @@
 #include <QWaitCondition>
 #include <QSet>
 #include <array>
+#include <optional>
 #include <QHash>
 #include <QListWidget>
 #include <QCoreApplication>
@@ -274,6 +275,9 @@ private:
 	Fiducial* fiducialForPoint(double x, double y);
 	em::V2d pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int iy); //fiducial-compensated grid point
 	std::vector<std::pair<int, int>> pitchUnitOrder(const SystemData::PitchRegion& r); //(ix, iy) visiting order along the scan direction
+	std::vector<std::pair<int, int>> productionUnitOrder(const SystemData::PitchRegion& r); //pitchUnitOrder() limited by setUnitFilter()
+	mutable QMutex m_unitFilterMutex;
+	std::optional<QSet<QString>> m_unitFilter; //the only unit IDs a run visits; nullopt = all - set from the GUI before the run is queued
 
 	void saveFiducialResult();
 
@@ -433,6 +437,11 @@ public slots:
 	//a run will produce rather than recreating the rule and drifting from it
 	QString pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy);
 
+	//the only units the next pitch run visits; every other unit is skipped outright - no jog, no
+	//read, no scan, no result. Production passes the units the PMF says are fitted; std::nullopt
+	//visits every unit (image collection, and a debug-mode run without a ready Live Mapping).
+	void setUnitFilter(const std::optional<QSet<QString>>& onlyUnits);
+
 	QString readBarcode(int index, bool online = true);
 
 	//calibration
@@ -549,6 +558,7 @@ signals:
 
 	void barcodeDecoded(QString code);
 	void unitBarcode(QString unitID, QString code, int reader); //reader that decoded: 1/2, 0 = none //per pitch unit (or "board"), for the live status table
+	void unitStarted(QString unitID); //a pitch run is about to visit this unit (in each pass that visits it)
 	void locatedBarcode(QRectF roi, int index, bool pass, QString code);
 	void barcodeFailed();
 

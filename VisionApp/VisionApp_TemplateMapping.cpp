@@ -261,15 +261,17 @@ void VisionApp::setTemplateMappingEditing(bool editing)
 	const bool any = ui.comboBox_tmMapping->count() > 0;
 
 	//while editing, nothing may switch the mapping out from under the edits
+	//and while a production run is using the mappings, nothing may change them (setProductionSetupLocked)
+	const bool locked = _productionSetupLocked;
 	ui.comboBox_tmMapping->setEnabled(any && !editing);
-	ui.toolButton_tmAdd->setEnabled(!editing);
-	ui.toolButton_tmRename->setEnabled(any && !editing);
-	ui.toolButton_tmRemove->setEnabled(any && !editing);
+	ui.toolButton_tmAdd->setEnabled(!editing && !locked);
+	ui.toolButton_tmRename->setEnabled(any && !editing && !locked);
+	ui.toolButton_tmRemove->setEnabled(any && !editing && !locked);
 
 	ui.spinBox_tmXCount->setEnabled(editing);
 	ui.spinBox_tmYCount->setEnabled(editing);
-	ui.toolButton_tmEdit->setEnabled(any && !editing);
-	ui.toolButton_tmSave->setEnabled(editing);
+	ui.toolButton_tmEdit->setEnabled(any && !editing && !locked);
+	ui.toolButton_tmSave->setEnabled(editing && !locked);
 	ui.toolButton_tmDiscard->setEnabled(editing);
 	ui.tableWidget_tmValues->setEditTriggers(editing
 		? QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed | QAbstractItemView::AnyKeyPressed

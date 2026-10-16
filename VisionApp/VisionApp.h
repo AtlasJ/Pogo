@@ -626,6 +626,11 @@ private:
 	void restoreProductionSetup();           //startup: bring back the PMF and template mapping used last time
 	QStringList liveMappingProblems() const; //why production cannot start yet; empty when the PMF and template are ready
 	bool liveMappingReadyForProduction();    //start gate: refuses with the list above, except in machine debug mode
+	int positionForUnit(const QString& unitID) const;   //production unit X#Y# -> its template cell's position, -1 if none
+	std::optional<QSet<QString>> fittedUnits() const;   //unit IDs whose position the PMF lists - all a run visits; nullopt = no Live Mapping
+	void showUnitOnLiveMapping(const QString& unitID, UnitState state);
+	bool _productionSetupLocked = false;     //a production run is using the PMF and template mapping
+	void setProductionSetupLocked(bool locked);
 	void saveProductionSetup();
 
 	//── Template Mapping Setup, on the PMF page (VisionApp_TemplateMapping.cpp)

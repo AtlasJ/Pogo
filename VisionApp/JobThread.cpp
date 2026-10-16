@@ -4489,11 +4489,12 @@ bool JobThread::acquireBarcodeAndOcr()
 			ct::logger::info("[Acq] Region %d: %dx%d units, pitch %.3f / %.3f mm",
 				(int)ri + 1, unitsX, unitsY, r.pitchX, r.pitchY);
 
-			for (const auto& u : pitchUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
+			for (const auto& u : productionUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
 				const int ix = u.first, iy = u.second; if (m_stopRun) break; {
 					const QString unitID = pitchUnitID(r, ix, iy);
 					ct::logger::info("[Acq] Region %d unit (%d, %d) -> %s",
 						(int)ri + 1, ix + 1, iy + 1, unitID.toStdString().c_str());
+					emit unitStarted(unitID);
 					const em::V2d p = pitchUnitPoint(r, ix, iy); //fiducial-compensated
 					acquireBarcodeAndOcrAt(p.x(), p.y(), r.p1z, unitID);
 				}
@@ -5028,6 +5029,40 @@ QString JobThread::pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy)
 	return QString("X%1Y%2").arg(std::max(1, r.startX) + ix).arg(std::max(1, r.startY) + iy);
 }
 
+void JobThread::setUnitFilter(const std::optional<QSet<QString>>& onlyUnits)
+{
+	QMutexLocker lock(&m_unitFilterMutex);
+	m_unitFilter = onlyUnits;
+}
+
+/*
+* What the three production loops walk: pitchUnitOrder() limited to setUnitFilter()'s units - in
+* production, the ones the PMF says are fitted, so a unit is visited only where the PMF has
+* something. Taking units out of the order, rather than skipping inside each loop, keeps the 2D
+* and 3D passes of a "2D to 3D" run in step: a unit is visited by both or by neither. Guided
+* Setup's tests call pitchUnitOrder() itself and still visit every unit.
+*/
+std::vector<std::pair<int, int>> JobThread::productionUnitOrder(const SystemData::PitchRegion& r)
+{
+	std::optional<QSet<QString>> only;
+	{
+		QMutexLocker lock(&m_unitFilterMutex);
+		only = m_unitFilter;
+	}
+
+	std::vector<std::pair<int, int>> order = pitchUnitOrder(r);
+	if (!only) return order;
+
+	const size_t before = order.size();
+	order.erase(std::remove_if(order.begin(), order.end(), [&](const std::pair<int, int>& u) {
+		return !only->contains(pitchUnitID(r, u.first, u.second));
+	}), order.end());
+	if (order.size() != before)
+		ct::logger::info("[Acq] %d of %d unit(s) skipped - nothing fitted there per the PMF",
+			(int)(before - order.size()), (int)before);
+	return order;
+}
+
 //one unit's 3D scan: recipe scan length centered on the unit, along the linescan axis
 void JobThread::scan3DUnit(const SystemData::PitchRegion& r, int ix, int iy, const std::deque<QString>& opticsSeq)
 {
@@ -5105,8 +5140,9 @@ void JobThread::acquire3DImagesPitch()
 		const int unitsY = std::max(1, r.unitsY);
 		ct::logger::info("[Acq] Region %d: 3D scan of %dx%d units", (int)ri + 1, unitsX, unitsY);
 
-		for (const auto& u : pitchUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
+		for (const auto& u : productionUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
 			const int ix = u.first, iy = u.second; if (m_stopRun) break; {
+				emit unitStarted(pitchUnitID(r, ix, iy));
 				scan3DUnit(r, ix, iy, opticsSeq);
 			}
 		}
@@ -5139,9 +5175,10 @@ void JobThread::acquire2D3DAlternatePitch()
 		ct::logger::info("[Acq] Alternate sequence, region %d: %dx%d units (barcode %s, 3D %s)",
 			(int)ri + 1, unitsX, unitsY, sd._pitchEnableBarcode ? "on" : "off", sd._pitchEnable3D ? "on" : "off");
 
-		for (const auto& u : pitchUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
+		for (const auto& u : productionUnitOrder(r)) { //along the scan direction - see pitchUnitOrder()
 			const int ix = u.first, iy = u.second; if (m_stopRun) break; {
 				const QString unitID = pitchUnitID(r, ix, iy);
+				emit unitStarted(unitID);
 
 				if (sd._pitchEnableBarcode) {
 					ct::logger::info("[Acq] Region %d unit (%d, %d) -> %s: barcode/OCR",
