@@ -24,7 +24,7 @@ static const QColor kGuidedRoiColor(255, 150, 40); //reference box: orange, unli
 
 namespace {
 	constexpr int kGuidedFiducials = 4;
-	constexpr int kCentreIterations = 4;
+	constexpr int kCentreIterations = 10; //each pass is a snap, a find and a jog; the loop leaves as soon as it is centred
 	constexpr double kCentredPx = 1.5; //close enough: well under the finder's own scatter
 }
 
