@@ -1991,9 +1991,14 @@ void VisionApp::connectSignalAndSlot()
 			double wx, wy, wz;
 			getCurrentPoint(wx, wy, wz);
 
-			//point 2 is the diagonally adjacent unit toward bottom right: pitch is signed p2 - p1
-			r.pitchX = wx - r.p1x;
-			r.pitchY = wy - r.p1y;
+			//point 2 is the diagonally adjacent unit toward bottom right: pitch is signed p2 - p1,
+			//measured along the board's axes (gridAngleDeg is 0 unless the guided setup set it)
+			{
+				const double ga = r.gridAngleDeg * 3.14159265358979 / 180.0;
+				const double dx = wx - r.p1x, dy = wy - r.p1y;
+				r.pitchX = std::cos(ga) * dx + std::sin(ga) * dy;
+				r.pitchY = -std::sin(ga) * dx + std::cos(ga) * dy;
+			}
 			r.p2x = wx;
 			r.p2y = wy;
 			r.p2z = wz;

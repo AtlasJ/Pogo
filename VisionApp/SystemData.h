@@ -182,6 +182,15 @@ public:
 		double p2x = 0.0, p2y = 0.0, p2z = 0.0;
 
 		double pitchX = 0.0, pitchY = 0.0; //signed, direction from point 1 to point 2
+
+		/*
+		* The board's rotation in the machine frame when the grid was taught, degrees. The lattice
+		* is origin + R(angle) * (ix * pitchX, iy * pitchY): the pitches are measured ALONG THE
+		* BOARD, not along the machine axes. 0 (every recipe before this field) is the old
+		* axis-aligned grid. The guided setup derives it from the four corner fiducials, which
+		* sit on a rectangle aligned with the unit rows.
+		*/
+		double gridAngleDeg = 0.0;
 		int unitsX = 1, unitsY = 1;
 
 		/*

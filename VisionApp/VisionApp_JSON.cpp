@@ -1404,6 +1404,7 @@ bool VisionApp::saveRecipeConfig()
 			ro.insert(QStringLiteral("p2z"), r.p2z);
 			ro.insert(QStringLiteral("pitchX"), r.pitchX);
 			ro.insert(QStringLiteral("pitchY"), r.pitchY);
+			ro.insert(QStringLiteral("gridAngleDeg"), r.gridAngleDeg);
 			ro.insert(QStringLiteral("unitsX"), r.unitsX);
 			ro.insert(QStringLiteral("unitsY"), r.unitsY);
 			ro.insert(QStringLiteral("startX"), r.startX);
@@ -2115,6 +2116,7 @@ bool VisionApp::loadRecipeConfig()
 					r.p2z = jsonHelper::getDouble(ro, QStringLiteral("p2z"), 0.0);
 					r.pitchX = jsonHelper::getDouble(ro, QStringLiteral("pitchX"), 0.0);
 					r.pitchY = jsonHelper::getDouble(ro, QStringLiteral("pitchY"), 0.0);
+					r.gridAngleDeg = jsonHelper::getDouble(ro, QStringLiteral("gridAngleDeg"), 0.0);
 					r.unitsX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsX"), 1));
 					r.unitsY = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("unitsY"), 1));
 					r.startX = std::max(1, jsonHelper::getInteger(ro, QStringLiteral("startX"), 1));

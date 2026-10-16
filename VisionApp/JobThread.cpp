@@ -4860,7 +4860,12 @@ std::deque<QString> JobThread::build3DOpticsSeq()
 */
 em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int iy)
 {
-	em::V2d p(r.p1x + ix * r.pitchX, r.p1y + iy * r.pitchY);
+	//the lattice lies along the BOARD's axes - see PitchRegion::gridAngleDeg. A board taught at
+	//an angle used to be laid out along the machine axes, which put every unit between the two
+	//taught corners off by its distance from the origin times sin(angle).
+	const double ga = r.gridAngleDeg * 3.14159265358979 / 180.0;
+	const double lx = ix * r.pitchX, ly = iy * r.pitchY;
+	em::V2d p(r.p1x + std::cos(ga) * lx - std::sin(ga) * ly, r.p1y + std::sin(ga) * lx + std::cos(ga) * ly);
 	if (!m_enableFiducial) return p;
 
 	em::V2d shifted = p;
@@ -4890,7 +4895,9 @@ em::V2d JobThread::pitchUnitPoint(const SystemData::PitchRegion& r, int ix, int 
 			crx /= n; cry /= n; clx /= n; cly /= n;
 
 			double theta = 0.0;
-			if (SystemData::instance()._enableFiducialRotate && n >= 2) {
+			//four well-spread corners give a reliable angle, so the fit rotates regardless of the
+			//recipe's fiducial-rotate checkbox (that gate still applies to the two-point path)
+			if (n >= 2) {
 				double s = 0, c = 0; //2D Kabsch: theta = atan2(sum(rx*ly - ry*lx), sum(rx*lx + ry*ly)) on centred points
 				for (int i = 0; i < n; i++) {
 					const double ax = ref[i].x() - crx, ay = ref[i].y() - cry;

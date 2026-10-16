@@ -623,6 +623,7 @@ private:
 	void guidedTeachUnit(bool last);
 	void guidedRecomputePitch(SystemData::PitchRegion& r);
 	int guidedRegion(); //the selected pitch region (shared with the Setup Region page), created if none
+	bool guidedBoardAngleDeg(double& deg, QString& why); //rotation of the taught fiducial rectangle in the machine frame
 	GuidedSetupConfig _guidedSetup;
 	QDragBox* _guidedRoiBox = nullptr;      //reference box whose size is read off live
 	int _guidedSignX = 1, _guidedSignY = 1; //pixel-to-jog sense; flipped if a jog makes the offset grow

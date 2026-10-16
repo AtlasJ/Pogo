@@ -238,8 +238,10 @@ void VisionApp::refreshGuidedSetupPage()
 		: QStringLiteral("Unit (%1,%2): not taught").arg(std::max(1, r.unitsX)).arg(std::max(1, r.unitsY)));
 	ui.toolButton_gsTeachUnitLast->setText(QStringLiteral("Teach Unit (%1,%2)").arg(std::max(1, r.unitsX)).arg(std::max(1, r.unitsY)));
 	ui.label_gsPitch->setText((r.p1Set && r.p2Set)
-		? QStringLiteral("Pitch: X %1 mm, Y %2 mm").arg(r.pitchX, 0, 'f', 4).arg(r.pitchY, 0, 'f', 4)
-		: QStringLiteral("Pitch: teach both units"));
+		? QStringLiteral("Pitch: X %1 mm, Y %2 mm along the board; board angle %3 deg")
+			.arg(r.pitchX, 0, 'f', 4).arg(r.pitchY, 0, 'f', 4).arg(r.gridAngleDeg, 0, 'f', 3)
+		: (r.p1Set ? QStringLiteral("Pitch: teach the last unit; board angle %1 deg").arg(r.gridAngleDeg, 0, 'f', 3)
+			: QStringLiteral("Pitch: teach both units")));
 
 	//the last unit only means something once the first is down and the counts are in
 	ui.toolButton_gsTeachUnitLast->setEnabled(r.p1Set);
@@ -433,13 +435,57 @@ void VisionApp::guidedTeachFiducial(int i)
 		QStringLiteral("fid%1 %2, %3, %4 dia %5 px").arg(i + 1).arg(x, 0, 'f', 3).arg(y, 0, 'f', 3).arg(z, 0, 'f', 3).arg(dia, 0, 'f', 1));
 }
 
-//pitch from the FAR corner: the circle-centre error is divided over the whole board instead
-//of landing on one neighbour spacing
+/*
+* The board's rotation, read off the fiducials. The four fiducials sit on the corners of a
+* rectangle whose sides run along the unit rows and columns, so each side's direction, folded
+* into (-45, 45] degrees, is the board angle - and folding also makes the result independent
+* of which fiducial got which number. The taught points are ordered round their centroid so
+* consecutive pairs are SIDES, not diagonals; the four side angles are averaged as 4x phasors,
+* which is the mean that does not break at the +/-45 wrap. Three fiducials still give two
+* sides. Two give one segment that may be a diagonal, so that case is refused.
+*/
+bool VisionApp::guidedBoardAngleDeg(double& deg, QString& why)
+{
+	std::vector<QPointF> pts;
+	for (int i = 0; i < 4 && i < _fiducialInfos.size(); i++)
+		if (_fiducialInfos[i].hasTeachPoint) pts.emplace_back(_fiducialInfos[i].teach_point.wx, _fiducialInfos[i].teach_point.wy);
+
+	if (pts.size() < 3) {
+		why = QStringLiteral("at least three fiducials must be taught to read the board angle (%1 taught)").arg((int)pts.size());
+		return false;
+	}
+
+	QPointF c(0, 0);
+	for (const auto& p : pts) c += p;
+	c /= (double)pts.size();
+	std::sort(pts.begin(), pts.end(), [&](const QPointF& a, const QPointF& b) {
+		return std::atan2(a.y() - c.y(), a.x() - c.x()) < std::atan2(b.y() - c.y(), b.x() - c.x());
+	});
+
+	//consecutive points are rectangle sides; with three points the closing pair is a diagonal, so skip it
+	const int sides = (pts.size() == 4) ? 4 : 2;
+	double sx = 0, sy = 0;
+	for (int i = 0; i < sides; i++) {
+		const QPointF a = pts[i], b = pts[(i + 1) % pts.size()];
+		const double ang = std::atan2(b.y() - a.y(), b.x() - a.x());
+		sx += std::cos(4 * ang); sy += std::sin(4 * ang); //fold to the 90-degree symmetry
+	}
+	deg = std::atan2(sy, sx) / 4.0 * 180.0 / 3.14159265358979; //in (-45, 45]
+	return true;
+}
+
+//pitch from the FAR corner, measured along the BOARD's axes: the span is rotated back by the
+//board angle before it is divided over the unit count, so a tilted board does not leak Y pitch
+//into X. The circle-centre error is divided over the whole board instead of one spacing.
 void VisionApp::guidedRecomputePitch(SystemData::PitchRegion& r)
 {
 	if (!r.p1Set || !r.p2Set) return;
-	r.pitchX = (r.unitsX > 1) ? (r.p2x - r.p1x) / (r.unitsX - 1) : 0.0;
-	r.pitchY = (r.unitsY > 1) ? (r.p2y - r.p1y) / (r.unitsY - 1) : 0.0;
+	const double ga = r.gridAngleDeg * 3.14159265358979 / 180.0;
+	const double dx = r.p2x - r.p1x, dy = r.p2y - r.p1y;
+	const double sxb = std::cos(ga) * dx + std::sin(ga) * dy;
+	const double syb = -std::sin(ga) * dx + std::cos(ga) * dy;
+	r.pitchX = (r.unitsX > 1) ? sxb / (r.unitsX - 1) : 0.0;
+	r.pitchY = (r.unitsY > 1) ? syb / (r.unitsY - 1) : 0.0;
 }
 
 /*
@@ -489,6 +535,20 @@ void VisionApp::guidedTeachUnit(bool last)
 		r.fidRefMask = mask;
 		r.fidRefTeachRev = sd._fiducialTeachRev;
 		if (mask == 0) ct::logger::warn("[GuidedSetup] Unit (1,1) taught with NO fiducials taught - teach the fiducials, then teach unit (1,1) again");
+
+		//the grid runs along the board, and the board's angle comes from the fiducial rectangle
+		double deg = 0.0;
+		QString angleWhy;
+		if (guidedBoardAngleDeg(deg, angleWhy)) {
+			r.gridAngleDeg = deg;
+			ct::logger::info("[GuidedSetup] Board angle from the fiducials: %.4f deg - the unit grid is laid out along it", deg);
+		}
+		else {
+			r.gridAngleDeg = 0.0;
+			ct::logger::warn("[GuidedSetup] Grid laid out along the machine axes: %s", angleWhy.toStdString().c_str());
+			showMsg(QStringLiteral("Unit (1,1) stored, but the board angle could not be read: %1.\n\n"
+				"The grid is laid out along the machine axes for now. Teach the fiducials, then teach unit (1,1) again.").arg(angleWhy));
+		}
 	}
 	else {
 		r.p2x = x; r.p2y = y; r.p2z = z;
