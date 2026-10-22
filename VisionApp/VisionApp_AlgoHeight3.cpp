@@ -61,7 +61,7 @@ static const QColor kAlgoH3FailColor(255, 82, 82);
 
 /*
 * Per-ROI result labels. The size is in SCENE units, so a label scales with the part as
-* the view is zoomed - the same behaviour as the V1 height overlay. That is deliberate:
+* the view is zoomed. That is deliberate:
 * fit-to-view on a 9000 px crop is far too small to read a few hundred numbers anyway, and
 * zooming in to look at a pin is exactly when its number becomes legible.
 * The offset lifts the text clear of the box's top edge at that size.
@@ -984,9 +984,8 @@ void VisionApp::initAlgoHeight3Page()
 
 	/*
 	* Which ROI the results section is describing follows the scene selection. QDragBox
-	* has no "selection changed" signal, so this polls - the same 250 ms watcher pattern
-	* the V1 page already uses for its duplicate/diff tools - and only while section 6 is
-	* actually open, so it costs nothing the rest of the time.
+	* has no "selection changed" signal, so this polls every 250 ms - and only while
+	* section 6 is actually open, so it costs nothing the rest of the time.
 	*/
 	_algoH3SelTimer = new QTimer(this);
 	connect(_algoH3SelTimer, &QTimer::timeout, this, [=]() {
@@ -1717,8 +1716,8 @@ void VisionApp::algoH3AutoAssignGrid()
 * The clipboard holds part-frame geometry, not scene geometry, so a copy taken before a
 * re-segmentation still pastes to the same place on the part afterwards.
 *
-* Selection is read with Qt's isSelected(), never QDragBox::getSelected() - see the note
-* above algoHCopySelectedRois() in VisionApp_AlgoSetup.cpp for why that matters.
+* Selection is read with Qt's isSelected(), never QDragBox::getSelected() - see the "ALWAYS
+* ASK A BOX isSelected()" note in VisionApp_AlgoSetup.cpp for why that matters.
 */
 void VisionApp::algoH3CopySelectedRois()
 {
@@ -1829,8 +1828,7 @@ void VisionApp::algoH3PasteRois()
 	QVector<QDragBox*> fresh; //selected at the end - see the note below
 
 	for (const auto& c : _algoH3Clipboard) {
-		//offset so a copy is visibly separate from its original, the same gesture the V1
-		//height page uses
+		//offset so a copy is visibly separate from its original
 		const QRectF rel = c.rel.translated(step, step);
 
 		if (c.datum) {

@@ -23,15 +23,7 @@ InspectionThread::InspectionThread(QObject* parent)
 		m_resCv.wakeAll();
 	}, Qt::DirectConnection);
 
-	connect(&AlgoManager::instance(), &AlgoManager::heightFinished, this, [this](AlgoHeightOutput output) {
-		QMutexLocker lock(&m_resMutex);
-		m_heightOutput = output;
-		m_heightDone = true;
-		m_resCv.wakeAll();
-	}, Qt::DirectConnection);
-
-	//V3 is what the production height path runs; the V1 connection above is kept because
-	//the Algo Setup page still drives that algorithm offline
+	//V3 is the production height path
 	connect(&AlgoManager::instance(), &AlgoManager::height3Finished, this,
 		[this](int stage, AlgoHeight3Output output) {
 			//production only ever asks for a Run All, so a result for any other stage is the

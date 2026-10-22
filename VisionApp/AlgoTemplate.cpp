@@ -31,7 +31,8 @@ void AlgoTemplate::setGraphObject(const QJsonObject& obj)
 	_h = jsonHelper::getInteger(obj, QStringLiteral("h"), 0);
 
 	const int algo = jsonHelper::getInteger(obj, QStringLiteral("algo"), 0);
-	_algo = (algo == (int)AlgoPageAlgo::HEIGHT_3D) ? AlgoPageAlgo::HEIGHT_3D : AlgoPageAlgo::OCR_READ;
+	//1 was the old plane-fit height algo (V1); V3 took its number, so those templates now open V3
+	_algo = (algo == (int)AlgoPageAlgo::HEIGHT_3D_V3) ? AlgoPageAlgo::HEIGHT_3D_V3 : AlgoPageAlgo::OCR_READ;
 }
 
 AlgoTemplateList::~AlgoTemplateList()

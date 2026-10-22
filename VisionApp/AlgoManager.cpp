@@ -20,139 +20,7 @@
 #include <algorithm>
 #include <cmath>
 
-// =============================================================================
-// Plane fitting (port of Algo QAlgoHeightMeasurement's live path)
-// Convention: plane is z = a*x + b*y + d (c fixed at -1).
-// The only linear algebra needed is one 3x3 symmetric solve, done by Cramer.
-// =============================================================================
-
 namespace {
-
-struct Plane {
-	double a = 0, b = 0, c = -1, d = 0;
-	double avg = 0;
-	bool valid = false;
-};
-
-struct P3 { double x, y, z; };
-
-//solve the symmetric 3x3 system M * p = v by Cramer's rule
-static bool solve3x3(const double M[3][3], const double v[3], double p[3])
-{
-	const double det =
-		M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) -
-		M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
-		M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
-
-	if (std::abs(det) < 1e-12) return false;
-
-	auto detReplaced = [&](int col) {
-		double T[3][3];
-		for (int r = 0; r < 3; r++)
-			for (int cIdx = 0; cIdx < 3; cIdx++)
-				T[r][cIdx] = (cIdx == col) ? v[r] : M[r][cIdx];
-		return
-			T[0][0] * (T[1][1] * T[2][2] - T[1][2] * T[2][1]) -
-			T[0][1] * (T[1][0] * T[2][2] - T[1][2] * T[2][0]) +
-			T[0][2] * (T[1][0] * T[2][1] - T[1][1] * T[2][0]);
-	};
-
-	p[0] = detReplaced(0) / det;
-	p[1] = detReplaced(1) / det;
-	p[2] = detReplaced(2) / det;
-	return true;
-}
-
-//centroid-centered least-squares plane fit (QAlgoHeightMeasurement::computeLeastSquaredPlane)
-static Plane computeLeastSquaredPlane(const std::vector<P3>& points)
-{
-	Plane plane;
-
-	const int n = (int)points.size();
-	if (n < 3) return plane;
-
-	double meanX = 0, meanY = 0, meanZ = 0;
-	for (const auto& p : points) { meanX += p.x; meanY += p.y; meanZ += p.z; }
-	meanX /= n; meanY /= n; meanZ /= n;
-
-	//normal equations (A^T A) p = A^T b with rows (X, Y, 1) -> Z, centered
-	double ATA[3][3] = { {0,0,0},{0,0,0},{0,0,0} };
-	double ATb[3] = { 0,0,0 };
-
-	for (const auto& pt : points) {
-		const double X = pt.x - meanX;
-		const double Y = pt.y - meanY;
-		const double Z = pt.z - meanZ;
-
-		ATA[0][0] += X * X; ATA[0][1] += X * Y; ATA[0][2] += X;
-		ATA[1][1] += Y * Y; ATA[1][2] += Y;
-		ATA[2][2] += 1.0;
-
-		ATb[0] += X * Z; ATb[1] += Y * Z; ATb[2] += Z;
-	}
-	ATA[1][0] = ATA[0][1]; ATA[2][0] = ATA[0][2]; ATA[2][1] = ATA[1][2];
-
-	double p[3];
-	if (!solve3x3(ATA, ATb, p)) return plane;
-
-	//translate back to original coordinates
-	p[2] += meanZ - (p[0] * meanX + p[1] * meanY);
-
-	plane.a = p[0];
-	plane.b = p[1];
-	plane.c = -1.0;
-	plane.d = p[2];
-	plane.avg = meanZ;
-	plane.valid = true;
-	return plane;
-}
-
-static double getZFromPlane(const Plane& plane, double x, double y)
-{
-	return ((-plane.a * x) - (plane.b * y) - plane.d) / plane.c;
-}
-
-//robust plane-fit outlier removal: fit, drop points whose perpendicular residual
-//exceeds k*sigma, refit - iterated (QAlgoHeightMeasurement removeOutliersByPlaneResidual)
-static void removeOutliersByPlaneResidual(std::vector<P3>& points, double k = 2.0, int iterations = 3)
-{
-	for (int iter = 0; iter < iterations; ++iter) {
-		if (points.size() < 4) return;
-
-		Plane pl = computeLeastSquaredPlane(points);
-		if (!pl.valid) return;
-
-		const double nrm = std::sqrt(pl.a * pl.a + pl.b * pl.b + pl.c * pl.c);
-		if (nrm < 1e-12) return;
-
-		double sum = 0.0, sumSq = 0.0;
-		for (const auto& p : points) {
-			const double r = (pl.a * p.x + pl.b * p.y + pl.c * p.z + pl.d) / nrm;
-			sum += r;
-			sumSq += r * r;
-		}
-		const double n = (double)points.size();
-		const double mean = sum / n;
-		const double sd = std::sqrt(std::max(0.0, sumSq / n - mean * mean));
-		if (sd < 1e-9) return;
-
-		const double lo = mean - k * sd;
-		const double hi = mean + k * sd;
-		auto it = std::partition(points.begin(), points.end(), [&](const P3& p) {
-			const double r = (pl.a * p.x + pl.b * p.y + pl.c * p.z + pl.d) / nrm;
-			return r >= lo && r <= hi;
-		});
-		if (it == points.end()) return;
-		points.erase(it, points.end());
-	}
-}
-
-//signed tilt of the plane along each image axis, in degrees
-static void planeTiltXY(const Plane& p, double& tiltX, double& tiltY)
-{
-	tiltX = qRadiansToDegrees(std::atan(p.a));
-	tiltY = qRadiansToDegrees(std::atan(p.b));
-}
 
 static QRectF jsonToRect(const QJsonObject& o)
 {
@@ -204,7 +72,6 @@ void AlgoManager::init()
 	m_initialized = true;
 
 	qRegisterMetaType<AlgoOcrOutput>("AlgoOcrOutput");
-	qRegisterMetaType<AlgoHeightOutput>("AlgoHeightOutput");
 	qRegisterMetaType<AlgoHeight3Output>("AlgoHeight3Output");
 
 	moveToThread(&m_thread);
@@ -286,22 +153,10 @@ void AlgoManager::setOcrParams(const AlgoOcrParams& p)
 	m_ocrParams = p;
 }
 
-AlgoHeightParams AlgoManager::heightParams() const
-{
-	std::lock_guard<std::mutex> lock(m_mutex);
-	return m_heightParams;
-}
-
-void AlgoManager::setHeightParams(const AlgoHeightParams& p)
-{
-	std::lock_guard<std::mutex> lock(m_mutex);
-	m_heightParams = p;
-}
-
 /*
-* Bounds-checked because AlgoPageAlgo is now larger than m_locator[]: HEIGHT_3D_V2 has no
-* Locator of its own. Without the check, selecting that page and pressing Save or Run would
-* write past the end of the array - silent corruption of whatever follows it, not a crash.
+* Bounds-checked because AlgoPageAlgo is larger than m_locator[]: HEIGHT_3D_V3 has no Locator
+* of its own. Without the check, selecting that page and pressing Save or Run would write past
+* the end of the array - silent corruption of whatever follows it, not a crash.
 */
 AlgoLocatorConfig AlgoManager::locatorConfig(AlgoPageAlgo algo) const
 {
@@ -377,9 +232,7 @@ bool AlgoManager::loadRecipeConfig()
 		std::lock_guard<std::mutex> lock(m_mutex);
 
 		m_ocrParams = AlgoOcrParams();
-		m_heightParams = AlgoHeightParams();
-		m_locator[0] = AlgoLocatorConfig();
-		m_locator[1] = AlgoLocatorConfig();
+		for (auto& cfg : m_locator) cfg = AlgoLocatorConfig();
 
 		if (exists) {
 			auto ocr = root.value("ocr").toObject();
@@ -391,26 +244,13 @@ bool AlgoManager::loadRecipeConfig()
 			m_ocrParams.superResolution = jsonHelper::getBool(ocr, "super_resolution", false);
 			m_ocrParams.roi1Geo = jsonToRect(ocr.value("roi1").toObject());
 
-			auto h = root.value("height").toObject();
-			m_heightParams.intensityPerMicron = jsonHelper::getDouble(h, "intensity_per_micron", 11.0);
-			if (m_heightParams.intensityPerMicron <= 0.0) m_heightParams.intensityPerMicron = 11.0;
-			m_heightParams.minHeightUm = jsonHelper::getDouble(h, "min_height_um", 0.0);
-			m_heightParams.maxHeightUm = jsonHelper::getDouble(h, "max_height_um", 0.0);
-			m_heightParams.removeOutliers = jsonHelper::getBool(h, "remove_outliers", true);
-			for (const auto& rv : h.value("height_rois").toArray()) {
-				m_heightParams.heightRois.append(jsonToRect(rv.toObject()));
-			}
-			//legacy single-ROI recipes
-			if (m_heightParams.heightRois.isEmpty() && h.contains("height_roi")) {
-				const QRectF legacy = jsonToRect(h.value("height_roi").toObject());
-				if (!legacy.isEmpty()) m_heightParams.heightRois.append(legacy);
-			}
-			for (const auto& rv : h.value("plane_rois").toArray()) {
-				m_heightParams.planeRois.append(jsonToRect(rv.toObject()));
-			}
-
+			/*
+			* Only the first entry is read: the second belonged to the old plane-fit height algo
+			* (V1), which is gone. Its "height" block and that entry stay in the file until the
+			* next save, which no longer writes them.
+			*/
 			auto locators = root.value("locators").toArray();
-			for (int i = 0; i < locators.size() && i < 2; i++) {
+			for (int i = 0; i < locators.size() && i < kAlgoLocatorSlots; i++) {
 				auto lo = locators[i].toObject();
 				auto& cfg = m_locator[i];
 				cfg.enabled = jsonHelper::getBool(lo, "enabled", false);
@@ -461,21 +301,8 @@ bool AlgoManager::saveRecipeConfig()
 		ocr.insert("roi1", rectToJson(m_ocrParams.roi1Geo));
 		root.insert("ocr", ocr);
 
-		QJsonObject h;
-		h.insert("intensity_per_micron", m_heightParams.intensityPerMicron);
-		h.insert("min_height_um", m_heightParams.minHeightUm);
-		h.insert("max_height_um", m_heightParams.maxHeightUm);
-		h.insert("remove_outliers", m_heightParams.removeOutliers);
-		QJsonArray heightRois;
-		for (const auto& r : m_heightParams.heightRois) heightRois.append(rectToJson(r));
-		h.insert("height_rois", heightRois);
-		QJsonArray planes;
-		for (const auto& r : m_heightParams.planeRois) planes.append(rectToJson(r));
-		h.insert("plane_rois", planes);
-		root.insert("height", h);
-
 		QJsonArray locators;
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < kAlgoLocatorSlots; i++) {
 			const auto& cfg = m_locator[i];
 			QJsonObject lo;
 			lo.insert("enabled", cfg.enabled);
@@ -1288,36 +1115,13 @@ void AlgoManager::doRunOcr(QImage fov)
 }
 
 // =============================================================================
-// 3D height measurement (QAlgoHeightMeasurement plane-fit core)
+// The last scan's maps (production display, FOV readout, V3 "Use Last Scan")
 // =============================================================================
-
-void AlgoManager::setHeightMap(mtrx::SharedMilID heightMap)
-{
-	std::lock_guard<std::mutex> lock(m_mutex);
-	m_heightMap = heightMap;
-}
 
 mtrx::SharedMilID AlgoManager::heightMap() const
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	return m_heightMap;
-}
-
-bool AlgoManager::loadHeightMapFromFile(const QString& tiffPath, QString& error)
-{
-	if (!QFile::exists(tiffPath)) { error = "File not found: " + tiffPath; return false; }
-
-	MIL_ID mBuf = MbufRestoreA(tiffPath.toStdString().c_str(), M_DEFAULT_HOST, M_NULL);
-	if (mBuf == M_NULL) { error = "Failed to load heightmap (16-bit tiff expected)."; return false; }
-
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
-		m_heightMap = mtrx::MPM::instance().attach(mBuf);
-	}
-
-	ct::logger::info("[Algo Height] Loaded heightmap %s (%lld x %lld)",
-		tiffPath.toStdString().c_str(), mtrx::get_width(mBuf), mtrx::get_height(mBuf));
-	return true;
 }
 
 QImage AlgoManager::heightMapImage(bool colorMapped) const
@@ -1379,161 +1183,10 @@ bool AlgoManager::lastScanPixel(int x, int y, FovMapPixel& out) const
 	}
 	if (!milPixel(h, x, y, out.raw)) return false;
 
-	//loadHeightMapFromFile replaces only the height map, so the stored intensity can be an
-	//older scan's - use it only when it is at least the same size
+	//a frame may carry no intensity map, or one of another size - use it only when it lines up
 	if (i && i->id() != M_NULL
 		&& mtrx::get_width(i->id()) == mtrx::get_width(h->id())
 		&& mtrx::get_height(i->id()) == mtrx::get_height(h->id()))
 		out.hasIntensity = milPixel(i, x, y, out.intensity);
 	return true;
-}
-
-void AlgoManager::runHeight()
-{
-	QMetaObject::invokeMethod(this, "doRunHeight", Qt::QueuedConnection);
-}
-
-void AlgoManager::doRunHeight()
-{
-	setBusy(true);
-
-	QElapsedTimer timer;
-	timer.start();
-
-	AlgoHeightOutput out;
-	const AlgoHeightParams param = heightParams();
-	mtrx::SharedMilID map = heightMap();
-
-	do {
-		if (!map || map->id() == M_NULL) { out.message = "No heightmap loaded"; break; }
-		if (param.planeRois.size() < 3) { out.message = "Add at least 3 plane ROIs for the datum fit"; break; }
-		if (param.heightRois.isEmpty()) { out.message = "Add at least 1 height measurement ROI"; break; }
-		if (param.intensityPerMicron <= 0.0) { out.message = "Intensity per micron must be > 0"; break; }
-
-		MIL_UINT16* hostPtr = nullptr;
-		MIL_INT pitch = 0;
-		MbufInquire(map->id(), M_HOST_ADDRESS, &hostPtr);
-		MbufInquire(map->id(), M_PITCH, &pitch);
-		const MIL_INT mapW = mtrx::get_width(map->id());
-		const MIL_INT mapH = mtrx::get_height(map->id());
-
-		if (!hostPtr) { out.message = "Heightmap buffer has no host address"; break; }
-
-		//── locator first (on the 8-bit heightmap view); ROIs run as-is when not assigned/found
-		QVector<QRectF> planeRois = param.planeRois;
-		QVector<QRectF> heightRois = param.heightRois;
-
-		const AlgoLocatorConfig locCfg = locatorConfig(AlgoPageAlgo::HEIGHT_3D);
-		if (locCfg.enabled) {
-			const QImage gray = heightMapImage(false);
-			if (!gray.isNull()) {
-				cv::Mat grayBgr = qimageToBgr(gray);
-				AlgoLocatorResult loc = runLocator(grayBgr, locCfg, out.overlay);
-				if (loc.ran && !loc.found) out.message = "Locator: no match - ran unshifted. ";
-
-				for (auto& r : planeRois) r = applyLocatorToRoi(r, loc);
-				for (auto& r : heightRois) r = applyLocatorToRoi(r, loc);
-			}
-		}
-
-		//── datum: collect every valid (z > 0) pixel from every plane ROI, absolute coords
-		std::vector<P3> points;
-		{
-			size_t reserveSize = 0;
-			for (const auto& r : planeRois) reserveSize += (size_t)(r.width() * r.height());
-			points.reserve(reserveSize);
-		}
-
-		for (const auto& roiF : planeRois) {
-			QRect r = roiF.toRect() & QRect(0, 0, (int)mapW, (int)mapH);
-			for (int y = r.top(); y <= r.bottom(); y++) {
-				const MIL_UINT16* row = hostPtr + (y * pitch);
-				for (int x = r.left(); x <= r.right(); x++) {
-					const int z = row[x];
-					if (z <= 0) continue;
-					points.push_back({ (double)x, (double)y, (double)z });
-				}
-			}
-			out.overlay.append(AlgoOverlayItem::makeRect(roiF, QColor(0, 255, 127), QColor(0, 255, 127, 30)));
-		}
-
-		if (points.size() < 3) { out.message = "Not enough valid pixels in the plane ROIs"; break; }
-
-		if (param.removeOutliers) removeOutliersByPlaneResidual(points, 2.0, 3);
-
-		const Plane plane = computeLeastSquaredPlane(points);
-		if (!plane.valid) { out.message = "Plane fit failed (degenerate points)"; break; }
-
-		out.planeValid = true;
-		out.planeA = plane.a; out.planeB = plane.b; out.planeC = plane.c; out.planeD = plane.d;
-		planeTiltXY(plane, out.tiltXDeg, out.tiltYDeg);
-
-		//── measure every ROI: per-pixel vertical distance to the datum plane, averaged (+min/max)
-		const bool limitActive = (param.minHeightUm != 0.0 || param.maxHeightUm != 0.0);
-		out.pass = true;
-
-		for (int ri = 0; ri < heightRois.size(); ri++) {
-			const QRectF roiF = heightRois[ri];
-			AlgoHeightRoiResult res;
-			res.roi = roiF;
-
-			QRect hr = roiF.toRect() & QRect(0, 0, (int)mapW, (int)mapH);
-
-			double sum = 0.0;
-			double minDist = 1e18, maxDist = -1e18;
-			qint64 count = 0;
-
-			for (int y = hr.top(); y <= hr.bottom(); y++) {
-				const MIL_UINT16* row = hostPtr + (y * pitch);
-				for (int x = hr.left(); x <= hr.right(); x++) {
-					const int z = row[x];
-					if (z <= 0) continue;
-
-					const double dist = (double)z - getZFromPlane(plane, x, y); //vertical, raw gray
-					sum += dist;
-					if (dist < minDist) minDist = dist;
-					if (dist > maxDist) maxDist = dist;
-					count++;
-				}
-			}
-
-			if (count > 0) {
-				//divide by scale at the very end (gray levels / (gray per um) = um)
-				res.valid = true;
-				res.avgHeightUm = (sum / count) / param.intensityPerMicron;
-				res.minHeightUm = minDist / param.intensityPerMicron;
-				res.maxHeightUm = maxDist / param.intensityPerMicron;
-				res.pass = !limitActive ||
-					(res.avgHeightUm >= param.minHeightUm && res.avgHeightUm <= param.maxHeightUm);
-			}
-			else {
-				res.pass = false;
-			}
-
-			out.pass = out.pass && res.pass;
-
-			out.overlay.append(AlgoOverlayItem::makeRect(roiF,
-				res.pass ? QColor(0, 255, 127) : Qt::red,
-				res.pass ? QColor(0, 255, 127, 30) : QColor(255, 0, 0, 30)));
-			out.overlay.append(AlgoOverlayItem::makeText(
-				res.valid
-					? QStringLiteral("H%1: %2 um [%3 .. %4]").arg(ri + 1)
-						.arg(res.avgHeightUm, 0, 'f', 1).arg(res.minHeightUm, 0, 'f', 1).arg(res.maxHeightUm, 0, 'f', 1)
-					: QStringLiteral("H%1: no valid pixels").arg(ri + 1),
-				roiF.topLeft() - QPointF(0, 24),
-				res.pass ? QColor(0, 255, 127) : Qt::red, 14));
-
-			out.roiResults.append(res);
-		}
-
-		out.ok = true;
-	} while (false);
-
-	out.elapsedMs = timer.elapsed();
-	ct::logger::info("[Algo Height] Done in %lldms: %d ROI(s) tilt=(%.3f, %.3f) pass=%d %s",
-		out.elapsedMs, out.roiResults.size(),
-		out.tiltXDeg, out.tiltYDeg, out.pass ? 1 : 0, out.message.toStdString().c_str());
-
-	setBusy(false);
-	emit heightFinished(out);
 }

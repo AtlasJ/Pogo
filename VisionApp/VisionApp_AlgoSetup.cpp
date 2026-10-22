@@ -1,10 +1,11 @@
 // =============================================================================
 //  VisionApp_AlgoSetup.cpp
 //  Algo Setup page: OCR inspection (PaddleOCR + pattern matching, ported from
-//  IM430 ocrInspection2 core) and 3D height measurement (plane-fit datum,
-//  following Algo QAlgoHeightMeasurement), with an optional locator per algo.
+//  IM430 ocrInspection2 core) with an optional locator, and the page shell the
+//  3D Height Measurement 3 page lives in (its own wiring is in
+//  VisionApp_AlgoHeight3.cpp).
 //
-//  All processing runs on AlgoManager's worker thread; this file is UI glue:
+//  All processing runs on AlgoManager's worker threads; this file is UI glue:
 //  ROI drag boxes, parameter round-tripping, overlay rendering, pattern
 //  library management.
 // =============================================================================
@@ -15,7 +16,6 @@
 
 #include <QAbstractSpinBox>
 #include <QApplication>
-#include <QFileDialog>
 #include <QPainter>
 #include <QHeaderView>
 #include <QLineEdit>
@@ -27,8 +27,6 @@
 
 static const QColor kAlgoRoiColor(0, 150, 255);
 static const QColor kAlgoLearnColor(66, 135, 245);
-static const QColor kAlgoPlaneColor(255, 165, 0);   //plane ROIs: orange
-static const QColor kAlgoHeightColor(0, 200, 0);    //height ROIs: green
 static const QColor kAlgoSearchColor(255, 165, 0);
 
 // ── setup ────────────────────────────────────────────────────────────────────
@@ -57,7 +55,7 @@ void VisionApp::initAlgoSetupPage()
 	//── header: algo selection + run
 	connect(ui.comboBox_algoType, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int index) {
 		ui.stackedWidget_algoParams->setCurrentIndex(index);
-		//the Locator frame is shared by all pages, but the V2/V3 pages have none - hide it there
+		//the Locator frame is shared by all pages, but the V3 page has none - hide it there
 		//rather than leave a set of controls on screen that write nowhere
 		ui.frame_algoLocator->setVisible(algoHasLocator(currentAlgoPageAlgo()));
 		refreshAlgoLocatorUI();
@@ -78,18 +76,6 @@ void VisionApp::initAlgoSetupPage()
 			return;
 		}
 
-		/*
-		* The V2 page is a UI shell only - no params struct, no JSON, no algorithm. Refuse
-		* on anything not whitelisted. Falling through to the else below would silently run
-		* the OLD height algo against an untouched page, which reads as the new pipeline
-		* working when nothing of it exists.
-		*/
-		if (!algoIsImplemented(currentAlgoPageAlgo())) {
-			setAlgoStatus(ui.comboBox_algoType->currentText()
-				+ ": layout only, no algorithm yet");
-			return;
-		}
-
 		//V3's Run is a Run All: every stage in order, stopping at the first failure. It
 		//does its own capture and validation, so hand straight over.
 		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
@@ -101,30 +87,22 @@ void VisionApp::initAlgoSetupPage()
 		clearAlgoOverlay();
 		setAlgoStatus("Running...");
 
-		if (currentAlgoPageAlgo() == AlgoPageAlgo::OCR_READ) {
-			AlgoManager::instance().runOcr(_imageFOV);
-			AuditLog::instance().log(QStringLiteral("ALGO_RUN_OCR"));
-		}
-		else {
-			AlgoManager::instance().runHeight();
-			AuditLog::instance().log(QStringLiteral("ALGO_RUN_HEIGHT"));
-		}
+		AlgoManager::instance().runOcr(_imageFOV);
+		AuditLog::instance().log(QStringLiteral("ALGO_RUN_OCR"));
 	});
 
 	//── OCR page controls
 	connect(ui.toolButton_algoOcrRoi1, &QToolButton::toggled, this, [=](bool) { updateAlgoRoiVisibility(); });
 
 	/*
-	* Reference IMAGE: "Save as Ref" stores the current image (OCR: the FOV image,
-	* 3D: the loaded height map) as a machine-level reference; "Load Ref" brings it
-	* back into the display. Settings are not part of the reference.
+	* Reference IMAGE: "Save as Ref" stores the current FOV image as a machine-level
+	* reference; "Load Ref" brings it back into the display. Settings are not part of
+	* the reference.
 	*/
 	const QString ocrRefPath = QStringLiteral("%1/algoRef_ocr.png").arg(Common::Directory::ConfigPath());
-	const QString hRefPath = QStringLiteral("%1/algoRef_height.tif").arg(Common::Directory::ConfigPath());
 
 	auto refreshRefButtons = [=]() {
 		ui.toolButton_algoOcrLoadRef->setEnabled(QFile::exists(ocrRefPath));
-		ui.toolButton_algoHLoadRef->setEnabled(QFile::exists(hRefPath));
 	};
 
 	connect(ui.toolButton_algoOcrSaveRef, &QToolButton::clicked, this, [=]() {
@@ -145,26 +123,6 @@ void VisionApp::initAlgoSetupPage()
 		ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
 		showStatus("OCR reference image loaded");
 		AuditLog::instance().log(QStringLiteral("ALGO_REF_LOAD"), QStringLiteral("ocr"));
-	});
-
-	connect(ui.toolButton_algoHSaveRef, &QToolButton::clicked, this, [=]() {
-		auto hm = AlgoManager::instance().heightMap();
-		if (!hm || hm->id() == M_NULL) { showMsg("No height map loaded to save as reference."); return; }
-		MbufExportA(hRefPath.toStdString().c_str(), M_TIFF, hm->id());
-		showStatus("3D reference height map saved");
-		AuditLog::instance().log(QStringLiteral("ALGO_REF_SAVE"), QStringLiteral("height"));
-		refreshRefButtons();
-	});
-
-	connect(ui.toolButton_algoHLoadRef, &QToolButton::clicked, this, [=]() {
-		if (!QFile::exists(hRefPath)) { showMsg("No reference height map saved yet."); refreshRefButtons(); return; }
-		MIL_ID hm = M_NULL;
-		MbufImportA(hRefPath.toStdString().c_str(), M_TIFF, M_RESTORE, M_DEFAULT_HOST, &hm);
-		if (hm == M_NULL) { showMsg("Failed to load the reference height map."); return; }
-		AlgoManager::instance().setHeightMap(mtrx::MPM::instance().attach(hm));
-		showAlgoHeightMap(_algoHeightView3D);
-		showStatus("3D reference height map loaded");
-		AuditLog::instance().log(QStringLiteral("ALGO_REF_LOAD"), QStringLiteral("height"));
 	});
 
 	refreshRefButtons();
@@ -193,179 +151,6 @@ void VisionApp::initAlgoSetupPage()
 		const auto labelItem = ui.tableWidget_algoOcrPatternLabels->item(item->row(), 0);
 		if (!labelItem) return;
 		AlgoManager::instance().setPatternLabelEnabled(labelItem->text(), item->checkState() == Qt::Checked);
-	});
-
-	//── height page controls
-	connect(ui.toolButton_algoH2D, &QToolButton::clicked, this, [=]() { showAlgoHeightMap(false); });
-	connect(ui.toolButton_algoH3D, &QToolButton::clicked, this, [=]() { showAlgoHeightMap(true); });
-
-	connect(ui.toolButton_algoHLoadMap, &QToolButton::clicked, this, [=]() {
-		const QString path = QFileDialog::getOpenFileName(this, "Load Heightmap",
-			Common::Directory::getRecipeCurrentPath(), "Heightmap (*.tiff *.tif)");
-		if (path.isEmpty()) return;
-
-		QString error;
-		if (!AlgoManager::instance().loadHeightMapFromFile(path, error)) {
-			showMsg(error);
-			return;
-		}
-		showAlgoHeightMap(_algoHeightView3D);
-	});
-
-	connect(ui.toolButton_algoHUseLast, &QToolButton::clicked, this, [=]() {
-		if (!AlgoManager::instance().heightMap()) {
-			showMsg("No heightmap captured yet - run a 3D scan first.");
-			return;
-		}
-		showAlgoHeightMap(_algoHeightView3D);
-	});
-
-	//rotate the loaded heightmap by the set angle - the map itself rotates, so taught
-	//ROIs and the algo stay in the same (rotated) coordinate space. Exact multiples of
-	//90 use the lossless transpose path (and resize the canvas); other angles warp
-	//within the same canvas, nearest-neighbour so heights are never blended.
-	auto rotateHeightmap = [=](bool clockwise) {
-		auto hm = AlgoManager::instance().heightMap();
-		if (!hm) { showMsg("No heightmap loaded."); return; }
-
-		const double angle = ui.dspin_algoHRotAngle->value();
-
-		cv::Mat src, dst;
-		util::Mil_to_cv(hm->id(), src);
-		if (src.empty()) { showMsg("Failed to read the heightmap."); return; }
-
-		if (std::fmod(angle, 90.0) == 0.0) {
-			int quarters = (int)(angle / 90.0) % 4;
-			if (!clockwise) quarters = (4 - quarters) % 4;
-			dst = src;
-			for (int i = 0; i < quarters; i++) {
-				cv::Mat tmp;
-				cv::rotate(dst, tmp, cv::ROTATE_90_CLOCKWISE);
-				dst = tmp;
-			}
-		}
-		else {
-			//OpenCV: positive angle = counter-clockwise
-			const double cvAngle = clockwise ? -angle : angle;
-			const cv::Point2f center(src.cols / 2.0f, src.rows / 2.0f);
-			const cv::Mat m = cv::getRotationMatrix2D(center, cvAngle, 1.0);
-			cv::warpAffine(src, dst, m, src.size(), cv::INTER_NEAREST,
-				cv::BORDER_CONSTANT, cv::Scalar(0)); //0 = invalid height
-		}
-
-		MIL_ID rotated = M_NULL;
-		util::cv_to_Mil(dst, rotated);
-		if (rotated == M_NULL) { showMsg("Rotate failed."); return; }
-
-		AlgoManager::instance().setHeightMap(mtrx::MPM::instance().attach(rotated));
-		showAlgoHeightMap(_algoHeightView3D);
-	};
-	connect(ui.toolButton_algoHRotCW, &QToolButton::clicked, this, [=]() { rotateHeightmap(true); });
-	connect(ui.toolButton_algoHRotCCW, &QToolButton::clicked, this, [=]() { rotateHeightmap(false); });
-
-	//── ROI tools: duplicate at pitch, selection diff, copy/paste ──
-	auto selected3DBoxes = [=]() {
-		QVector<QPair<bool, QDragBox*>> sel; //isPlane, box
-		for (auto b : _algoPlaneBoxes) if (b->isSelected()) sel.append({ true, b });
-		for (auto b : _algoHeightBoxes) if (b->isSelected()) sel.append({ false, b });
-		return sel;
-	};
-
-	auto duplicateSelected = [=](bool horizontal) {
-		const auto sel = selected3DBoxes();
-		if (sel.size() != 1) { showMsg("Select exactly one ROI to duplicate."); return; }
-
-		const bool isPlane = sel[0].first;
-		const QRectF r = sel[0].second->getGeometry();
-		const int count = ui.spinBox_algoHDupCount->value();
-		const double step = horizontal ? ui.spinBox_algoHPitchX->value() : ui.spinBox_algoHPitchY->value();
-
-		for (int i = 1; i <= count; i++) {
-			addAlgoHRoiBox(isPlane, r.translated(horizontal ? step * i : 0.0, horizontal ? 0.0 : step * i));
-		}
-	};
-	connect(ui.toolButton_algoHDupH, &QToolButton::clicked, this, [=]() { duplicateSelected(true); });
-	connect(ui.toolButton_algoHDupV, &QToolButton::clicked, this, [=]() { duplicateSelected(false); });
-
-	//selection watcher: enables Duplicate for exactly one selected ROI, and shows the
-	//center-to-center X/Y difference when exactly two are selected
-	auto* selTimer = new QTimer(this);
-	connect(selTimer, &QTimer::timeout, this, [=]() {
-		if (!isPage(UIPage::ALGO_SETUP)) return;
-
-		const auto sel = selected3DBoxes();
-		ui.toolButton_algoHDupH->setEnabled(sel.size() == 1);
-		ui.toolButton_algoHDupV->setEnabled(sel.size() == 1);
-
-		if (sel.size() == 2) {
-			const QPointF c1 = sel[0].second->getGeometry().center();
-			const QPointF c2 = sel[1].second->getGeometry().center();
-			ui.label_algoHDiff->setText(QStringLiteral("Diff X: %1 px   Y: %2 px")
-				.arg(std::abs(c2.x() - c1.x()), 0, 'f', 1)
-				.arg(std::abs(c2.y() - c1.y()), 0, 'f', 1));
-		}
-		else {
-			ui.label_algoHDiff->setText(QStringLiteral("Diff: select two ROIs"));
-		}
-	});
-	selTimer->start(250);
-
-	//Ctrl+C / Ctrl+V have no button of their own: they arrive from the app-wide QShortcuts
-	//in VisionApp_Shortcuts.cpp and are routed by copyShortcutPressed/pasteShortcutPressed
-	//below. Do NOT add an eventFilter for them - the shortcut consumes the key first.
-
-	connect(ui.toolButton_algoHAddPlane, &QToolButton::clicked, this, [=]() {
-		const int n = _algoPlaneBoxes.size();
-		auto box = makeBox(QRectF(80 + n * 60, 80 + n * 60, 120, 120), kAlgoPlaneColor,
-			QStringLiteral("Plane %1").arg(n + 1));
-		_algoPlaneBoxes.append(box);
-		updateAlgoHRoiCounts();
-		updateAlgoRoiVisibility();
-	});
-
-	connect(ui.toolButton_algoHHeightRoi, &QToolButton::clicked, this, [=]() {
-		const int n = _algoHeightBoxes.size();
-		auto box = makeBox(QRectF(220 + n * 60, 220 + n * 60, 200, 200), kAlgoHeightColor,
-			QStringLiteral("Height %1").arg(n + 1));
-		_algoHeightBoxes.append(box);
-		updateAlgoHRoiCounts();
-		updateAlgoRoiVisibility();
-	});
-
-	//delete whichever plane/height ROI the user has highlighted (selected) on the scene
-	connect(ui.toolButton_algoHRemovePlane, &QToolButton::clicked, this, [=]() {
-		bool removed = false;
-
-		for (int i = _algoPlaneBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoPlaneBoxes[i]->isSelected()) continue;
-			_pGraphicsSceneFOV->removeItem(_algoPlaneBoxes[i]);
-			delete _algoPlaneBoxes[i];
-			_algoPlaneBoxes.removeAt(i);
-			removed = true;
-		}
-		for (int i = _algoHeightBoxes.size() - 1; i >= 0; i--) {
-			if (!_algoHeightBoxes[i]->isSelected()) continue;
-			_pGraphicsSceneFOV->removeItem(_algoHeightBoxes[i]);
-			delete _algoHeightBoxes[i];
-			_algoHeightBoxes.removeAt(i);
-			removed = true;
-		}
-
-		if (!removed) {
-			showMsg("Click a plane or height ROI on the image first, then Remove Selected.");
-			return;
-		}
-
-		//renumber so names stay Plane 1..N / Height 1..N
-		for (int i = 0; i < _algoPlaneBoxes.size(); i++) {
-			_algoPlaneBoxes[i]->setup(_algoPlaneBoxes[i]->getGeometry(), kAlgoPlaneColor,
-				QStringLiteral("Plane %1").arg(i + 1));
-		}
-		for (int i = 0; i < _algoHeightBoxes.size(); i++) {
-			_algoHeightBoxes[i]->setup(_algoHeightBoxes[i]->getGeometry(), kAlgoHeightColor,
-				QStringLiteral("Height %1").arg(i + 1));
-		}
-		updateAlgoHRoiCounts();
 	});
 
 	//── locator controls (bound to the current algo's locator config)
@@ -430,38 +215,6 @@ void VisionApp::initAlgoSetupPage()
 		renderAlgoOverlay(out.overlay);
 	});
 
-	connect(&AlgoManager::instance(), &AlgoManager::heightFinished, this, [=](const AlgoHeightOutput& out) {
-		if (out.ok) {
-			QStringList avgLines, rangeLines;
-			for (int i = 0; i < out.roiResults.size(); i++) {
-				const auto& r = out.roiResults[i];
-				if (r.valid) {
-					avgLines << QStringLiteral("H%1: %2 um %3").arg(i + 1)
-						.arg(r.avgHeightUm, 0, 'f', 2).arg(r.pass ? "" : "(FAIL)");
-					rangeLines << QStringLiteral("H%1: %2 .. %3 um").arg(i + 1)
-						.arg(r.minHeightUm, 0, 'f', 2).arg(r.maxHeightUm, 0, 'f', 2);
-				}
-				else {
-					avgLines << QStringLiteral("H%1: no valid pixels").arg(i + 1);
-				}
-			}
-			ui.label_algoHAvg->setText(QStringLiteral("Average height:\n%1").arg(avgLines.join("\n")));
-			ui.label_algoHMinMax->setText(QStringLiteral("Min / Max:\n%1").arg(rangeLines.join("\n")));
-			ui.label_algoHTilt->setText(QStringLiteral("Plane tilt: X %1 deg, Y %2 deg")
-				.arg(out.tiltXDeg, 0, 'f', 3).arg(out.tiltYDeg, 0, 'f', 3));
-			ui.label_algoHPass->setText(out.pass ? "PASS" : "FAIL");
-			ui.label_algoHPass->setStyleSheet(out.pass ? "color: #00C853; font-weight: bold;"
-			                                           : "color: #FF5252; font-weight: bold;");
-		}
-		else {
-			ui.label_algoHPass->setText("-");
-			ui.label_algoHPass->setStyleSheet("");
-		}
-		ui.label_algoHTime->setText(QStringLiteral("%1 ms").arg(out.elapsedMs));
-		setAlgoStatus(out.ok ? out.message : "Failed: " + out.message);
-		renderAlgoOverlay(out.overlay);
-	});
-
 	connect(&AlgoManager::instance(), &AlgoManager::busyChanged, this, [=](bool busy) {
 		ui.toolButton_algoRun->setEnabled(!busy);
 		if (busy) setAlgoStatus("Running...");
@@ -473,7 +226,6 @@ void VisionApp::initAlgoSetupPage()
 	});
 
 	ui.stackedWidget_algoParams->setCurrentIndex(0);
-	ui.toolButton_algoH2D->setChecked(true);
 
 	//the 3D Height Measurement 3 page owns its own wiring - see VisionApp_AlgoHeight3.cpp
 	initAlgoHeight3Page();
@@ -488,7 +240,7 @@ void VisionApp::initAlgoSetupPage()
 * goes out as QEvent::ShortcutOverride, and if nobody accepts it the shortcut map fires the
 * QShortcut and NO QEvent::KeyPress is ever generated. So while a QShortcut owns Ctrl+C,
 * an eventFilter watching for KeyPress can never see it - which is exactly why the algo
-* pages' copy/paste looked implemented but had never once run, on V1 or V3.
+* pages' copy/paste looked implemented but had never once run, on any of them.
 *
 * Text editing is left alone. QLineEdit and the spin boxes accept ShortcutOverride for the
 * standard Copy/Paste sequences and so would win anyway, but the guard is kept explicit
@@ -506,10 +258,8 @@ void VisionApp::copyShortcutPressed()
 	if (copyPasteGoesToText()) return;
 
 	if (isPage(UIPage::ALGO_SETUP)) {
-		//the V3 page keeps its ROIs in a different coordinate space (part frame), so the
-		//V1 handler would snapshot the wrong boxes entirely
+		//only V3 has ROIs to copy; the OCR page's boxes are fixed, one of each
 		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3CopySelectedRois();
-		else algoHCopySelectedRois();
 		return;
 	}
 
@@ -547,15 +297,7 @@ void VisionApp::selectAllShortcutPressed()
 	if (copyPasteGoesToText()) return;
 	if (!isPage(UIPage::ALGO_SETUP)) return;
 
-	if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
-		algoH3SelectAllRois();
-		return;
-	}
-
-	int selected = 0;
-	for (auto* b : _algoPlaneBoxes) if (b && b->isVisible()) { b->setSelected(true); selected++; }
-	for (auto* b : _algoHeightBoxes) if (b && b->isVisible()) { b->setSelected(true); selected++; }
-	if (selected > 0) showStatus(QStringLiteral("%1 ROI(s) selected").arg(selected));
+	if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3SelectAllRois();
 }
 
 void VisionApp::pasteShortcutPressed()
@@ -564,7 +306,6 @@ void VisionApp::pasteShortcutPressed()
 
 	if (isPage(UIPage::ALGO_SETUP)) {
 		if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) algoH3PasteRois();
-		else algoHPasteRois();
 		return;
 	}
 
@@ -582,8 +323,8 @@ void VisionApp::pasteShortcutPressed()
 * painted yet the value is INDETERMINATE, and Qt does not paint items outside the viewport,
 * so a box that has never been scrolled into view keeps that indeterminate value for good.
 *
-* What that looked like in practice: Run Height Measurement destroys and rebuilds every ROI
-* box, the new boxes land in the heap blocks just freed by the old ones, and _isSelected
+* What that looked like in practice (on the old V1 height page, whose Run destroyed and rebuilt
+* every ROI box): the new boxes landed in the heap blocks just freed by the old ones, and _isSelected
 * often came back as the OLD box's value. Copy then reported 18 ROIs copied with nothing
 * selected, and the results section counted phantom selections and refused to show a result
 * for the one ROI actually clicked. isSelected() has none of these problems - it is the real
@@ -592,65 +333,6 @@ void VisionApp::pasteShortcutPressed()
 * This is why copyVisionObject() was never affected: it already used isSelected().
 */
 
-//Ctrl+C: snapshot the selected 3D ROIs (dispatched from copyShortcutPressed)
-void VisionApp::algoHCopySelectedRois()
-{
-	_algoHClipboard.clear();
-	for (auto b : _algoPlaneBoxes) if (b->isSelected()) _algoHClipboard.append({ true, b->getGeometry() });
-	for (auto b : _algoHeightBoxes) if (b->isSelected()) _algoHClipboard.append({ false, b->getGeometry() });
-	if (!_algoHClipboard.isEmpty()) {
-		_algoHPasteCount = 0; //a fresh clipboard starts the paste offset over
-		showStatus(QStringLiteral("%1 ROI(s) copied").arg(_algoHClipboard.size()));
-	}
-}
-
-//Ctrl+V: paste the snapshot offset by 10 px so the copies are visibly separate
-//(dispatched from pasteShortcutPressed)
-void VisionApp::algoHPasteRois()
-{
-	if (_algoHClipboard.isEmpty()) return;
-
-	//the offset steps per paste, or a second Ctrl+V would land exactly on the first copy
-	_algoHPasteCount++;
-	const qreal step = 10.0 * _algoHPasteCount;
-
-	//the paste owns the selection when it finishes, so the sources are cleared first
-	for (auto b : _algoPlaneBoxes) if (b) b->setSelected(false);
-	for (auto b : _algoHeightBoxes) if (b) b->setSelected(false);
-
-	//collected and selected only after every box exists and updateAlgoRoiVisibility() has
-	//shown them: setSelected() is a no-op on a hidden QGraphicsItem
-	QVector<QDragBox*> fresh;
-	for (const auto& c : _algoHClipboard)
-		fresh.append(addAlgoHRoiBox(c.first, c.second.translated(step, step)));
-
-	updateAlgoRoiVisibility();
-	for (auto* b : fresh) if (b) b->setSelected(true);
-
-	showStatus(QStringLiteral("%1 ROI(s) pasted").arg(_algoHClipboard.size()));
-}
-
-QDragBox* VisionApp::addAlgoHRoiBox(bool isPlane, const QRectF& rect)
-{
-	auto box = new QDragBox();
-	_pGraphicsSceneFOV->addItem(box);
-	box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
-	const int n = (isPlane ? _algoPlaneBoxes.size() : _algoHeightBoxes.size()) + 1;
-	box->setup(rect, isPlane ? kAlgoPlaneColor : kAlgoHeightColor,
-		QStringLiteral("%1 %2").arg(isPlane ? "Plane" : "Height").arg(n));
-	box->setDragable(true);
-	box->setZValue((int)UIHierarchy::DRAGGABLES);
-	connect(box, SIGNAL(dragBoxMouseReleased(QDragBox*, QString, QPointF)), this, SLOT(algoSettingsTouched()));
-	connect(box, SIGNAL(grabberReleased(QDragBox*)), this, SLOT(algoSettingsTouched()));
-
-	if (isPlane) _algoPlaneBoxes.append(box);
-	else _algoHeightBoxes.append(box);
-
-	updateAlgoHRoiCounts();
-	updateAlgoRoiVisibility();
-	return box;
-}
-
 AlgoPageAlgo VisionApp::currentAlgoPageAlgo() const
 {
 	return (AlgoPageAlgo)ui.comboBox_algoType->currentIndex();
@@ -658,25 +340,15 @@ AlgoPageAlgo VisionApp::currentAlgoPageAlgo() const
 
 // ── ROI visibility: only on the algo page, only for the selected algo ────────
 
-void VisionApp::updateAlgoHRoiCounts()
-{
-	ui.label_algoHPlaneCount->setText(QStringLiteral("Plane ROIs: %1").arg(_algoPlaneBoxes.size()));
-	ui.label_algoHHeightCount->setText(QStringLiteral("Height ROIs: %1").arg(_algoHeightBoxes.size()));
-}
-
 void VisionApp::updateAlgoRoiVisibility()
 {
 	const bool onPage = (ui.stackedWidget->currentIndex() == (int)UIPage::ALGO_SETUP)
 		&& ui.frame_rightTab->isVisible();
 	const AlgoPageAlgo algo = currentAlgoPageAlgo();
 	const bool ocr = onPage && (algo == AlgoPageAlgo::OCR_READ);
-	const bool height = onPage && (algo == AlgoPageAlgo::HEIGHT_3D);
 
 	if (_algoOcrRoi1Box) _algoOcrRoi1Box->setVisible(ocr && ui.toolButton_algoOcrRoi1->isChecked());
 	if (_algoOcrLearnBox) _algoOcrLearnBox->setVisible(ocr && ui.toolButton_algoOcrLearnRoi->isChecked());
-
-	for (auto box : _algoPlaneBoxes) box->setVisible(height);
-	for (auto box : _algoHeightBoxes) box->setVisible(height);
 
 	//gated on algoHasLocator as well: frame_algoLocator is hidden on the pages that have no
 	//locator, but its toggle buttons keep whatever checked state they were left in, so without
@@ -697,8 +369,6 @@ void VisionApp::hideAlgoSetupRois()
 	if (_algoOcrLearnBox) _algoOcrLearnBox->hide();
 	if (_algoLocLearnBox) _algoLocLearnBox->hide();
 	if (_algoLocSearchBox) _algoLocSearchBox->hide();
-	for (auto box : _algoPlaneBoxes) box->hide();
-	for (auto box : _algoHeightBoxes) box->hide();
 	hideAlgoH3Rois();
 	clearAlgoOverlay();
 }
@@ -723,18 +393,7 @@ void VisionApp::captureAlgoParamsFromUI()
 	//BEFORE the locator early-return below, or nothing on that page would ever be saved
 	captureAlgoH3ParamsFromUI();
 
-	AlgoHeightParams h = mgr.heightParams();
-	h.intensityPerMicron = ui.dspin_algoHIpm->value();
-	h.minHeightUm = ui.dspin_algoHMin->value();
-	h.maxHeightUm = ui.dspin_algoHMax->value();
-	h.removeOutliers = ui.checkBox_algoHOutliers->isChecked();
-	h.planeRois.clear();
-	for (auto box : _algoPlaneBoxes) h.planeRois.append(box->getGeometry());
-	h.heightRois.clear();
-	for (auto box : _algoHeightBoxes) h.heightRois.append(box->getGeometry());
-	mgr.setHeightParams(h);
-
-	//locator widgets edit the CURRENT algo's config - but HEIGHT_3D_V2 has no locator slot,
+	//locator widgets edit the CURRENT algo's config - but HEIGHT_3D_V3 has no locator slot,
 	//so skip rather than round-trip a config that setLocatorConfig() would discard anyway
 	const AlgoPageAlgo algo = currentAlgoPageAlgo();
 	if (!algoHasLocator(algo)) return;
@@ -804,69 +463,10 @@ void VisionApp::refreshAlgoSetupPage()
 		ui.dspin_algoOcrPatternScore->setValue(pat.scoreThreshold);
 	}
 
-	const AlgoHeightParams h = mgr.heightParams();
-	{
-		QSignalBlocker b1(ui.dspin_algoHIpm);
-		QSignalBlocker b2(ui.dspin_algoHMin);
-		QSignalBlocker b3(ui.dspin_algoHMax);
-		QSignalBlocker b4(ui.checkBox_algoHOutliers);
-		ui.dspin_algoHIpm->setValue(h.intensityPerMicron);
-		ui.dspin_algoHMin->setValue(h.minHeightUm);
-		ui.dspin_algoHMax->setValue(h.maxHeightUm);
-		ui.checkBox_algoHOutliers->setChecked(h.removeOutliers);
-	}
-
-	//rebuild plane + height ROI boxes from the stored geometries
-	auto rebuildBoxes = [=](QVector<QDragBox*>& boxes, const QVector<QRectF>& rois,
-		const QColor& color, const QString& prefix) {
-		for (auto box : boxes) {
-			_pGraphicsSceneFOV->removeItem(box);
-			delete box;
-		}
-		boxes.clear();
-
-		int idx = 0;
-		for (const auto& r : rois) {
-			auto box = new QDragBox();
-			_pGraphicsSceneFOV->addItem(box);
-			box->setOutterBarrier(_pGraphicsSceneFOV->sceneRect());
-			box->setup(r, color, QStringLiteral("%1 %2").arg(prefix).arg(++idx));
-			box->setDragable(true);
-			box->setZValue((int)UIHierarchy::DRAGGABLES);
-			box->hide();
-			boxes.append(box);
-		}
-	};
-
-	rebuildBoxes(_algoPlaneBoxes, h.planeRois, kAlgoPlaneColor, QStringLiteral("Plane"));
-	rebuildBoxes(_algoHeightBoxes, h.heightRois, kAlgoHeightColor, QStringLiteral("Height"));
-	updateAlgoHRoiCounts();
-
 	refreshAlgoLocatorUI();
 	refreshAlgoPatternList();
 	refreshAlgoHeight3Page();
 	updateAlgoRoiVisibility();
-}
-
-// ── heightmap display (2D grayscale for setup, 3D colormap for viewing) ─────
-
-void VisionApp::showAlgoHeightMap(bool view3D)
-{
-	_algoHeightView3D = view3D;
-
-	QSignalBlocker b1(ui.toolButton_algoH2D);
-	QSignalBlocker b2(ui.toolButton_algoH3D);
-	ui.toolButton_algoH2D->setChecked(!view3D);
-	ui.toolButton_algoH3D->setChecked(view3D);
-
-	const QImage img = AlgoManager::instance().heightMapImage(view3D);
-	if (img.isNull()) {
-		showStatus("No heightmap loaded.");
-		return;
-	}
-
-	displayFOV(img, FovPixelSource::LastScanMaps);
-	ui.graphicsViewFOV->fitInView(_pPixmapItemFOV, Qt::KeepAspectRatio);
 }
 
 // ── overlay rendering ────────────────────────────────────────────────────────

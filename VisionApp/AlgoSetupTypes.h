@@ -12,48 +12,39 @@
 
 /*
 * Shared data types for the Algo Setup page (AlgoManager).
-* OCR types follow IM430's ocrInspection2 core; height measurement follows
-* the Algo project's QAlgoHeightMeasurement plane-fit method; the locator
-* follows QAlgoLocator.
+* OCR types follow IM430's ocrInspection2 core; the locator follows QAlgoLocator.
+* 3D height measurement has its own types in AlgoHeight3Types.h.
 */
 
-//which algo the setup page combobox is on (name avoids the Algo lib's AlgoType)
+/*
+* Which algo the setup page combobox is on (name avoids the Algo lib's AlgoType).
+*
+* The value is the combo row AND the stacked page AND what the Template Library saves as a
+* template's "algo" - so it is persisted, and only ever APPEND. HEIGHT_3D_V3 is 1 because 1 has
+* always meant "3D Height Measurement" in a saved template: it used to be the old plane-fit algo
+* (V1), and every template that linked to it now links to V3 with nothing to convert.
+*/
 enum class AlgoPageAlgo {
 	OCR_READ = 0,
-	HEIGHT_3D = 1,
-	HEIGHT_3D_V2 = 2,     //abandoned layout attempt, kept as a visual reference - UI shell only
-	HEIGHT_3D_V3 = 3      //the new pipeline: AlgoHeight3Pipeline, no locator
+	HEIGHT_3D_V3 = 1      //AlgoHeight3Pipeline, no locator
 };
 
 /*
-* How many algos own a Locator config. HEIGHT_3D_V2 and HEIGHT_3D_V3 deliberately do NOT -
-* their segmentation stage locates the part itself, on the height data rather than on an 8-bit
-* render of it, and returns width, height and angle instead of only a match score.
+* How many algos own a Locator config: OCR only. HEIGHT_3D_V3 deliberately does NOT - its
+* segmentation stage locates the part itself, on the height data rather than on an 8-bit render
+* of it, and returns width, height and angle instead of only a match score.
 *
-* This constant exists because AlgoPageAlgo indexes AlgoManager::m_locator[] directly and the
-* enum is now LARGER than that array. Anything converting an AlgoPageAlgo to an index must
-* bounds-check against this, or selecting one of those pages writes past the end of the array -
-* silent memory corruption, not a crash, because captureAlgoParamsFromUI() runs on both Save
-* and Run.
+* AlgoPageAlgo indexes AlgoManager::m_locator[] directly, and the enum is LARGER than that
+* array. Anything converting an AlgoPageAlgo to an index must bounds-check against this, or
+* selecting the V3 page writes past the end of the array - silent memory corruption, not a
+* crash, because captureAlgoParamsFromUI() runs on both Save and Run.
 */
-constexpr int kAlgoLocatorSlots = 2;
+constexpr int kAlgoLocatorSlots = 1;
 
 inline bool algoHasLocator(AlgoPageAlgo a)
 {
 	const int i = (int)a;
 	return i >= 0 && i < kAlgoLocatorSlots;
-}
-
-/*
-* Which algos actually have an implementation behind them. The V2 page is layout only.
-* Written as a WHITELIST rather than a list of exclusions so that the next page added to the
-* enum refuses by default, instead of falling through to whatever the last else branch runs.
-*/
-inline bool algoIsImplemented(AlgoPageAlgo a)
-{
-	return a == AlgoPageAlgo::OCR_READ
-		|| a == AlgoPageAlgo::HEIGHT_3D
-		|| a == AlgoPageAlgo::HEIGHT_3D_V3; //AlgoHeight3Pipeline, see AlgoHeight3.h
 }
 
 //one PaddleOCR text detection (matches IM430's OcrResult)
@@ -170,42 +161,5 @@ struct AlgoLocatorResult {
 	QPointF foundPos;
 };
 
-// ── 3D height measurement (QAlgoHeightMeasurement plane-fit style) ──────────
-
-
-struct AlgoHeightParams {
-	double intensityPerMicron = 11.0; //gray levels per um (Algo convention: raw / ipm = um)
-	double minHeightUm = 0.0;         //pass/fail limits; both 0 = no limit
-	double maxHeightUm = 0.0;
-	bool removeOutliers = true;       //plane-residual outlier rejection before the datum fit
-	QVector<QRectF> planeRois;        //datum plane-fit ROIs (any number, at least 3 to fit)
-	QVector<QRectF> heightRois;       //measurement ROIs (each measured against the datum plane)
-};
-
-//one measurement ROI's result, relative to the shared datum plane
-struct AlgoHeightRoiResult {
-	QRectF roi;
-	double avgHeightUm = 0.0;
-	double minHeightUm = 0.0;
-	double maxHeightUm = 0.0;
-	bool pass = false;
-	bool valid = false; //false = no valid pixels in the ROI
-};
-
-struct AlgoHeightOutput {
-	//NOTE: registered as a queued-connection metatype in AlgoManager::init()
-	bool ok = false;
-	QString message;
-	bool planeValid = false;
-	double planeA = 0, planeB = 0, planeC = 0, planeD = 0;
-	double tiltXDeg = 0.0;
-	double tiltYDeg = 0.0;
-	QVector<AlgoHeightRoiResult> roiResults; //one per measurement ROI
-	bool pass = false;                       //all ROIs pass
-	qint64 elapsedMs = 0;
-	QVector<AlgoOverlayItem> overlay;
-};
-
 #include <QMetaType>
 Q_DECLARE_METATYPE(AlgoOcrOutput)
-Q_DECLARE_METATYPE(AlgoHeightOutput)

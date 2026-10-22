@@ -53,12 +53,11 @@ struct FovMapPixel {
 *    pattern-matching correction from a learned pattern library. With
 *    PaddleOCR disabled, the ROI is grid-split by rows/columns and read by
 *    pattern matching alone.
-*  - 3D height measurement: plane-fit datum ROIs + height ROI relative to the
-*    fitted plane, following the Algo project's QAlgoHeightMeasurement.
+*  - 3D Height Measurement 3 (AlgoHeight3Pipeline): five stages from the raw
+*    height map to a unit verdict, on a thread of its own - see AlgoHeight3.h.
 *
-* An optional locator (QAlgoLocator style) runs before either algo and shifts
-* the ROIs by the found offset; when no locator is assigned the algo runs on
-* the ROIs as-is.
+* An optional locator (QAlgoLocator style) runs before OCR and shifts the ROI
+* by the found offset; when no locator is assigned OCR runs on the ROI as-is.
 *
 * Results come back on signals; the payload carries overlay primitives for
 * the UI thread to draw. Settings persist per recipe in algoSetup.json and
@@ -76,9 +75,6 @@ public:
 	//── config (thread-safe copies) ──
 	AlgoOcrParams ocrParams() const;
 	void setOcrParams(const AlgoOcrParams& p);
-
-	AlgoHeightParams heightParams() const;
-	void setHeightParams(const AlgoHeightParams& p);
 
 	AlgoHeight3Params height3Params() const;
 	void setHeight3Params(const AlgoHeight3Params& p);
@@ -102,10 +98,8 @@ public:
 	//── locator learn ──
 	bool learnLocatorModel(AlgoPageAlgo algo, const QImage& fov, const QRectF& learnRoi, QString& error);
 
-	//── heightmap source ──
-	void setHeightMap(mtrx::SharedMilID heightMap);         //e.g. last scanned map
+	//── the last scan's maps: production's display, the FOV readout, V3's "Use Last Scan" ──
 	void setLastScanMaps(mtrx::SharedMilID heightMap, mtrx::SharedMilID intensityMap);
-	bool loadHeightMapFromFile(const QString& tiffPath, QString& error);
 	mtrx::SharedMilID heightMap() const;
 	mtrx::SharedMilID lastScanIntensityMap() const;
 	QImage heightMapImage(bool colorMapped) const;          //for 2D/3D display
@@ -176,21 +170,18 @@ public:
 
 	//── runs (queued to the worker thread; results come by signal) ──
 	void runOcr(const QImage& fov);
-	void runHeight();
 	void runHeight3(AlgoH3Stage stage);
 
 	bool isBusy() const { return m_busyCount > 0; }
 
 signals:
 	void ocrFinished(AlgoOcrOutput output);
-	void heightFinished(AlgoHeightOutput output);
 	void height3Finished(int stage, AlgoHeight3Output output);
 	void busyChanged(bool busy);
 	void patternsChanged();
 
 private slots:
 	void doRunOcr(QImage fov);
-	void doRunHeight();
 	void doRunHeight3(int stage);
 	void doRunHeight3UpTo(int stage);
 
@@ -236,7 +227,7 @@ private:
 	void height3FromJson(const QJsonObject& root);
 	QJsonObject height3ToJson() const;
 
-	QThread m_thread;          //OCR, its PaddleOCR warm-up, V1 height
+	QThread m_thread;          //OCR and its PaddleOCR warm-up
 	QThread m_height3Thread;   //V3 only - see AlgoH3Runner
 	AlgoH3Runner* m_height3Runner = nullptr;
 	bool m_initialized = false;
@@ -245,14 +236,13 @@ private:
 	mutable std::mutex m_mutex; //guards params, configs, pattern maps, heightmap
 
 	AlgoOcrParams m_ocrParams;
-	AlgoHeightParams m_heightParams;
-	AlgoLocatorConfig m_locator[2]; //indexed by AlgoPageAlgo
+	AlgoLocatorConfig m_locator[kAlgoLocatorSlots]; //indexed by AlgoPageAlgo - see algoHasLocator
 
 	OcrPatternConfig m_patternConfig;
 	QHash<QString, QStringList> m_patternFiles; //label -> .mpat paths
 
-	mtrx::SharedMilID m_heightMap;
-	mtrx::SharedMilID m_lastScanIntensity; //companion of m_heightMap, for "Use Last Scan"
+	mtrx::SharedMilID m_heightMap;         //the last scan's height map
+	mtrx::SharedMilID m_lastScanIntensity; //its companion, for "Use Last Scan"
 
 	/*
 	* 3D Height Measurement 3. The params live under m_mutex like every other config,

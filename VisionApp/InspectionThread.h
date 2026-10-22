@@ -73,9 +73,7 @@ private:
 	QMutex m_resMutex;
 	QWaitCondition m_resCv;
 	bool m_ocrDone = false;
-	bool m_heightDone = false;
 	bool m_height3Done = false;
 	AlgoOcrOutput m_ocrOutput;
-	AlgoHeightOutput m_heightOutput;
 	AlgoHeight3Output m_height3Output;
 };

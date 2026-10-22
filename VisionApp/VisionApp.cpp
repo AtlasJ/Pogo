@@ -3856,14 +3856,16 @@ void VisionApp::editTemplate()
 {
 	//templates now link to the in-app algos; edit them on the Algo Setup page
 	auto tmpl = _templateLibraryTab->currentAlgoTemplate();
-	if (tmpl) {
-		QSignalBlocker sb(ui.comboBox_algoType);
-		ui.comboBox_algoType->setCurrentIndex((int)tmpl->algo());
-		ui.stackedWidget_algoParams->setCurrentIndex((int)tmpl->algo());
-		refreshAlgoLocatorUI();
-	}
+	//through the combo's own handler, not around it: that is what shows or hides the Locator
+	//frame (OCR has one, V3 does not) and gives V3 back its maps on a first visit
+	if (tmpl) ui.comboBox_algoType->setCurrentIndex((int)tmpl->algo());
 	toPage(UIPage::ALGO_SETUP);
 	updateAlgoRoiVisibility();
+	//the handler ran before the page was showing, so V3's own refresh had nothing to draw on yet
+	if (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3) {
+		updateAlgoH3Enables();
+		updateAlgoH3Display();
+	}
 }
 
 void VisionApp::findVisionObject()

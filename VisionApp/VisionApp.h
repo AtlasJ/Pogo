@@ -894,10 +894,7 @@ private:
 	QDragBox* _alignLearnBox = nullptr;
 	QDragBox* _alignSearchBox = nullptr;
 	QDragBox* _algoLocSearchBox = nullptr;
-	QVector<QDragBox*> _algoPlaneBoxes;
-	QVector<QDragBox*> _algoHeightBoxes;
 	QVector<QGraphicsItem*> _algoOverlayItems;
-	bool _algoHeightView3D = false;
 	QDragBox _barcodeLocatedRegion;
 	bool barcodeExistTest(int index);
 	void initBarcode();
@@ -932,11 +929,8 @@ private:
 	void refreshAlgoLocatorUI();
 	void refreshAlgoPatternList();
 	void updateAlgoRoiVisibility();
-	void updateAlgoHRoiCounts();
 	void hideAlgoSetupRois();
 	QTimer* _algoAutoSaveTimer = nullptr; //debounced auto-save of algo settings
-
-	QDragBox* addAlgoHRoiBox(bool isPlane, const QRectF& rect); //plane/height ROI with standard styling
 
 	//Ctrl+C / Ctrl+V dispatch for the whole app: vision objects on the recipe page, ROIs on
 	//the algo pages, nothing while a text field has focus. Called from the QShortcuts in
@@ -956,12 +950,7 @@ private:
 	bool copyPasteGoesToText() const;
 	void setAlgoStatus(const QString& text);   //the algo page header's status line, every algo
 
-	void algoHCopySelectedRois(); //Ctrl+C on the V1 3D height page
-	void algoHPasteRois();        //Ctrl+V: paste offset 10 px
-	QVector<QPair<bool, QRectF>> _algoHClipboard; //Ctrl+C snapshot of selected 3D ROIs (isPlane, rect)
-	int _algoHPasteCount = 0;     //pastes of the current clipboard, so the offset steps
 	void captureAlgoParamsFromUI();
-	void showAlgoHeightMap(bool view3D);
 	void clearAlgoOverlay();
 	void renderAlgoOverlay(const QVector<AlgoOverlayItem>& overlay);
 	AlgoPageAlgo currentAlgoPageAlgo() const;
