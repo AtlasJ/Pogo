@@ -133,8 +133,8 @@ void VisionApp::initProductionUI() {
 
 	//double click a unit's cell to review its saved images:
 	//Barcode -> show the decoding reader's capture; OCR -> cam view + algo setup on
-	//the OCR algo with the OCR-side capture; Pass/Fail -> algo setup on the 3D algo
-	//with the unit's height map. Images exist only when Save Inspection Images is on.
+	//the OCR algo with the OCR-side capture; 3D -> algo setup on V3 with the unit's
+	//height + intensity maps, run once. Images exist only when Save Inspection Images is on.
 	connect(ui.tableWidget_prodStatus, &QTableWidget::cellDoubleClicked, this, [=](int row, int col) {
 		auto* t = ui.tableWidget_prodStatus;
 		auto* tItem = t->item(row, 0);
@@ -186,25 +186,38 @@ void VisionApp::initProductionUI() {
 			toPage(UIPage::ALGO_SETUP);
 		}
 		else if (col == 4) {
-			//3D: cam-only view, algo setup page on the height algo, unit's height map loaded
+			/*
+			* 3D: cam-only view, the V3 page with the unit's saved maps, run through every stage
+			* so the page shows the unit's result under the recipe's current settings.
+			*
+			* Never during a run. V3 is the production 3D algo and there is only one of it:
+			* loading a unit into it mid-run would replace the map the next unit is measured on.
+			*/
+			if (_productionSetupLocked || !InspectionThread::instance().isIdle()) {
+				showMsg(QStringLiteral("Wait for the production run to finish before reviewing a unit's 3D scan."));
+				return;
+			}
+			if (AlgoManager::instance().isBusy()) {
+				showMsg(QStringLiteral("Algo is still running, please wait."));
+				return;
+			}
+
 			const QString hmPath = root + saveName + "_height.tiff";
 			if (!QFile::exists(hmPath)) {
 				showMsg(QStringLiteral("No saved height map for %1 - enable Save Inspection Images.").arg(saveName));
 				return;
 			}
+			if (!algoH3LoadUnitMaps(hmPath, root + saveName + "_intensity.jpg")) return;
 
-			MIL_ID hm = M_NULL;
-			MbufImportA(hmPath.toStdString().c_str(), M_TIFF, M_RESTORE, M_DEFAULT_HOST, &hm);
-			if (hm == M_NULL) {
-				showMsg(QStringLiteral("Failed to load %1").arg(hmPath));
-				return;
-			}
-
-			AlgoManager::instance().setHeightMap(mtrx::MPM::instance().attach(hm));
 			toggleFOVView();
-			ui.comboBox_algoType->setCurrentIndex((int)AlgoPageAlgo::HEIGHT_3D);
+			ui.comboBox_algoType->setCurrentIndex((int)AlgoPageAlgo::HEIGHT_3D_V3);
 			toPage(UIPage::ALGO_SETUP);
-			showAlgoHeightMap(true);
+			updateAlgoH3Display();
+			updateAlgoH3Enables();
+
+			//the page runs only with both maps; without the intensity one it stops at loaded
+			if (AlgoManager::instance().height3HasIntensity()) algoH3RunStage(AlgoH3Stage::All);
+			else setAlgoStatus(QStringLiteral("%1: no intensity map was saved, so it cannot be run here").arg(saveName));
 		}
 	});
 

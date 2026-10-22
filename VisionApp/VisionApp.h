@@ -1010,6 +1010,8 @@ private:
 	void rememberAlgoH3Input(bool intensity, const QString& path);
 	void restoreAlgoH3Inputs();
 	bool _algoH3InputsRestored = false;
+	//one production unit's saved scan, for the Production page's 3D double-click
+	bool algoH3LoadUnitMaps(const QString& heightPath, const QString& intensityPath);
 	/*
 	* ROI types are edited ONE AT A TIME, chosen by comboBox_algoH3RoiType, instead of in a
 	* grid: the panel is tall and narrow, and a 5-column table could only ever be read by

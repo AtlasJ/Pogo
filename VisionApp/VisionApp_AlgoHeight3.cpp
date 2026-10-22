@@ -2216,6 +2216,57 @@ void VisionApp::restoreAlgoH3Inputs()
 	}
 }
 
+/*
+* Put one production unit's saved scan on this page, as a pair of files - which is what they
+* are, so they are remembered for the next restart like any pair loaded by hand.
+*
+* Cleared first. Loading a height map keeps an intensity map of the same size, and every unit
+* of a run is the same size, so without the clear a unit saved with no intensity map would show
+* the previous unit's - a picture of a different part under this one's heights.
+*
+* The intensity map is optional here: the caller decides what to do without one.
+*/
+bool VisionApp::algoH3LoadUnitMaps(const QString& heightPath, const QString& intensityPath)
+{
+	auto& mgr = AlgoManager::instance();
+	mgr.height3Clear();
+	ui.lineEdit_algoH3InputUseLastScanStatus->clear();
+
+	QString error;
+	const bool heightOk = mgr.height3LoadHeightFile(heightPath, error);
+	ui.lineEdit_algoH3InputLoadHeightStatus->setText(heightOk ? QFileInfo(heightPath).fileName() : error);
+
+	bool intensityOk = false;
+	if (heightOk && QFile::exists(intensityPath)) {
+		intensityOk = mgr.height3LoadIntensityFile(intensityPath, error);
+		ui.lineEdit_algoH3InputLoadIntensityStatus->setText(intensityOk ? QFileInfo(intensityPath).fileName() : error);
+	}
+	else {
+		ui.lineEdit_algoH3InputLoadIntensityStatus->setText(heightOk
+			? QStringLiteral("No intensity map saved for this unit") : QString());
+	}
+
+	//a unit that failed to load leaves the remembered pair alone, for the next restart to reopen
+	if (heightOk) {
+		rememberAlgoH3Input(false, heightPath);
+		rememberAlgoH3Input(true, intensityOk ? intensityPath : QString());
+	}
+
+	//whatever was on the page belonged to another map
+	_algoH3Output = AlgoHeight3Output();
+	refreshAlgoH3RoiBoxes();
+	applyAlgoH3Output(_algoH3Output);
+	updateAlgoH3Display();
+	updateAlgoH3Enables();
+
+	if (!heightOk) {
+		showMsg(error);
+		return false;
+	}
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_LOAD_UNIT"), QFileInfo(heightPath).fileName());
+	return true;
+}
+
 void VisionApp::updateAlgoH3Display()
 {
 	if (!isPage(UIPage::ALGO_SETUP)) return;
