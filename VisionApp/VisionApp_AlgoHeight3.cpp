@@ -30,13 +30,17 @@
 #include "External3DViewer.h"
 
 #include <QColorDialog>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QLabel>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
@@ -303,6 +307,7 @@ static QIcon h3ColorIcon(const QColor& c)
 void VisionApp::initAlgoHeight3Page()
 {
 	configureAlgoH3Ranges();
+	buildAlgoH3AlgoRow();
 	buildAlgoH3SegMethodRows();
 	buildAlgoH3DatumMethodRows();
 
@@ -1016,6 +1021,23 @@ void VisionApp::initAlgoHeight3Page()
 	// ── results from the worker thread ──
 	connect(&AlgoManager::instance(), &AlgoManager::height3Finished, this,
 		[=](int stage, const AlgoHeight3Output& out) {
+			/*
+			* Production runs each unit's own algo. A result from any other than the one this page
+			* tunes would put its numbers under this algo's ROIs, so the page shows none - and the
+			* pipeline starts this algo's next single-stage run from scratch (runHeight3Locked).
+			*/
+			if (out.algoName.compare(AlgoManager::instance().height3EditAlgo(), Qt::CaseInsensitive) != 0) {
+				if (_algoH3Output.preprocess.ran) {
+					_algoH3Output = AlgoHeight3Output();
+					refreshAlgoH3RoiBoxes();
+					applyAlgoH3Output(_algoH3Output);
+					updateAlgoH3Display();
+					updateAlgoH3RoiVisibility();
+				}
+				updateAlgoH3Enables();
+				return;
+			}
+
 			_algoH3Output = out;
 
 			//boxes first: a stage that changed the crop moves every ROI, and the results
@@ -1955,6 +1977,231 @@ void VisionApp::algoH3ShownStage(bool& preprocessed, bool& segmented) const
 	segmented = (section >= SEC_DATUM) && AlgoManager::instance().height3SegmentReady();
 }
 
+// =============================================================================
+// Named algos - which one this page tunes
+// =============================================================================
+
+/*
+* The algo picker, above the sections. In code rather than the .ui for the same reason as the
+* method rows below, and because VisionApp.ui is shared and edited in Designer.
+*
+* One combo and one menu: the panel is narrow, and five buttons in a row would push it into a
+* horizontal scrollbar. The default is marked in the list itself, so there is nothing else to
+* read to know which one an unmatched cable runs.
+*/
+void VisionApp::buildAlgoH3AlgoRow()
+{
+	if (_algoH3AlgoCombo) return;
+
+	auto* row = new QHBoxLayout();
+	auto* label = new QLabel(tr("Algo:"), ui.widget_algoHeight3Page);
+
+	_algoH3AlgoCombo = new QComboBox(ui.widget_algoHeight3Page);
+	_algoH3AlgoCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+	//sized by a fixed count, not by the longest name: a long one would widen the whole panel
+	_algoH3AlgoCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+	_algoH3AlgoCombo->setMinimumContentsLength(12);
+	_algoH3AlgoCombo->setToolTip(tr("The algo this page is tuning. In production each unit runs the algo "
+		"named after its cable in the PMF, and the default one when there is none."));
+
+	_algoH3AlgoMenuButton = new QToolButton(ui.widget_algoHeight3Page);
+	_algoH3AlgoMenuButton->setText(tr("Manage"));
+	_algoH3AlgoMenuButton->setPopupMode(QToolButton::InstantPopup);
+	auto* menu = new QMenu(_algoH3AlgoMenuButton);
+	connect(menu->addAction(tr("New (copy of this one)...")), &QAction::triggered, this, [=]() { algoH3NewAlgo(); });
+	connect(menu->addAction(tr("Rename...")), &QAction::triggered, this, [=]() { algoH3RenameAlgo(); });
+	connect(menu->addAction(tr("Delete")), &QAction::triggered, this, [=]() { algoH3DeleteAlgo(); });
+	menu->addSeparator();
+	connect(menu->addAction(tr("Set as Default")), &QAction::triggered, this, [=]() { algoH3SetDefaultAlgo(); });
+	_algoH3AlgoMenuButton->setMenu(menu);
+
+	row->addWidget(label);
+	row->addWidget(_algoH3AlgoCombo, 1);
+	row->addWidget(_algoH3AlgoMenuButton);
+	ui.verticalLayout_algoH3Page->insertLayout(0, row);
+
+	//activated, not currentIndexChanged: only the operator's own pick switches algo, never a refill
+	connect(_algoH3AlgoCombo, QOverload<int>::of(&QComboBox::activated), this, [=](int index) {
+		algoH3SwitchAlgo(_algoH3AlgoCombo->itemData(index).toString());
+	});
+}
+
+void VisionApp::refreshAlgoH3AlgoCombo()
+{
+	if (!_algoH3AlgoCombo) return;
+
+	auto& mgr = AlgoManager::instance();
+	const QString def = mgr.height3DefaultAlgo();
+
+	QSignalBlocker b(_algoH3AlgoCombo);
+	_algoH3AlgoCombo->clear();
+	for (const QString& name : mgr.height3AlgoNames()) {
+		_algoH3AlgoCombo->addItem(name.compare(def, Qt::CaseInsensitive) == 0
+			? tr("%1  (default)").arg(name) : name, name);
+	}
+	_algoH3AlgoCombo->setCurrentIndex(_algoH3AlgoCombo->findData(mgr.height3EditAlgo()));
+}
+
+/*
+* Production runs every unit's algo by name and the default for the rest, so neither may change
+* under a run - and switching which one is tuned clears the pipeline, which a stage that is
+* running holds. Managing them (anything that renames, removes or re-points what production
+* runs) is an engineer's job; choosing which one to look at is anybody's.
+*/
+bool VisionApp::algoH3AlgoActionAllowed(bool manage)
+{
+	if (_productionSetupLocked || !InspectionThread::instance().isIdle()) {
+		showMsg(tr("A production run is using the 3D algos - wait for it to finish."));
+		return false;
+	}
+	if (AlgoManager::instance().isBusy()) {
+		showMsg(tr("Algo is still running, please wait."));
+		return false;
+	}
+	if (manage && notAllowToAccess(AccessLevel::OPERATOR)) {
+		showMsg(tr("Managing 3D algos needs an engineer login."));
+		return false;
+	}
+	return true;
+}
+
+/*
+* Save the algo being tuned before anything moves the page off it. The auto-save is a timer, and
+* one still pending after a switch would capture the NEXT algo's widgets - harmless - or, after a
+* delete, the page's last widgets into whichever algo is tuned by then. Stopping it here and
+* saving at once closes both.
+*/
+void VisionApp::algoH3FlushAlgo()
+{
+	if (_algoAutoSaveTimer) _algoAutoSaveTimer->stop();
+	captureAlgoParamsFromUI();
+	auto& mgr = AlgoManager::instance();
+	mgr.saveRecipeConfig();
+	mgr.saveHeight3Algo();
+}
+
+bool VisionApp::algoH3SwitchAlgo(const QString& name)
+{
+	auto& mgr = AlgoManager::instance();
+	if (name.compare(mgr.height3EditAlgo(), Qt::CaseInsensitive) == 0) return true;
+
+	if (!algoH3AlgoActionAllowed(false)) {
+		refreshAlgoH3AlgoCombo();   //put the combo back on the algo still being tuned
+		return false;
+	}
+
+	algoH3FlushAlgo();
+	QString error;
+	if (!mgr.height3SelectAlgo(name, error)) {
+		showMsg(error);
+		refreshAlgoH3AlgoCombo();
+		return false;
+	}
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_ALGO_SELECT"), name);
+	algoH3AlgoChanged();
+	return true;
+}
+
+//every setting on the page belongs to the algo, so all of it is refilled; the maps stay loaded
+void VisionApp::algoH3AlgoChanged()
+{
+	_algoH3Output = AlgoHeight3Output();
+	refreshAlgoHeight3Page();   //the combo, the settings, the types and the ROI boxes
+	applyAlgoH3Output(_algoH3Output);
+	updateAlgoH3Display();
+	updateAlgoH3RoiVisibility();
+	updateAlgoH3Enables();
+	setAlgoStatus(tr("Tuning algo '%1' - press Run to run it on the loaded maps")
+		.arg(AlgoManager::instance().height3EditAlgo()));
+}
+
+void VisionApp::algoH3NewAlgo()
+{
+	if (!algoH3AlgoActionAllowed(true)) return;
+
+	auto& mgr = AlgoManager::instance();
+	const QString from = mgr.height3EditAlgo();
+	bool ok = false;
+	const QString name = QInputDialog::getText(this, tr("New 3D Algo"),
+		tr("Name it after the cable it is for - production runs it for every unit with that cable.\n"
+			"It starts as a copy of '%1'.").arg(from), QLineEdit::Normal, QString(), &ok);
+	if (!ok) return;
+
+	algoH3FlushAlgo();
+	QString error;
+	if (!mgr.height3CreateAlgo(name, error)) {
+		showMsg(error);
+		return;
+	}
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_ALGO_NEW"), name.trimmed() + QStringLiteral(" from ") + from);
+	algoH3AlgoChanged();
+}
+
+void VisionApp::algoH3RenameAlgo()
+{
+	if (!algoH3AlgoActionAllowed(true)) return;
+
+	auto& mgr = AlgoManager::instance();
+	const QString old = mgr.height3EditAlgo();
+	bool ok = false;
+	const QString name = QInputDialog::getText(this, tr("Rename 3D Algo"),
+		tr("New name for '%1':").arg(old), QLineEdit::Normal, old, &ok);
+	if (!ok || name.trimmed() == old) return;
+
+	algoH3FlushAlgo();
+	QString error;
+	if (!mgr.height3RenameAlgo(name, error)) {
+		showMsg(error);
+		return;
+	}
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_ALGO_RENAME"), old + QStringLiteral(" -> ") + name.trimmed());
+	refreshAlgoH3AlgoCombo();
+	setAlgoStatus(tr("Renamed algo '%1' to '%2'").arg(old, name.trimmed()));
+}
+
+void VisionApp::algoH3DeleteAlgo()
+{
+	if (!algoH3AlgoActionAllowed(true)) return;
+
+	auto& mgr = AlgoManager::instance();
+	const QString name = mgr.height3EditAlgo();
+	if (name.compare(mgr.height3DefaultAlgo(), Qt::CaseInsensitive) == 0) {
+		showMsg(tr("'%1' is the default algo - set another one as the default first.").arg(name));
+		return;
+	}
+	if (QMessageBox::question(this, tr("Delete 3D Algo"),
+			tr("Delete algo '%1'?\n\nUnits with this cable will run the default algo '%2' instead. "
+				"Its file is kept in config\\algo_height3\\deleted and can be moved back.")
+				.arg(name, mgr.height3DefaultAlgo()),
+			QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+
+	algoH3FlushAlgo();
+	QString error;
+	if (!mgr.height3DeleteAlgo(name, error)) {
+		showMsg(error);
+		return;
+	}
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_ALGO_DELETE"), name);
+	algoH3AlgoChanged();
+}
+
+void VisionApp::algoH3SetDefaultAlgo()
+{
+	if (!algoH3AlgoActionAllowed(true)) return;
+
+	auto& mgr = AlgoManager::instance();
+	const QString name = mgr.height3EditAlgo();
+	QString error;
+	if (!mgr.height3SetDefaultAlgo(name, error)) {
+		showMsg(error);
+		return;
+	}
+	AuditLog::instance().log(QStringLiteral("ALGO_H3_ALGO_DEFAULT"), name);
+	refreshAlgoH3AlgoCombo();
+	setAlgoStatus(tr("'%1' is now the default algo - units whose cable has no algo of its own run it").arg(name));
+}
+
 /*
 * Remember, or forget, one of the two input files.
 *
@@ -2853,6 +3100,7 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 
 void VisionApp::refreshAlgoHeight3Page()
 {
+	refreshAlgoH3AlgoCombo();
 	const AlgoHeight3Params p = AlgoManager::instance().height3Params();
 
 	// ── section 0 ──

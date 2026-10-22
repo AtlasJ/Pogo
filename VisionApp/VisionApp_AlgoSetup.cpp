@@ -178,7 +178,11 @@ void VisionApp::initAlgoSetupPage()
 	_algoAutoSaveTimer->setInterval(600);
 	connect(_algoAutoSaveTimer, &QTimer::timeout, this, [=]() {
 		captureAlgoParamsFromUI();
-		if (AlgoManager::instance().saveRecipeConfig()) showStatus("Algo settings saved");
+		//two files: OCR's settings are the recipe's, V3's belong to the algo being tuned
+		auto& mgr = AlgoManager::instance();
+		const bool recipeSaved = mgr.saveRecipeConfig();
+		const bool algoSaved = mgr.saveHeight3Algo();
+		if (recipeSaved && algoSaved) showStatus("Algo settings saved");
 		else showMsg("Failed to save algo settings!");
 	});
 

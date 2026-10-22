@@ -273,9 +273,17 @@ bool AlgoManager::loadRecipeConfig()
 		}
 	}
 
-	//3D Height Measurement 3 - its own "height3" block, applied even when the block is
-	//absent so a recipe saved before this algo existed simply comes back as defaults
-	height3FromJson(root);
+	/*
+	* 3D Height Measurement 3 is not per recipe: it is the machine-wide library of named algos,
+	* loaded once, the first time a recipe opens (its first launch imports every recipe's old
+	* "height3" block). The block is still kept and written back exactly as it was, so an older
+	* build reopening this recipe finds the settings it measured with - nothing here reads it.
+	*/
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_recipeHeight3Block = root.value("height3").toObject();
+	}
+	if (!m_height3LibraryLoaded) loadHeight3Library();
 
 	loadPatterns();
 
@@ -320,9 +328,9 @@ bool AlgoManager::saveRecipeConfig()
 			locators.append(lo);
 		}
 		root.insert("locators", locators);
-	}
 
-	root.insert("height3", height3ToJson());
+		if (!m_recipeHeight3Block.isEmpty()) root.insert("height3", m_recipeHeight3Block);
+	}
 
 	auto ret = jsonHelper::saveJson(algoConfigPath(), QJsonDocument(root));
 	if (!ret) ct::logger::error("[Algo] Failed to save %s", algoConfigPath().toStdString().c_str());

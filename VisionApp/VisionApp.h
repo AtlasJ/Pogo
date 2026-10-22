@@ -628,6 +628,7 @@ private:
 	bool liveMappingReadyForProduction();    //start gate: refuses with the list above, except in machine debug mode
 	int positionForUnit(const QString& unitID) const;   //production unit X#Y# -> its template cell's position, -1 if none
 	std::optional<QSet<QString>> fittedUnits() const;   //unit IDs whose position the PMF lists - all a run visits; nullopt = no Live Mapping
+	QHash<QString, QString> unitCables() const;          //unit ID -> its PMF cable, for picking each unit's 3D algo
 	void showUnitOnLiveMapping(const QString& unitID, UnitState state);
 	bool _productionSetupLocked = false;     //a production run is using the PMF and template mapping
 	void setProductionSetupLocked(bool locked);
@@ -957,7 +958,7 @@ private:
 
 	//── 3D Height Measurement 3 page - VisionApp_AlgoHeight3.cpp ──
 	void initAlgoHeight3Page();
-	void refreshAlgoHeight3Page();     //recipe -> widgets, ROI boxes, tables
+	void refreshAlgoHeight3Page();     //the tuned algo -> widgets, ROI boxes, tables
 	void configureAlgoH3Ranges();      //spin box limits live in code, not in the .ui
 	void captureAlgoH3ParamsFromUI();
 	void updateAlgoH3Display();        //which image this section should be showing
@@ -985,6 +986,23 @@ private:
 	class QDoubleSpinBox* _algoH3SegBandMin = nullptr;
 	class QLabel* _algoH3SegBandStepLabel = nullptr;
 	class QLabel* _algoH3SegBandMinLabel = nullptr;
+	/*
+	* Which named algo the page tunes (V3's algos are machine-wide, one per cable - see
+	* AlgoManager). Built in code above the sections, like the rows above, so the .ui is not
+	* touched. Production does not follow this choice: each unit runs its own cable's algo.
+	*/
+	void buildAlgoH3AlgoRow();
+	void refreshAlgoH3AlgoCombo();
+	bool algoH3AlgoActionAllowed(bool manage);  //not mid-run, not mid-stage; manage = engineer only
+	void algoH3FlushAlgo();                     //save the edits of the algo being tuned, now
+	bool algoH3SwitchAlgo(const QString& name);
+	void algoH3AlgoChanged();                   //the page shows the algo now being tuned
+	void algoH3NewAlgo();
+	void algoH3RenameAlgo();
+	void algoH3DeleteAlgo();
+	void algoH3SetDefaultAlgo();
+	class QComboBox* _algoH3AlgoCombo = nullptr;
+	class QToolButton* _algoH3AlgoMenuButton = nullptr;
 	/*
 	* The height and intensity maps the page last had loaded from file, remembered in the
 	* system JSON and reloaded the first time the page is opened after a restart - the same

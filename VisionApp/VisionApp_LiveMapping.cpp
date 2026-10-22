@@ -424,6 +424,26 @@ std::optional<QSet<QString>> VisionApp::fittedUnits() const
 }
 
 /*
+* Each fitted unit's cable, by the same cell rule as fittedUnits(): what names the V3 algo its 3D
+* height runs. Empty when there is no usable Live Mapping, and every unit then runs the default.
+*/
+QHash<QString, QString> VisionApp::unitCables() const
+{
+	QHash<QString, QString> cables;
+	const int mi = _templateMappings.indexOfName(ui.lineEdit_prodTemplateMapping->text());
+	if (mi < 0 || _pmfStatus != PmfStatus::Ready) return cables;
+
+	const TemplateMapping& m = _templateMappings.mappings()[mi];
+	for (int y = 0; y < m.yCount; y++)
+		for (int x = 0; x < m.xCount; x++) {
+			if (!m.values[y][x]) continue;
+			const auto it = _pmfUnits.constFind(*m.values[y][x]);
+			if (it != _pmfUnits.cend()) cables.insert(QStringLiteral("X%1Y%2").arg(x + 1).arg(y + 1), it->cable);
+		}
+	return cables;
+}
+
+/*
 * A production unit's progress onto its cell. Scanning only ever moves a Pending cell: in a
 * "2D to 3D" run the 3D pass revisits units that may already have failed, and that must not
 * turn back to Scanning.
@@ -455,4 +475,8 @@ void VisionApp::setProductionSetupLocked(bool locked)
 	name->style()->polish(name);
 
 	setTemplateMappingEditing(_tmEditing); //re-applies the Setup buttons with the lock taken into account
+
+	//each unit's 3D algo is picked by name, so the named algos are the run's too
+	if (_algoH3AlgoCombo) _algoH3AlgoCombo->setEnabled(!locked);
+	if (_algoH3AlgoMenuButton) _algoH3AlgoMenuButton->setEnabled(!locked);
 }

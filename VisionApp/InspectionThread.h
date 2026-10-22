@@ -1,6 +1,7 @@
 #pragma once
 #include <QThread>
 #include <QImage>
+#include <QHash>
 #include <QMutex>
 #include <QWaitCondition>
 #include <queue>
@@ -34,6 +35,14 @@ public:
 	//routing uses the FrameInfo fields; the SR-X OCR capture rides along as a
 	//QImage payload since it does not come from a MIL acquisition buffer
 	void enqueue(const FrameInfo& info, const QImage& ocrImage = QImage());
+
+	/*
+	* Each unit's cable name from the PMF (unit ID X#Y# -> cable), set from the GUI before a run
+	* is queued. A unit's 3D height runs the V3 algo named after its cable, or the default one.
+	* Empty - every unit runs the default - when the run has no usable Live Mapping.
+	*/
+	void setUnitCables(const QHash<QString, QString>& cables);
+	QString unitCable(const QString& unitID) const;
 
 	//report an algo that will not run for a unit (e.g. OCR with no image), so
 	//the status table and progress accounting still complete
@@ -74,6 +83,10 @@ private:
 	QWaitCondition m_resCv;
 	bool m_ocrDone = false;
 	bool m_height3Done = false;
+	QString m_height3Algo;   //the algo this unit's run was asked for; only its result is taken
 	AlgoOcrOutput m_ocrOutput;
 	AlgoHeight3Output m_height3Output;
+
+	mutable QMutex m_cableMutex;
+	QHash<QString, QString> m_unitCables;
 };

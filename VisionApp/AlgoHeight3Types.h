@@ -332,6 +332,10 @@ struct AlgoH3RoiResult {
 struct AlgoHeight3Output {
 	//NOTE: registered as a queued-connection metatype in AlgoManager::init()
 
+	//the named algo whose settings produced these results - production runs a unit's own
+	//algo, so a result the page receives need not belong to the algo it is tuning
+	QString algoName;
+
 	AlgoH3StageResult preprocess;
 	AlgoH3StageResult segment;
 	AlgoH3StageResult datum;

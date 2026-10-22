@@ -103,6 +103,8 @@ void VisionApp::inspect2D3D()
 
 	//visit only the units the PMF says are fitted (every unit when the Live Mapping is not ready - debug mode)
 	_jobThread.setUnitFilter(fittedUnits());
+	//each unit's cable picks the 3D algo it runs; taken now, while the PMF is locked for the run
+	InspectionThread::instance().setUnitCables(unitCables());
 	setProductionSetupLocked(true); //until the bar below is released: run end or stop
 
 	//setupProductionDir();

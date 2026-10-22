@@ -26,10 +26,11 @@ InspectionThread::InspectionThread(QObject* parent)
 	//V3 is the production height path
 	connect(&AlgoManager::instance(), &AlgoManager::height3Finished, this,
 		[this](int stage, AlgoHeight3Output output) {
-			//production only ever asks for a Run All, so a result for any other stage is the
-			//Algo Setup page working and must not be mistaken for this unit's verdict
+			//production only ever asks for a Run All of the unit's algo, so any other result is
+			//the Algo Setup page working and must not be mistaken for this unit's verdict
 			if (stage != (int)AlgoH3Stage::All) return;
 			QMutexLocker lock(&m_resMutex);
+			if (output.algoName.compare(m_height3Algo, Qt::CaseInsensitive) != 0) return;
 			m_height3Output = output;
 			m_height3Done = true;
 			m_resCv.wakeAll();
@@ -63,6 +64,18 @@ void InspectionThread::enqueue(const FrameInfo& info, const QImage& ocrImage)
 		m_queue.push({ info, ocrImage });
 	}
 	m_cv.wakeAll();
+}
+
+void InspectionThread::setUnitCables(const QHash<QString, QString>& cables)
+{
+	QMutexLocker lock(&m_cableMutex);
+	m_unitCables = cables;
+}
+
+QString InspectionThread::unitCable(const QString& unitID) const
+{
+	QMutexLocker lock(&m_cableMutex);
+	return m_unitCables.value(unitID);
 }
 
 bool InspectionThread::isIdle()
@@ -180,6 +193,24 @@ void InspectionThread::process(const Item& item)
 			return;
 		}
 
+		/*
+		* Which algo: the one named after the unit's cable, else the default. Resolved before the
+		* maps are touched, so a unit with nothing to run fails without disturbing the pipeline.
+		*/
+		const QString cable = unitCable(unitID);
+		bool usedDefault = false;
+		const QString algo = AlgoManager::instance().height3AlgoForCable(cable, &usedDefault);
+		if (algo.isEmpty()) {
+			const QString why = QStringLiteral("no 3D algo for cable '%1' and no default algo").arg(cable);
+			ct::logger::error("[Inspection] 3D height failed (unit=%s): %s",
+				unitID.toStdString().c_str(), why.toStdString().c_str());
+			emit inspectionResult(unitID, "3D Height", false, why);
+			return;
+		}
+		ct::logger::info("[Inspection] 3D algo (unit=%s, cable=%s): %s%s", unitID.toStdString().c_str(),
+			cable.isEmpty() ? "none" : cable.toStdString().c_str(), algo.toStdString().c_str(),
+			usedDefault ? " - the default, no algo has this cable's name" : "");
+
 		//straight from this frame's buffers. The intensity map is optional: the pipeline never
 		//measures from it, it only makes the map recognisable to an operator reviewing the unit
 		QString note;
@@ -197,10 +228,11 @@ void InspectionThread::process(const Item& item)
 		{
 			QMutexLocker lock(&m_resMutex);
 			m_height3Done = false;
+			m_height3Algo = algo;
 		}
 		//one Run All per unit: every stage re-runs, so the part is segmented fresh and the
 		//taught ROIs land on THIS unit rather than on where the last one happened to sit
-		AlgoManager::instance().runHeight3(AlgoH3Stage::All);
+		AlgoManager::instance().runHeight3Named(algo);
 
 		if (!waitResult(m_height3Done, algoTimeoutMs)) {
 			ct::logger::error("[Inspection] 3D height timed out (unit=%s)", unitID.toStdString().c_str());
@@ -215,9 +247,9 @@ void InspectionThread::process(const Item& item)
 		}
 
 		const QString summary = algoH3RunSummary(output);
-		ct::logger::info("[Inspection] 3D height result (unit=%s): pass=%d, %s "
+		ct::logger::info("[Inspection] 3D height result (unit=%s, algo=%s): pass=%d, %s "
 			"(segment %.2f x %.2f mm at %.3f deg, %lldms)",
-			unitID.toStdString().c_str(), output.overallPass ? 1 : 0,
+			unitID.toStdString().c_str(), output.algoName.toStdString().c_str(), output.overallPass ? 1 : 0,
 			summary.toStdString().c_str(),
 			output.segWidthUm / 1000.0, output.segHeightUm / 1000.0, output.segAngleDeg,
 			(long long)(output.totalElapsedMs > 0 ? output.totalElapsedMs : output.measure.elapsedMs));

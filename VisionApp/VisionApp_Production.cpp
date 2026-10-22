@@ -187,8 +187,8 @@ void VisionApp::initProductionUI() {
 		}
 		else if (col == 4) {
 			/*
-			* 3D: cam-only view, the V3 page with the unit's saved maps, run through every stage
-			* so the page shows the unit's result under the recipe's current settings.
+			* 3D: cam-only view, the V3 page on the unit's own algo with its saved maps, run through
+			* every stage so the page shows the unit's result under that algo's current settings.
 			*
 			* Never during a run. V3 is the production 3D algo and there is only one of it:
 			* loading a unit into it mid-run would replace the map the next unit is measured on.
@@ -207,6 +207,17 @@ void VisionApp::initProductionUI() {
 				showMsg(QStringLiteral("No saved height map for %1 - enable Save Inspection Images.").arg(saveName));
 				return;
 			}
+
+			//the algo production picked for it: its cable's, else the default
+			const int position = positionForUnit(unitID);
+			const std::optional<PogoUnitInfo> info = position >= 0 ? getUnitInfo(position) : std::nullopt;
+			const QString cable = info ? info->cable : QString();
+			const QString algo = AlgoManager::instance().height3AlgoForCable(cable);
+			if (algo.isEmpty()) {
+				showMsg(QStringLiteral("No 3D algo for cable '%1' and no default algo.").arg(cable));
+				return;
+			}
+			if (!algoH3SwitchAlgo(algo)) return;
 			if (!algoH3LoadUnitMaps(hmPath, root + saveName + "_intensity.jpg")) return;
 
 			toggleFOVView();
