@@ -388,7 +388,9 @@ bool VisionApp::liveMappingReadyForProduction()
 */
 int VisionApp::positionForUnit(const QString& unitID) const
 {
-	static const QRegularExpression re(QStringLiteral("^X(\d+)Y(\d+)$"));
+	//a doubled backslash: C++ drops an unknown escape, and a single one left "^X(d+)Y(d+)$",
+	//which matched no unit at all
+	static const QRegularExpression re(QStringLiteral("^X(\\d+)Y(\\d+)$"));
 	const QRegularExpressionMatch match = re.match(unitID);
 	if (!match.hasMatch()) return -1;
 
