@@ -385,6 +385,9 @@
     <ClCompile Include="KeyenceSettings.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SideView.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="libvips\VInterpolate.cpp">
       <Filter>Source Files\libvips</Filter>
     </ClCompile>
@@ -752,6 +755,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="KeyenceSettings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SideView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ScopedFlag.h">

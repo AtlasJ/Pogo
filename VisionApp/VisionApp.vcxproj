@@ -229,6 +229,7 @@
     <ClCompile Include="ScaleManager.cpp" />
     <ClCompile Include="NavigatorTsv.cpp" />
     <ClCompile Include="KeyenceSettings.cpp" />
+    <ClCompile Include="SideView.cpp" />
     <ClCompile Include="AlgoBuffers.cpp" />
     <ClCompile Include="AlgoH3GLSurface.cpp" />
     <ClCompile Include="AlgoHeight3.cpp" />
@@ -463,6 +464,7 @@
     <ClInclude Include="ScaleManager.h" />
     <ClInclude Include="NavigatorTsv.h" />
     <ClInclude Include="KeyenceSettings.h" />
+    <ClInclude Include="SideView.h" />
     <ClInclude Include="ScopedFlag.h" />
     <ClInclude Include="SystemData.h" />
     <QtMoc Include="UnitConfigTab.h" />

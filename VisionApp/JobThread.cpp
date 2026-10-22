@@ -19,6 +19,7 @@
 #include "CAMManager.h"
 #include "ProfilerManager.h"
 #include "KeyenceSettings.h"
+#include "SideView.h"
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -3578,6 +3579,117 @@ void JobThread::productionScanTest(double distance_mm)
 		mtrx::to_qimg(info.pImage->id()).save(dir + QStringLiteral("intensity.png"));
 	}
 	out << "\n  Images saved    : yes\n";
+
+	/*
+	* Side view of the RAW batch against the head's range and the Z window, so the Z margin of a
+	* real part can be seen before a narrower Z range is trusted. The raw buffer, not the processed
+	* map: its bicubic resample rings past the real range (the -9799 um "1st pct" above is that),
+	* which is exactly the edge this picture is about. Taking it also releases the driver's hold
+	* on the pool buffers, which this check otherwise left pinned until the next scan.
+	*/
+	out << "\nZ WINDOW (side_view.png)\n------------------------\n";
+	{
+		mtrx::SharedMilID rawHeight, rawIntensity;
+		if (!profiler || !profiler->takeLastRawFrame(rawHeight, rawIntensity) || !rawHeight) {
+			out << "  Not drawn - the driver did not hand over the raw batch.\n";
+		}
+		else {
+			const MIL_ID mRaw = rawHeight->id();
+			MIL_UINT16* base = M_NULL;
+			MIL_INT pitch = 0;
+			MbufInquire(mRaw, M_HOST_ADDRESS, &base);
+			MbufInquire(mRaw, M_PITCH, &pitch);
+
+			//The pointer below is read as 16-bit rows of 'pitch' pixels. The driver always delivers
+			//16-bit heights, but anything else would walk past the end of the buffer, so check
+			//rather than assume: a null data pointer makes render() decline, and the report says why.
+			const MIL_INT bits = MbufInquire(mRaw, M_SIZE_BIT, M_NULL);
+
+			sideview::Input sv;
+			sv.data = (bits == 16) ? reinterpret_cast<const quint16*>(base) : nullptr;
+			sv.width = static_cast<int>(mtrx::get_width(mRaw));
+			sv.height = static_cast<int>(mtrx::get_height(mRaw));
+			sv.strideWords = static_cast<int>(pitch);
+			sv.zPitchUm = zPitch;
+			const double fovMm = ProfilerManager::instance().liveXFovMm(m_profilerID);
+			sv.xPitchUm = (fovMm > 0.0 && sv.width > 0) ? fovMm * 1000.0 / sv.width : 5.0;
+			sv.yPitchUm = linePitchUm;
+			sv.headRangeMm = ProfilerManager::instance().liveZRangeMm(m_profilerID);
+
+			//The window the controller actually ran, read back now; the optic's own values only
+			//when the controller cannot be read.
+			QJsonObject ctl;
+			const bool fromController = ProfilerManager::instance().readSettings(m_profilerID, ctl)
+				&& ctl.contains(QStringLiteral("zRange")) && ctl.contains(QStringLiteral("zCenter"));
+			const QJsonObject src = fromController ? ctl : ljx::opticSettings(optic->id);
+			const ljx::Field* fRange = ljx::field(QStringLiteral("zRange"));
+
+			if (fRange && sv.headRangeMm > 0.0 && src.contains(QStringLiteral("zRange"))) {
+				const QString range = ljx::display(*fRange, src.value(QStringLiteral("zRange")).toInt());
+				double divisor = 0.0;
+				if (range == QLatin1String("FULL")) divisor = 1.0;
+				else if (range.startsWith(QLatin1String("1/"))) divisor = range.mid(2).toDouble();
+
+				if (divisor >= 1.0) {
+					//FULL has no centre to move; otherwise 50 % is the head's own centre. Which way a
+					//larger percentage moves the window is not in the manual - assumed upwards.
+					const double pct = (divisor > 1.0 && src.contains(QStringLiteral("zCenter")))
+						? src.value(QStringLiteral("zCenter")).toInt() / 10.0 : 50.0;
+					const double span = sv.headRangeMm / divisor;
+					sv.centreMm = (pct / 100.0 - 0.5) * sv.headRangeMm;
+					sv.windowLoMm = sv.centreMm - span / 2.0;
+					sv.windowHiMm = sv.centreMm + span / 2.0;
+					sv.haveWindow = true;
+					sv.windowLabel = QStringLiteral("Z range %1, centre %2% (%3)").arg(range).arg(pct, 0, 'f', 1)
+						.arg(fromController ? QStringLiteral("read from the controller")
+						                    : QStringLiteral("from the optic - the controller could not be read"));
+					if (std::abs(pct - 50.0) > 0.05) sv.windowLabel += QStringLiteral(", centre direction assumed");
+				}
+			}
+
+			sv.titleLines << QStringLiteral("Production Scan Check - side view")
+				<< QStringLiteral("%1   recipe %2   optic %3   head range +/-%4 mm   divider %5, %6 um per profile")
+					.arg(now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))).arg(Common::Directory::CurrentRecipe)
+					.arg(optic->id).arg(sv.headRangeMm / 2.0, 0, 'f', 2).arg(optic->divider).arg(linePitchUm, 0, 'f', 1);
+
+			const sideview::Result sr = sideview::render(sv);
+			if (!sr.ok) {
+				out << "  Not drawn - the raw batch could not be read (" << sv.width << " x " << sv.height << ", "
+					<< bits << "-bit, " << (base ? "host memory" : "no host address") << ").\n";
+			}
+			else {
+				const bool saved = sr.image.save(dir + QStringLiteral("side_view.png"));
+				auto mmTxt = [](double v) { return QString::number(v, 'f', 3) + QStringLiteral(" mm"); };
+
+				out << "  Head range      : +/-" << QString::number(sv.headRangeMm / 2.0, 'f', 2) << " mm\n";
+				if (sv.haveWindow) {
+					out << "  Z window        : " << sv.windowLabel << "\n";
+					out << "                    nominal " << mmTxt(sv.windowLoMm) << " .. " << mmTxt(sv.windowHiMm)
+						<< "   (a straight fraction of the head range - real edges can sit a little off)\n";
+				}
+				else {
+					out << "  Z window        : unknown - Z range not readable from the controller or the optic\n";
+				}
+				out << "  Heights (raw)   : 99.9% between " << mmTxt(sr.lowMm) << " and " << mmTxt(sr.highMm)
+					<< "   (lowest " << mmTxt(sr.minMm) << ", highest " << mmTxt(sr.maxMm) << ")\n";
+
+				if (sv.haveWindow && sr.valid > 0) {
+					const double below = sr.lowMm - sv.windowLoMm;
+					const double above = sv.windowHiMm - sr.highMm;
+					out << "  Margin          : " << QString::number(below, 'f', 2) << " mm under the lowest 0.1% of points, "
+						<< QString::number(above, 'f', 2) << " mm over the highest 0.1%\n";
+					out << "  Near the edges  : " << sr.nearLowEdge << " points within 0.1 mm of the bottom, "
+						<< sr.nearHighEdge << " of the top\n";
+					if (below < 0.5 || above < 0.5) {
+						out << "  WARNING: under 0.5 mm of margin. A part sitting a little " << (below < above ? "lower" : "higher")
+							<< " would lose that surface\n";
+						out << "  as invalid points. Move Z centre, or widen Z range, before trusting this window.\n";
+					}
+				}
+				out << "  Saved           : " << (saved ? "side_view.png" : "FAILED to save side_view.png") << "\n";
+			}
+		}
+	}
 
 	say(QStringLiteral("Production scan check done. Report: %1").arg(reportPath));
 	finish(true, QStringLiteral("OK - scan() produced a height map"));
