@@ -81,6 +81,10 @@ public:
 	bool setPeakSelection(QString id, int mode);
 	bool setLightLimits(QString id, int lower, int upper);
 
+	//Every other backend setting, as key -> code (see IProfiler::applySettings).
+	bool applySettings(QString id, const QJsonObject& values);
+	bool readSettings(QString id, QJsonObject& out);
+
 	//Data
 	const FrameInfo* getFrame(QString id) const;
 	FrameInfo* getFrame(QString id);

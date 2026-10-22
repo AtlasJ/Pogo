@@ -18,6 +18,7 @@
 #include "SystemData.h"
 #include "CAMManager.h"
 #include "ProfilerManager.h"
+#include "KeyenceSettings.h"
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -559,6 +560,13 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 	}
 
 	ProfilerManager::instance().setLightLimits(m_profilerID, optic.lowerLaserLimit, optic.upperLaserLimit);
+
+	//The rest of the optic's controller settings - filters, Z range, masks, corrections - from a
+	//Navigator TSV import or the LJ-X section of the 3D Optics page. Only keys the optic carries are
+	//sent, so an optic that never had them leaves the controller as Navigator set it. Unchanged
+	//values cost nothing: the driver skips a block the controller already holds.
+	const QJsonObject ljxValues = ljx::opticSettings(optic.id);
+	if (!ljxValues.isEmpty()) ProfilerManager::instance().applySettings(m_profilerID, ljxValues);
 
 	ct::logger::trace("Done set laser config");
 
@@ -3924,6 +3932,10 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 	const bool okLimits = ProfilerManager::instance().setLightLimits(
 		m_profilerID, optic->lowerLaserLimit, optic->upperLaserLimit);
 
+	//Same as scan(): the optic's other LJ-X settings, if it carries any.
+	const QJsonObject ljxValues = ljx::opticSettings(optic->id);
+	const bool okLjx = ljxValues.isEmpty() || ProfilerManager::instance().applySettings(m_profilerID, ljxValues);
+
 	const bool okLength = ProfilerManager::instance().setScanLength(m_profilerID, distance_mm);
 	const qint64 configMs = step.elapsed();
 
@@ -3942,6 +3954,9 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 			: QStringLiteral("   ('%1' is not Standard/Near/Far - NOT SENT)").arg(selText)) << "\n";
 	out << "    setLightLimits        : " << yesNo(okLimits)
 		<< "   (" << optic->lowerLaserLimit << ".." << optic->upperLaserLimit << " of 1-99)\n";
+	out << "    applySettings (LJ-X)  : "
+		<< (ljxValues.isEmpty() ? QStringLiteral("none - the optic carries no LJ-X block")
+			: QStringLiteral("%1   (%2 settings)").arg(yesNo(okLjx)).arg(ljxValues.size())) << "\n";
 	out << "    setScanLength         : " << yesNo(okLength) << "\n";
 	out << "    took                  : " << configMs << " ms\n";
 

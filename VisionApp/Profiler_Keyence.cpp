@@ -1,5 +1,6 @@
 #pragma once
 #include "Profiler_Keyence.h"
+#include "KeyenceSettings.h"
 #include <limits>
 #include "Logger.h"
 #include "mtrx.h"
@@ -8,6 +9,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QStringList>
 #include <QTextStream>
 #include <algorithm>
@@ -173,6 +175,8 @@ bool Profiler_Keyence::setSetting(unsigned char type, unsigned char category, un
 	* are skipped via this session cache; it is cleared on connect, so a fresh
 	* connection always pushes everything once.
 	*/
+	std::lock_guard<std::recursive_mutex> cmdLock(m_cmdMutex);
+
 	const quint32 key = (quint32(type) << 24) | (quint32(category) << 16) | (quint32(item) << 8) | target1;
 	const QByteArray value(reinterpret_cast<const char*>(data), (int)size);
 	if (m_settingCache.value(key) == value && m_settingCache.contains(key)) {
@@ -193,6 +197,7 @@ bool Profiler_Keyence::setSetting(unsigned char type, unsigned char category, un
 		const_cast<void*>(data),
 		size,
 		&detailedError);
+	m_lastCmdRc = rc;
 
 	if (rc != LJX8IF_RC_OK) {
 		ct::logger::error("[Profiler_Keyence] SetSetting(%s) failed rc=0x%X detail=0x%X "
@@ -220,6 +225,8 @@ bool Profiler_Keyence::getSetting(unsigned char type, unsigned char category, un
 	void* data, unsigned int size, const char* what,
 	unsigned char target1)
 {
+	std::lock_guard<std::recursive_mutex> cmdLock(m_cmdMutex);
+
 	LJX8IF_TARGET_SETTING ts{};
 	ts.byType = type;
 	ts.byCategory = category;
@@ -231,6 +238,7 @@ bool Profiler_Keyence::getSetting(unsigned char type, unsigned char category, un
 		ts,
 		data,
 		size);
+	m_lastCmdRc = rc;
 
 	if (rc != LJX8IF_RC_OK) {
 		ct::logger::warn("[Profiler_Keyence] GetSetting(%s) failed rc=0x%X "
@@ -598,7 +606,10 @@ bool Profiler_Keyence::connect(QString ip)
 	if (!safeGuard()) return false;
 
 	//new connection: the controller's running settings are unknown, push everything once
-	m_settingCache.clear();
+	{
+		std::lock_guard<std::recursive_mutex> cmdLock(m_cmdMutex);
+		m_settingCache.clear();
+	}
 
 	// The parameter is named 'sn' in IProfiler but every backend receives the IP string
 	// from profiler.json.
@@ -1283,6 +1294,154 @@ bool Profiler_Keyence::setLightLimits(int lower, int upper)
 	return true;
 }
 
+namespace {
+	//Same key setSetting() caches under, so a block applySettings writes and the cache agree.
+	quint32 itemKey(unsigned char type, const ljx::Field& f)
+	{
+		return (quint32(type) << 24) | (quint32(f.category) << 16) | (quint32(f.item) << 8) | f.target1;
+	}
+}
+
+/*
+* Every KeyenceSettings value Pogo owns that the older setters above do not send: the optic's
+* filters, Z range, masks and corrections before each scan, the machine-level ones at connect.
+*
+* Read-modify-write per SDK item. Several fields share one item (a filter and its strength, a mask's
+* shape and six coordinates), and an item can also hold bytes Pogo does not own (the Z range item
+* carries Z expansion and Z binning for other heads). So the block starts from what the controller
+* holds - read once per connection, after that taken from the setSetting cache - and only the fields
+* present are overwritten. A block that cannot be read is not written: zeros over unknown bytes is
+* exactly how a setting nobody asked to change would get changed.
+*
+* The block read back is also what the controller is running, so it goes straight into the
+* setSetting cache. A value Pogo wants that the controller already holds - the usual case after
+* Navigator sent the same file Pogo imported - then costs one read and no write. Each write is a
+* ~700 ms apply cycle, and a full optic carries up to 19 of these items.
+*/
+bool Profiler_Keyence::applySettings(const QJsonObject& values)
+{
+	if (!safeGuard()) return false;
+	if (values.isEmpty()) return true;
+
+	//Held for the whole read-modify-write, so a GUI read-back cannot land between the read of a
+	//block and its write. JobThread is the caller during a run; it may wait here, the GUI never does.
+	std::lock_guard<std::recursive_mutex> cmdLock(m_cmdMutex);
+
+	const unsigned char prog = 0x10 + m_programNo;
+
+	struct Pending { const ljx::Field* f; int code; };
+	QMap<quint32, QVector<Pending>> byItem;
+	bool ok = true;
+
+	for (const ljx::Field& f : ljx::fields()) {
+		if (f.legacy || f.blockSize <= 0) continue;
+		if (f.level != ljx::Level::Optic && f.level != ljx::Level::Machine) continue;
+		if (!values.contains(f.key)) continue;
+
+		const int code = values.value(f.key).toInt(ljx::kNotSet);
+		if (!ljx::valid(f, code)) {
+			ct::logger::warn("[Profiler_Keyence] %s = %d is not a valid value - not sent", qPrintable(f.key), code);
+			ok = false;
+			continue;
+		}
+		byItem[itemKey(f.common ? KY_TYPE_COMMON : prog, f)].append({ &f, code });
+	}
+
+	for (auto it = byItem.constBegin(); it != byItem.constEnd(); ++it) {
+		const ljx::Field& first = *it.value().first().f;
+		const unsigned char type = first.common ? KY_TYPE_COMMON : prog;
+		const QByteArray what = first.key.toLatin1();
+
+		QByteArray block = m_settingCache.value(it.key());
+		if (block.size() != first.blockSize) {
+			block = QByteArray(first.blockSize, '\0');
+			if (!getSetting(type, first.category, first.item, block.data(), first.blockSize, what.constData(), first.target1)) {
+				ok = false;
+				if (isLinkFailure(m_lastCmdRc)) {
+					ct::logger::error("[Profiler_Keyence] applySettings stopped at %s - the controller is not "
+						"answering (rc=0x%X); the remaining settings would each wait out the same timeout",
+						what.constData(), m_lastCmdRc);
+					break;
+				}
+				ct::logger::warn("[Profiler_Keyence] %s not sent - its current value could not be read, and "
+					"writing blind would overwrite bytes Pogo does not own", what.constData());
+				continue;
+			}
+			m_settingCache.insert(it.key(), block);     //what is running; setSetting skips an identical write
+		}
+
+		for (const Pending& p : it.value()) ljx::writeField(block, *p.f, p.code);
+		if (!setSetting(type, first.category, first.item, block.constData(), first.blockSize,
+			what.constData(), first.target1)) {
+			ok = false;
+			if (isLinkFailure(m_lastCmdRc)) {
+				ct::logger::error("[Profiler_Keyence] applySettings stopped at %s - the controller is not "
+					"answering (rc=0x%X)", what.constData(), m_lastCmdRc);
+				break;
+			}
+		}
+	}
+	return ok;
+}
+
+/*
+* What the controller is running, for every KeyenceSettings entry with an SDK address - the ones Pogo
+* sends and the ones it only checks or shows. One GetSetting per item.
+*
+* Also seeds the write cache for the items applySettings owns: the controller demonstrably holds
+* those bytes, so the next scan need not read them again, and a value already in force is not
+* re-sent. Items the older setters write are left alone - their cache is theirs.
+*/
+bool Profiler_Keyence::readSettings(QJsonObject& out)
+{
+	if (!safeGuard()) return false;
+
+	//Called from the GUI thread. If JobThread is configuring the controller right now, give up at
+	//once rather than freeze the screen until it finishes - the user can simply read again.
+	std::unique_lock<std::recursive_mutex> cmdLock(m_cmdMutex, std::try_to_lock);
+	if (!cmdLock.owns_lock()) {
+		ct::logger::warn("[Profiler_Keyence] readSettings: the controller is busy with another command - not read");
+		return false;
+	}
+
+	const unsigned char prog = 0x10 + m_programNo;
+
+	QMap<quint32, QVector<const ljx::Field*>> byItem;
+	for (const ljx::Field& f : ljx::fields()) {
+		if (f.blockSize <= 0) continue;
+		byItem[itemKey(f.common ? KY_TYPE_COMMON : prog, f)].append(&f);
+	}
+
+	int read = 0;
+	for (auto it = byItem.constBegin(); it != byItem.constEnd(); ++it) {
+		const ljx::Field& first = *it.value().first();
+		const unsigned char type = first.common ? KY_TYPE_COMMON : prog;
+		const QByteArray what = first.key.toLatin1();
+
+		QByteArray block(first.blockSize, '\0');
+		if (!getSetting(type, first.category, first.item, block.data(), first.blockSize, what.constData(), first.target1)) {
+			//A dead link would make every remaining item wait out the same timeout, on the GUI thread.
+			if (isLinkFailure(m_lastCmdRc)) {
+				ct::logger::error("[Profiler_Keyence] readSettings stopped - the controller is not answering (rc=0x%X)",
+					m_lastCmdRc);
+				break;
+			}
+			continue;
+		}
+
+		++read;
+		for (const ljx::Field* f : it.value()) out.insert(f->key, ljx::readField(block, *f));
+
+		const bool owned = !first.legacy
+			&& (first.level == ljx::Level::Optic || first.level == ljx::Level::Machine);
+		if (owned) m_settingCache.insert(it.key(), block);
+	}
+
+	ct::logger::info("[Profiler_Keyence] readSettings: %d of %d items read (program %d)",
+		read, byItem.size(), int(m_programNo));
+	return read > 0;
+}
+
 
 /* --------------------------------------------------------------------- Data */
 
@@ -1337,9 +1496,11 @@ bool Profiler_Keyence::loadConfig(QString path)
 	int invalidInterp = 0;
 	int luminance = m_luminanceEnabled ? 1 : 0;
 
+	QJsonObject fileObj;      //kept past the parse for the machine-level KeyenceSettings below
 	QFile f(path);
 	if (f.open(QIODevice::ReadOnly)) {
-		const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+		fileObj = QJsonDocument::fromJson(f.readAll()).object();
+		const QJsonObject& o = fileObj;
 		f.close();
 
 		auto num = [&o](const char* k, int def) {
@@ -1470,6 +1631,12 @@ bool Profiler_Keyence::loadConfig(QString path)
 	apply(prog, KY_CAT_IMAGING, KY_IT_LIGHT_LOWER, std::max(1, std::min(99, lightLower)), "lightLowerLimit");
 	apply(prog, KY_CAT_IMAGING, KY_IT_PEAK_SENSITIVITY, std::max(1, std::min(5, peakSensitivity)), "peakSensitivity");
 	apply(prog, KY_CAT_IMAGING, KY_IT_PEAK_SELECTION, peakSelection, "peakSelection");
+	/*
+	* Always sent, 0 when the file does not set it - which replaces whatever Navigator tuned (5 in
+	* the 2026-10-22 Navigator export). Kept that way on purpose: production heights have been
+	* measured with this behaviour, so changing it is a decision, not a side effect. Set it in the
+	* LJ-X controller table on the 3D Optics page, or by a Navigator TSV import.
+	*/
 	apply(prog, KY_CAT_IMAGING, KY_IT_INVALID_INTERP, std::max(0, std::min(255, invalidInterp)), "invalidInterpolation");
 
 	/*
@@ -1487,6 +1654,21 @@ bool Profiler_Keyence::loadConfig(QString path)
 	apply(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_ENCODER_MIN_TIME, encoderMinTime, "encoderMinInputTime");
 	apply(KY_TYPE_COMMON, KY_CAT_NONE, KY_IT_LUMINANCE_OUTPUT, luminance, "luminanceOutput");
 	m_luminanceEnabled = (luminance == 1);
+
+	//--- Every other machine-level setting the file carries (the Profiler Hardware section or a
+	//--- Navigator TSV import writes them). Only keys present are sent, so a keyence.json from
+	//--- before them leaves the controller exactly as it was.
+	QJsonObject machine;
+	for (const ljx::Field& fd : ljx::fields()) {
+		if (fd.level == ljx::Level::Machine && !fd.legacy && fileObj.contains(fd.key))
+			machine.insert(fd.key, fileObj.value(fd.key));
+	}
+	if (!machine.isEmpty()) {
+		const bool r = applySettings(machine);
+		m_appliedSettings.push_back({ QStringLiteral("LJ-X machine settings (%1 keys)").arg(machine.size()),
+			machine.size(), r });
+		ok &= r;
+	}
 
 	ct::logger::info("[Profiler_Keyence] loadConfig %s (programNo=%d, yPitch=%.3f um, cmdPort=%d, hsPort=%d)",
 		ok ? "OK" : "completed WITH ERRORS", m_programNo, m_yPitchUm, m_commandPort, m_highSpeedPort);

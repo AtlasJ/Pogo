@@ -1,4 +1,5 @@
 #pragma once
+#include <QJsonObject>
 #include <QString>
 #include "FrameInfo.h"
 
@@ -85,6 +86,16 @@ public:
 		Q_UNUSED(lower); Q_UNUSED(upper);
 		return false;
 	}
+
+	/*
+	* Every other controller setting the backend knows, as key -> code (the LJ-X keys and codes are
+	* in KeyenceSettings). applySettings sends only the keys present, so an empty object or an
+	* older recipe changes nothing. readSettings fills what the controller is running now, for
+	* display and for checking a setting Pogo depends on but never sends. Not pure: a backend
+	* without such settings needs no code.
+	*/
+	virtual bool applySettings(const QJsonObject& values) { Q_UNUSED(values); return false; }
+	virtual bool readSettings(QJsonObject& out) { Q_UNUSED(out); return false; }
 
 	//Data
 	virtual const FrameInfo& getFrame() const = 0;

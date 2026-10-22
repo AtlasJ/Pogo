@@ -59,8 +59,9 @@ private:
         int lineThreshold = 0, lowerLaserLimit = 0, upperLaserLimit = 0;
         QString exposureMode; 
         QString lightSensitivity;   
-        QString peakSensitivity;   
+        QString peakSensitivity;
         QString peakSelection;
+        QJsonObject ljx;            //the optic's other LJ-X settings, KeyenceSettings key -> code
     };
 
     QHash<QString, Optics3DParams> _cacheById;
@@ -84,6 +85,23 @@ private:
     void runProfilerConnect(bool wantConnected); //blocking; wait cursor + section disabled
     bool readProfilerEntry(QJsonObject& entry) const; //this profiler's entry in profiler.json
     void markProfilerHwDirty();                 //an edit is pending a Save
+
+    //Load an LJ-X Navigator setting saved as TSV: preview every change, then save the optic
+    //values to the current optic and the machine values to the driver config.
+    void importNavigatorTsv();
+
+    //--- LJ-X settings tables, one row per KeyenceSettings entry. The optic table belongs to the
+    //--- recipe (it rides in Optics3DParams::ljx), the machine table to the driver config (saved
+    //--- by the Profiler Hardware Save, locked while connected like the rest of that section).
+    void initLjxTrees();
+    QJsonObject readLjxEditors(bool opticTree) const;          //set rows only - (not set) is left out
+    void writeLjxEditors(bool opticTree, const QJsonObject& values);
+    void refreshLjxPogoRows();                                 //rows whose value lives in a field above
+    void showLjxController();                                  //fill the Controller column from _ljxController
+    void readLjxFromController();
+    QHash<QString, QWidget*> _ljxEditors;                      //key -> QComboBox / QSpinBox / QDoubleSpinBox
+    QHash<QString, QTreeWidgetItem*> _ljxItems;                //key -> its row
+    QJsonObject _ljxController;                                //last read-back, key -> code
 
     //--- Camera -> profiler alignment section ---
     void initAlign3DUi();

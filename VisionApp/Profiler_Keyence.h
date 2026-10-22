@@ -81,6 +81,8 @@ public:
 	bool setPeakSensitivity(int level) override;
 	bool setPeakSelection(int mode) override;
 	bool setLightLimits(int lower, int upper) override;
+	bool applySettings(const QJsonObject& values) override;
+	bool readSettings(QJsonObject& out) override;
 
 	//Data
 	const FrameInfo& getFrame() const;
@@ -140,6 +142,19 @@ private:
 	unsigned char m_programNo = 0;        // Type byte is 0x10 + programNo
 	bool     m_liveMode = false;          // live view: continuous trigger, batch off
 	QHash<quint32, QByteArray> m_settingCache; // last value pushed per setting item (see setSetting)
+
+	/*
+	* Serialises every SetSetting/GetSetting and m_settingCache. JobThread configures the controller
+	* before each scan while the 3D Optics page can read it back (Read from controller) or reconnect
+	* from the GUI thread; without this the two could interleave SDK commands and modify the cache's
+	* QHash at the same time. Recursive because applySettings/readSettings hold it across their own
+	* setSetting/getSetting calls. Lock order is always m_mutex before this one, never the reverse.
+	*/
+	mutable std::recursive_mutex m_cmdMutex;
+	LONG     m_lastCmdRc = 0;                 // rc of the last SetSetting/GetSetting that reached the SDK
+	//The communication path itself failed (open / send / receive / timeout): another command would
+	//only sit out the same timeout, so a loop over many settings should stop at the first one.
+	static bool isLinkFailure(LONG rc) { return rc >= LJX8IF_RC_ERR_OPEN && rc <= LJX8IF_RC_ERR_TIMEOUT; }
 	int      m_divider = 1;               // encoder sub-sampling count
 	double   m_yPitchUm = 10.0;           // per-trigger Y pitch BEFORE sub-sampling
 	double   m_zPitchUm = 1.6;            // grey-level -> micron factor, from head model

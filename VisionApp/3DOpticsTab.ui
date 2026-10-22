@@ -784,7 +784,58 @@ background-color: transparent</string>
         <item row="6" column="1">
          <widget class="QComboBox" name="comboBox_peakSelection"/>
         </item>
+        <item row="6" column="3" colspan="3">
+         <widget class="QToolButton" name="toolButton_loadNavigatorTsv">
+          <property name="toolTip">
+           <string>Load an LJ-X Navigator setting saved as TSV (Navigator: Local setting - Save file - *.tsv). Every change is shown before it is applied to this optic and to Profiler Hardware.</string>
+          </property>
+          <property name="text">
+           <string>Load Navigator TSV...</string>
+          </property>
+          <property name="icon">
+           <iconset resource="VisionApp.qrc">
+            <normaloff>:/24x24/Icon/24x24/cil-folder-open.png</normaloff>:/24x24/Icon/24x24/cil-folder-open.png</iconset>
+          </property>
+          <property name="iconSize">
+           <size>
+            <width>24</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="toolButtonStyle">
+           <enum>Qt::ToolButtonTextBesideIcon</enum>
+          </property>
+         </widget>
+        </item>
        </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_capLjxOptic">
+        <property name="styleSheet">
+         <string notr="true">color:white</string>
+        </property>
+        <property name="text">
+         <string>LJ-X settings for this optic - saved with Save 3D Optics, sent before every scan</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QTreeWidget" name="treeWidget_ljxOptic">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>360</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Every LJ-X setting that belongs to this optic. Editable rows are stored in the recipe and sent before every scan; (not set) leaves the controller as Navigator set it. Rows marked 3D Optics are edited in the fields above.</string>
+        </property>
+        <column>
+         <property name="text">
+          <string notr="true">1</string>
+         </property>
+        </column>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -969,7 +1020,35 @@ background-color: transparent</string>
         </property>
        </widget>
       </item>
+      <item row="9" column="0" colspan="4">
+       <widget class="QLabel" name="label_capLjxMachine">
+        <property name="styleSheet">
+         <string notr="true">color:white</string>
+        </property>
+        <property name="text">
+         <string>LJ-X controller settings - saved with Save, sent at Connect</string>
+        </property>
+       </widget>
+      </item>
       <item row="10" column="0" colspan="4">
+       <widget class="QTreeWidget" name="treeWidget_ljxMachine">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>320</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Every controller-wide LJ-X setting. Editable rows are saved to the driver config by Save and sent at Connect; the rest are shown so they can be checked. Read from controller fills the Controller column.</string>
+        </property>
+        <column>
+         <property name="text">
+          <string notr="true">1</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item row="12" column="0" colspan="4">
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
          <widget class="QToolButton" name="toolButton_profConnect">
@@ -1005,6 +1084,32 @@ background-color: transparent</string>
           <property name="icon">
            <iconset resource="VisionApp.qrc">
             <normaloff>:/24x24/Icon/24x24/cil-save.png</normaloff>:/24x24/Icon/24x24/cil-save.png</iconset>
+          </property>
+          <property name="iconSize">
+           <size>
+            <width>32</width>
+            <height>32</height>
+           </size>
+          </property>
+          <property name="toolButtonStyle">
+           <enum>Qt::ToolButtonTextBesideIcon</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="toolButton_ljxRead">
+          <property name="styleSheet">
+           <string notr="true">background-color: #4b5563; color: white; border-radius: 5px; padding: 0px 0px 0px 6px;</string>
+          </property>
+          <property name="toolTip">
+           <string>Read every LJ-X setting the controller is running into the Controller column of both LJ-X tables. Needs a connected, idle profiler.</string>
+          </property>
+          <property name="text">
+           <string>Read from controller</string>
+          </property>
+          <property name="icon">
+           <iconset resource="VisionApp.qrc">
+            <normaloff>:/24x24/Icon/24x24/cil-input.png</normaloff>:/24x24/Icon/24x24/cil-input.png</iconset>
           </property>
           <property name="iconSize">
            <size>
@@ -1118,7 +1223,7 @@ background-color: transparent</string>
         </property>
        </widget>
       </item>
-      <item row="9" column="0">
+      <item row="11" column="0">
        <widget class="QLabel" name="label_message">
         <property name="styleSheet">
          <string notr="true">color:white</string>
@@ -1128,7 +1233,7 @@ background-color: transparent</string>
         </property>
        </widget>
       </item>
-      <item row="9" column="1" colspan="3">
+      <item row="11" column="1" colspan="3">
        <widget class="QLineEdit" name="lineEdit_profMessage">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">

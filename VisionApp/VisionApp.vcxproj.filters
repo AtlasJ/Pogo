@@ -379,6 +379,12 @@
     <ClCompile Include="ScaleManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="NavigatorTsv.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="KeyenceSettings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="libvips\VInterpolate.cpp">
       <Filter>Source Files\libvips</Filter>
     </ClCompile>
@@ -740,6 +746,12 @@
       <Filter>Header Files\Profiler\SmartRay5</Filter>
     </ClInclude>
     <ClInclude Include="ScaleManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="NavigatorTsv.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="KeyenceSettings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ScopedFlag.h">

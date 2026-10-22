@@ -2,10 +2,24 @@
 #include "CommonDir.h"
 #include "Logger.h"
 #include "AuditLog.h"
+#include "KeyenceSettings.h"
+#include "NavigatorTsv.h"
 #include "ProfilerManager.h"
 #include "SystemData.h"
 #include <QApplication>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QHeaderView>
+#include <QLabel>
+#include <QSpinBox>
 #include <QStandardItemModel>
+#include <QTableWidget>
+#include <QTreeWidget>
+#include <QVBoxLayout>
 #include <QPushButton>
 #include <QRegExp>
 #include <QRegExpValidator>
@@ -40,6 +54,11 @@ Optics3DTab::Optics3DTab(QWidget* parent)
     connect(ui.toolButton_del3DOptics, &QToolButton::clicked,
         this, [=]() { deleteCurrentOptics3D(); });
 
+    connect(ui.toolButton_loadNavigatorTsv, &QToolButton::clicked,
+        this, [=]() { importNavigatorTsv(); });
+
+    //Before initProfilerHwUi(): its first load fills the machine table.
+    initLjxTrees();
     initProfilerHwUi();
     initAlign3DUi();
 }
@@ -116,6 +135,7 @@ Optics3DTab::Optics3DParams Optics3DTab::readUiParams() const
     p.lightSensitivity = ui.comboBox_lightSensitivity->currentText().trimmed();
     p.peakSensitivity = ui.comboBox_peakSensitivity->currentText().trimmed();
     p.peakSelection = ui.comboBox_peakSelection->currentText().trimmed();
+    p.ljx = readLjxEditors(true);
     return p;
 }
 
@@ -158,6 +178,10 @@ void Optics3DTab::writeUiParams(const Optics3DParams& p)
     setComboByText(ui.comboBox_lightSensitivity, p.lightSensitivity);
     setComboByText(ui.comboBox_peakSensitivity, p.peakSensitivity);
     setComboByText(ui.comboBox_peakSelection, p.peakSelection);
+
+    writeLjxEditors(true, p.ljx);
+    refreshLjxPogoRows();       //the fields above were written with their signals blocked
+    showLjxController();        //differences are against this optic's values now
 }
 
 bool Optics3DTab::loadParamsFromJsonById(const QString& id, Optics3DParams& out) const
@@ -191,6 +215,7 @@ bool Optics3DTab::loadParamsFromJsonById(const QString& id, Optics3DParams& out)
         out.lightSensitivity = o.value("lightSensitivity").toString();
         out.peakSensitivity = o.value("peakSensitivity").toString();
         out.peakSelection = o.value("peakSelection").toString();
+        out.ljx = o.value("ljx").toObject();
         return true;
     }
     return false;
@@ -274,6 +299,8 @@ bool Optics3DTab::saveAllOptics3DByIdToJson()
         o["lightSensitivity"] = p.lightSensitivity;
         o["peakSensitivity"] = p.peakSensitivity;
         o["peakSelection"] = p.peakSelection;
+        if (p.ljx.isEmpty()) o.remove("ljx");
+        else o["ljx"] = p.ljx;
 
         arr[i] = o;
         updated++;
@@ -564,6 +591,7 @@ bool Optics3DTab::deleteCurrentOptics3D()
     if (_recipeOptics3D) {
         _recipeOptics3D->remove(id);
     }
+    ljx::removeOpticSettings(id);
 
     // ---- clear cache for this id ----
     _cacheById.remove(id);
@@ -662,6 +690,9 @@ bool Optics3DTab::syncToRecipeOptics3D()
         o.peakSensitivity = p.peakSensitivity;
         o.peakSelection = p.peakSelection;
         _recipeOptics3D->insert(id, o);
+
+        //OpticsInfo3D (Common library) has no room for these; JobThread::scan() reads them here.
+        ljx::setOpticSettings(id, p.ljx);
     }
 
     qDebug() << "=== Synced _recipeOptics3D Contents ===";
@@ -891,6 +922,9 @@ void Optics3DTab::initProfilerHwUi()
             && api.compare(QStringLiteral("KeyenceLJ"), Qt::CaseInsensitive) != 0;
         if (otherSensor) {
             ui.frame_profilerHw->setVisible(false);
+            ui.toolButton_loadNavigatorTsv->setVisible(false);     //Navigator is the LJ-X's tool
+            ui.label_capLjxOptic->setVisible(false);
+            ui.treeWidget_ljxOptic->setVisible(false);
             ct::logger::info("[Optics3DTab] Profiler Hardware section hidden - API is '%s', "
                 "and these settings are LJ-X only", qPrintable(api));
         }
@@ -1075,6 +1109,10 @@ bool Optics3DTab::loadProfilerHwToUi()
             trig, qPrintable(_profilerConfigFile));
     }
 
+    //The LJ-X controller table is part of the same file and follows the same rules.
+    writeLjxEditors(false, drv);
+    refreshLjxPogoRows();
+
     //Widgets now equal the file by construction.
     _profilerHwDirty = false;
     ct::logger::info("[Optics3DTab/Prof] Loaded hw config: id=%s ip=%s cfg=%s ports=%d/%d trig=%d enc=%d/%d",
@@ -1187,6 +1225,20 @@ bool Optics3DTab::saveProfilerHwToJson()
         drv["encoderMinInputTime"] = encTime;
         drv["lightControlMode"] = lightCtrl;
         drv["yPitchUm"] = yPitch;
+
+        //The LJ-X controller table: a set row writes its key; (not set) removes it, and the driver
+        //then leaves that setting as the controller has it. A value the table could not show (a hand
+        //edit outside the field's range, or samplingCycle's own -1) is left exactly as it was.
+        const QJsonObject ljxMachine = readLjxEditors(false);
+        for (const ljx::Field& fd : ljx::fields()) {
+            if (fd.level != ljx::Level::Machine) continue;
+            if (ljxMachine.contains(fd.key)) {
+                drv[fd.key] = ljxMachine.value(fd.key);
+            }
+            else if (drv.contains(fd.key) && ljx::valid(fd, drv.value(fd.key).toInt(ljx::kNotSet))) {
+                drv.remove(fd.key);
+            }
+        }
         haveDrv = true;
     }
 
@@ -1273,6 +1325,15 @@ void Optics3DTab::refreshProfilerStatus()
     //connected, for the same reason as the rest: what is displayed should be what is running.
     ui.doubleSpinBox_profYPitch->setEnabled(configurable);
     ui.toolButton_profSave->setEnabled(configurable);
+
+    //The LJ-X controller table is applied at connect too, so it locks with the rest. Its read-back
+    //is the opposite: it needs the connection, and nothing else talking to the controller.
+    for (const ljx::Field& fd : ljx::fields()) {
+        if (fd.level != ljx::Level::Machine) continue;
+        if (QWidget* w = _ljxEditors.value(fd.key)) w->setEnabled(configurable);
+    }
+    ui.toolButton_ljxRead->setEnabled(connected && !_profilerBusyUi && !grabbing
+        && !ui.toolButton_alignLive->isChecked());
 
     //Editing stays available with no profiler created - the fields are backed by JSON files, not
     //by the sensor, so preparing a machine offline is legitimate. Connecting is not: there is no
@@ -1400,6 +1461,667 @@ void Optics3DTab::runProfilerConnect(bool wantConnected)
                "Check the log for [Profiler_Keyence] setSetting failures before trusting them.")
             .arg(id));
     }
+}
+
+//--------------------------------------------------------------------------------
+// LJ-X settings tables
+//
+// One row per KeyenceSettings entry, so everything a Navigator setting holds is visible here. The
+// optic table carries the optic's own settings (stored in the recipe, sent before every scan) and,
+// read-only, the per-optic fields above. The machine table carries the controller-wide ones: editable
+// rows go to the driver config with the Profiler Hardware Save; Pogo-owned, checked and
+// Navigator-only rows are shown so nothing is hidden. (not set) means Pogo does not send the setting
+// and the controller keeps what Navigator gave it - which is what every recipe from before these
+// tables does, so they change nothing until someone sets a value.
+//--------------------------------------------------------------------------------
+
+namespace {
+
+    bool inOpticTree(const ljx::Field& f)
+    {
+        return f.level == ljx::Level::Optic || (f.level == ljx::Level::Pogo && f.perOptic);
+    }
+
+    bool isEditable(const ljx::Field& f)
+    {
+        return f.level == ljx::Level::Optic || f.level == ljx::Level::Machine;
+    }
+
+    int decimalsFor(double scale)
+    {
+        int d = 0;
+        for (double s = scale; s < 0.999999 && d < 5; s *= 10.0) ++d;
+        return d;
+    }
+
+    //Enumerations get a combo, plain counts a spin box, scaled values (0.1 %, mm, deg) a double spin
+    //box in the unit Navigator shows. The lowest entry of each is (not set) - except for a field the
+    //driver always sends (fallback), which has a value whether the file sets it or not.
+    QWidget* makeLjxEditor(const ljx::Field& f, QWidget* parent)
+    {
+        const QString notSet = Optics3DTab::tr("(not set)");
+        const bool canBeUnset = (f.fallback == ljx::kNotSet);
+        if (!f.options.isEmpty()) {
+            auto* cb = new QComboBox(parent);
+            if (canBeUnset) cb->addItem(notSet, ljx::kNotSet);
+            for (const ljx::Option& o : f.options) cb->addItem(ljx::display(f, o.code), o.code);
+            return cb;
+        }
+        if (f.scale == 1.0) {
+            auto* sb = new QSpinBox(parent);
+            sb->setRange(canBeUnset ? f.min - 1 : f.min, f.max);
+            if (canBeUnset) sb->setSpecialValueText(notSet);
+            if (!f.unit.isEmpty()) sb->setSuffix(QLatin1Char(' ') + f.unit);
+            sb->setValue(canBeUnset ? sb->minimum() : f.fallback);
+            return sb;
+        }
+        auto* ds = new QDoubleSpinBox(parent);
+        ds->setDecimals(decimalsFor(f.scale));
+        ds->setSingleStep(f.scale < 0.01 ? 0.01 : f.scale);
+        ds->setRange((f.min - 1) * f.scale, f.max * f.scale);
+        ds->setSpecialValueText(notSet);
+        if (!f.unit.isEmpty()) ds->setSuffix(QLatin1Char(' ') + f.unit);
+        ds->setValue(ds->minimum());
+        return ds;
+    }
+
+    int ljxEditorCode(const ljx::Field& f, const QWidget* w)
+    {
+        if (auto* cb = qobject_cast<const QComboBox*>(w)) return cb->currentData().toInt();
+        if (auto* sb = qobject_cast<const QSpinBox*>(w))
+            return (sb->value() == sb->minimum() && f.fallback == ljx::kNotSet) ? ljx::kNotSet : sb->value();
+        if (auto* ds = qobject_cast<const QDoubleSpinBox*>(w))
+            return ds->value() <= ds->minimum() ? ljx::kNotSet : static_cast<int>(std::lround(ds->value() / f.scale));
+        return ljx::kNotSet;
+    }
+
+    void setLjxEditorCode(const ljx::Field& f, QWidget* w, int code)
+    {
+        QSignalBlocker block(w);
+        if (auto* cb = qobject_cast<QComboBox*>(w)) {
+            const int i = cb->findData(code);
+            cb->setCurrentIndex(i < 0 ? 0 : i);
+        }
+        else if (auto* sb = qobject_cast<QSpinBox*>(w)) {
+            sb->setValue(code == ljx::kNotSet ? sb->minimum() : code);
+        }
+        else if (auto* ds = qobject_cast<QDoubleSpinBox*>(w)) {
+            ds->setValue(code == ljx::kNotSet ? ds->minimum() : code * f.scale);
+        }
+    }
+
+} // namespace
+
+void Optics3DTab::initLjxTrees()
+{
+    //tree->clear() below deletes the rows and their editors; never keep pointers to them.
+    _ljxEditors.clear();
+    _ljxItems.clear();
+
+    for (int t = 0; t < 2; ++t) {
+        const bool opticTree = (t == 0);
+        QTreeWidget* tree = opticTree ? ui.treeWidget_ljxOptic : ui.treeWidget_ljxMachine;
+        tree->clear();
+        tree->setColumnCount(4);
+        tree->setHeaderLabels(QStringList() << tr("Setting") << tr("Pogo") << tr("Controller") << tr("Note"));
+        tree->setSelectionMode(QAbstractItemView::NoSelection);
+
+        QHash<QString, QTreeWidgetItem*> groups;
+        for (const ljx::Field& f : ljx::fields()) {
+            if (inOpticTree(f) != opticTree) continue;
+
+            QTreeWidgetItem*& group = groups[f.group];
+            if (!group) {
+                group = new QTreeWidgetItem(tree, QStringList(f.group));
+                group->setFirstColumnSpanned(true);
+                group->setExpanded(f.group != QLatin1String("Image masks"));   //42 rows, nearly always unused
+            }
+
+            QString note = f.note;
+            if (f.level == ljx::Level::Check)
+                note = tr("Pogo needs %1. %2").arg(ljx::display(f, f.required), f.note);
+            else if (f.level == ljx::Level::Info && note.isEmpty())
+                note = tr("Shown only - left to Navigator");
+
+            auto* item = new QTreeWidgetItem(group, QStringList() << f.name << QString() << QString() << note);
+            item->setToolTip(0, f.key);
+            item->setToolTip(3, note);
+            _ljxItems.insert(f.key, item);
+
+            if (isEditable(f)) {
+                QWidget* editor = makeLjxEditor(f, tree);
+                tree->setItemWidget(item, 1, editor);
+                _ljxEditors.insert(f.key, editor);
+
+                //Machine rows are saved with the Profiler Hardware section, so they join its
+                //dirty tracking. Optic rows are saved with the optic, which has none.
+                if (!opticTree) {
+                    if (auto* cb = qobject_cast<QComboBox*>(editor))
+                        connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int) { markProfilerHwDirty(); });
+                    else if (auto* sb = qobject_cast<QSpinBox*>(editor))
+                        connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this, [=](int) { markProfilerHwDirty(); });
+                    else if (auto* ds = qobject_cast<QDoubleSpinBox*>(editor))
+                        connect(ds, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=](double) { markProfilerHwDirty(); });
+                }
+            }
+            else if (f.level == ljx::Level::Check) {
+                item->setText(1, tr("%1 (checked)").arg(ljx::display(f, f.required)));
+            }
+            else if (f.level == ljx::Level::Info) {
+                item->setText(1, QStringLiteral("-"));
+            }
+        }
+
+        tree->setColumnWidth(0, 340);
+        tree->setColumnWidth(1, 200);
+        tree->setColumnWidth(2, 170);
+    }
+
+    //Rows owned by the fields above follow those fields.
+    auto refresh = [=]() { refreshLjxPogoRows(); };
+    for (QLineEdit* e : { ui.lineEdit_Exposure, ui.lineEdit_Gain, ui.lineEdit_Divider,
+                          ui.lineEdit_laserLowerLimit, ui.lineEdit_laserUpperLimit })
+        connect(e, &QLineEdit::textChanged, this, refresh);
+    for (QComboBox* c : { ui.comboBox_exposureMode, ui.comboBox_peakSensitivity, ui.comboBox_peakSelection,
+                          ui.comboBox_profEncoderMode, ui.comboBox_profEncoderMinTime, ui.comboBox_profLightCtrl })
+        connect(c, QOverload<int>::of(&QComboBox::currentIndexChanged), this, refresh);
+
+    connect(ui.toolButton_ljxRead, &QToolButton::clicked, this, [=]() { readLjxFromController(); });
+
+    refreshLjxPogoRows();
+}
+
+QJsonObject Optics3DTab::readLjxEditors(bool opticTree) const
+{
+    QJsonObject out;
+    for (const ljx::Field& f : ljx::fields()) {
+        if (!isEditable(f) || inOpticTree(f) != opticTree) continue;
+        const QWidget* w = _ljxEditors.value(f.key);
+        if (!w) continue;
+        const int code = ljxEditorCode(f, w);
+        if (code != ljx::kNotSet) out.insert(f.key, code);
+    }
+    return out;
+}
+
+void Optics3DTab::writeLjxEditors(bool opticTree, const QJsonObject& values)
+{
+    for (const ljx::Field& f : ljx::fields()) {
+        if (!isEditable(f) || inOpticTree(f) != opticTree) continue;
+        QWidget* w = _ljxEditors.value(f.key);
+        if (!w) continue;
+
+        int code = values.contains(f.key) ? values.value(f.key).toInt(ljx::kNotSet) : ljx::kNotSet;
+        if (code != ljx::kNotSet && !ljx::valid(f, code)) {
+            //samplingCycle -1 is the driver's own "do not send"; anything else is a hand edit, which
+            //Save leaves in the file untouched (saveProfilerHwToJson).
+            if (code >= 0) {
+                ct::logger::warn("[Optics3DTab/LJX] %s = %d is not a valid value - shown as (not set)",
+                    qPrintable(f.key), code);
+            }
+            code = ljx::kNotSet;
+        }
+        if (code == ljx::kNotSet && f.fallback != ljx::kNotSet) code = f.fallback;   //what the driver sends
+        setLjxEditorCode(f, w, code);
+    }
+}
+
+void Optics3DTab::refreshLjxPogoRows()
+{
+    auto put = [this](const char* key, const QString& text) {
+        if (QTreeWidgetItem* it = _ljxItems.value(QLatin1String(key))) it->setText(1, text);
+    };
+
+    //Read the fields directly rather than through readUiParams(): that would also walk the LJ-X
+    //editors, for every keystroke in the fields above.
+    const QString divider = ui.lineEdit_Divider->text().trimmed();
+    const bool skipping = divider.toInt() > 1;
+    put("exposureTime", tr("%1 us (Exposure, above)").arg(ui.lineEdit_Exposure->text().trimmed()));
+    put("dynamicRange", tr("%1 (Dynamic Range, above)").arg(ui.lineEdit_Gain->text().trimmed()));
+    put("exposureMode", tr("%1 (above)").arg(ui.comboBox_exposureMode->currentText()));
+    put("lightUpperLimit", tr("%1 (UpperLimit, above)").arg(ui.lineEdit_laserUpperLimit->text().trimmed()));
+    put("lightLowerLimit", tr("%1 (LowerLimit, above)").arg(ui.lineEdit_laserLowerLimit->text().trimmed()));
+    put("peakSensitivity", tr("%1 (above)").arg(ui.comboBox_peakSensitivity->currentText()));
+    put("peakSelection", tr("%1 (above)").arg(ui.comboBox_peakSelection->currentText()));
+    put("subSampling", skipping ? tr("ON (Divider, above)") : tr("OFF (Divider 1, above)"));
+    put("subSampleCount", skipping ? tr("%1 (Divider, above)").arg(divider) : tr("- (Divider 1)"));
+
+    put("triggerMode", tr("%1 (fixed)").arg(ui.comboBox_profTriggerMode->currentText()));
+    put("encoderInputMode", tr("%1 (above)").arg(ui.comboBox_profEncoderMode->currentText()));
+    put("encoderMinInputTime", tr("%1 (above)").arg(ui.comboBox_profEncoderMinTime->currentText()));
+    put("lightControlMode", tr("%1 (above)").arg(ui.comboBox_profLightCtrl->currentText()));
+    put("batchMeasurement", tr("ON (always)"));
+    put("batchCount", tr("from the scan length"));
+    put("luminanceOutput", tr("ON (every scan)"));
+}
+
+void Optics3DTab::showLjxController()
+{
+    for (const ljx::Field& f : ljx::fields()) {
+        QTreeWidgetItem* item = _ljxItems.value(f.key);
+        if (!item) continue;
+
+        QFont font = item->font(2);
+        if (!_ljxController.contains(f.key)) {
+            item->setText(2, QString());
+            font.setBold(false);
+            item->setFont(2, font);
+            continue;
+        }
+
+        const int code = _ljxController.value(f.key).toInt();
+        QString text = ljx::display(f, code);
+
+        //What Pogo would send (or needs) against what is running. Only meaningful where Pogo has a
+        //code of its own - the rows owned by fields above are compared by eye.
+        int pogo = ljx::kNotSet;
+        if (const QWidget* w = _ljxEditors.value(f.key)) pogo = ljxEditorCode(f, w);
+        else if (f.level == ljx::Level::Check) pogo = f.required;
+
+        const bool differs = pogo != ljx::kNotSet && pogo != code;
+        if (differs) text += tr("  (differs)");
+        item->setText(2, text);
+        font.setBold(differs);
+        item->setFont(2, font);
+    }
+}
+
+void Optics3DTab::readLjxFromController()
+{
+    const QString id = profilerId();
+    if (!ProfilerManager::instance().keys().contains(id) || !ProfilerManager::instance().isConnected(id)) {
+        QMessageBox::warning(this, tr("Read from controller"), tr("Connect the profiler first."));
+        return;
+    }
+    if (profilerBusy()) {
+        QMessageBox::warning(this, tr("Profiler busy"),
+            tr("The profiler is acquiring, or the gantry is moving.\nWait for it to finish."));
+        return;
+    }
+    //Live view polls profiles from JobThread on its own SDK path; do not read settings across it.
+    if (ui.toolButton_alignLive->isChecked()) {
+        QMessageBox::warning(this, tr("Read from controller"), tr("Stop Live first (Camera - Profiler Alignment)."));
+        return;
+    }
+
+    QJsonObject values;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool ok = ProfilerManager::instance().readSettings(id, values);
+    QApplication::restoreOverrideCursor();
+
+    if (!ok) {
+        QMessageBox::warning(this, tr("Read from controller"),
+            tr("Nothing could be read from the controller.\n\n"
+               "Either a scan was configuring it at that moment - wait for the run to finish and read "
+               "again - or it is not answering. The log says which ([Profiler_Keyence] readSettings)."));
+        return;
+    }
+
+    _ljxController = values;
+    showLjxController();
+
+    int differ = 0;
+    for (QTreeWidgetItem* item : _ljxItems)
+        if (item->font(2).bold()) ++differ;
+
+    ct::logger::info("[Optics3DTab/LJX] Read %d settings from the controller, %d differ from Pogo", values.size(), differ);
+    AuditLog::instance().log(QStringLiteral("LJX_READ_CONTROLLER"), id);
+
+    QMessageBox::information(this, tr("Read from controller"),
+        differ == 0
+            ? tr("Read %1 settings. Everything Pogo sets or checks matches the controller.").arg(values.size())
+            : tr("Read %1 settings. %2 differ from Pogo - shown in bold in the Controller column.\n\n"
+                 "An optic's values are sent before its next scan; machine values at the next Connect.")
+                .arg(values.size()).arg(differ));
+}
+
+//--------------------------------------------------------------------------------
+// LJ-X Navigator TSV import
+//
+// Settings tuned in Navigator do not survive in Pogo on their own: JobThread::scan() pushes the
+// optic's values before every scan, and Connect pushes the driver config. So a Navigator tune has
+// to land in Pogo's own files. This reads Navigator's TSV export of the program Pogo runs, shows
+// every change, then saves the optic part exactly as Save 3D Optics does and the machine part into
+// the driver config.
+//
+// Settings Pogo has nowhere to keep (filters, median ...) are listed but not imported. Pogo never
+// writes them, so the controller keeps whatever Navigator last sent.
+//--------------------------------------------------------------------------------
+void Optics3DTab::importNavigatorTsv()
+{
+    using S = NavigatorSetting;
+
+    if (profilerBusy()) {
+        QMessageBox::warning(this, tr("Profiler busy"),
+            tr("The profiler is acquiring, or the gantry is moving.\n"
+               "Wait for it to finish before loading settings."));
+        return;
+    }
+
+    QString opticId = ui.comboBox_opticsID->currentData().toString();
+    if (opticId.isEmpty()) opticId = ui.comboBox_opticsID->currentText();
+    if (opticId.isEmpty()) {
+        QMessageBox::warning(this, tr("No 3D optic"),
+            tr("Add or select a 3D optic first - the file's exposure, dynamic range and peak "
+               "settings are saved into it."));
+        return;
+    }
+
+    static QString s_lastDir;   //per session, so a second file is one click away
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load LJ-X Navigator settings"),
+        s_lastDir, tr("LJ-X Navigator settings saved as TSV (*.tsv)"));
+    if (path.isEmpty()) return;
+    s_lastDir = QFileInfo(path).absolutePath();
+
+    NavigatorTsv tsv;
+    QString error;
+    if (!tsv.load(path, &error)) {
+        QMessageBox::warning(this, tr("Cannot read file"), error);
+        return;
+    }
+
+    QString head;
+    NavigatorTsv::find(tsv.common(), QStringList{ QStringLiteral("Head sel") }, &head);
+    if (!head.startsWith(QLatin1String("LJ-X"), Qt::CaseInsensitive)) {
+        QMessageBox::warning(this, tr("Not an LJ-X file"),
+            tr("This file is for a '%1' head. Only LJ-X settings can be loaded here.").arg(head));
+        return;
+    }
+
+    //The program Pogo runs comes from the driver config, like everything else in this section, so
+    //a machine set to another program imports that one rather than Program0 by habit.
+    QJsonObject drv;
+    const QString drvPath = driverConfigPath();
+    const bool haveDrv = !drvPath.isEmpty() && readJsonObject(drvPath, drv);
+    const int programNo = qBound(0, drv.value("programNo").toInt(0), 15);
+
+    QStringList warnings;
+    const QVector<S> rows = mapNavigatorProgram(tsv, programNo, &warnings);
+    if (rows.isEmpty()) {
+        QMessageBox::warning(this, tr("Nothing to load"), warnings.join(QLatin1Char('\n')));
+        return;
+    }
+
+    //Machine values follow the Profiler Hardware section's own rule: they only change while
+    //disconnected, so what that section shows while connected is what the controller is running.
+    const QString id = profilerId();
+    QString machineBlocked;
+    if (ProfilerManager::instance().keys().contains(id) && ProfilerManager::instance().isConnected(id))
+        machineBlocked = tr("Profiler connected - Disconnect, then load the file again to apply this");
+    else if (_profilerHwDirty)
+        machineBlocked = tr("Profiler Hardware has unsaved edits - Save or discard them first");
+    else if (!haveDrv)
+        machineBlocked = tr("Driver config could not be read");
+
+    static const char* const kPeakSelection[] = { "Standard", "Near", "Far" };
+
+    auto isOptic = [](S::Target t) {
+        return (t >= S::OpticExposure && t <= S::OpticLaserLower) || t == S::OpticLjx;
+    };
+    auto isDrv = [](S::Target t) {
+        return (t >= S::DrvEncoderInputMode && t <= S::DrvInvalidInterpolation) || t == S::DrvLjx;
+    };
+
+    auto applyToOptic = [](const S& s, Optics3DParams& p) {
+        switch (s.target) {
+        case S::OpticExposure:        p.exposure = s.value; break;
+        case S::OpticDynamicRange:    p.gain = s.value; break;
+        case S::OpticDivider:         p.divider = s.value; break;
+        case S::OpticExposureMode:    p.exposureMode = QStringLiteral("single"); break;
+        case S::OpticPeakSensitivity: p.peakSensitivity = QString::number(s.value); break;
+        case S::OpticPeakSelection:   p.peakSelection = QLatin1String(kPeakSelection[s.value]); break;
+        case S::OpticLaserUpper:      p.upperLaserLimit = s.value; break;
+        case S::OpticLaserLower:      p.lowerLaserLimit = s.value; break;
+        case S::OpticLjx:             p.ljx[s.key] = s.value; break;
+        default: break;
+        }
+    };
+
+    auto opticText = [](const S& s, const Optics3DParams& p) -> QString {
+        switch (s.target) {
+        case S::OpticExposure:        return QStringLiteral("%1 us").arg(p.exposure);
+        case S::OpticDynamicRange:    return QString::number(p.gain);
+        case S::OpticDivider:         return QString::number(p.divider);
+        case S::OpticExposureMode:    return p.exposureMode;
+        case S::OpticPeakSensitivity: return p.peakSensitivity;
+        case S::OpticPeakSelection:   return p.peakSelection;
+        case S::OpticLaserUpper:      return QString::number(p.upperLaserLimit);
+        case S::OpticLaserLower:      return QString::number(p.lowerLaserLimit);
+        case S::OpticLjx: {
+            const ljx::Field* f = ljx::field(s.key);
+            if (!f || !p.ljx.contains(s.key)) return tr("(not set)");
+            return ljx::display(*f, p.ljx.value(s.key).toInt());
+        }
+        default:                      return QString();
+        }
+    };
+
+    auto drvKey = [](const S& s) -> QString {
+        switch (s.target) {
+        case S::DrvEncoderInputMode:     return QStringLiteral("encoderInputMode");
+        case S::DrvEncoderMinInputTime:  return QStringLiteral("encoderMinInputTime");
+        case S::DrvLightControlMode:     return QStringLiteral("lightControlMode");
+        case S::DrvInvalidInterpolation: return QStringLiteral("invalidInterpolation");
+        case S::DrvLjx:                  return s.key;
+        default:                         return QString();
+        }
+    };
+
+    //For a key the driver config does not have: the driver's own default (Profiler_Keyence::loadConfig).
+    //The LJ-X table keys have none - absent means "not sent".
+    auto drvHasDefault = [](const S& s) {
+        return s.target == S::DrvEncoderInputMode || s.target == S::DrvEncoderMinInputTime
+            || s.target == S::DrvLightControlMode || s.target == S::DrvInvalidInterpolation;
+    };
+    auto drvDefault = [](const S& s) {
+        return (s.target == S::DrvEncoderInputMode || s.target == S::DrvLightControlMode) ? 1 : 0;
+    };
+
+    auto drvText = [this](const S& s, int v) -> QString {
+        if (s.target == S::DrvLjx) {
+            const ljx::Field* f = ljx::field(s.key);
+            return f ? ljx::display(*f, v) : QString::number(v);
+        }
+        QComboBox* cb = s.target == S::DrvEncoderInputMode ? ui.comboBox_profEncoderMode
+            : s.target == S::DrvEncoderMinInputTime ? ui.comboBox_profEncoderMinTime
+            : s.target == S::DrvLightControlMode ? ui.comboBox_profLightCtrl : nullptr;
+        if (cb) {
+            const int i = cb->findData(v);
+            if (i >= 0) return cb->itemText(i);
+        }
+        return QString::number(v);
+    };
+
+    const QString drvName = _profilerConfigFile.isEmpty() ? QStringLiteral("driver config") : _profilerConfigFile;
+
+    auto targetText = [&](S::Target t) -> QString {
+        switch (t) {
+        case S::OpticExposure:           return tr("3D Optics: Exposure");
+        case S::OpticDynamicRange:       return tr("3D Optics: Dynamic Range");
+        case S::OpticDivider:            return tr("3D Optics: Divider");
+        case S::OpticExposureMode:       return tr("3D Optics: Exposure Mode");
+        case S::OpticPeakSensitivity:    return tr("3D Optics: Peak Sensitivity");
+        case S::OpticPeakSelection:      return tr("3D Optics: Peak Selection");
+        case S::OpticLaserUpper:         return tr("3D Optics: UpperLimit");
+        case S::OpticLaserLower:         return tr("3D Optics: LowerLimit");
+        case S::DrvEncoderInputMode:     return tr("Profiler Hardware: Encoder Input Mode");
+        case S::DrvEncoderMinInputTime:  return tr("Profiler Hardware: Encoder Min Input Time");
+        case S::DrvLightControlMode:     return tr("Profiler Hardware: Laser Intensity Control");
+        case S::DrvInvalidInterpolation: return tr("Profiler Hardware: LJ-X table");
+        case S::OpticLjx:                return tr("3D optic: LJ-X table");
+        case S::DrvLjx:                  return tr("Profiler Hardware: LJ-X table");
+        default:                         return QStringLiteral("-");
+        }
+    };
+
+    //--- Work out every row's before/after without touching anything yet.
+    struct Line { QString name, file, where, now, after, note; bool changed = false; };
+    QVector<Line> lines;
+
+    const Optics3DParams opticBefore = readUiParams();
+    Optics3DParams opticAfter = opticBefore;
+    QJsonObject drvSet;                     //only the keys this import sets
+    QStringList opticChanges, drvChanges;   //"name: old -> new", for the log and the audit trail
+    int drvBlocked = 0;                     //changes held back by machineBlocked
+
+    for (const S& s : rows) {
+        Line l;
+        l.name = s.name;
+        l.file = s.fileValue;
+        l.where = targetText(s.target);
+        l.note = s.note;
+
+        if (isOptic(s.target)) {
+            l.now = opticText(s, opticBefore);
+            if (s.usable) applyToOptic(s, opticAfter);
+            l.after = opticText(s, opticAfter);
+            l.changed = s.usable && l.after != l.now;
+            if (l.changed) opticChanges << QStringLiteral("%1: %2 -> %3").arg(s.name, l.now, l.after);
+        }
+        else if (isDrv(s.target)) {
+            const QString key = drvKey(s);
+            const int cur = drv.value(key).toInt(drvDefault(s));
+            l.now = !haveDrv ? QStringLiteral("?")
+                : drv.contains(key) ? drvText(s, cur)
+                : drvHasDefault(s) ? tr("%1 (not set)").arg(drvText(s, cur))
+                : tr("(not set)");
+
+            //A key the driver config lacks is a change even at the same value: it pins the value
+            //instead of leaving it to the driver's built-in default.
+            const bool differs = !drv.contains(key) || cur != s.value;
+
+            if (!s.usable) {
+                l.after = l.now;
+            }
+            else if (!machineBlocked.isEmpty()) {
+                l.after = tr("not applied");
+                l.note = machineBlocked;
+                if (differs) ++drvBlocked;
+            }
+            else {
+                drvSet[key] = s.value;
+                l.after = drvText(s, s.value);
+                l.changed = differs;
+                if (l.changed) drvChanges << QStringLiteral("%1: %2 -> %3").arg(key, l.now, l.after);
+            }
+        }
+
+        if (s.target != S::None && s.usable && !l.changed && l.note.isEmpty()) l.note = tr("unchanged");
+        lines.append(l);
+    }
+
+    //--- Preview.
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Load Navigator TSV"));
+    dlg.resize(1150, 680);
+    auto* layout = new QVBoxLayout(&dlg);
+
+    auto* header = new QLabel(&dlg);
+    header->setWordWrap(true);
+    header->setText(tr("%1\n\nProgram%2 (the program Pogo runs) -> 3D optic '%3' and Profiler Hardware.\n"
+        "Apply saves the optic to this recipe, used from the next scan, and the Profiler Hardware "
+        "values to %4, used from the next Connect.")
+        .arg(QDir::toNativeSeparators(path)).arg(programNo).arg(opticId, drvName));
+    layout->addWidget(header);
+
+    if (!warnings.isEmpty()) {
+        auto* warn = new QLabel(&dlg);
+        warn->setWordWrap(true);
+        warn->setStyleSheet(QStringLiteral("color:#FFB74D;"));
+        warn->setText(tr("Check before applying:\n- %1").arg(warnings.join(QStringLiteral("\n- "))));
+        layout->addWidget(warn);
+    }
+
+    auto* table = new QTableWidget(lines.size(), 6, &dlg);
+    table->setHorizontalHeaderLabels(QStringList() << tr("Navigator setting") << tr("In file")
+        << tr("Goes to") << tr("Pogo now") << tr("After") << tr("Note"));
+    table->verticalHeader()->setVisible(false);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setWordWrap(false);
+    for (int r = 0; r < lines.size(); ++r) {
+        const Line& l = lines[r];
+        const QStringList cells = QStringList() << l.name << l.file << l.where << l.now << l.after << l.note;
+        for (int c = 0; c < cells.size(); ++c) {
+            auto* item = new QTableWidgetItem(cells[c]);
+            item->setToolTip(cells[c]);
+            if (l.changed && c == 4) {
+                QFont f = item->font();
+                f.setBold(true);
+                item->setFont(f);
+            }
+            table->setItem(r, c, item);
+        }
+    }
+    table->resizeColumnsToContents();
+    table->horizontalHeader()->setStretchLastSection(true);
+    layout->addWidget(table, 1);
+
+    const int changeCount = opticChanges.size() + drvChanges.size();
+    QString summaryText = changeCount > 0
+        ? tr("%1 change(s) - shown in bold under After.").arg(changeCount)
+        : tr("Nothing to apply.");
+    if (drvBlocked > 0)
+        summaryText += tr(" %1 Profiler Hardware change(s) held back: %2.").arg(drvBlocked).arg(machineBlocked);
+    else if (changeCount == 0)
+        summaryText = tr("Pogo already matches this file - nothing to change.");
+    layout->addWidget(new QLabel(summaryText, &dlg));
+
+    auto* buttons = new QDialogButtonBox(&dlg);
+    QPushButton* applyBtn = buttons->addButton(tr("Apply"), QDialogButtonBox::AcceptRole);
+    buttons->addButton(QDialogButtonBox::Cancel);
+    applyBtn->setEnabled(changeCount > 0);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    //--- Apply. The optic goes through the same path as the Save 3D Optics button, so the recipe
+    //--- in memory and optics.json stay in step.
+    QStringList failed;
+    if (!opticChanges.isEmpty()) {
+        writeUiParams(opticAfter);
+        syncToRecipeOptics3D();
+        if (!saveAllOptics3DByIdToJson()) failed << tr("3D optic '%1' (optics.json)").arg(opticId);
+    }
+
+    //Re-read before writing: the preview was built from a copy that is now a dialog's lifetime old.
+    if (!drvChanges.isEmpty()) {
+        QJsonObject fresh;
+        if (!readJsonObject(drvPath, fresh)) {
+            failed << drvName;
+        }
+        else {
+            for (auto it = drvSet.constBegin(); it != drvSet.constEnd(); ++it)
+                fresh[it.key()] = it.value();
+            if (!writeJsonObject(drvPath, fresh)) failed << drvName;
+        }
+        loadProfilerHwToUi();
+        refreshProfilerStatus();
+    }
+
+    const QString detail = QStringLiteral("%1, Program%2 -> optic %3: %4").arg(QFileInfo(path).fileName())
+        .arg(programNo).arg(opticId).arg((opticChanges + drvChanges).join(QStringLiteral("; ")));
+    AuditLog::instance().log(QStringLiteral("NAVIGATOR_TSV_IMPORT"), detail,
+        failed.isEmpty() ? QStringLiteral("OK") : QStringLiteral("FAILED"));
+    ct::logger::info("[Optics3DTab] Navigator TSV import %s: %s",
+        failed.isEmpty() ? "OK" : "FAILED", qPrintable(detail));
+
+    if (!failed.isEmpty()) {
+        QMessageBox::warning(this, tr("Load Navigator TSV"),
+            tr("Could not save: %1\n\nCheck the log for the reason.").arg(failed.join(QStringLiteral(", "))));
+        return;
+    }
+
+    QString done = tr("Loaded %1.").arg(QFileInfo(path).fileName());
+    if (!opticChanges.isEmpty())
+        done += tr("\n\n3D optic '%1': %2 setting(s) saved - used from the next scan.").arg(opticId).arg(opticChanges.size());
+    if (!drvChanges.isEmpty())
+        done += tr("\n\nProfiler Hardware: %1 setting(s) saved to %2 - used from the next Connect.").arg(drvChanges.size()).arg(drvName);
+    if (drvBlocked > 0)
+        done += tr("\n\nProfiler Hardware not changed: %1.").arg(machineBlocked);
+    QMessageBox::information(this, tr("Load Navigator TSV"), done);
 }
 
 //--------------------------------------------------------------------------------

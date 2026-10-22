@@ -12,6 +12,7 @@
 #include "QDragBox.h"
 #include "CAMManager.h"
 #include "ScaleManager.h"
+#include "KeyenceSettings.h"
 #include"3DOpticsTab.h"
 #include <algorithm>
 
@@ -853,7 +854,11 @@ bool VisionApp::saveRecipeOptics()
 		j_optic.insert(QStringLiteral("peakSensitivity"), o.peakSensitivity);
 		j_optic.insert(QStringLiteral("peakSelection"), o.peakSelection);
 
-		
+		//The optic's other LJ-X settings live beside OpticsInfo3D (KeyenceSettings), not in it -
+		//without this the file would lose them on every recipe save.
+		const QJsonObject ljxValues = ljx::opticSettings(o.id);
+		if (!ljxValues.isEmpty()) j_optic.insert(QStringLiteral("ljx"), ljxValues);
+
 		j_optics3D.append(j_optic);
 	}
 
@@ -1030,6 +1035,7 @@ bool VisionApp::loadRecipeOptics()
 			auto j_optics = root["optics3D"].toArray();
 
 			_recipeOptics3D.clear();
+			ljx::clearOpticSettings();
 
 			for (auto j_optic : j_optics)
 			{
@@ -1052,6 +1058,7 @@ bool VisionApp::loadRecipeOptics()
 				optic.lightSensitivity = jsonHelper::getString(obj, QStringLiteral("lightSensitivity"), "High Precision");
 				optic.peakSensitivity = jsonHelper::getString(obj, QStringLiteral("peakSensitivity"), "5");
 				optic.peakSelection = jsonHelper::getString(obj, QStringLiteral("peakSelection"), "Standard");
+				ljx::setOpticSettings(optic.id, obj.value(QStringLiteral("ljx")).toObject());
 
 
 
@@ -1071,6 +1078,7 @@ bool VisionApp::loadRecipeOptics()
 		}
 		else {
 			_recipeOptics3D.clear();
+			ljx::clearOpticSettings();
 
 			//give default if none found
 			OpticsInfo3D opt30;

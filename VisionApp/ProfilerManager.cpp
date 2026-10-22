@@ -416,6 +416,20 @@ bool ProfilerManager::setLightLimits(QString id, int lower, int upper)
 	return ret;
 }
 
+bool ProfilerManager::applySettings(QString id, const QJsonObject& values)
+{
+	if (!valid(id)) return false;
+	auto ret = m_profilers[id]->applySettings(values);
+	if (!ret) ct::logger::error("[Profiler] Failed to apply %d controller setting(s): %s", values.size(), id.toStdString().c_str());
+	return ret;
+}
+
+bool ProfilerManager::readSettings(QString id, QJsonObject& out)
+{
+	if (!valid(id)) return false;
+	return m_profilers[id]->readSettings(out);
+}
+
 bool ProfilerManager::waitAcquisition(QString id, int ms)
 {
 	if (!valid(id)) return false;
