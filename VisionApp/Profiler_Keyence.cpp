@@ -301,7 +301,7 @@ double Profiler_Keyence::zRangeForHead(const QString& model)
 {
 	const QString m = model.toUpper();
 	if (m.contains("8020")) return 5.2;   // 20  +/- 2.6 mm
-	if (m.contains("8060")) return 16.0;  // 60  +/- 8 mm
+	if (m.contains("8060")) return 14.6;  // 64  +/- 7.3 mm (User's Manual spec table; 16 mm is its X width)
 	if (m.contains("8080")) return 46.0;  // 73  +/- 23 mm
 
 	const double encodable = 65536.0 * zPitchForHead(model) / 1000.0;
