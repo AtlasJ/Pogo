@@ -257,6 +257,8 @@
     <ClCompile Include="VisionApp_Production.cpp" />
     <ClCompile Include="VisionApp_SafetyCheck.cpp" />
     <ClCompile Include="VisionApp_GuidedSetup.cpp" />
+    <ClCompile Include="VisionApp_ZSearch.cpp" />
+    <ClCompile Include="ZSearch.cpp" />
     <ClCompile Include="VisionApp_PMF.cpp" />
     <ClCompile Include="VisionApp_TemplateMapping.cpp" />
     <ClCompile Include="TemplateMapping.cpp" />
@@ -278,6 +280,8 @@
     <ClInclude Include="AlgoSetupTypes.h" />
     <ClInclude Include="SafetyCheckTypes.h" />
     <ClInclude Include="GuidedSetupTypes.h" />
+    <ClInclude Include="ZSearchTypes.h" />
+    <ClInclude Include="ZSearch.h" />
     <ClInclude Include="NoWheelOnInputs.h" />
     <ClInclude Include="TemplateMapping.h" />
     <ClInclude Include="LiveMappingTypes.h" />

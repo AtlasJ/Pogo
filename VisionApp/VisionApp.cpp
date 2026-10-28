@@ -394,6 +394,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initProductionUI();
 	initSafetyCheckPage();
 	initGuidedSetupPage();
+	initZSearch(); //after the guided page: its frames go into that page's layout
 	initPmfPage();
 	initTemplateMappingSetup();
 	initLiveMapping();
@@ -7135,6 +7136,7 @@ bool VisionApp::toPage(UIPage page) {
 		unlockAllROIs();
 		toggleFOVView(); //teaching centres circles in the single camera FOV
 		refreshGuidedSetupPage();
+		refreshZSearchUi();
 		showRightTab((int)page, QStringLiteral("Open Guided Setup"));
 		return true;
 	case UIPage::UNIT_CONFIG:

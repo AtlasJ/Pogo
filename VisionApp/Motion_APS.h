@@ -81,6 +81,7 @@ namespace nvs {
 			//Config
 			bool set_pulse_per_mm(int axis, double scale);
 			double get_pulse_per_mm(int axis) const override;
+			bool get_limits_mm(int axis, double& negative_mm, double& positive_mm) const override;
 			bool set_positive_limit_mm(int axis, double limit);
 			bool set_negative_limit_mm(int axis, double limit);
 			bool set_home_mode(int axis, int mode);

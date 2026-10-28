@@ -44,6 +44,9 @@ public:
     //Signed - negative means a positive mm command travels towards the NEGATIVE end limit.
     //Quiet (uses available(), not valid()) because a UI poll asks it several times a second.
     double pulse_per_mm(QString id, int axis) const;
+
+    //The motion.json soft limits, quietly - no log, no machine warning. False when unknown.
+    bool limits_mm(QString id, int axis, double& negative_mm, double& positive_mm) const;
     bool set_positive_limit_mm(QString id, int axis, double limit);
     bool set_negative_limit_mm(QString id, int axis, double limit);
 

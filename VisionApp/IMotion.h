@@ -100,6 +100,14 @@ namespace nvs {
             * than assume. Non-pure with a positive default so no other backend must implement it.
             */
             virtual double get_pulse_per_mm(int axis) const { return 1.0; }
+
+            /*
+            * The soft limits from motion.json, read without testing a position - is_safe() and
+            * get_soft_limit() both log and is_safe() raises a machine warning, which is wrong for
+            * a caller that only wants to validate a target before it ever sends it. Non-pure,
+            * false by default, so no other backend must implement it.
+            */
+            virtual bool get_limits_mm(int axis, double& negative_mm, double& positive_mm) const { return false; }
             virtual bool set_positive_limit_mm(int axis, double limit) = 0;
             virtual bool set_negative_limit_mm(int axis, double limit) = 0;
 

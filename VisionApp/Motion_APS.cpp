@@ -409,6 +409,15 @@ double nvs::motion::Motion_APS::get_pulse_per_mm(int axis) const
 	return it->second.pulse_per_mm;
 }
 
+bool nvs::motion::Motion_APS::get_limits_mm(int axis, double& negative_mm, double& positive_mm) const
+{
+	auto it = m_axisInfos.find(axis);
+	if (it == m_axisInfos.end()) return false;
+	negative_mm = it->second.negative_limit_mm;
+	positive_mm = it->second.positive_limit_mm;
+	return true;
+}
+
 bool nvs::motion::Motion_APS::set_home_mode(int axis, int mode)
 {
 	auto ret = APS_set_axis_param(axis, Param::HOME_MODE, mode); //home mode

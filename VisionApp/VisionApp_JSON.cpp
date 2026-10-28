@@ -1509,6 +1509,7 @@ bool VisionApp::saveRecipeConfig()
 		gs.insert(QStringLiteral("focusZ"), _guidedSetup.focusZ);
 		obj.insert(QStringLiteral("guidedSetup"), gs);
 	}
+	obj.insert(QStringLiteral("zSearch"), zSearchToJson());
 
 	int speed, speed3d;
 	_jobThread.getXSpeed(speed, speed3d);
@@ -2042,6 +2043,11 @@ bool VisionApp::loadRecipeConfig()
 			_guidedSetup.focusZSet = jsonHelper::getBool(gs, QStringLiteral("focusZSet"), false);
 			_guidedSetup.focusZ = jsonHelper::getDouble(gs, QStringLiteral("focusZ"), 0.0);
 		}
+
+		//absent section = nothing set up yet; what was found belonged to the previous recipe's search points
+		zSearchFromJson(root.value(QStringLiteral("zSearch")).toObject());
+		_zFound = ZFound();
+		refreshZSearchUi();
 
 		double defaultSpeed = 0;
 		if (_motions.contains(_motionID)) defaultSpeed = _motions[_motionID].axes[(int)Axis::X].move_max_velocity;

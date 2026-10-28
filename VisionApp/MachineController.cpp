@@ -714,6 +714,8 @@ void MachineController::handleDIA()
         MotionController::instance().set_DO(m_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, true);
         ct::logger::info("[MachineController] Trolley attached - lock engaged (auto)");
     }
+    //edges only: whatever was measured on a trolley (the Z search) stops being true once it leaves
+    if (trolleyOn != m_trolleyGuardOn) emit signalTrolleyGuard(trolleyOn);
     m_trolleyGuardOn = trolleyOn;
 }
 

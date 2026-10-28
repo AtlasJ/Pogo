@@ -31,6 +31,8 @@
 #include "AlgoSetupTypes.h"
 #include "SafetyCheckTypes.h"
 #include "GuidedSetupTypes.h"
+#include "ZSearchTypes.h"
+#include "ZSearch.h"
 #include "TemplateMapping.h"
 #include "LiveMappingTypes.h"
 #include "AlgoHeight3Types.h"
@@ -682,6 +684,35 @@ private:
 	QDragBox* _guidedRoiBox = nullptr;      //reference box whose size is read off live
 	int _guidedSignX = 1, _guidedSignY = 1; //pixel-to-jog sense; flipped if a jog makes the offset grow
 	quint64 _fovSerial = 0;                 //bumped on every new FOV frame, so a synchronous snap can wait for one
+
+	//── Z search (VisionApp_ZSearch.cpp): find this table's 2D Focus Z and 3D Centre Z, because
+	//the trolley height varies by centimetres and no taught Z survives it. Two frames on Guided Setup.
+	void initZSearch();
+	void refreshZSearchUi();
+	QJsonObject zSearchToJson() const;
+	void zSearchFromJson(const QJsonObject& o);
+	void loadZCalibration();
+	bool saveZCalibration();
+	bool zsRefuseIfBusy();
+	bool zsCheckTarget(int axis, double target, QString& why);
+	bool zsCheckSetup(bool threeD, double x, double y, QString& why); //settings complete and every target inside the soft limits
+	bool zsMove(const QVector<QPair<int, double>>& targets, QString& why); //checked: refused, stopped or not landed = false
+	bool zsMoveToXY(double x, double y, double clearZ, QString& why);    //lifts to clearZ first, never slides below it
+	void zsPause(int ms);
+	bool zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QString& why);
+	bool zsFind2D(double x, double y, bool confirm, double& foundZ, QString& why);
+	bool zsReadProfile(zsearch::ProfileStats& st, int& offered, QString& why);
+	bool zsFind3D(double camX, double camY, double& foundZ, QString& why);
+	void zsRunFind(bool threeD);
+	void zsCalibrateCamLaser();
+	void zsSetDifference();
+	void zsCopyFromRecipe();
+	ZSearchConfig _zSearch;                 //per recipe, recipeConfig.json "zSearch"
+	ZCalibration _zCalibration;             //machine, config/z_calibration.json
+	ZFound _zFound;                         //this table, this session - never saved
+	ZSearchWidgets _zsw;
+	bool _zsBusy = false;                   //a search is moving the machine
+	bool _zsLiveProfileOn = false;          //the 3D Optics live profile is polling the profiler from the job thread
 	void clearSafetyMarks();
 	QImage buildSafetyRender(const QImage& fov, const QRect& roi, const cv::Mat& mask);
 	void updateOpticComboBoxUI();

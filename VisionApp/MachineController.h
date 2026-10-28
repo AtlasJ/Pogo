@@ -199,6 +199,7 @@ signals:
     void signalTowerLightOn(DOA doa);
     void signalPromptMsg(QString msg);
     void signalLogTime(QString key, long long ms);
+    void signalTrolleyGuard(bool on); //the trolley guard DI changed: on = a trolley is attached
 
 private:
     explicit MachineController(QObject* parent = nullptr);

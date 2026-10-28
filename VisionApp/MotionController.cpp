@@ -261,6 +261,12 @@ double MotionController::pulse_per_mm(QString id, int axis) const
 	return m_motion[id]->get_pulse_per_mm(axis);
 }
 
+bool MotionController::limits_mm(QString id, int axis, double& negative_mm, double& positive_mm) const
+{
+	if (!available(id)) return false;
+	return m_motion[id]->get_limits_mm(axis, negative_mm, positive_mm);
+}
+
 bool MotionController::set_positive_limit_mm(QString id, int axis, double limit)
 {
 	if (!valid(id)) return false;
