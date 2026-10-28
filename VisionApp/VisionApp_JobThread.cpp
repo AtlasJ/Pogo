@@ -215,6 +215,7 @@ void VisionApp::connectJobThread() {
 
 	QObject::connect(&_jobThread, &JobThread::motionAccuracyTestDone, this,
 		[=](bool ran, QString reportPath, QString summary) {
+		_motionTestRunning = false;
 		ui.textEdit_loopStatus->append(summary);
 		ui.textEdit_loopStatus->append(reportPath);
 		showMsg(QStringLiteral("%1\n\n%2\n\nReport:\n%3")

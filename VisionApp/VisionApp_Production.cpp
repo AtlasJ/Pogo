@@ -569,8 +569,29 @@ void VisionApp::startAcquisition()
 	emit signalLoadToPosition(0);
 }
 
+/*
+* Both of these drive the axes outside a production run, and the run's own Safety Check jogs at
+* once - so a START that lands now (the panel button is a queued signal, delivered even inside a
+* Z search's waits) would move the machine under them.
+*/
+bool VisionApp::startRefusedWhileBusy()
+{
+	if (_zsBusy) {
+		//no prompt: a modal box here would sit inside the search's own wait and stall it
+		ct::logger::warn("[Production] START ignored - a Z search is moving the machine");
+		return true;
+	}
+	if (_motionTestRunning) {
+		showMsg("The Motion Accuracy Test is using the machine - start production after it finishes, or press Stop.");
+		return true;
+	}
+	return false;
+}
+
 void VisionApp::startProduction()
 {
+	if (startRefusedWhileBusy()) return;
+
 	auto state = MachineController::instance().getMachineState();
 	if (state == MachineState::NOT_READY && !SystemData::instance()._machineDebugMode) {
 		showMsg("Please initialize machine to proceed!"); //debug mode: allowed without init/home

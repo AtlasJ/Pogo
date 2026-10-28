@@ -280,7 +280,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 	}
 
 	QStringList verdicts;
-	bool stoppedByUser = false;
+	bool endedEarly = false; //any part that ends early - stop, refused move, timeout - skips the parts after it
 
 	//================================================================== PART A
 	if (axesMask != 0) {
@@ -446,7 +446,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			if (aborted) {
 				out << "\n  PART A ENDED EARLY: " << abortWhy << "\n";
 				verdicts << QStringLiteral("Part A ended early: %1").arg(abortWhy);
-				stoppedByUser = (abortWhy == QStringLiteral("stopped"));
+				endedEarly = true; //stopped, refused or timed out: the machine is not fit for the later parts
 			}
 		}
 	}
@@ -472,7 +472,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 		AxisNow start[3];
 		double lo[3] = {}, hi[3] = {};
 		double normal[3] = {};
-		if (stoppedByUser) why = QStringLiteral("the test was stopped earlier");
+		if (endedEarly) why = QStringLiteral("an earlier part ended early (see above)");
 		else if (!mc.motionEnabled()) why = QStringLiteral("motion is disabled - home the machine or clear the active error");
 		else if (MachineController::instance().trolleyAttached())
 			why = QStringLiteral("a trolley is attached - Z goes down to its lowest soft limit, so this runs only with no trolley");
@@ -532,6 +532,8 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			int move = 0;
 			while (total.elapsed() < (qint64)seconds * 1000) {
 				if (m_stopRun) { cAborted = true; cWhy = QStringLiteral("stopped"); break; }
+				//checked before every move, not just at the start: Z goes down to its lowest test point
+				if (MachineController::instance().trolleyAttached()) { cAborted = true; cWhy = QStringLiteral("a trolley was attached"); break; }
 				move++;
 				double target[3];
 				for (int axis = 0; axis < 3; axis++) target[axis] = std::round(pick[axis](rng) * 1000.0) / 1000.0;
@@ -697,7 +699,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			if (cAborted) {
 				out << "\n  PART C ENDED EARLY: " << cWhy << "\n";
 				verdicts << QStringLiteral("%1 ended early: %2").arg(tag).arg(cWhy);
-				if (cWhy == QStringLiteral("stopped")) stoppedByUser = true;
+				endedEarly = true;
 			}
 		}
 	};
@@ -723,7 +725,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			<< "  its follow. A change of " << f3(kStepMm) << " mm or more is a step on THAT axis, caused by the one moving.\n";
 
 		QString why;
-		if (stoppedByUser) why = QStringLiteral("the test was stopped earlier");
+		if (endedEarly) why = QStringLiteral("an earlier part ended early (see above)");
 		else if (!mc.motionEnabled()) why = QStringLiteral("motion is disabled - home the machine or clear the active error");
 		else if (MachineController::instance().trolleyAttached())
 			why = QStringLiteral("a trolley is attached - Z can go down to its lowest soft limit and X/Y move at the current Z, so this runs only with no trolley");
@@ -787,6 +789,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 					bt.start();
 					while (bt.elapsed() < (qint64)travelBlockSeconds * 1000) {
 						if (m_stopRun) { dAborted = true; dWhy = QStringLiteral("stopped"); break; }
+						if (MachineController::instance().trolleyAttached()) { dAborted = true; dWhy = QStringLiteral("a trolley was attached"); break; }
 
 						double target;
 						if (!isLong) {
@@ -1027,7 +1030,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			if (dAborted) {
 				out << "\n  PART D ENDED EARLY: " << dWhy << "\n";
 				verdicts << QStringLiteral("Part D ended early: %1").arg(dWhy);
-				if (dWhy == QStringLiteral("stopped")) stoppedByUser = true;
+				endedEarly = true;
 			}
 		}
 	}
@@ -1047,7 +1050,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			<< "  Offsets carry over from part to part until the next home, so each pair's start value is shown.\n";
 
 		QString why;
-		if (stoppedByUser) why = QStringLiteral("the test was stopped earlier");
+		if (endedEarly) why = QStringLiteral("an earlier part ended early (see above)");
 		else if (!mc.motionEnabled()) why = QStringLiteral("motion is disabled - home the machine or clear the active error");
 		else if (MachineController::instance().trolleyAttached())
 			why = QStringLiteral("a trolley is attached - Z goes down to its lowest soft limit, so this runs only with no trolley");
@@ -1113,6 +1116,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 				int move = 0;
 				while (total.elapsed() < (qint64)pairSeconds * 1000) {
 					if (m_stopRun) { eAborted = true; eWhy = QStringLiteral("stopped"); break; }
+					if (MachineController::instance().trolleyAttached()) { eAborted = true; eWhy = QStringLiteral("a trolley was attached"); break; }
 					double target[3];
 					for (int axis = 0; axis < 3; axis++)
 						target[axis] = moving[axis] ? std::round(std::uniform_real_distribution<double>(lo[axis], hi[axis])(rng) * 1000.0) / 1000.0 : from[axis];
@@ -1237,7 +1241,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			if (eAborted) {
 				out << "\n  PART E ENDED EARLY: " << eWhy << "\n";
 				verdicts << QStringLiteral("Part E ended early: %1").arg(eWhy);
-				if (eWhy == QStringLiteral("stopped")) stoppedByUser = true;
+				endedEarly = true;
 			}
 		}
 	}
@@ -1249,9 +1253,9 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 	}
 
 	//================================================================== PART B
-	if (watchReset && stoppedByUser) {
+	if (watchReset && endedEarly) {
 		section(QStringLiteral("PART B - CURTAIN TRIP / E-STOP AND RESET"));
-		out << "  NOT RUN: the test was stopped earlier.\n";
+		out << "  NOT RUN: an earlier part ended early (see above).\n";
 	}
 	else if (watchReset) {
 		section(QStringLiteral("PART B - CURTAIN TRIP / E-STOP AND RESET"));

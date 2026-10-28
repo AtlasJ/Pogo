@@ -16,6 +16,7 @@ void VisionApp::runMotionAccuracyTest()
 	if (!MotionController::instance().is_init(_motionID)) { showMsg("Motion is not initialised."); return; }
 	if (_productionSetupLocked || isStartTimer) { showMsg("Not while a production run is in progress."); return; }
 	if (_zsBusy) { showMsg("A Z search is moving the machine."); return; }
+	if (_motionTestRunning) { showMsg("A Motion Accuracy Test is already running."); return; }
 
 	QDialog dlg(this);
 	dlg.setWindowTitle(QStringLiteral("Motion Accuracy Test"));
@@ -173,6 +174,7 @@ void VisionApp::runMotionAccuracyTest()
 		.arg(randomSeconds > 0 ? QStringLiteral(", Part C %1 s").arg(randomSeconds) : QString())
 		.arg(travelMask ? QStringLiteral(", Part D axes mask %1, %2 s per block").arg(travelMask).arg(blockSeconds) : QString())
 		.arg(checkPartB->isChecked() ? QStringLiteral(", Part B %1 s").arg(spinWatch->value()) : QString()));
+	_motionTestRunning = true; //cleared by motionAccuracyTestDone (VisionApp_JobThread.cpp)
 	emit signalMotionAccuracyTest(mask, spinDistance->value(), spinRepeats->value(), slow,
 		randomSeconds, 0, travelMask, blockSeconds, 0, checkPartB->isChecked(), spinWatch->value());
 }
@@ -188,6 +190,7 @@ void VisionApp::runFullMotionAccuracyTest()
 	if (!MotionController::instance().is_init(_motionID)) { showMsg("Motion is not initialised."); return; }
 	if (_productionSetupLocked || isStartTimer) { showMsg("Not while a production run is in progress."); return; }
 	if (_zsBusy) { showMsg("A Z search is moving the machine."); return; }
+	if (_motionTestRunning) { showMsg("A Motion Accuracy Test is already running."); return; }
 	if (MachineController::instance().trolleyAttached()) { showMsg("The full test moves Z down to its lowest soft limit - remove the trolley first."); return; }
 
 	constexpr int kAllAxes = 7;            //X, Y and Z
@@ -214,6 +217,7 @@ void VisionApp::runFullMotionAccuracyTest()
 	if (answer != QMessageBox::Yes) return;
 
 	ui.textEdit_loopStatus->append(QStringLiteral("Full Motion Accuracy Test started - about 55 minutes"));
+	_motionTestRunning = true; //cleared by motionAccuracyTestDone (VisionApp_JobThread.cpp)
 	emit signalMotionAccuracyTest(kAllAxes, kDistanceMm, kRepeats, kSlowPercent, kRandomSeconds, kRandomSlowPercent,
 		kAllAxes, kBlockSeconds, kPairSeconds, false, 0);
 }

@@ -291,6 +291,8 @@ void VisionApp::connectShortcuts()
 
 	QShortcut* shortcut_alt9 = new QShortcut(QKeySequence(Qt::ALT + Qt::Key_9), this);
 	connect(shortcut_alt9, &QShortcut::activated, [=]() {
+		//blocking hand-off to the job thread, as the Snap button - see there
+		if (_motionTestRunning) { showMsg("The Motion Accuracy Test is using the machine - snap after it finishes, or press Stop."); return; }
 		stopLiveView();
 		ct::logger::info("[Alt9][FastSnap] Camera: %s", _camID.toStdString().c_str());
 

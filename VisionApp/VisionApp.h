@@ -712,6 +712,8 @@ private:
 	ZFound _zFound;                         //this table, this session - never saved
 	ZSearchWidgets _zsw;
 	bool _zsBusy = false;                   //a search is moving the machine
+	bool _motionTestRunning = false;        //the Motion Accuracy Test holds the job thread (up to ~55 min)
+	bool startRefusedWhileBusy();           //START/production refused during a Z search or the motion test
 	bool _zsLiveProfileOn = false;          //the 3D Optics live profile is polling the profiler from the job thread
 	void clearSafetyMarks();
 	QImage buildSafetyRender(const QImage& fov, const QRect& roi, const cv::Mat& mask);

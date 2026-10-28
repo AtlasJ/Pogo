@@ -1520,7 +1520,10 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.toolButton_runOffline, &QToolButton::clicked, this, [&]() {_datasetIndexIds.clear(); resetLoopFlags(); promptInspSelection(); });
 	connect(ui.toolButton_stopRun, &QToolButton::clicked, this, [&]() { userClickStopRun(); });
 	connect(ui.toolButton_testRun, &QToolButton::clicked, this, [&]() { testRun(); });
-	connect(ui.toolButtonSnap, &QToolButton::clicked, this, [&]() { 
+	connect(ui.toolButtonSnap, &QToolButton::clicked, this, [&]() {
+		//snapImage is a BLOCKING hand-off to the job thread: during the motion test it would freeze
+		//the whole GUI (Stop included) until the test ended
+		if (_motionTestRunning) { showMsg("The Motion Accuracy Test is using the machine - snap after it finishes, or press Stop."); return; }
 		stopLiveView();
 		ct::logger::info("Camera: %s", _camID.toStdString().c_str());
 
@@ -3993,6 +3996,9 @@ void VisionApp::run()
 
 void VisionApp::testRun()
 {
+	//before the clear: the status box is showing the running test's progress
+	if (_motionTestRunning) { showMsg("The Motion Accuracy Test is still running - wait for it to finish, or press Stop."); return; }
+
 	ui.textEdit_loopStatus->clear();
 
 	auto runType = ui.comboBox_runType->currentText();
