@@ -258,6 +258,8 @@
     <ClCompile Include="VisionApp_SafetyCheck.cpp" />
     <ClCompile Include="VisionApp_GuidedSetup.cpp" />
     <ClCompile Include="VisionApp_ZSearch.cpp" />
+    <ClCompile Include="VisionApp_MotionTest.cpp" />
+    <ClCompile Include="JobThread_MotionTest.cpp" />
     <ClCompile Include="ZSearch.cpp" />
     <ClCompile Include="VisionApp_PMF.cpp" />
     <ClCompile Include="VisionApp_TemplateMapping.cpp" />

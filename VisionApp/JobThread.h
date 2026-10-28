@@ -480,6 +480,29 @@ public slots:
 	void productionScanTest(double distance_mm);
 
 	/*
+	* Motion Accuracy Test - Test Run page, online run type "Motion Accuracy Test". Three parts,
+	* each optional, run in the order A, C, B. JobThread_MotionTest.cpp.
+	*
+	* A, landing accuracy: each chosen axis goes back and forth over distanceMm, repeats times,
+	* arriving from both directions; after every landing the encoder and the card's command counter
+	* are read at 0, 0.1, 0.25, 0.5, 1 and 2 s, so a STATIC offset (stays put) is told apart from
+	* SETTLING (shrinks). Optionally all again at slowPercent % of the speed, which shows whether
+	* speed matters. Z only ever moves UP from where it starts and back, never below it.
+	*
+	* C, random moves for randomSeconds (0 = skip): X, Y and Z go together, as jog() sends them, to
+	* random points anywhere inside their soft limits at their current speeds. Each axis is followed
+	* for 1 s from its own "done": error at landing, how long until it stays within 0.05 / 0.01 mm,
+	* and how long its position read stood still while still off target. Z goes down to its lowest
+	* soft limit, so it refuses while a trolley is attached.
+	*
+	* B, a curtain trip / e-stop and reset: nothing moves. Records each axis's encoder, command
+	* counter and drive bits (ALM, EMG, SVON, RDY, INP) while the operator trips and resets, and
+	* reports any axis that moved without torque - and above all any that moved AFTER its drive
+	* reported servo-on again, which is how the counters end up millimetres apart.
+	*/
+	void motionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, bool watchReset, int watchSeconds);
+
+	/*
 	* Position readback that has stopped moving. SystemData::currentCoordinate() is polled, so
 	* reading it straight after a jog can return a sample from mid-move - measured at 5 to 30 mm
 	* out on 2026-08-28, because a stale reading at the 300 mm/s jog speed is metres per second
@@ -573,6 +596,7 @@ signals:
 	void profilerScanTestProgress(QString line);
 	void profilerScanTestDone(bool scanRan, QString reportPath, QString summary);
 	void productionScanTestDone(bool scanRan, QString reportPath, QString summary);
+	void motionAccuracyTestDone(bool ran, QString reportPath, QString summary);
 	void captureAlignmentDone();
 	void laserAlignmentDone();
 	void guidedLaserAlignmentDone();

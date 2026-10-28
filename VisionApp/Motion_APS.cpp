@@ -291,6 +291,21 @@ std::optional<double> Motion_APS::get_position_mm(int cardID, int axis) const
 	return pos_mm;
 }
 
+std::optional<double> Motion_APS::get_command_mm(int cardID, int axis) const
+{
+	I32 cmd = 0;
+	auto ret = APS_get_command(axis, &cmd);
+	if (log_error_code("Failed to get command position", ret)) return std::nullopt;
+	return to_mm(axis, cmd);
+}
+
+std::optional<double> Motion_APS::get_move_max_velocity_mm(int axis) const
+{
+	auto it = m_axisInfos.find(axis);
+	if (it == m_axisInfos.end()) return std::nullopt;
+	return to_mm(axis, it->second.move_speed.max_velocity); //stored in pulses by set_move_max_velocity()
+}
+
 std::optional<double> Motion_APS::get_current_speed(int cardID, int axis) const
 {
 	I32 vel;

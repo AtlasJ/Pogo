@@ -213,6 +213,16 @@ void VisionApp::connectJobThread() {
 			.arg(reportPath));
 	});
 
+	QObject::connect(&_jobThread, &JobThread::motionAccuracyTestDone, this,
+		[=](bool ran, QString reportPath, QString summary) {
+		ui.textEdit_loopStatus->append(summary);
+		ui.textEdit_loopStatus->append(reportPath);
+		showMsg(QStringLiteral("%1\n\n%2\n\nReport:\n%3")
+			.arg(ran ? QStringLiteral("Motion accuracy test finished.") : QStringLiteral("Motion accuracy test did not run."))
+			.arg(summary)
+			.arg(reportPath));
+	});
+
 	QObject::connect(&_jobThread, &JobThread::laserAlignmentDone, this, [=]() {
 		updateLaserOffsetUI(_laserConfig.offset);
 		saveLaserConfig();
@@ -417,6 +427,7 @@ void VisionApp::connectJobThread() {
 
 	QObject::connect(this, &VisionApp::signalProfilerScanTest, &_jobThread, &JobThread::profilerScanTest, Qt::QueuedConnection);
 	QObject::connect(this, &VisionApp::signalProductionScanTest, &_jobThread, &JobThread::productionScanTest, Qt::QueuedConnection);
+	QObject::connect(this, &VisionApp::signalMotionAccuracyTest, &_jobThread, &JobThread::motionAccuracyTest, Qt::QueuedConnection);
 
 	// Intensity and lighting calibration
 	QObject::connect(this, &VisionApp::signalGetAllIntensityFromExpectedGV, &_jobThread, &JobThread::getAllIntensityFromExpectedGV, Qt::QueuedConnection);

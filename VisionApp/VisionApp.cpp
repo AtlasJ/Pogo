@@ -4013,6 +4013,11 @@ void VisionApp::testRun()
 		return;
 	}
 
+	if (runType == QStringLiteral("Motion Accuracy Test")) {
+		runMotionAccuracyTest();
+		return;
+	}
+
 	bool online = ui.toolButton_toggleOnlineRun->isChecked();
 	auto run1stFOVOnly = ui.checkBox_runOneFOVonly->isChecked();
 	bool disable2DInspection = false;
@@ -8032,7 +8037,10 @@ void VisionApp::toggleOnlineRun()
 		"Profiler Scan Test",
 		//Same acquisition production uses, via JobThread::scan(). Exact-match branch too -
 		//no "2D"/"3D"/"Full"/"Inspection" substring, or the contains() chain would claim it.
-		"Production Scan Check"
+		"Production Scan Check",
+		//Drive diagnostics: landing accuracy per axis, and what the axes do through a curtain
+		//trip / e-stop and reset. Exact-match branch, same reason.
+		"Motion Accuracy Test"
 	};
 	ui.comboBox_runType->addItems(runType);
 	ui.comboBox_runType->setCurrentText("Full Inspection");

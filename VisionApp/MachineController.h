@@ -150,6 +150,7 @@ public:
     bool requestReset();
 
     bool curtainTripped() const { return m_curtainTripped; } //latched curtain break, cleared by reset
+    bool trolleyAttached() const { return m_trolleyGuardOn; } //trolley guard DI at the last state poll
     bool pauseStatePolling(bool pause); //park the state poll loop (for motion reconnect)
     void notifyEvent(MachineEvent e);
     void notifyWarning(MachineWarning w);

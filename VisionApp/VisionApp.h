@@ -1760,6 +1760,10 @@ public slots:
 	//Production Scan Check (Test Run page, online). Drives the real scan() path.
 	void runProductionScanTest();
 
+	//Motion Accuracy Test (Test Run page, online). Raises the dialog and hands off to
+	//JobThread::motionAccuracyTest; returns immediately. VisionApp_MotionTest.cpp.
+	void runMotionAccuracyTest();
+
 	void drawCrossOnQImage(int cx, int cy, int size, QImage& qimg);
 	void saveQImageWithCrossSection(QImage qimg, QString path);
 	void displayCurrentAlignmentImage();
@@ -1951,6 +1955,7 @@ signals:
 	void signalProfilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
 		bool saveImages, bool returnToStart);
 	void signalProductionScanTest(double distance_mm);
+	void signalMotionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, bool watchReset, int watchSeconds);
 
 	void signalGetAllIntensityFromExpectedGV(QString camID, QString opticType, int idealR, int idealG, int idealB, QRectF roi);
 	void calibrateGoldenLightingProfile(QString camID, QRectF roi);

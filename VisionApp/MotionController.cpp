@@ -261,6 +261,18 @@ double MotionController::pulse_per_mm(QString id, int axis) const
 	return m_motion[id]->get_pulse_per_mm(axis);
 }
 
+std::optional<double> MotionController::get_command_mm(QString id, int cardID, int axis) const
+{
+	if (!available(id)) return std::nullopt;
+	return m_motion[id]->get_command_mm(cardID, axis);
+}
+
+std::optional<double> MotionController::get_move_max_velocity_mm(QString id, int axis) const
+{
+	if (!available(id)) return std::nullopt;
+	return m_motion[id]->get_move_max_velocity_mm(axis);
+}
+
 bool MotionController::limits_mm(QString id, int axis, double& negative_mm, double& positive_mm) const
 {
 	if (!available(id)) return false;

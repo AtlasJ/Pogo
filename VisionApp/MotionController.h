@@ -31,6 +31,8 @@ public:
     std::optional<std::string> version(QString id, int cardID) const;
     std::optional<double> get_position_mm(QString id, int cardID, int axis) const;
     std::optional<double> get_current_speed(QString id, int cardID, int axis) const;
+    std::optional<double> get_command_mm(QString id, int cardID, int axis) const; //the card's command counter, see IMotion.h
+    std::optional<double> get_move_max_velocity_mm(QString id, int axis) const;
 
     std::optional<bool> get_DI(QString id, int cardID, int bit) const;
     std::optional<bool> get_DO(QString id, int cardID, int bit) const;

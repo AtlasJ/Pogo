@@ -84,6 +84,17 @@ namespace nvs {
             virtual std::optional<double> get_position_mm(int cardID, int axis) const = 0;
             virtual std::optional<double> get_current_speed(int cardID, int axis) const = 0;
 
+            /*
+            * The card's COMMAND counter - where it last told the axis to be - beside
+            * get_position_mm(), the drive's encoder. The two part when the axis moves with no
+            * torque (X and Y have no brake) or when a drive parks short of its command. Read-only,
+            * for diagnostics. Non-pure so no other backend must implement it.
+            */
+            virtual std::optional<double> get_command_mm(int cardID, int axis) const { return std::nullopt; }
+
+            //the speed absolute_move() uses now, mm/s, so a caller that changes it can put it back
+            virtual std::optional<double> get_move_max_velocity_mm(int axis) const { return std::nullopt; }
+
             virtual std::optional<bool> get_DI(int cardID, int bit) const = 0;
             virtual std::optional<bool> get_DO(int cardID, int bit) const = 0;
             virtual std::optional<std::vector<bool>> get_all_DI(int cardID) const = 0;
