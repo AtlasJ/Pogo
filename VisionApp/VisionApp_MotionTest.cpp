@@ -6,6 +6,67 @@
 
 #include "VisionApp.h"
 
+#include <QCloseEvent>
+
+namespace {
+	/*
+	* Modal while something drives the machine outside a production run (the motion test, a Z
+	* search): nothing behind it can jog, snap, teach or start anything - which would run alongside,
+	* or queue and move the machine by surprise afterwards - and the lock is visible rather than
+	* buttons that silently do nothing. Only its own Stop, the panel buttons, the e-stop and the
+	* curtain act. Esc and the close box do nothing; whoever opened it closes it.
+	*/
+	class BusyWindow : public QDialog {
+	public:
+		using QDialog::QDialog;
+
+	protected:
+		void reject() override {}
+		void closeEvent(QCloseEvent* e) override { e->ignore(); }
+	};
+}
+
+QDialog* VisionApp::showBusyWindow(const QString& title, const QString& note)
+{
+	auto* dlg = new BusyWindow(this);
+	dlg->setWindowTitle(title);
+	dlg->setWindowFlags(dlg->windowFlags() & ~Qt::WindowCloseButtonHint & ~Qt::WindowContextHelpButtonHint);
+
+	auto* noteLabel = new QLabel(note, dlg);
+	auto* progress = new QLabel(QStringLiteral("Starting..."), dlg);
+	progress->setObjectName(QStringLiteral("busyProgress")); //for callers that report progress
+	progress->setWordWrap(true);
+	progress->setMinimumWidth(480);
+	auto* stop = new QPushButton(QStringLiteral("Stop"), dlg);
+	connect(stop, &QPushButton::clicked, this, [this]() { userClickStopRun(); });
+
+	auto* layout = new QVBoxLayout(dlg);
+	layout->addWidget(noteLabel);
+	layout->addWidget(progress);
+	layout->addWidget(stop, 0, Qt::AlignRight);
+
+	dlg->setModal(true);
+	dlg->show();
+	return dlg;
+}
+
+void VisionApp::closeBusyWindow(QPointer<QDialog>& window)
+{
+	if (window) { window->hide(); window->deleteLater(); }
+	window = nullptr;
+}
+
+void VisionApp::showMotionTestRunning(const QString& title)
+{
+	closeBusyWindow(_motionTestDialog);
+	_motionTestDialog = showBusyWindow(title, QStringLiteral("The machine is under test. Everything else is locked until it finishes.\n"
+		"Stop ends it at once; the panel Stop, the e-stop and the curtain also stop it."));
+
+	//the test's own progress lines; the label is the context, so this goes with the window
+	if (auto* progress = _motionTestDialog->findChild<QLabel*>(QStringLiteral("busyProgress")))
+		connect(&_jobThread, &JobThread::profilerScanTestProgress, progress, [progress](QString line) { progress->setText(line); });
+}
+
 /*
 * Two questions the motion team needs answered with numbers rather than impressions, after the
 * 2026-10-27 IPC logs: does X (and Y) park short of its command, and is that speed or tuning; and
@@ -175,6 +236,7 @@ void VisionApp::runMotionAccuracyTest()
 		.arg(travelMask ? QStringLiteral(", Part D axes mask %1, %2 s per block").arg(travelMask).arg(blockSeconds) : QString())
 		.arg(checkPartB->isChecked() ? QStringLiteral(", Part B %1 s").arg(spinWatch->value()) : QString()));
 	_motionTestRunning = true; //cleared by motionAccuracyTestDone (VisionApp_JobThread.cpp)
+	showMotionTestRunning(QStringLiteral("Motion Accuracy Test running"));
 	emit signalMotionAccuracyTest(mask, spinDistance->value(), spinRepeats->value(), slow,
 		randomSeconds, 0, travelMask, blockSeconds, 0, checkPartB->isChecked(), spinWatch->value());
 }
@@ -218,6 +280,7 @@ void VisionApp::runFullMotionAccuracyTest()
 
 	ui.textEdit_loopStatus->append(QStringLiteral("Full Motion Accuracy Test started - about 55 minutes"));
 	_motionTestRunning = true; //cleared by motionAccuracyTestDone (VisionApp_JobThread.cpp)
+	showMotionTestRunning(QStringLiteral("Full Motion Accuracy Test running - about 55 minutes"));
 	emit signalMotionAccuracyTest(kAllAxes, kDistanceMm, kRepeats, kSlowPercent, kRandomSeconds, kRandomSlowPercent,
 		kAllAxes, kBlockSeconds, kPairSeconds, false, 0);
 }

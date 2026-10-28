@@ -216,6 +216,7 @@ void VisionApp::connectJobThread() {
 	QObject::connect(&_jobThread, &JobThread::motionAccuracyTestDone, this,
 		[=](bool ran, QString reportPath, QString summary) {
 		_motionTestRunning = false;
+		closeBusyWindow(_motionTestDialog);
 		ui.textEdit_loopStatus->append(summary);
 		ui.textEdit_loopStatus->append(reportPath);
 		showMsg(QStringLiteral("%1\n\n%2\n\nReport:\n%3")
@@ -793,9 +794,9 @@ void VisionApp::simulateOnlineInspection()
 						IInfo.type = ct::s_height_map;
 						IInfo.opticID = o.id;
 						IInfo.pHeightMap = mtrx::MPM::instance().attach(mBuf);
-						IInfo.pImage = mtrx::MPM::instance().attach(mImap);
 					}
 
+					//attached ONCE: a second attach of the same buffer made the pool log it as a recycled MIL id
 					if (mImap) {
 						IInfo.pImage = mtrx::MPM::instance().attach(mImap);
 					}

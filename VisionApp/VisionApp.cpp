@@ -16089,6 +16089,8 @@ bool VisionApp::blockJogSignal()
 	* starts, cleared when it stops or finishes.
 	*/
 	if (ui.stackedWidgetViewSelection->currentIndex() == 6 && isStartTimer) return false;
+	//the motion test drives the axes for up to ~55 min; its window blocks the screen, this covers the keys
+	if (_motionTestRunning) return false;
 
 	if (SystemData::instance()._MotoIsMoving) return false;
 	SystemData::instance()._MotoIsMoving = true;

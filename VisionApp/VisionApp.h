@@ -694,6 +694,7 @@ private:
 	void loadZCalibration();
 	bool saveZCalibration();
 	bool zsRefuseIfBusy();
+	bool jobThreadIdle(int waitMs);         //the job thread runs a queued no-op within waitMs = no run in progress
 	bool zsCheckTarget(int axis, double target, QString& why);
 	bool zsCheckSetup(bool threeD, double x, double y, QString& why); //settings complete and every target inside the soft limits
 	bool zsMove(const QVector<QPair<int, double>>& targets, QString& why); //checked: refused, stopped or not landed = false
@@ -712,7 +713,14 @@ private:
 	ZFound _zFound;                         //this table, this session - never saved
 	ZSearchWidgets _zsw;
 	bool _zsBusy = false;                   //a search is moving the machine
+	int _zsTrolleyEpoch = 0;                //bumped on every trolley guard edge; a search that saw it change discards its result
 	bool _motionTestRunning = false;        //the Motion Accuracy Test holds the job thread (up to ~55 min)
+	QPointer<QDialog> _motionTestDialog;    //modal "test running" window over the whole run; closed by motionAccuracyTestDone
+	void showMotionTestRunning(const QString& title);
+	QPointer<QDialog> _zsBusyWindow;        //modal "searching / moving" window while a Z search action drives the machine
+	//modal window with a Stop and no close box, over anything driving the machine outside production (VisionApp_MotionTest.cpp)
+	QDialog* showBusyWindow(const QString& title, const QString& note);
+	void closeBusyWindow(QPointer<QDialog>& window);
 	bool startRefusedWhileBusy();           //START/production refused during a Z search or the motion test
 	bool _zsLiveProfileOn = false;          //the 3D Optics live profile is polling the profiler from the job thread
 	void clearSafetyMarks();

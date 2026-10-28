@@ -2020,6 +2020,13 @@ bool VisionApp::loadRecipeConfig()
 	QJsonObject root;
 	const bool& connected = ProfilerManager::instance().getConnectionStatus();
 	QString currentSensorApi = ProfilerManager::instance().getAPI();
+
+	//reset before reading: a recipe whose file cannot be read must not keep the previous recipe's
+	//Z search, which its next save would otherwise write into this recipe
+	zSearchFromJson(QJsonObject());
+	_zFound = ZFound();
+	refreshZSearchUi();
+
 	if (loadJson(jsonPath, root)) {
 		_enable3D = jsonHelper::getBool(root, QStringLiteral("_enable3D"), false);
 		_enable2D = !jsonHelper::getBool(root, QStringLiteral("_disable2D"), false);

@@ -15,9 +15,61 @@
 #include <QDir>
 #include <QInputDialog>
 #include <QThread>
+#include <QTimer>
+#include <atomic>
 #include <cmath>
+#include <memory>
 
 namespace {
+	/*
+	* While a search waits inside its own event loop, user input is held off - except a click on
+	* the on-screen Stop, which now lands at once (before, it was held until the search ended).
+	* Everything else - other buttons, keys, shortcuts, closing the window - is dropped rather than
+	* queued, so nothing fires after the search either. Application event filters only see objects
+	* of the GUI thread. Window-level mouse events pass so Qt can route them to the widget under
+	* the cursor; it is the widget-level event that is let through or eaten. Everything inside the
+	* busy window (its own Stop) always passes - that window is modal and ignores Esc and close.
+	*/
+	class StopOnlyInput : public QObject {
+	public:
+		StopOnlyInput(QObject* stopButton, QWidget* busyWindow) : m_stop(stopButton), m_window(busyWindow) { qApp->installEventFilter(this); }
+		~StopOnlyInput() override { qApp->removeEventFilter(this); }
+
+	protected:
+		bool eventFilter(QObject* obj, QEvent* e) override
+		{
+			if (m_window && obj->isWidgetType() && static_cast<QWidget*>(obj)->window() == m_window) return false;
+			switch (e->type()) {
+			case QEvent::MouseButtonPress:
+			case QEvent::MouseButtonRelease:
+			case QEvent::MouseButtonDblClick:
+				return !obj->isWindowType() && obj != m_stop;
+			case QEvent::KeyPress:
+			case QEvent::KeyRelease:
+			case QEvent::Shortcut:
+			case QEvent::ShortcutOverride:
+			case QEvent::Wheel:
+			case QEvent::ContextMenu:
+			case QEvent::TouchBegin:
+			case QEvent::TouchUpdate:
+			case QEvent::TouchEnd:
+			case QEvent::TabletPress:
+			case QEvent::TabletRelease:
+			case QEvent::DragEnter:
+			case QEvent::Drop:
+				return true;
+			case QEvent::Close:
+				return e->spontaneous(); //the close box / Alt+F4 only - a close the program makes itself still happens
+			default:
+				return false;
+			}
+		}
+
+	private:
+		QObject* m_stop;
+		QPointer<QWidget> m_window;
+	};
+
 	constexpr int kMotionReadDelayMs = 150;  //the pause JobThread gives the card before trusting move_done
 	constexpr int kMoveTimeoutMs = 60000;
 	constexpr int kSettleMs = 500;
@@ -174,11 +226,15 @@ void VisionApp::initZSearch()
 		AuditLog::instance().log(QStringLiteral("ZSEARCH_SET_Z"), QStringLiteral("%1 %2").arg(what).arg(mm(z)));
 	};
 	/*
-	* While the machine moves, the event loop runs with user input held back - the clicks are queued,
-	* not dropped. They are let through while the frames are still disabled, so a second press made
-	* during the move does not run the same command again afterwards.
+	* While the machine moves, a modal "moving" window with its own Stop covers the screen, so the
+	* lock is visible; other input is dropped (StopOnlyInput). Anything still queued is let through
+	* while the frames are disabled, so it cannot run the same command again afterwards.
 	*/
 	auto busy = [=](bool on) {
+		if (on) _zsBusyWindow = showBusyWindow(QStringLiteral("Moving"), QStringLiteral(
+			"The machine is moving for the Z search. Everything else is locked until it arrives.\n"
+			"Stop ends the move at once; the panel Stop and the e-stop also stop it."));
+		else closeBusyWindow(_zsBusyWindow);
 		if (!on) QCoreApplication::processEvents();
 		_zsw.frame2D->setEnabled(!on);
 		_zsw.frame3D->setEnabled(!on);
@@ -416,6 +472,7 @@ void VisionApp::initZSearch()
 
 	//what was found belongs to the trolley it was found on
 	connect(&MachineController::instance(), &MachineController::signalTrolleyGuard, this, [=](bool on) {
+		_zsTrolleyEpoch++; //a search running now measured a table that has changed - see zsRunFind
 		if (on || (!_zFound.has2D && !_zFound.has3D)) return;
 		_zFound = ZFound();
 		ct::logger::info("[ZSearch] Trolley removed - the found 2D/3D Z values are cleared");
@@ -596,14 +653,31 @@ bool VisionApp::saveZCalibration()
 }
 
 /*
+* True when the job thread picks up a queued no-op within waitMs - i.e. it is not in the middle of
+* a run. A Guided Test, Test Run or the motion test holds it for their whole length, including the
+* pauses between moves where no axis is moving. Blocks the UI thread for at most waitMs; a no-op
+* still queued behind a run just runs later and does nothing.
+*/
+bool VisionApp::jobThreadIdle(int waitMs)
+{
+	auto ran = std::make_shared<std::atomic<bool>>(false);
+	QTimer::singleShot(0, &_jobThread, [ran]() { ran->store(true); });
+	QElapsedTimer t;
+	t.start();
+	while (!ran->load() && t.elapsed() < waitMs) QThread::msleep(5);
+	return ran->load();
+}
+
+/*
 * A search drives the machine from the UI thread, as the guided teach does, so anything else that
-* could also be driving it has to be ruled out first. There is no job-thread busy flag; an axis
-* still in motion is the practical sign that something (a Guided Test, a jog) is.
+* could also be driving it has to be ruled out first: an axis still in motion (a jog), and the job
+* thread being busy (a run between two of its moves, when nothing is moving).
 */
 bool VisionApp::zsRefuseIfBusy()
 {
 	if (_zsBusy) return true;
 	if (_productionSetupLocked || isStartTimer) { showMsg("Not while a production run is in progress."); return true; }
+	if (_motionTestRunning) { showMsg("The Motion Accuracy Test is using the machine."); return true; }
 
 	auto& mc = MotionController::instance();
 	if (!mc.is_init(_motionID)) { showMsg("Motion is not initialised."); return true; }
@@ -613,6 +687,10 @@ bool VisionApp::zsRefuseIfBusy()
 			showMsg(QStringLiteral("Axis %1 is still moving - wait for the machine to stop (is a Guided Test running?).").arg(axisName(axis)));
 			return true;
 		}
+	}
+	if (!jobThreadIdle(300)) {
+		showMsg("A run is using the machine (Test Run, Guided Test or a jog sequence) - wait for it to finish.");
+		return true;
 	}
 	return false;
 }
@@ -685,10 +763,11 @@ bool VisionApp::zsCheckSetup(bool threeD, double x, double y, QString& why)
 
 void VisionApp::zsPause(int ms)
 {
+	StopOnlyInput gate(ui.toolButton_stopRun, _zsBusyWindow);
 	QElapsedTimer t;
 	t.start();
 	while (t.elapsed() < ms) {
-		QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+		QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 		QThread::msleep(5);
 	}
 }
@@ -697,8 +776,8 @@ void VisionApp::zsPause(int ms)
 * A move that reports. Every target is checked against the soft limits BEFORE anything is sent, a
 * refused move stops whatever was already sent, and "done" means the card's feedback counter is on
 * target - the same test JobThread::settleAxis applies, with up to two re-issues. The event loop
-* keeps running (user input excluded) so a Stop from the panel lands: VisionApp::stopRun stops the
-* axes and sets _stopRun, which ends the wait.
+* keeps running (only the on-screen Stop among user input - see StopOnlyInput) so a Stop from the
+* panel or the screen lands: VisionApp::stopRun stops the axes and sets _stopRun, which ends the wait.
 */
 bool VisionApp::zsMove(const QVector<QPair<int, double>>& targets, QString& why)
 {
@@ -1078,10 +1157,22 @@ void VisionApp::zsRunFind(bool threeD)
 	_zsw.frame2D->setEnabled(false);
 	_zsw.frame3D->setEnabled(false);
 	statusLabel->setText(QStringLiteral("Searching..."));
+	_zsBusyWindow = showBusyWindow(threeD ? QStringLiteral("Finding 3D Centre Z") : QStringLiteral("Finding 2D Focus Z"), QStringLiteral(
+		"The machine is searching for Z. Everything else is locked until it finishes.\n"
+		"Stop ends it at once; the panel Stop and the e-stop also stop it."));
+	if (auto* progress = _zsBusyWindow->findChild<QLabel*>(QStringLiteral("busyProgress")))
+		progress->setText(QStringLiteral("Searching Z %1 to %2 at X %3, Y %4...").arg(mm(startZ))
+			.arg(mm(threeD ? _zSearch.s3d.stopZ : _zSearch.s2d.stopZ)).arg(mm(x)).arg(mm(y)));
 
 	double z = 0.0;
-	const bool ok = threeD ? zsFind3D(x, y, z, why) : zsFind2D(x, y, _zSearch.s2d.confirmSafetyCheck, z, why);
+	const int trolleyEpoch = _zsTrolleyEpoch;
+	bool ok = threeD ? zsFind3D(x, y, z, why) : zsFind2D(x, y, _zSearch.s2d.confirmSafetyCheck, z, why);
 	const bool stopped = _stopRun;
+	//the trolley guard changed while it searched: the Z it found belongs to a table that is gone
+	if (ok && trolleyEpoch != _zsTrolleyEpoch) {
+		ok = false;
+		why = QStringLiteral("the trolley was removed or attached during the search - the result was discarded");
+	}
 
 	QString after;
 	if (ok) {
@@ -1104,7 +1195,8 @@ void VisionApp::zsRunFind(bool threeD)
 		AuditLog::instance().log(threeD ? QStringLiteral("ZSEARCH_FIND_3D") : QStringLiteral("ZSEARCH_FIND_2D"), QStringLiteral("FAILED: %1").arg(why));
 	}
 
-	//clicks made during the search are queued, not lost: let them land on the still-disabled frames
+	closeBusyWindow(_zsBusyWindow);
+	//anything still queued from the search lands on the still-disabled frames, not as a new command
 	QCoreApplication::processEvents();
 	_zsw.frame2D->setEnabled(true);
 	_zsw.frame3D->setEnabled(true);
@@ -1148,6 +1240,9 @@ void VisionApp::zsCalibrateCamLaser()
 	_stopRun = false;
 	_zsw.frame2D->setEnabled(false);
 	_zsw.frame3D->setEnabled(false);
+	_zsBusyWindow = showBusyWindow(QStringLiteral("Calibrating camera-to-laser Z"), QStringLiteral(
+		"The machine runs the 2D search, then the 3D search on the same spot. Everything else is locked\n"
+		"until it finishes. Stop ends it at once; the panel Stop and the e-stop also stop it."));
 
 	double z2 = 0.0, z3 = 0.0;
 	const bool ok = zsFind2D(x, y, false, z2, why) && zsFind3D(x, y, z3, why);
@@ -1171,6 +1266,7 @@ void VisionApp::zsCalibrateCamLaser()
 		AuditLog::instance().log(QStringLiteral("ZSEARCH_CALIBRATE"), QStringLiteral("FAILED: %1").arg(why));
 	}
 
+	closeBusyWindow(_zsBusyWindow);
 	QCoreApplication::processEvents();
 	_zsw.frame2D->setEnabled(true);
 	_zsw.frame3D->setEnabled(true);
