@@ -1763,6 +1763,7 @@ public slots:
 	//Motion Accuracy Test (Test Run page, online). Raises the dialog and hands off to
 	//JobThread::motionAccuracyTest; returns immediately. VisionApp_MotionTest.cpp.
 	void runMotionAccuracyTest();
+	void runFullMotionAccuracyTest(); //every moving part with fixed settings, ~55 min, unattended
 
 	void drawCrossOnQImage(int cx, int cy, int size, QImage& qimg);
 	void saveQImageWithCrossSection(QImage qimg, QString path);
@@ -1955,7 +1956,8 @@ signals:
 	void signalProfilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
 		bool saveImages, bool returnToStart);
 	void signalProductionScanTest(double distance_mm);
-	void signalMotionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, bool watchReset, int watchSeconds);
+	void signalMotionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, int randomSlowPercent,
+		int travelAxesMask, int travelBlockSeconds, int pairSeconds, bool watchReset, int watchSeconds);
 
 	void signalGetAllIntensityFromExpectedGV(QString camID, QString opticType, int idealR, int idealG, int idealB, QRectF roi);
 	void calibrateGoldenLightingProfile(QString camID, QRectF roi);

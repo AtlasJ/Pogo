@@ -480,8 +480,9 @@ public slots:
 	void productionScanTest(double distance_mm);
 
 	/*
-	* Motion Accuracy Test - Test Run page, online run type "Motion Accuracy Test". Three parts,
-	* each optional, run in the order A, C, B. JobThread_MotionTest.cpp.
+	* Motion Accuracy Test - Test Run page, online run type "Motion Accuracy Test" (and "Full
+	* Motion Accuracy Test", which ticks A, C, D and E). Five parts, each optional, run in the order
+	* A, D, E, C, B. Every target stays in the middle 98 % of the soft limits. JobThread_MotionTest.cpp.
 	*
 	* A, landing accuracy: each chosen axis goes back and forth over distanceMm, repeats times,
 	* arriving from both directions; after every landing the encoder and the card's command counter
@@ -491,16 +492,28 @@ public slots:
 	*
 	* C, random moves for randomSeconds (0 = skip): X, Y and Z go together, as jog() sends them, to
 	* random points anywhere inside their soft limits at their current speeds. Each axis is followed
-	* for 1 s from its own "done": error at landing, how long until it stays within 0.05 / 0.01 mm,
-	* and how long its position read stood still while still off target. Z goes down to its lowest
-	* soft limit, so it refuses while a trolley is attached.
+	* for 2 s from its own "done": error at landing, how long until it stays within 0.05 / 0.01 mm,
+	* how long its position read stood still while still off target, and the final error minute
+	* by minute. Z goes down to its lowest soft limit, so it refuses while a trolley is attached.
+	*
+	* D, short vs long moves for each axis in travelAxesMask, one axis at a time with the others
+	* still: blocks of travelBlockSeconds of SHORT (2-20 mm, sweeping the whole travel), LONG (40 %
+	* of the travel or more, anywhere) and SHORT moves, each landing followed as in C. Reports the
+	* steps in the settled error per block and per stretch of the travel, and whether the axes
+	* standing still were pushed (read before and after every move). Refuses with a trolley.
+	*
+	* E, two axes together for pairSeconds each - X+Y, X+Z, Y+Z - with the third standing still and
+	* read before and after every move: each axis's steps, split by the direction of its partner.
+	*
+	* C runs at 100 % and, when randomSlowPercent > 0, again at that speed for half the time.
 	*
 	* B, a curtain trip / e-stop and reset: nothing moves. Records each axis's encoder, command
 	* counter and drive bits (ALM, EMG, SVON, RDY, INP) while the operator trips and resets, and
 	* reports any axis that moved without torque - and above all any that moved AFTER its drive
 	* reported servo-on again, which is how the counters end up millimetres apart.
 	*/
-	void motionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, bool watchReset, int watchSeconds);
+	void motionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, int randomSlowPercent,
+		int travelAxesMask, int travelBlockSeconds, int pairSeconds, bool watchReset, int watchSeconds);
 
 	/*
 	* Position readback that has stopped moving. SystemData::currentCoordinate() is polled, so

@@ -4017,6 +4017,11 @@ void VisionApp::testRun()
 		runMotionAccuracyTest();
 		return;
 	}
+	//before the contains() chain below: this name has "Full" in it
+	if (runType == QStringLiteral("Full Motion Accuracy Test")) {
+		runFullMotionAccuracyTest();
+		return;
+	}
 
 	bool online = ui.toolButton_toggleOnlineRun->isChecked();
 	auto run1stFOVOnly = ui.checkBox_runOneFOVonly->isChecked();
@@ -8040,7 +8045,10 @@ void VisionApp::toggleOnlineRun()
 		"Production Scan Check",
 		//Drive diagnostics: landing accuracy per axis, and what the axes do through a curtain
 		//trip / e-stop and reset. Exact-match branch, same reason.
-		"Motion Accuracy Test"
+		"Motion Accuracy Test",
+		//All of the moving parts above with fixed settings, ~55 min unattended. Its exact-match
+		//branch sits ahead of the contains("Full") chain in testRun().
+		"Full Motion Accuracy Test"
 	};
 	ui.comboBox_runType->addItems(runType);
 	ui.comboBox_runType->setCurrentText("Full Inspection");
