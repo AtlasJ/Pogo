@@ -2474,6 +2474,17 @@ void VisionApp::imagePreprocessed(FrameInfo info)
 
 	if (info.type == ct::s_height_map) return;
 
+	/*
+	* A frame can arrive without an image when preprocessing could not take ownership of a buffer
+	* (MbufPool::attach returning nullptr). Dereferencing it was the 2026-10-27 crash. Drop the
+	* frame: _fovSerial does not move, so a synchronous snap waiting for it times out and says so.
+	*/
+	if (!info.pImage || info.pImage->id() == M_NULL) {
+		ct::logger::error("[ImagePreprocessed] %s arrived with no image - frame dropped", cid.toStdString().c_str());
+		if (_grabber) _grabber->resume();
+		return;
+	}
+
 	_imageFOV = mtrx::to_qimg(info.pImage->id());
 	_fovSerial++;
 

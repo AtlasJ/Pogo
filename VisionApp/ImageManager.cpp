@@ -618,7 +618,9 @@ void ImageManager::process_sizing(FrameInfo& info)
 			if (MilStatResult) MimFree(MilStatResult);
 			if (MilStatContext) MimFree(MilStatContext);
 			if (correctionMap) MbufFree(correctionMap);
-			if (correctedImg) MbufFree(correctedImg);
+			//NOT correctedImg: attach() above handed it to the pool, which frees it when the frame is
+			//released. Freeing it here as well left info.pImage on a dead buffer and the pool listing
+			//an id MIL would later reuse - see MbufPool::attach.
 			//MbufFree(img);
 			if (freeGreyCardMono && greyCardMono) {
 				MbufFree(greyCardMono);               
