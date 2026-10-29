@@ -48,6 +48,22 @@ ExtendedMenu::ExtendedMenu(int index,int width, int height, QWidget *parent)
 	connect(ui.toolButtonPMF, &QToolButton::pressed, this, [=]() { emit showPmfTab(); });
 	connect(ui.toolButtonGuidedSetup, &QToolButton::pressed, this, [=]() { emit showGuidedSetupTab(); });
 
+	//Guided Setup (new) sits under the old one; built here, not in ExtendedMenu.ui, so the two can
+	//live side by side until the cutover
+	{
+		auto* b = new QToolButton(ui.toolButtonGuidedSetup->parentWidget());
+		b->setObjectName(QStringLiteral("toolButtonGuidedSetup2"));
+		b->setText(QStringLiteral("Guided Setup (new)"));
+		b->setToolTip(QStringLiteral("The new Guided Setup: fid0, the four corners, slots, units and inspection points, per recipe. Engineers only."));
+		b->setIcon(ui.toolButtonGuidedSetup->icon());
+		b->setIconSize(ui.toolButtonGuidedSetup->iconSize());
+		b->setMinimumSize(ui.toolButtonGuidedSetup->minimumSize());
+		b->setToolButtonStyle(ui.toolButtonGuidedSetup->toolButtonStyle());
+		b->setSizePolicy(ui.toolButtonGuidedSetup->sizePolicy());
+		ui.gridLayout_4->addWidget(b, ui.gridLayout_4->rowCount(), 0);
+		connect(b, &QToolButton::pressed, this, [=]() { emit showGuidedSetup2Tab(); });
+	}
+
 	// hide ui
 	ui.toolButtonScaling->hide();
 	ui.toolButtonAnalysis->hide();

@@ -142,6 +142,8 @@ class QGraphicsPixmapItem;
 class QItemSelectionModel;
 class ExtendedMenu;
 class External3DViewer;
+class GuidedSetup2Page;
+class GuidedSetup2View;
 
 enum class EditMode {
 	SELECT,  
@@ -160,7 +162,8 @@ enum class Direction {
 enum class UIPage {
 	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
-	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK, GUIDED_SETUP, PMF
+	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK, GUIDED_SETUP, PMF,
+	GUIDED_SETUP2 //Guided Setup (new): its page is added to stackedWidget in code at this index
 };
 
 enum class UIHierarchy {
@@ -661,6 +664,27 @@ private:
 	QDragBox* _safetyLearnBox = nullptr;     //pattern learn region (blue)
 	QVector<QGraphicsItem*> _safetyMarkItems; //boxes drawn over what the last test found
 	void drawSafetyMarks(const SafetyCheckResult& res);
+
+	//── Guided Setup (new) (VisionApp_GuidedSetup2.cpp): built alongside the old page, its own
+	//recipe file guidedSetup2.json. Build step 1: the page, Save / Discard and the layout view.
+	GuidedSetup2Page* _gs2Page = nullptr;
+	GuidedSetup2View* _gs2View = nullptr;
+	int _gs2ViewIndex = -1;          //the layout view's page in stackedWidgetViewSelection
+	QTimer* _gs2CameraTimer = nullptr;
+	bool _gs2Open = false;           //the page is the right tab now
+	QMetaObject::Connection _gs2ViewConn; //big image area changed -> page button + camera timer
+	double _gs2FovWmm = 0.0, _gs2FovHmm = 0.0; //camera FOV, read once each time the layout is shown
+	void initGuidedSetup2();
+	void gs2PageOpened();
+	void gs2PageLeft();
+	void gs2ShowLayout(bool shown);
+	void gs2ShowLayoutView();       //the World button: the layout in the big image area
+	void gs2RefreshWorld();          //soft limits -> layout view
+	void gs2RefreshCamera();         //camera position -> layout view (200 ms while it shows)
+	void gs2RefreshFov();            //camera FOV size, once per show: an absent camera logs a warning per query
+	void gs2Shutdown();              //first thing in ~VisionApp: no layout signal may reach a half-deleted page
+	void gs2BeforeRecipeChange();    //unsaved edits: Save or Discard while the old recipe is still current
+	void gs2RecipeOpened();
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data

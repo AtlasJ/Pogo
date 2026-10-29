@@ -230,6 +230,7 @@ bool VisionApp::openRecipe(const QString& recentOpenRecipe)
 			recipeName = recentOpenRecipe;
 		}
 	}
+	gs2BeforeRecipeChange(); //unsaved Guided Setup (new) edits belong to the recipe still open
 	unloadODModels();
 	_objectModel.clear();
 	_recipeModel.clear();
@@ -369,6 +370,7 @@ bool VisionApp::openRecipe(const QString& recentOpenRecipe)
 
 	udpateRecipeVersion(Common::Directory::getRecipeCurrentPath());
 	logRecipeSummary();
+	gs2RecipeOpened();
 	//loadStitchingMethod();
 	ui.label_recipeName->setText(QString("Recipe: %1").arg(Common::Directory::CurrentRecipe));
 

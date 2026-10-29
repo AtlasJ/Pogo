@@ -395,6 +395,7 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initSafetyCheckPage();
 	initGuidedSetupPage();
 	initZSearch(); //after the guided page: its frames go into that page's layout
+	initGuidedSetup2();
 	initPmfPage();
 	initTemplateMappingSetup();
 	initLiveMapping();
@@ -1500,6 +1501,7 @@ void VisionApp::connectSignalAndSlot()
 	connect(_rightMenu, &ExtendedMenu::showUnitConfigTab, this, [=]() {toPage(UIPage::UNIT_CONFIG);});
 	connect(_rightMenu, &ExtendedMenu::showSafetyCheckTab, this, [=]() {toPage(UIPage::SAFETY_CHECK);});
 	connect(_rightMenu, &ExtendedMenu::showGuidedSetupTab, this, [=]() {toPage(UIPage::GUIDED_SETUP);});
+	connect(_rightMenu, &ExtendedMenu::showGuidedSetup2Tab, this, [=]() {toPage(UIPage::GUIDED_SETUP2);});
 	connect(_rightMenu, &ExtendedMenu::showPmfTab, this, [=]() {toPage(UIPage::PMF);});
 
 	/*
@@ -5741,6 +5743,7 @@ void VisionApp::toggleDrawingAndRois()
 VisionApp::~VisionApp()
 {
 	ct::logger::info("~Visionapp");
+	gs2Shutdown();
 
 	MachineController::instance().notifyEvent(MachineEvent::SOFTWARE_OFF);
 
@@ -7155,6 +7158,16 @@ bool VisionApp::toPage(UIPage page) {
 		refreshZSearchUi();
 		showRightTab((int)page, QStringLiteral("Open Guided Setup"));
 		return true;
+	case UIPage::GUIDED_SETUP2:
+		if (notAllowToAccess(AccessLevel::OPERATOR)) {
+			showMsg(QStringLiteral("Guided Setup (new) is for engineers. Log in as an engineer or admin to open it."));
+			return false;
+		}
+		unlockAllROIs();
+		toggleFOVView();
+		gs2PageOpened();
+		showRightTab((int)page, QStringLiteral("Open Guided Setup (new)"));
+		return true;
 	case UIPage::UNIT_CONFIG:
 		lockAllROIs();
 		saveBorderColors();
@@ -7520,6 +7533,7 @@ bool VisionApp::showRightTab(int index, QString status)
 		if (_guidedRoiBox) _guidedRoiBox->hide();
 		clearGuidedMarks();
 	}
+	if (index != (int)UIPage::GUIDED_SETUP2) gs2PageLeft();
 
 	showStatus(status);
 	return propertyShown;

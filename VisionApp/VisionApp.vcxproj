@@ -258,6 +258,10 @@
     <ClCompile Include="VisionApp_SafetyCheck.cpp" />
     <ClCompile Include="VisionApp_GuidedSetup.cpp" />
     <ClCompile Include="VisionApp_ZSearch.cpp" />
+    <ClCompile Include="VisionApp_GuidedSetup2.cpp" />
+    <ClCompile Include="GuidedSetup2.cpp" />
+    <ClCompile Include="GuidedSetup2Page.cpp" />
+    <ClCompile Include="GuidedSetup2View.cpp" />
     <ClCompile Include="VisionApp_MotionTest.cpp" />
     <ClCompile Include="JobThread_MotionTest.cpp" />
     <ClCompile Include="ZSearch.cpp" />
@@ -284,6 +288,8 @@
     <ClInclude Include="GuidedSetupTypes.h" />
     <ClInclude Include="ZSearchTypes.h" />
     <ClInclude Include="ZSearch.h" />
+    <ClInclude Include="GuidedSetup2Types.h" />
+    <ClInclude Include="GuidedSetup2Geometry.h" />
     <ClInclude Include="NoWheelOnInputs.h" />
     <ClInclude Include="TemplateMapping.h" />
     <ClInclude Include="LiveMappingTypes.h" />
@@ -342,6 +348,7 @@
     <QtUic Include="ExtendedMenu.ui" />
     <QtUic Include="GoldenRecipeDialog.ui" />
     <QtUic Include="Guided_2D3D_AlignmentTab.ui" />
+    <QtUic Include="GuidedSetup2Page.ui" />
     <QtUic Include="ImageViewerTab.ui" />
     <QtUic Include="Motion.ui" />
     <QtUic Include="ProductionPage.ui" />
@@ -421,6 +428,8 @@
     <ClInclude Include="focus_stacking.h" />
     <ClInclude Include="FrameInfo.h" />
     <QtMoc Include="Guided_2D3D_AlignmentTab.h" />
+    <QtMoc Include="GuidedSetup2Page.h" />
+    <QtMoc Include="GuidedSetup2View.h" />
     <ClInclude Include="heightmap\heightmap_process.h" />
     <ClInclude Include="heightmap\height_map_wrapper.h" />
     <ClInclude Include="heightmap\input_process.h" />
