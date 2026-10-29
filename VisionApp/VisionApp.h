@@ -1408,6 +1408,7 @@ public slots:
 	void setRightMousePressed(QPoint point);
 	void toggleDualView();
 	void toggleWorldView();
+	void showOldWorldView(); //the stitched world image view - what the World button showed before the layout
 	void toggleFOVView();
 	void showRightTabFOV();
 	void showProductionFOV(const int& viewSize);

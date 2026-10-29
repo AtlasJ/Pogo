@@ -1724,7 +1724,8 @@ void VisionApp::connectSignalAndSlot()
 	connect(ui.toolButton_showLineScan, &QToolButton::toggled, [=](bool state) { showLineScans(state); });
 
 	connect(ui.toolButton_toggleDualView, &QToolButton::toggled, [=](bool state) { toggleDualView(); });
-	connect(ui.toolButton_toggleWorldView, &QToolButton::toggled, [=](bool state) { ui.stackedWidgetViewSelection->setCurrentIndex(0); toggleWorldView(); });
+	//World now shows the Guided Setup (new) layout; code that needs the old world image calls showOldWorldView()
+	connect(ui.toolButton_toggleWorldView, &QToolButton::toggled, [=](bool state) { gs2ShowLayoutView(); });
 	connect(ui.toolButton_toggleFovView, &QToolButton::toggled, [=](bool state) { toggleFOVView(); });
 
 	connect(ui.tb_assignView, &QToolButton::clicked, [=]() { assignViews(ui.lineEdit_viewPadding->text().toDouble(), ui.lineEdit_viewOverlapPercentage->text().toInt()); AuditLog::instance().log(QStringLiteral("VIEWS_ASSIGN")); }); //button that appears when new vo is added
@@ -7946,6 +7947,12 @@ void VisionApp::toggleDualView()
 	ui.gridLayout_MiniFOV->addWidget(ui.graphicsViewFOV);
 }
 
+void VisionApp::showOldWorldView()
+{
+	ui.stackedWidgetViewSelection->setCurrentIndex(0);
+	toggleWorldView();
+}
+
 void VisionApp::toggleWorldView()
 {
 	QSignalBlocker sb1(ui.toolButton_toggleDualView);
@@ -8855,7 +8862,7 @@ void VisionApp::displayCurrentView(QString viewID, QString opticID)
 					qDebug() << "imagePath:" << imagePath;
 					if (_imageWorld.load(imagePath))
 					{
-						ui.toolButton_toggleWorldView->animateClick();
+						showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 						displayImage(_imageWorld);
 						imageLoaded = true;
 						break;
@@ -8873,7 +8880,7 @@ void VisionApp::displayCurrentView(QString viewID, QString opticID)
 		auto h = CAMManager::instance().getWidth(_camID);
 		_imageWorld = QImage(w, h, QImage::Format_RGB32);
 		_imageWorld.fill(Qt::black);
-		ui.toolButton_toggleWorldView->animateClick();
+		showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 		displayImage(_imageWorld);
 	}
 
@@ -8907,7 +8914,7 @@ void VisionApp::displayCurrentView()
 					qDebug() << "imagePath:" << imagePath;
 					if (_imageWorld.load(imagePath))
 					{
-						ui.toolButton_toggleWorldView->animateClick();
+						showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 						displayImage(_imageWorld);
 						imageLoaded = true;
 						break;
@@ -8926,7 +8933,7 @@ void VisionApp::displayCurrentView()
 		auto h = CAMManager::instance().getWidth(_camID);
 		_imageWorld = QImage(w, h, QImage::Format_RGB32);
 		_imageWorld.fill(Qt::black);
-		ui.toolButton_toggleWorldView->animateClick();
+		showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 		displayImage(_imageWorld);
 	}
 
@@ -15357,7 +15364,7 @@ void VisionApp::showPreviousImage()
 					qDebug() << "imagePath:" << imagePath;
 					if (_imageWorld.load(imagePath))
 					{
-						ui.toolButton_toggleWorldView->animateClick();
+						showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 						displayImage(_imageWorld);
 						imageLoaded = true;
 						break;
@@ -15376,7 +15383,7 @@ void VisionApp::showPreviousImage()
 		auto h = CAMManager::instance().getWidth(_camID);
 		_imageWorld = QImage(w, h, QImage::Format_RGB32);
 		_imageWorld.fill(Qt::black);
-		ui.toolButton_toggleWorldView->animateClick();
+		showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 		displayImage(_imageWorld);
 	}
 
@@ -15413,7 +15420,7 @@ void VisionApp::showNextImage()
 					qDebug() << "imagePath:" << imagePath;
 					if (_imageWorld.load(imagePath))
 					{
-						ui.toolButton_toggleWorldView->animateClick();
+						showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 						displayImage(_imageWorld);
 						imageLoaded = true;
 						break;
@@ -15432,7 +15439,7 @@ void VisionApp::showNextImage()
 		auto h = CAMManager::instance().getWidth(_camID);
 		_imageWorld = QImage(w, h, QImage::Format_RGB32);
 		_imageWorld.fill(Qt::black);
-		ui.toolButton_toggleWorldView->animateClick();
+		showOldWorldView(); //the loaded view image, not the Guided Setup (new) layout
 		displayImage(_imageWorld);
 	}
 
