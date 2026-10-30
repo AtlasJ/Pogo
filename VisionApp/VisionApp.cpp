@@ -11026,6 +11026,8 @@ void VisionApp::loadFOV()
 		QString filePath = dialog.selectedFiles().at(0);
 		_imageFOV.load(filePath);
 		displayFOV(_imageFOV);
+		//from the World layout (or the old world image) the loaded image would stay hidden behind it
+		if (!ui.graphicsViewFOV->isVisible()) toggleFOVView();
 	}
 
 	return;
