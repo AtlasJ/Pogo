@@ -5,12 +5,14 @@
 #include "GuidedSetup2Types.h"
 
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QSet>
+#include <cmath>
 
 namespace gs2 {
 
@@ -565,6 +567,86 @@ bool naturalLess(const QString& a, const QString& b)
 		}
 	}
 	return a.size() - i < b.size() - j;
+}
+
+QString cameraCalPath(const QString& configDir)
+{
+	return QDir(configDir).filePath(QStringLiteral("guidedSetup2_camera.json"));
+}
+
+QJsonObject toJson(const CameraCal& c)
+{
+	QJsonObject o;
+	o.insert(QStringLiteral("version"), kFileVersion);
+	o.insert(QStringLiteral("use"), c.useMeasured ? QStringLiteral("measured") : QStringLiteral("set"));
+	if (c.measured) {
+		QJsonObject m;
+		m.insert(QStringLiteral("mmPerPx"), QJsonArray{ QJsonArray{ c.a[0][0], c.a[0][1] }, QJsonArray{ c.a[1][0], c.a[1][1] } });
+		m.insert(QStringLiteral("umPerPxX"), c.umPerPxX);
+		m.insert(QStringLiteral("umPerPxY"), c.umPerPxY);
+		m.insert(QStringLiteral("angleDeg"), c.angleDeg);
+		m.insert(QStringLiteral("fitPx"), c.fitPx);
+		m.insert(QStringLiteral("camAngleDeg"), c.camAngleDeg);
+		m.insert(QStringLiteral("imageSize"), QJsonArray{ c.imgW, c.imgH });
+		m.insert(QStringLiteral("at"), QJsonArray{ c.atX, c.atY, c.atZ });
+		m.insert(QStringLiteral("when"), c.when);
+		o.insert(QStringLiteral("measured"), m);
+	}
+	return o;
+}
+
+CameraCal cameraCalFromJson(const QJsonObject& o)
+{
+	CameraCal c;
+	const QJsonObject m = o.value(QStringLiteral("measured")).toObject();
+	const QJsonArray rows = m.value(QStringLiteral("mmPerPx")).toArray();
+	const QJsonArray size = m.value(QStringLiteral("imageSize")).toArray();
+	if (rows.size() == 2 && rows[0].toArray().size() == 2 && rows[1].toArray().size() == 2 && size.size() == 2) {
+		for (int r = 0; r < 2; r++)
+			for (int k = 0; k < 2; k++) c.a[r][k] = rows[r].toArray()[k].toDouble();
+		c.umPerPxX = num(m, "umPerPxX", 0.0);
+		c.umPerPxY = num(m, "umPerPxY", 0.0);
+		c.angleDeg = num(m, "angleDeg", 0.0);
+		c.fitPx = num(m, "fitPx", 0.0);
+		c.camAngleDeg = num(m, "camAngleDeg", 0.0);
+		c.imgW = size[0].toInt();
+		c.imgH = size[1].toInt();
+		const QJsonArray at = m.value(QStringLiteral("at")).toArray();
+		if (at.size() == 3) { c.atX = at[0].toDouble(); c.atY = at[1].toDouble(); c.atZ = at[2].toDouble(); }
+		c.when = str(m, "when");
+		//a matrix that cannot be inverted, or no image size, is no measurement
+		c.measured = std::abs(c.a[0][0] * c.a[1][1] - c.a[0][1] * c.a[1][0]) > 1e-12 && c.imgW > 0 && c.imgH > 0;
+	}
+	c.useMeasured = c.measured && str(o, "use") == QLatin1String("measured");
+	return c;
+}
+
+bool loadCameraCal(const QString& path, CameraCal& out, QString& why)
+{
+	out = CameraCal();
+	QFile f(path);
+	if (!f.exists()) { why.clear(); return true; }
+	if (!f.open(QIODevice::ReadOnly)) { why = QStringLiteral("cannot open %1: %2").arg(path, f.errorString()); return false; }
+	QJsonParseError err;
+	const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+	if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+		why = QStringLiteral("%1 is not valid JSON (%2)").arg(path, err.errorString());
+		return false;
+	}
+	out = cameraCalFromJson(doc.object());
+	why.clear();
+	return true;
+}
+
+bool saveCameraCal(const QString& path, const CameraCal& c, QString& why)
+{
+	//all or nothing: a half-written matrix would misplace everything the circle finder converts
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly)) { why = QStringLiteral("cannot write %1: %2").arg(path, file.errorString()); return false; }
+	file.write(QJsonDocument(toJson(c)).toJson(QJsonDocument::Indented));
+	if (!file.commit()) { why = QStringLiteral("cannot write %1: %2").arg(path, file.errorString()); return false; }
+	why.clear();
+	return true;
 }
 
 } // namespace gs2

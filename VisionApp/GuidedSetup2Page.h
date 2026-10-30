@@ -31,9 +31,20 @@ public:
 	//the px figures beside the mm diameters follow the camera scale
 	void refreshScale();
 
+	//the Camera and circle finder tools; the actions themselves run in VisionApp
+	enum ToolAction { ToolFindInImage = 0, ToolSnapFind, ToolCentre, ToolDirection, ToolSaveMeasured };
+	//the circle the tools look for: the range typed in B, D or E (unsaved edits count), and its name
+	gs2::DiaRange toolCircle(QString* what = nullptr) const;
+	void showToolResult(const QString& text, bool ok);
+	void setMachineBusy(bool busy);      //tools greyed out while the machine is being driven
+	//the machine-wide pixel-to-mm choice: which one is in use, what it is, and whether a check is waiting to be saved
+	void setCameraConversion(bool useMeasured, const QString& text, bool warn, bool canSaveMeasured);
+
 signals:
 	void setupChanged();                 //the working copy changed (edit, Save, Discard or load)
 	void showLayoutToggled(bool shown);
+	void toolRequested(int action);      //a ToolAction
+	void conversionChosen(bool measured); //the operator picked Set or Measured
 
 private:
 	Ui::GuidedSetup2Page ui;
@@ -42,6 +53,7 @@ private:
 	gs2::LoadResult _loadResult = gs2::LoadResult::Missing;
 	QString _loadWhy;
 	bool _filling = false;   //true while the widgets are being filled from _work
+	bool _canSaveMeasured = false;
 
 	void connectEdits();
 	void fillWidgets();      //_work -> widgets

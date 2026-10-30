@@ -161,4 +161,31 @@ bool isTemporaryName(const QString& name);
 //X2Y1 before X10Y1: digits compare as numbers
 bool naturalLess(const QString& a, const QString& b);
 
+/*
+* Machine-wide, config/guidedSetup2_camera.json: how an image pixel becomes world mm for the Guided
+* Setup (new) only - nothing else in the app reads it. "Set" is the machine's camera scale (Camera
+* Scaling) with image right = +X and image down = +Y, the convention production's fiducials use.
+* "Measured" is the 2x2 matrix the last saved Check camera direction measured, which carries its own
+* rotation and direction. A measurement holds only for the image rotation (Camera Alignment) and
+* the image size it was taken with.
+*/
+struct CameraCal {
+	bool useMeasured = false;
+	bool measured = false;                       //a measurement is stored
+	double a[2][2] = { { 0.0, 0.0 }, { 0.0, 0.0 } }; //world mm per image px: offset = a * (pixel - image centre)
+	double umPerPxX = 0.0, umPerPxY = 0.0;       //what the matrix amounts to, for people
+	double angleDeg = 0.0;                       //its rotation against the production convention
+	double fitPx = 0.0;                          //how far the five snaps disagreed with the fitted matrix
+	double camAngleDeg = 0.0;                    //the image rotation it was measured with
+	int imgW = 0, imgH = 0;
+	double atX = 0.0, atY = 0.0, atZ = 0.0;      //where it was measured
+	QString when;
+};
+QString cameraCalPath(const QString& configDir);
+QJsonObject toJson(const CameraCal& c);
+CameraCal cameraCalFromJson(const QJsonObject& o);
+//a missing file is not an error: out is the default (Set) and true is returned
+bool loadCameraCal(const QString& path, CameraCal& out, QString& why);
+bool saveCameraCal(const QString& path, const CameraCal& c, QString& why);
+
 } // namespace gs2

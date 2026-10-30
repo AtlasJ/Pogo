@@ -33,6 +33,7 @@
 #include "GuidedSetupTypes.h"
 #include "ZSearchTypes.h"
 #include "ZSearch.h"
+#include "GuidedSetup2Types.h"
 #include "TemplateMapping.h"
 #include "LiveMappingTypes.h"
 #include "AlgoHeight3Types.h"
@@ -685,6 +686,34 @@ private:
 	void gs2Shutdown();              //first thing in ~VisionApp: no layout signal may reach a half-deleted page
 	void gs2BeforeRecipeChange();    //unsaved edits: Save or Discard while the old recipe is still current
 	void gs2RecipeOpened();
+	//build step 2: the circle finder and the camera direction check. A pixel becomes world mm by the
+	//conversion chosen on the page (gs2::CameraCal): the machine's set camera scale with image right
+	//= +X and image down = +Y - production's convention (JobThread::getFiducialPointInMM) - or the
+	//matrix a Check camera direction measured and saved.
+	struct Gs2Circle {
+		double px = 0.0, py = 0.0;            //sub-pixel centre in the image
+		double diaPx = 0.0, diaMm = 0.0, score = 0.0;
+		int count = 0;                        //circles found in the diameter range
+		int imgW = 0, imgH = 0;
+		double offX = 0.0, offY = 0.0;        //world mm from the image centre, by the conversion in use
+		bool haveStage = false;               //false: no motion, so no world position
+		double stageX = 0.0, stageY = 0.0;    //where the camera stood for this image
+		double wx = 0.0, wy = 0.0;            //the circle in world mm
+	};
+	gs2::CameraCal _gs2Cal;                   //machine, config/guidedSetup2_camera.json
+	gs2::CameraCal _gs2LastMeasure;           //the last Check camera direction this session; .measured = one to save
+	bool gs2Conversion(int imgW, int imgH, double a[2][2], QString& why); //world mm per px in use, or why it cannot be used
+	void gs2LoadCameraCal();
+	void gs2RefreshCalUi();
+	void gs2ChooseConversion(bool measured);
+	void gs2SaveMeasured();
+	void gs2RunTool(int action);
+	bool gs2FindCircle(const QImage& img, double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why); //nearest the image centre; draws them all
+	bool gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why);                    //snap here, find, convert; no move
+	bool gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, Gs2Circle& out, int& moves, QString& why);
+	bool gs2CheckDirection(double minDiaMm, double maxDiaMm, bool& pass, QString& report, QString& why); //false = could not measure
+	bool gs2MachineBusy(const QString& title, const QString& note);   //lock the screen like a Z search; false = refused
+	void gs2MachineIdle();
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data

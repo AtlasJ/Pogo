@@ -1,6 +1,7 @@
 //
 //  Guided Setup (new): the right-panel page. Build step 1 = the recipe file, Save / Discard and the
-//  typed settings; the teach and test buttons arrive in build steps 3 and 4.
+//  typed settings; build step 2 = the Camera and circle finder tools; the teach and test buttons
+//  arrive in build steps 3 and 4.
 //
 #include "GuidedSetup2Page.h"
 #include "ScaleManager.h"
@@ -61,7 +62,62 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 		emit setupChanged();
 	});
 
+	//tools: not part of the recipe, so they never mark the page as edited
+	connect(ui.comboBox_tCircle, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { refreshStatus(); });
+	connect(ui.toolButton_tFindImage, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolFindInImage); });
+	connect(ui.toolButton_tSnapFind, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolSnapFind); });
+	connect(ui.toolButton_tCentre, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolCentre); });
+	connect(ui.toolButton_tDirection, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolDirection); });
+	connect(ui.toolButton_tSaveMeasured, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolSaveMeasured); });
+	//activated = the operator's pick only; VisionApp confirms, saves and sets the combo back if refused
+	connect(ui.comboBox_tConversion, QOverload<int>::of(&QComboBox::activated), this, [=](int i) { emit conversionChosen(i == 1); });
+	ui.toolButton_tSaveMeasured->setEnabled(false);
+
 	fillWidgets();
+}
+
+void GuidedSetup2Page::setCameraConversion(bool useMeasured, const QString& text, bool warn, bool canSaveMeasured)
+{
+	{
+		QSignalBlocker b(ui.comboBox_tConversion);
+		ui.comboBox_tConversion->setCurrentIndex(useMeasured ? 1 : 0);
+	}
+	ui.label_tConversion->setText(text);
+	ui.label_tConversion->setStyleSheet(warn ? kTodoColour : QString());
+	_canSaveMeasured = canSaveMeasured;
+	ui.toolButton_tSaveMeasured->setEnabled(canSaveMeasured && ui.toolButton_tDirection->isEnabled());
+}
+
+gs2::DiaRange GuidedSetup2Page::toolCircle(QString* what) const
+{
+	switch (ui.comboBox_tCircle->currentIndex()) {
+	case 1:
+		if (what) *what = QStringLiteral("corner circle (D)");
+		return _work.fidRect.dia;
+	case 2:
+		if (what) *what = QStringLiteral("slot circle (E)");
+		return _work.slotSize.dia;
+	default:
+		if (what) *what = QStringLiteral("fid0 circle (B)");
+		return _work.fid0.dia;
+	}
+}
+
+void GuidedSetup2Page::showToolResult(const QString& text, bool ok)
+{
+	ui.label_tResult->setText(text);
+	ui.label_tResult->setStyleSheet(ok ? QString() : kTodoColour);
+}
+
+void GuidedSetup2Page::setMachineBusy(bool busy)
+{
+	ui.comboBox_tCircle->setEnabled(!busy);
+	ui.toolButton_tFindImage->setEnabled(!busy);
+	ui.toolButton_tSnapFind->setEnabled(!busy);
+	ui.toolButton_tCentre->setEnabled(!busy);
+	ui.toolButton_tDirection->setEnabled(!busy);
+	ui.comboBox_tConversion->setEnabled(!busy);
+	ui.toolButton_tSaveMeasured->setEnabled(!busy && _canSaveMeasured);
 }
 
 void GuidedSetup2Page::connectEdits()
@@ -73,7 +129,8 @@ void GuidedSetup2Page::connectEdits()
 	for (auto* w : findChildren<QCheckBox*>())
 		connect(w, &QCheckBox::toggled, this, [=]() { edited(); });
 	for (auto* w : findChildren<QComboBox*>())
-		connect(w, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { edited(); });
+		if (w != ui.comboBox_tCircle && w != ui.comboBox_tConversion)
+			connect(w, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { edited(); });
 }
 
 void GuidedSetup2Page::loadRecipe(const QString& recipeDir, const QString& recipeName)
@@ -109,7 +166,9 @@ void GuidedSetup2Page::confirmLeave()
 	box.addButton(QStringLiteral("Discard"), QMessageBox::DestructiveRole);
 	box.setDefaultButton(bSave);
 	box.exec();
-	if (box.clickedButton() == bSave && save()) return;
+	//a Save that fails has already said why; the edits stay on the page rather than being thrown
+	//away (a recipe change still replaces them - the page holds one recipe)
+	if (box.clickedButton() == bSave) { save(); return; }
 	discard();
 }
 
@@ -336,6 +395,12 @@ void GuidedSetup2Page::refreshStatus()
 	}
 	ui.label_iState->setText(QStringLiteral("Build steps 3 and 4"));
 	ui.label_iState->setStyleSheet(QStringLiteral("color:#A8B0BF;"));
+
+	QString circleName;
+	const gs2::DiaRange circle = toolCircle(&circleName);
+	ui.label_tRange->setText(circle.valid()
+		? QStringLiteral("%1 .. %2 mm %3").arg(mm3(circle.minMm), mm3(circle.maxMm), pxText(circle.minMm, circle.maxMm))
+		: QStringLiteral("Type the %1 diameter range first").arg(circleName));
 
 	const bool dirty = isDirty();
 	ui.toolButton_save->setEnabled(dirty && !_recipeDir.isEmpty());
