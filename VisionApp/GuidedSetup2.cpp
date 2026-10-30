@@ -111,7 +111,9 @@ bool sectionDone(const Setup& s, Section sec, QString* why)
 		if (!s.fid0.startSet || !s.fid0.stopSet) return fail(QStringLiteral("Start Z / Stop Z not set"));
 		if (!(s.fid0.startZ < s.fid0.stopZ)) return fail(QStringLiteral("Start Z must be above (smaller than) Stop Z"));
 		if (s.fid0.patternFile.isEmpty()) return fail(QStringLiteral("no pattern learnt"));
+		if (!s.fid0.patternToCirclePx.set || !s.fid0.patternAtPx.set) return fail(QStringLiteral("learn the pattern again: it now also records where fid0 is"));
 		if (!s.fid0.dia.valid()) return fail(QStringLiteral("circle diameter range not set"));
+		if (!s.fid0.found.ok) return fail(QStringLiteral("Find has not passed with these settings"));
 		return true;
 	case Sec3DZ:
 		if (!s.z3d.offset.set) return fail(QStringLiteral("flat spot not set"));
@@ -186,8 +188,23 @@ QJsonObject toJson(const Setup& s)
 	b.insert(QStringLiteral("refineStages"), s.fid0.refineStages);
 	b.insert(QStringLiteral("focusBoxMm"), s.fid0.focusBoxMm);
 	b.insert(QStringLiteral("pattern"), s.fid0.patternFile);
+	if (!s.fid0.patternRoi.isEmpty())
+		b.insert(QStringLiteral("patternRoi"), QJsonArray{ s.fid0.patternRoi.x(), s.fid0.patternRoi.y(), s.fid0.patternRoi.width(), s.fid0.patternRoi.height() });
+	putXY(b, "patternToCirclePx", s.fid0.patternToCirclePx);
+	putXY(b, "patternAtPx", s.fid0.patternAtPx);
+	QJsonArray others;
+	for (const auto& p : s.fid0.patternOtherCopiesPx) others.append(QJsonArray{ p.x(), p.y() });
+	b.insert(QStringLiteral("patternOtherCopiesPx"), others);
 	b.insert(QStringLiteral("minScore"), s.fid0.minScore);
 	putDia(b, "diaMm", s.fid0.dia);
+	if (s.fid0.found.ok) {
+		QJsonObject f;
+		f.insert(QStringLiteral("xy"), QJsonArray{ s.fid0.found.x, s.fid0.found.y });
+		f.insert(QStringLiteral("z"), s.fid0.found.z);
+		f.insert(QStringLiteral("score"), s.fid0.found.score);
+		f.insert(QStringLiteral("when"), s.fid0.found.when);
+		b.insert(QStringLiteral("lastFind"), f);
+	}
 	root.insert(QStringLiteral("fid0"), b);
 
 	QJsonObject c;
@@ -284,8 +301,26 @@ Setup fromJson(const QJsonObject& root)
 	s.fid0.refineStages = integer(b, "refineStages", s.fid0.refineStages);
 	s.fid0.focusBoxMm = num(b, "focusBoxMm", s.fid0.focusBoxMm);
 	s.fid0.patternFile = str(b, "pattern");
+	const QJsonArray roi = b.value(QStringLiteral("patternRoi")).toArray();
+	if (roi.size() == 4) s.fid0.patternRoi = QRectF(roi[0].toDouble(), roi[1].toDouble(), roi[2].toDouble(), roi[3].toDouble());
+	s.fid0.patternToCirclePx = getXY(b, "patternToCirclePx");
+	s.fid0.patternAtPx = getXY(b, "patternAtPx");
+	for (const auto& v : b.value(QStringLiteral("patternOtherCopiesPx")).toArray()) {
+		const QJsonArray p = v.toArray();
+		if (p.size() == 2) s.fid0.patternOtherCopiesPx << QPointF(p[0].toDouble(), p[1].toDouble());
+	}
 	s.fid0.minScore = num(b, "minScore", s.fid0.minScore);
 	s.fid0.dia = getDia(b, "diaMm");
+	const QJsonObject f = b.value(QStringLiteral("lastFind")).toObject();
+	const QJsonArray fxy = f.value(QStringLiteral("xy")).toArray();
+	if (fxy.size() == 2 && f.contains(QStringLiteral("z"))) {
+		s.fid0.found.ok = true;
+		s.fid0.found.x = fxy[0].toDouble();
+		s.fid0.found.y = fxy[1].toDouble();
+		s.fid0.found.z = num(f, "z", 0.0);
+		s.fid0.found.score = num(f, "score", 0.0);
+		s.fid0.found.when = str(f, "when");
+	}
 
 	const QJsonObject c = root.value(QStringLiteral("z3d")).toObject();
 	s.z3d.offset = getXY(c, "offsetFromFid0");
@@ -416,6 +451,37 @@ bool save(const QString& recipeDir, const Setup& s, QString& why)
 	if (!file.commit()) { why = QStringLiteral("cannot write %1: %2").arg(path, file.errorString()); return false; }
 	why.clear();
 	return true;
+}
+
+void removeUnusedFiles(const QString& recipeDir, const Setup& a, const Setup& b)
+{
+	QSet<QString> keep;
+	for (const Setup* s : { &a, &b }) {
+		for (const auto& f : s->safety1.emptyImages) keep.insert(f);
+		if (!s->fid0.patternFile.isEmpty()) keep.insert(s->fid0.patternFile);
+	}
+	//only the page's own prefixes: nothing else in the recipe folder is ever touched
+	const QDir dir(recipeDir);
+	//a file save() kept aside as unreadable may still be repaired by hand: what it names stays, read as plain text
+	QByteArray keptAside;
+	for (const auto& name : dir.entryList({ QLatin1String(kFileName) + QStringLiteral(".unreadable-*") }, QDir::Files)) {
+		QFile f(dir.filePath(name));
+		if (f.open(QIODevice::ReadOnly)) keptAside += f.readAll();
+	}
+	for (const auto& name : dir.entryList({ QStringLiteral("gs2_empty_*.png"), QStringLiteral("gs2_fid0_*.mmf") }, QDir::Files))
+		if (!keep.contains(name) && !keptAside.contains(name.toUtf8())) QFile::remove(dir.filePath(name));
+}
+
+bool sameFid0Settings(const Fid0& a, const Fid0& b)
+{
+	return a.xy.set == b.xy.set && a.xy.x == b.xy.x && a.xy.y == b.xy.y
+		&& a.startSet == b.startSet && a.startZ == b.startZ && a.stopSet == b.stopSet && a.stopZ == b.stopZ
+		&& a.stepMm == b.stepMm && a.refineStages == b.refineStages && a.focusBoxMm == b.focusBoxMm
+		&& a.patternFile == b.patternFile && a.minScore == b.minScore
+		&& a.patternToCirclePx.set == b.patternToCirclePx.set && a.patternToCirclePx.x == b.patternToCirclePx.x && a.patternToCirclePx.y == b.patternToCirclePx.y
+		&& a.patternAtPx.set == b.patternAtPx.set && a.patternAtPx.x == b.patternAtPx.x && a.patternAtPx.y == b.patternAtPx.y
+		&& a.patternOtherCopiesPx == b.patternOtherCopiesPx
+		&& a.dia.minMm == b.dia.minMm && a.dia.maxMm == b.dia.maxMm;
 }
 
 gs2geo::RectFit taughtFit(const Setup& s)

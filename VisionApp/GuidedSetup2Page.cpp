@@ -73,7 +73,76 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 	connect(ui.comboBox_tConversion, QOverload<int>::of(&QComboBox::activated), this, [=](int i) { emit conversionChosen(i == 1); });
 	ui.toolButton_tSaveMeasured->setEnabled(false);
 
+	//A and B: the machine does the teaching; deleting an empty image is only an edit (the file goes on Save)
+	connect(ui.toolButton_aSnapEmpty, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSnapEmpty); });
+	connect(ui.toolButton_aScore, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachScore); });
+	connect(ui.toolButton_aDelete, &QToolButton::clicked, this, [=]() {
+		const int row = ui.listWidget_aImages->currentRow();
+		if (row < 0 || row >= _work.safety1.emptyImages.size()) return;
+		_work.safety1.emptyImages.removeAt(row);
+		refreshStatus();
+		emit setupChanged();
+	});
+	connect(ui.toolButton_bTeachXY, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachXY); });
+	connect(ui.toolButton_bJogXY, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogXY); });
+	connect(ui.toolButton_bSetStart, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSetStart); });
+	connect(ui.toolButton_bSetStop, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSetStop); });
+	connect(ui.toolButton_bLearn, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachLearnPattern); });
+	connect(ui.toolButton_bFind, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachFind); });
+	connect(ui.toolButton_bPatternBox, &QToolButton::toggled, this, [=](bool on) { emit patternBoxToggled(on); });
+
 	fillWidgets();
+}
+
+void GuidedSetup2Page::modify(const std::function<void(gs2::Setup&)>& change)
+{
+	const gs2::Fid0 before = _work.fid0;
+	change(_work);
+	if (!gs2::sameFid0Settings(before, _work.fid0)) _work.fid0.found = savedFoundFor(_work.fid0);
+	fillWidgets();
+	emit setupChanged();
+}
+
+gs2::Fid0Found GuidedSetup2Page::savedFoundFor(const gs2::Fid0& f) const
+{
+	return gs2::sameFid0Settings(f, _saved.fid0) ? _saved.fid0.found : gs2::Fid0Found();
+}
+
+void GuidedSetup2Page::recordFid0Found(const gs2::Fid0Found& found)
+{
+	_work.fid0.found = found;
+	//only over a file that loaded (or was saved) cleanly, and only when the file holds these very settings
+	if (_loadResult == gs2::LoadResult::Loaded && !_recipeDir.isEmpty() && gs2::sameFid0Settings(_work.fid0, _saved.fid0)) {
+		gs2::Setup s = _saved; //the file as it is, plus this result - other unsaved edits stay unsaved
+		s.fid0.found = found;
+		QString why;
+		if (gs2::save(_recipeDir, s, why)) {
+			_saved = s;
+			ct::logger::info("[GuidedSetup2] Find result saved to %s", gs2::filePath(_recipeDir).toStdString().c_str());
+		}
+		else ct::logger::error("[GuidedSetup2] Find result NOT saved (%s): it stays on the page as an unsaved change", why.toStdString().c_str());
+	}
+	else ct::logger::info("[GuidedSetup2] Find result kept with the unsaved fid0 settings it ran with: Save or Discard decides both");
+	fillWidgets();
+	emit setupChanged();
+}
+
+void GuidedSetup2Page::showSafetyScore(const QString& text, bool ok)
+{
+	ui.label_aResult->setText(text);
+	ui.label_aResult->setStyleSheet(ok ? QString() : kTodoColour);
+}
+
+void GuidedSetup2Page::showFid0Result(const QString& text, bool ok)
+{
+	ui.label_bFound->setText(text);
+	ui.label_bFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
+void GuidedSetup2Page::setPatternBoxShown(bool shown)
+{
+	QSignalBlocker b(ui.toolButton_bPatternBox);
+	ui.toolButton_bPatternBox->setChecked(shown);
 }
 
 void GuidedSetup2Page::setCameraConversion(bool useMeasured, const QString& text, bool warn, bool canSaveMeasured)
@@ -118,6 +187,10 @@ void GuidedSetup2Page::setMachineBusy(bool busy)
 	ui.toolButton_tDirection->setEnabled(!busy);
 	ui.comboBox_tConversion->setEnabled(!busy);
 	ui.toolButton_tSaveMeasured->setEnabled(!busy && _canSaveMeasured);
+	for (auto* b : { ui.toolButton_aSnapEmpty, ui.toolButton_aScore, ui.toolButton_aDelete, ui.toolButton_bTeachXY, ui.toolButton_bJogXY,
+		ui.toolButton_bSetStart, ui.toolButton_bSetStop, ui.toolButton_bLearn, ui.toolButton_bFind, ui.toolButton_save, ui.toolButton_discard })
+		b->setEnabled(!busy);
+	if (!busy) refreshStatus(); //Save / Discard follow the edits again
 }
 
 void GuidedSetup2Page::connectEdits()
@@ -138,6 +211,7 @@ void GuidedSetup2Page::loadRecipe(const QString& recipeDir, const QString& recip
 	_recipeDir = recipeDir;
 	_recipeName = recipeName;
 	_loadResult = gs2::load(recipeDir, _saved, _loadWhy);
+	_mayClean = _loadResult == gs2::LoadResult::Loaded;
 	if (_loadResult == gs2::LoadResult::Unreadable)
 		ct::logger::error("[GuidedSetup2] %s", _loadWhy.toStdString().c_str());
 	else
@@ -146,12 +220,18 @@ void GuidedSetup2Page::loadRecipe(const QString& recipeDir, const QString& recip
 				? (gs2::isComplete(_saved) ? "guidedSetup2.json loaded, complete" : "guidedSetup2.json loaded, not complete")
 				: "no guidedSetup2.json yet");
 	_work = _saved;
+	//results shown for the previous recipe do not belong to this one
+	ui.label_aResult->setText(QStringLiteral("No score yet."));
+	ui.label_aResult->setStyleSheet(QString());
+	ui.label_bFound->setText(QStringLiteral("Find has not run with these settings."));
+	ui.label_bFound->setStyleSheet(QString());
 	fillWidgets();
 	emit setupChanged();
 }
 
 bool GuidedSetup2Page::isDirty() const
 {
+	//a passed Find is saved as it happens (recordFid0Found), so it only shows here when that save failed
 	return gs2::toJson(_work) != gs2::toJson(_saved);
 }
 
@@ -170,6 +250,24 @@ void GuidedSetup2Page::confirmLeave()
 	//away (a recipe change still replaces them - the page holds one recipe)
 	if (box.clickedButton() == bSave) { save(); return; }
 	discard();
+}
+
+bool GuidedSetup2Page::confirmClose()
+{
+	QMessageBox box(this);
+	box.setIcon(QMessageBox::Question);
+	box.setWindowTitle(QStringLiteral("Close"));
+	box.setText(QStringLiteral("Recipe %1 has unsaved Guided Setup (new) changes.").arg(_recipeName));
+	box.setInformativeText(QStringLiteral("Save them before the application closes?"));
+	QPushButton* bSave = box.addButton(QStringLiteral("Save and close"), QMessageBox::AcceptRole);
+	QPushButton* bDiscard = box.addButton(QStringLiteral("Discard and close"), QMessageBox::DestructiveRole);
+	QPushButton* bCancel = box.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
+	box.setDefaultButton(bCancel);
+	box.setEscapeButton(bCancel);
+	box.exec();
+	if (box.clickedButton() == bSave) return save(); //a failed Save has said why
+	if (box.clickedButton() == bDiscard) { discard(); return true; }
+	return false;
 }
 
 void GuidedSetup2Page::setLayoutShown(bool shown)
@@ -240,6 +338,7 @@ void GuidedSetup2Page::edited()
 {
 	if (_filling) return;
 	auto& s = _work;
+	const gs2::Fid0 fid0Before = s.fid0;
 	s.safety1.threshold = shown(ui.dspin_aThreshold);
 
 	s.fid0.stepMm = shown(ui.dspin_bStep);
@@ -287,6 +386,9 @@ void GuidedSetup2Page::edited()
 	s.scanAxis = dir >= 2 ? QStringLiteral("Y") : QStringLiteral("X");
 	s.scanNegative = (dir % 2) == 1;
 
+	//a Find proves the fid0 settings it ran with, not these
+	if (!gs2::sameFid0Settings(fid0Before, s.fid0)) s.fid0.found = savedFoundFor(s.fid0);
+
 	refreshStatus();
 	emit setupChanged();
 }
@@ -314,9 +416,20 @@ void GuidedSetup2Page::refreshStatus()
 	if (_loadResult == gs2::LoadResult::Unreadable)
 		ui.label_banner->setText(QStringLiteral("%1. Save keeps that file aside (.unreadable-<time>) and writes a new one.").arg(_loadWhy));
 
-	//read-only values
-	ui.label_aImages->setText(s.safety1.emptyImages.isEmpty() ? QStringLiteral("none saved")
-		: QStringLiteral("%1 saved: %2").arg(s.safety1.emptyImages.size()).arg(s.safety1.emptyImages.join(QStringLiteral(", "))));
+	//read-only values; the list is only rebuilt when it changed, so a selection survives typing elsewhere
+	QStringList listed;
+	for (int i = 0; i < ui.listWidget_aImages->count(); i++) listed << ui.listWidget_aImages->item(i)->text();
+	if (listed != s.safety1.emptyImages) {
+		ui.listWidget_aImages->clear();
+		ui.listWidget_aImages->addItems(s.safety1.emptyImages);
+	}
+	ui.toolButton_aDelete->setEnabled(!s.safety1.emptyImages.isEmpty() && ui.toolButton_aSnapEmpty->isEnabled());
+
+	if (s.fid0.found.ok)
+		showFid0Result(QStringLiteral("Find passed %1: fid0 at X %2, Y %3, 2D Z %4, pattern score %5")
+			.arg(s.fid0.found.when, mm3(s.fid0.found.x), mm3(s.fid0.found.y), mm3(s.fid0.found.z)).arg(s.fid0.found.score, 0, 'f', 2), true);
+	else if (ui.label_bFound->styleSheet() == kDoneColour)
+		showFid0Result(QStringLiteral("Find has not run with these settings."), false);
 
 	ui.label_bXY->setText(xyText(s.fid0.xy));
 	ui.label_bZ->setText(QStringLiteral("Start %1   Stop %2")
@@ -419,7 +532,10 @@ void GuidedSetup2Page::refreshStatus()
 
 bool GuidedSetup2Page::save()
 {
-	if (_recipeDir.isEmpty()) return false;
+	if (_recipeDir.isEmpty()) {
+		QMessageBox::warning(this, QStringLiteral("Guided Setup (new)"), QStringLiteral("Not saved: no recipe is open."));
+		return false;
+	}
 	QString why;
 	if (!gs2::save(_recipeDir, _work, why)) {
 		ct::logger::error("[GuidedSetup2] Save failed: %s", why.toStdString().c_str());
@@ -429,6 +545,7 @@ bool GuidedSetup2Page::save()
 	_saved = _work;
 	_loadResult = gs2::LoadResult::Loaded;
 	_loadWhy.clear();
+	if (_mayClean) gs2::removeUnusedFiles(_recipeDir, _saved, _saved); //images and patterns replaced or deleted before this Save
 	ct::logger::info("[GuidedSetup2] Saved %s (%s, %d slots, %d units)", gs2::filePath(_recipeDir).toStdString().c_str(),
 		gs2::isComplete(_saved) ? "complete" : "not complete", _saved.slotList.size(), _saved.units.size());
 	refreshStatus();
@@ -438,6 +555,7 @@ bool GuidedSetup2Page::save()
 
 void GuidedSetup2Page::discard()
 {
+	if (!_recipeDir.isEmpty() && _mayClean) gs2::removeUnusedFiles(_recipeDir, _saved, _saved); //what the discarded edits wrote
 	_work = _saved;
 	fillWidgets();
 	emit setupChanged();

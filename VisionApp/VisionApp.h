@@ -685,6 +685,7 @@ private:
 	void gs2RefreshFov();            //camera FOV size, once per show: an absent camera logs a warning per query
 	void gs2Shutdown();              //first thing in ~VisionApp: no layout signal may reach a half-deleted page
 	void gs2BeforeRecipeChange();    //unsaved edits: Save or Discard while the old recipe is still current
+	bool gs2ConfirmClose();          //the app's Close button: asked every time, unsaved edits get Save / Discard. True = close
 	void gs2RecipeOpened();
 	//build step 2: the circle finder and the camera direction check. A pixel becomes world mm by the
 	//conversion chosen on the page (gs2::CameraCal): the machine's set camera scale with image right
@@ -708,12 +709,33 @@ private:
 	void gs2ChooseConversion(bool measured);
 	void gs2SaveMeasured();
 	void gs2RunTool(int action);
-	bool gs2FindCircle(const QImage& img, double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why); //nearest the image centre; draws them all
-	bool gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why);                    //snap here, find, convert; no move
-	bool gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, Gs2Circle& out, int& moves, QString& why);
+	//the circle nearest nearPx (image px), or the image centre without it; draws them all
+	//allPx (optional): the centre of every circle in range, px
+	bool gs2FindCircle(const QImage& img, double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr,
+		QVector<QPointF>* allPx = nullptr);
+	bool gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr); //snap here, find, convert; no move
+	//expectPx: where the circle must be in the FIRST snap (the pattern said so), within kExpectTolMm, or it fails
+	bool gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx = nullptr);
 	bool gs2CheckDirection(double minDiaMm, double maxDiaMm, bool& pass, QString& report, QString& why); //false = could not measure
 	bool gs2MachineBusy(const QString& title, const QString& note);   //lock the screen like a Z search; false = refused
 	void gs2MachineIdle();
+	//build step 3a: section A (Safety check 1) and section B (fid0)
+	QDragBox* _gs2PatternBox = nullptr;      //where the fid0 pattern is learnt from, on the FOV
+	struct Gs2Session {                      //found on THIS trolley in this session - never saved
+		bool fid0 = false;
+		double fid0X = 0.0, fid0Y = 0.0, z2D = 0.0;
+		int trolleyEpoch = -1;
+		QString recipeDir;
+	} _gs2Session;
+	void gs2Teach(int action);
+	void gs2ShowPatternBox(bool show);
+	bool gs2GoHome(QString& why);            //Z up to 0 first, then X 0, Y 0
+	bool gs2SnapHome(QImage& small, QString& why);
+	bool gs2SafetyScores(const QImage& small, const QStringList& emptyImages, QVector<double>& scores, QString& why);
+	struct Gs2PatternHit { double x = 0.0, y = 0.0, score = 0.0; };   //image px (the model's centre), score 0..1
+	//every copy of the pattern in the image, best first - a trolley can carry the same mark twice side by side
+	bool gs2MatchPatterns(const QImage& img, const QString& patternPath, QVector<Gs2PatternHit>& hits, QString& why);
+	bool gs2FindFid0(const gs2::Fid0& f, const QString& dir, gs2::Fid0Found& out, QString& why); //dir: the recipe folder the action started in
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data

@@ -7757,6 +7757,7 @@ void VisionApp::maximizedWindow()
 
 void VisionApp::closeWindow() //fade out
 {
+	if (!gs2ConfirmClose()) return;
 	ui.tabWidgetOutput->hide();
 	//saveRecipe();
 

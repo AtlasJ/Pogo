@@ -3,6 +3,7 @@
 #include <QStringList>
 #include <QVector>
 #include <QJsonObject>
+#include <QRectF>
 #include "GuidedSetup2Geometry.h"
 
 /*
@@ -33,8 +34,17 @@ struct DiaRange {
 
 //A: the table-not-empty check at the machine home position
 struct Safety1 {
-	QStringList emptyImages;   //file names in the recipe folder, saved with no trolley loaded
-	double threshold = 0.0;    //a snap must differ from every empty image by more than this
+	QStringList emptyImages;   //file names in the recipe folder (gs2_empty_*.png, grey, 1/8 size), saved with no trolley loaded
+	double threshold = 0.0;    //a snap must differ from every empty image by more than this (mean grey-level difference)
+};
+
+//B: the last Find that passed with the settings as they are; any change to them clears it
+struct Fid0Found {
+	bool ok = false;
+	double x = 0.0, y = 0.0;   //the fid0 circle, world
+	double z = 0.0;            //the 2D Z the sweep found
+	double score = 0.0;        //pattern score, 0..1
+	QString when;
 };
 
 //B: safety check 2 + fid0 - the 2D Z sweep, the trolley pattern and the fid0 circle
@@ -42,13 +52,24 @@ struct Fid0 {
 	TaughtXY xy;                                  //search XY, absolute; the fid0 circle at teach
 	bool startSet = false; double startZ = 0.0;   //top of the sweep (smaller Z)
 	bool stopSet = false;  double stopZ = 0.0;    //bottom of the sweep and its collision limit
-	double stepMm = 0.5;                          //coarse step
+	double stepMm = 5.0;                          //the coarse sweep's LARGEST step; it shrinks as the sharpness changes
 	int refineStages = 2;
 	double focusBoxMm = 11.0;                     //sharpness is scored in a square this size at the image centre
-	QString patternFile;                          //learnt pattern in the recipe folder; empty = not learnt
+	QString patternFile;                          //learnt pattern in the recipe folder (gs2_fid0_*.mmf); empty = not learnt
+	QRectF patternRoi;                            //where the learn box was on the camera image, px
+	//the fid0 circle minus the pattern's position in the learn image, px: Find takes the circle where the
+	//pattern puts it, not just the one nearest the image centre (the trolley has rows of identical circles)
+	TaughtXY patternToCirclePx;
+	TaughtXY patternAtPx;                         //where the learnt copy sat in the learn image
+	//the OTHER copies of the pattern in the learn image (the same mark twice side by side): at Find any
+	//one copy is enough to place fid0, whichever of them is clean that day
+	QVector<QPointF> patternOtherCopiesPx;
 	double minScore = 0.70;
 	DiaRange dia;
+	Fid0Found found;
 };
+//the fid0 settings a Find proves; when any of them changes the last Find no longer counts
+bool sameFid0Settings(const Fid0& a, const Fid0& b);
 
 //C: 3D Centre Z, read by the profiler at fid0 + an offset, starting at the 2D Z
 struct Z3D {
@@ -130,6 +151,9 @@ enum class LoadResult { Missing, Loaded, Unreadable };
 QString filePath(const QString& recipeDir);   //recipeDir ends with '/'
 LoadResult load(const QString& recipeDir, Setup& out, QString& why);
 bool save(const QString& recipeDir, const Setup& s, QString& why);
+//the page writes its images and patterns straight away under new names (gs2_empty_*, gs2_fid0_*);
+//this removes the ones neither setup refers to - edits that were discarded or replaced
+void removeUnusedFiles(const QString& recipeDir, const Setup& a, const Setup& b);
 
 /*
 * Where the fidRect sat when it was taught: fid0's search XY plus the four corner offsets, fitted
