@@ -354,11 +354,11 @@ void VisionApp::connectJobThread() {
 	});
 
 	QObject::connect(&_jobThread, &JobThread::openRecipe, this, [=](QString recipeName) {
-		openRecipe(recipeName);
+		openRecipeWhenIdle(recipeName, false);
 	});
 
 	QObject::connect(&_jobThread, &JobThread::createRecipe, this, [=](const QString& recipeName) {
-		createRecipe(recipeName);
+		openRecipeWhenIdle(recipeName, true);
 	});
 
 	QObject::connect(&_jobThread, &JobThread::stackImages, &_imageManager, &ImageManager::queueStackImage, Qt::QueuedConnection);

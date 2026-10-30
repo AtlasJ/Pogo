@@ -49,6 +49,24 @@ namespace zsearch {
 		return s[last].score < threshold && s[last - 1].score < threshold;
 	}
 
+	double nextAdaptiveStep(const QVector<FocusSample>& s, double maxStep, double lastStep)
+	{
+		constexpr double kChange = 0.4; //ln 1.5: each step aims at about a 50 % change in sharpness
+		constexpr double kGrow = 1.5;
+		const double minStep = maxStep / 10.0;
+		if (s.size() < 2) return maxStep / 4.0;
+
+		const FocusSample& a = s[s.size() - 2];
+		const FocusSample& b = s.back();
+		double want = maxStep;
+		const double dz = b.z - a.z;
+		if (a.score > 0.0 && b.score > 0.0 && dz > 1e-9) {
+			const double slope = std::abs(std::log(b.score / a.score)) / dz;
+			if (slope > 1e-12) want = kChange / slope;
+		}
+		return std::clamp(std::min(want, lastStep * kGrow), minStep, maxStep);
+	}
+
 	double fitPeak(const QVector<FocusSample>& s, int best, double fraction, int* used)
 	{
 		if (used) *used = 0;

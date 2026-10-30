@@ -32,6 +32,7 @@ struct ZSearch2DConfig {
 	int boxPx = 400;                                   //sharpness is scored in a square this size at the image centre
 	int circleMinPx = 200, circleMaxPx = 400;          //Teach XY: the screw head's diameter range for the circle finder
 	bool confirmSafetyCheck = false;                   //a Z only counts when the recipe's Safety Check passes there
+	bool adaptiveStep = false;                         //stepMm is the LARGEST step; smaller as the sharpness changes (zsearch::nextAdaptiveStep)
 };
 
 struct ZSearch3DConfig {

@@ -753,9 +753,14 @@ private:
 	bool zsMove(const QVector<QPair<int, double>>& targets, QString& why); //checked: refused, stopped or not landed = false
 	bool zsMoveGroup(const QVector<QPair<int, double>>& targets, QString& why); //zsMove's axes that go out together
 	bool zsMoveToXY(double x, double y, double clearZ, QString& why);    //lifts to clearZ first, never slides below it
+	//after a failure: back up to z only when lower (+ Z is down), never down to it. One line saying what happened
+	QString zsLiftAfterFailure(double z, const QString& name);
+	//a host recipe load (JobThread::openRecipe / createRecipe) waits for a Z search / Guided Setup action to end
+	void openRecipeWhenIdle(const QString& name, bool create, bool waited = false);
 	void zsPause(int ms);
-	bool zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QString& why);
-	bool zsFind2D(double x, double y, bool confirm, double& foundZ, QString& why);
+	//the sweep's settings and the label it reports to are parameters: the Z search and Guided Setup (new) both run it
+	bool zsSample2D(double z, int boxPx, bool confirm, zsearch::FocusSample& out, QString& why, QLabel* status);
+	bool zsFind2D(const ZSearch2DConfig& c, double x, double y, bool confirm, double& foundZ, QString& why, QLabel* status);
 	bool zsReadProfile(zsearch::ProfileStats& st, int& offered, QString& why);
 	bool zsFind3D(double camX, double camY, double& foundZ, QString& why);
 	void zsRunFind(bool threeD);

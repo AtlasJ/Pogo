@@ -707,7 +707,8 @@ bool VisionApp::zsCheckTarget(int axis, double target, QString& why)
 		why = QStringLiteral("motion.json has no %1 soft limits").arg(axisName(axis));
 		return false;
 	}
-	if (target < lo || target > hi) {
+	//NaN fails both comparisons below, so it is refused on its own
+	if (!std::isfinite(target) || target < lo || target > hi) {
 		why = QStringLiteral("%1 %2 is outside the %1 soft limits %3 .. %4").arg(axisName(axis)).arg(mm(target)).arg(mm(lo)).arg(mm(hi));
 		return false;
 	}
@@ -886,6 +887,39 @@ bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString&
 }
 
 //never slides sideways below clearZ (+ Z is down): lifts to it first when lower, then moves XY
+/*
+* The host's load-recipe arrives as a queued signal, so it can land inside any event pump of a Z
+* search or Guided Setup action. Opening a recipe then would swap the page under the action (its
+* result written into the other recipe) and the unsaved-changes question would come up while every
+* click outside the busy window is eaten - a box nobody can answer. So it waits for the action.
+*/
+void VisionApp::openRecipeWhenIdle(const QString& name, bool create, bool waited)
+{
+	if (_zsBusy) {
+		if (!waited) ct::logger::warn("[Recipe] Host asked for recipe %s while a Z search / Guided Setup action drives the machine - it opens when that ends", qPrintable(name));
+		QTimer::singleShot(500, this, [=]() { openRecipeWhenIdle(name, create, true); });
+		return;
+	}
+	if (waited) ct::logger::info("[Recipe] Opening recipe %s, held back by the machine action", qPrintable(name));
+	if (create) createRecipe(name);
+	else openRecipe(name);
+}
+
+/*
+* A failure can come before any Z went down - an XY move that did not land, a missing scale - with
+* the head ABOVE the Start Z it was taught at another XY. "Back to Start Z" must not lower it there.
+*/
+QString VisionApp::zsLiftAfterFailure(double z, const QString& name)
+{
+	const auto pz = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
+	if (!pz) return QStringLiteral("Z was left where it is: its position could not be read");
+	if (*pz <= z + kOnTargetZMm) return QStringLiteral("Z stayed at %1 (already at or above %2)").arg(mm(*pz), name);
+	QString w;
+	return zsMove({ { (int)Axis::Z, z } }, w)
+		? QStringLiteral("Z went back up to %1").arg(name)
+		: QStringLiteral("Z could NOT go back up to %1: %2").arg(name, w);
+}
+
 bool VisionApp::zsMoveToXY(double x, double y, double clearZ, QString& why)
 {
 	const auto pz = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
@@ -894,7 +928,7 @@ bool VisionApp::zsMoveToXY(double x, double y, double clearZ, QString& why)
 	return zsMove({ { (int)Axis::X, x }, { (int)Axis::Y, y } }, why);
 }
 
-bool VisionApp::zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QString& why)
+bool VisionApp::zsSample2D(double z, int boxPx, bool confirm, zsearch::FocusSample& out, QString& why, QLabel* status)
 {
 	if (!zsMove({ { (int)Axis::Z, z } }, why)) return false;
 	if (SystemData::instance()._snapDelay_ms > 0) zsPause(SystemData::instance()._snapDelay_ms);
@@ -904,7 +938,7 @@ bool VisionApp::zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QS
 	if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 
 	out.z = z;
-	out.score = zsearch::focusScore(img, _zSearch.s2d.boxPx);
+	out.score = zsearch::focusScore(img, boxPx);
 	out.confirmed = true;
 	if (confirm) {
 		SafetyCheckResult r;
@@ -913,7 +947,7 @@ bool VisionApp::zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QS
 
 	ct::logger::info("[ZSearch] 2D z=%.3f score=%.3f%s", z, out.score,
 		confirm ? (out.confirmed ? " safety=PASS" : " safety=fail") : "");
-	_zsw.status2->setText(QStringLiteral("Z %1  sharpness %2%3").arg(mm(z)).arg(out.score, 0, 'f', 2)
+	if (status) status->setText(QStringLiteral("Z %1  sharpness %2%3").arg(mm(z)).arg(out.score, 0, 'f', 2)
 		.arg(confirm ? (out.confirmed ? QStringLiteral("  Safety Check PASS") : QStringLiteral("  Safety Check fail")) : QString()));
 	return true;
 }
@@ -924,24 +958,32 @@ bool VisionApp::zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QS
 * step, fits a parabola through the top of the hill, and is the last one once it changes nothing
 * worth moving for. Every frame is approached from above, and so is the final move onto the result.
 */
-bool VisionApp::zsFind2D(double x, double y, bool confirm, double& foundZ, QString& why)
+bool VisionApp::zsFind2D(const ZSearch2DConfig& c, double x, double y, bool confirm, double& foundZ, QString& why, QLabel* status)
 {
-	const auto& c = _zSearch.s2d;
+	//a step of 0 (or NaN) would sample the same Z for ever
+	if (!(c.stepMm > 0.0)) { why = QStringLiteral("the 2D step must be above 0 mm"); return false; }
 	if (!zsMoveToXY(x, y, c.startZ, why)) return false;
 
-	ct::logger::info("[ZSearch] 2D search at %.3f, %.3f: Z %.3f -> %.3f, step %.3f, up to %d refine stage(s), box %d px%s",
-		x, y, c.startZ, c.stopZ, c.stepMm, c.refineStages, c.boxPx, confirm ? ", Safety Check confirms" : "");
+	ct::logger::info("[ZSearch] 2D search at %.3f, %.3f: Z %.3f -> %.3f, %s %.3f, up to %d refine stage(s), box %d px%s",
+		x, y, c.startZ, c.stopZ, c.adaptiveStep ? "adaptive step up to" : "step", c.stepMm, c.refineStages, c.boxPx,
+		confirm ? ", Safety Check confirms" : "");
 
 	QVector<zsearch::FocusSample> coarse;
 	bool passed = false;
+	double z = c.startZ, step = c.stepMm;
 	for (int i = 0; ; i++) {
-		const double z = c.startZ + i * c.stepMm;
+		if (!c.adaptiveStep) z = c.startZ + i * c.stepMm;
 		if (z > c.stopZ + 1e-6) break;
 		zsearch::FocusSample s;
-		if (!zsSample2D(z, confirm, s, why)) return false;
+		if (!zsSample2D(z, c.boxPx, confirm, s, why, status)) return false;
 		coarse.push_back(s);
 		const int best = zsearch::bestConfirmed(coarse);
 		if (best >= 0 && zsearch::peakPassed(coarse, best, kDropRatio)) { passed = true; break; }
+		if (c.adaptiveStep) {
+			step = zsearch::nextAdaptiveStep(coarse, c.stepMm, step);
+			//the last step lands ON Stop Z rather than past it, so the bottom of the range is looked at
+			z = z < c.stopZ - 1e-6 ? std::min(z + step, c.stopZ) : z + step;
+		}
 	}
 
 	const int best = zsearch::bestConfirmed(coarse);
@@ -969,6 +1011,13 @@ bool VisionApp::zsFind2D(double x, double y, bool confirm, double& foundZ, QStri
 	//zoom stages: every Z below stays inside the stage before's window, so inside Start Z .. Stop Z
 	double centre = coarse[best].z;
 	double lastStep = c.stepMm;
+	if (c.adaptiveStep) {
+		//the peak lies between the sharpest frame's neighbours (both exist: it is neither the first
+		//frame nor the last one, see above), so the first window spans the wider of the two gaps
+		lastStep = std::max(coarse[best].z - coarse[best - 1].z, coarse[best + 1].z - coarse[best].z);
+		ct::logger::info("[ZSearch] 2D coarse: %d frames, sharpest %.3f at Z %.3f, neighbours %.3f / %.3f mm away",
+			coarse.size(), coarse[best].score, coarse[best].z, coarse[best].z - coarse[best - 1].z, coarse[best + 1].z - coarse[best].z);
+	}
 	int frames = coarse.size();
 	QString stopReason = QStringLiteral("all %1 stage(s) done").arg(c.refineStages);
 	for (int stage = 1; stage <= c.refineStages; stage++) {
@@ -987,7 +1036,7 @@ bool VisionApp::zsFind2D(double x, double y, bool confirm, double& foundZ, QStri
 			const double z = zA + i * step;
 			if (z > zB + 1e-6) break;
 			zsearch::FocusSample s;
-			if (!zsSample2D(z, confirm, s, why)) return false;
+			if (!zsSample2D(z, c.boxPx, confirm, s, why, status)) return false;
 			samples.push_back(s);
 		}
 		frames += samples.size();
@@ -1025,7 +1074,7 @@ bool VisionApp::zsFind2D(double x, double y, bool confirm, double& foundZ, QStri
 	//onto the result from above, the same way every frame was approached
 	if (!zsMove({ { (int)Axis::Z, std::max(c.startZ, centre - lastStep) } }, why)) return false;
 	zsearch::FocusSample last;
-	if (!zsSample2D(centre, confirm, last, why)) return false;
+	if (!zsSample2D(centre, c.boxPx, confirm, last, why, status)) return false;
 	if (confirm && !last.confirmed) { why = QStringLiteral("the Safety Check failed at the focus Z %1").arg(mm(centre)); return false; }
 
 	ct::logger::info("[ZSearch] 2D Focus Z %.3f (sharpness %.3f, %d frames)", centre, last.score, frames + 1);
@@ -1192,7 +1241,7 @@ void VisionApp::zsRunFind(bool threeD)
 
 	double z = 0.0;
 	const int trolleyEpoch = _zsTrolleyEpoch;
-	bool ok = threeD ? zsFind3D(x, y, z, why) : zsFind2D(x, y, _zSearch.s2d.confirmSafetyCheck, z, why);
+	bool ok = threeD ? zsFind3D(x, y, z, why) : zsFind2D(_zSearch.s2d, x, y, _zSearch.s2d.confirmSafetyCheck, z, why, _zsw.status2);
 	const bool stopped = _stopRun;
 	//the trolley guard changed while it searched: the Z it found belongs to a table that is gone
 	if (ok && trolleyEpoch != _zsTrolleyEpoch) {
@@ -1210,12 +1259,7 @@ void VisionApp::zsRunFind(bool threeD)
 	else {
 		if (threeD) _zFound.has3D = false; else _zFound.has2D = false;
 		if (stopped) after = QStringLiteral("Stopped - nothing else was moved.");
-		else {
-			QString w;
-			after = zsMove({ { (int)Axis::Z, startZ } }, w)
-				? QStringLiteral("Z went back up to Start Z.")
-				: QStringLiteral("Z could NOT go back up to Start Z: %1").arg(w);
-		}
+		else after = zsLiftAfterFailure(startZ, QStringLiteral("Start Z")) + QStringLiteral(".");
 		statusLabel->setText(QStringLiteral("Not found: %1").arg(why));
 		ct::logger::warn("[ZSearch] %s Find Z failed: %s. %s", qPrintable(which), qPrintable(why), qPrintable(after));
 		AuditLog::instance().log(threeD ? QStringLiteral("ZSEARCH_FIND_3D") : QStringLiteral("ZSEARCH_FIND_2D"), QStringLiteral("FAILED: %1").arg(why));
@@ -1271,7 +1315,7 @@ void VisionApp::zsCalibrateCamLaser()
 		"until it finishes. Stop ends it at once; the panel Stop and the e-stop also stop it."));
 
 	double z2 = 0.0, z3 = 0.0;
-	const bool ok = zsFind2D(x, y, false, z2, why) && zsFind3D(x, y, z3, why);
+	const bool ok = zsFind2D(_zSearch.s2d, x, y, false, z2, why, _zsw.status2) && zsFind3D(x, y, z3, why);
 	QString after;
 	if (ok) {
 		_zCalibration.set = true;
@@ -1284,11 +1328,8 @@ void VisionApp::zsCalibrateCamLaser()
 	}
 	else if (!_stopRun) {
 		//back above both searches: the smaller Start Z is the higher one
-		QString w;
 		const double clearZ = std::min(_zSearch.s2d.startZ, _zSearch.s3d.startZ);
-		after = zsMove({ { (int)Axis::Z, clearZ } }, w)
-			? QStringLiteral("\n\nZ went back up to Start Z.")
-			: QStringLiteral("\n\nZ could NOT go back up to Start Z: %1").arg(w);
+		after = QStringLiteral("\n\n") + zsLiftAfterFailure(clearZ, QStringLiteral("Start Z")) + QStringLiteral(".");
 		AuditLog::instance().log(QStringLiteral("ZSEARCH_CALIBRATE"), QStringLiteral("FAILED: %1").arg(why));
 	}
 

@@ -37,6 +37,15 @@ namespace zsearch {
 	bool peakPassed(const QVector<FocusSample>& s, int best, double dropRatio);
 
 	/*
+	* The coarse sweep's next step when it adapts. Far from focus the sharpness barely changes and
+	* the step is maxStep; once it starts to climb (or fall) the step shrinks so each one changes it
+	* by about half - 0.4 / |d ln(score) / dz| - never growing by more than half the step before (it
+	* must not leap off the top of the hill) and never below a tenth of maxStep. The first step, with
+	* one frame to go on, is a quarter of maxStep: Start Z may already be close to focus.
+	*/
+	double nextAdaptiveStep(const QVector<FocusSample>& s, double maxStep, double lastStep);
+
+	/*
 	* Sub-step peak: the vertex of a least-squares parabola through every confirmed sample scoring at
 	* least `fraction` of the best - the top of the hill, not just its three highest points, so image
 	* noise averages out instead of deciding the result. Too few points for that and it uses the best
