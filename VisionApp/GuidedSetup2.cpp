@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QSet>
+#include <algorithm>
 #include <cmath>
 
 namespace gs2 {
@@ -56,6 +57,9 @@ DiaRange getDia(const QJsonObject& o, const char* key)
 const char* const kCornerKey[4] = { "TL", "TR", "BR", "BL" };
 const char* const kInspKey[InspTypeCount] = { "2D", "barcodeOcr", "3D" };
 const char* const kRefKey[5] = { "centre", "TL", "TR", "BR", "BL" };
+const char* const kCircleKey[CircleKindCount] = { "fid0", "corner", "slot" };
+const char* const kPolarityKey[3] = { "bright", "dark", "either" };
+const char* const kDetailKey[3] = { "medium", "high", "veryHigh" };
 
 int refFromKey(const QString& k)
 {
@@ -112,7 +116,7 @@ bool sectionDone(const Setup& s, Section sec, QString* why)
 		if (!(s.fid0.startZ < s.fid0.stopZ)) return fail(QStringLiteral("Start Z must be above (smaller than) Stop Z"));
 		if (s.fid0.patternFile.isEmpty()) return fail(QStringLiteral("no pattern learnt"));
 		if (!s.fid0.patternToCirclePx.set || !s.fid0.patternAtPx.set) return fail(QStringLiteral("learn the pattern again: it now also records where fid0 is"));
-		if (!s.fid0.dia.valid()) return fail(QStringLiteral("circle diameter range not set"));
+		if (!s.circle[CircleFid0].dia.valid()) return fail(QStringLiteral("fid0 circle diameter not set (Camera and circle finder)"));
 		if (!s.fid0.found.ok) return fail(QStringLiteral("Find has not passed with these settings"));
 		return true;
 	case Sec3DZ:
@@ -122,11 +126,11 @@ bool sectionDone(const Setup& s, Section sec, QString* why)
 		if (s.fidRect.widthMm <= 0.0 || s.fidRect.lengthMm <= 0.0) return fail(QStringLiteral("drawing width / length not typed"));
 		for (int i = 0; i < 4; i++)
 			if (!s.fidRect.corner[i].set) return fail(QStringLiteral("fid%1 not taught").arg(QLatin1String(kCornerKey[i])));
-		if (!s.fidRect.dia.valid()) return fail(QStringLiteral("circle diameter range not set"));
+		if (!s.circle[CircleCorner].dia.valid()) return fail(QStringLiteral("corner circle diameter not set (Camera and circle finder)"));
 		return true;
 	case SecSlotSize:
 		if (!s.slotSize.set || s.slotSize.widthMm <= 0.0 || s.slotSize.lengthMm <= 0.0) return fail(QStringLiteral("TL and BR not set"));
-		if (!s.slotSize.dia.valid()) return fail(QStringLiteral("circle diameter range not set"));
+		if (!s.circle[CircleSlot].dia.valid()) return fail(QStringLiteral("slot circle diameter not set (Camera and circle finder)"));
 		return true;
 	case SecSlots:
 		if (s.slotList.isEmpty()) return fail(QStringLiteral("no slot"));
@@ -175,6 +179,20 @@ QJsonObject toJson(const Setup& s)
 	root.insert(QStringLiteral("version"), kFileVersion);
 	root.insert(QStringLiteral("complete"), isComplete(s));
 
+	QJsonObject cf;
+	for (int k = 0; k < CircleKindCount; k++) {
+		const CircleFinder& c = s.circle[k];
+		QJsonObject o;
+		putDia(o, "diaMm", c.dia);
+		o.insert(QStringLiteral("polarity"), QLatin1String(kPolarityKey[(c.polarity >= 0 && c.polarity < 3) ? c.polarity : 0]));
+		o.insert(QStringLiteral("minScore"), c.minScore);
+		o.insert(QStringLiteral("smoothness"), c.smoothness);
+		o.insert(QStringLiteral("detail"), QLatin1String(kDetailKey[(c.detail >= 0 && c.detail < 3) ? c.detail : 0]));
+		o.insert(QStringLiteral("highAccuracy"), c.highAccuracy);
+		cf.insert(QLatin1String(kCircleKey[k]), o);
+	}
+	root.insert(QStringLiteral("circleFinder"), cf);
+
 	QJsonObject a;
 	a.insert(QStringLiteral("emptyImages"), QJsonArray::fromStringList(s.safety1.emptyImages));
 	a.insert(QStringLiteral("threshold"), s.safety1.threshold);
@@ -196,7 +214,7 @@ QJsonObject toJson(const Setup& s)
 	for (const auto& p : s.fid0.patternOtherCopiesPx) others.append(QJsonArray{ p.x(), p.y() });
 	b.insert(QStringLiteral("patternOtherCopiesPx"), others);
 	b.insert(QStringLiteral("minScore"), s.fid0.minScore);
-	putDia(b, "diaMm", s.fid0.dia);
+	putDia(b, "diaMm", s.circle[CircleFid0].dia);   //also in circleFinder; kept here for exes before it
 	if (s.fid0.found.ok) {
 		QJsonObject f;
 		f.insert(QStringLiteral("xy"), QJsonArray{ s.fid0.found.x, s.fid0.found.y });
@@ -222,7 +240,7 @@ QJsonObject toJson(const Setup& s)
 	QJsonObject corners;
 	for (int i = 0; i < 4; i++) putXY(corners, kCornerKey[i], s.fidRect.corner[i]);
 	d.insert(QStringLiteral("corners"), corners);
-	putDia(d, "diaMm", s.fidRect.dia);
+	putDia(d, "diaMm", s.circle[CircleCorner].dia); //as above
 	d.insert(QStringLiteral("residualLimitMm"), s.fidRect.residualLimitMm);
 	d.insert(QStringLiteral("maxAngleDeg"), s.fidRect.maxAngleDeg);
 	root.insert(QStringLiteral("fidRect"), d);
@@ -231,7 +249,7 @@ QJsonObject toJson(const Setup& s)
 	e.insert(QStringLiteral("set"), s.slotSize.set);
 	e.insert(QStringLiteral("widthMm"), s.slotSize.widthMm);
 	e.insert(QStringLiteral("lengthMm"), s.slotSize.lengthMm);
-	putDia(e, "circleDiaMm", s.slotSize.dia);
+	putDia(e, "circleDiaMm", s.circle[CircleSlot].dia); //as above
 	root.insert(QStringLiteral("slotSize"), e);
 
 	QJsonArray slotArray;
@@ -310,7 +328,6 @@ Setup fromJson(const QJsonObject& root)
 		if (p.size() == 2) s.fid0.patternOtherCopiesPx << QPointF(p[0].toDouble(), p[1].toDouble());
 	}
 	s.fid0.minScore = num(b, "minScore", s.fid0.minScore);
-	s.fid0.dia = getDia(b, "diaMm");
 	const QJsonObject f = b.value(QStringLiteral("lastFind")).toObject();
 	const QJsonArray fxy = f.value(QStringLiteral("xy")).toArray();
 	if (fxy.size() == 2 && f.contains(QStringLiteral("z"))) {
@@ -336,7 +353,6 @@ Setup fromJson(const QJsonObject& root)
 	s.fidRect.lengthMm = num(d, "lengthMm", 0.0);
 	const QJsonObject corners = d.value(QStringLiteral("corners")).toObject();
 	for (int i = 0; i < 4; i++) s.fidRect.corner[i] = getXY(corners, kCornerKey[i]);
-	s.fidRect.dia = getDia(d, "diaMm");
 	s.fidRect.residualLimitMm = num(d, "residualLimitMm", s.fidRect.residualLimitMm);
 	s.fidRect.maxAngleDeg = num(d, "maxAngleDeg", s.fidRect.maxAngleDeg);
 
@@ -344,7 +360,23 @@ Setup fromJson(const QJsonObject& root)
 	s.slotSize.set = boolean(e, "set", false);
 	s.slotSize.widthMm = num(e, "widthMm", 0.0);
 	s.slotSize.lengthMm = num(e, "lengthMm", 0.0);
-	s.slotSize.dia = getDia(e, "circleDiaMm");
+
+	//how each circle is found; a file from before circleFinder has only the three diameter ranges
+	const QJsonObject cf = root.value(QStringLiteral("circleFinder")).toObject();
+	for (int k = 0; k < CircleKindCount; k++) {
+		CircleFinder& c = s.circle[k];
+		const QJsonObject o = cf.value(QLatin1String(kCircleKey[k])).toObject();
+		if (o.isEmpty()) {
+			c.dia = k == CircleFid0 ? getDia(b, "diaMm") : k == CircleCorner ? getDia(d, "diaMm") : getDia(e, "circleDiaMm");
+			continue;
+		}
+		c.dia = getDia(o, "diaMm");
+		for (int i = 0; i < 3; i++) if (str(o, "polarity") == QLatin1String(kPolarityKey[i])) c.polarity = i;
+		c.minScore = std::clamp(integer(o, "minScore", c.minScore), 1, 100);
+		c.smoothness = std::clamp(integer(o, "smoothness", c.smoothness), 0, 100);
+		for (int i = 0; i < 3; i++) if (str(o, "detail") == QLatin1String(kDetailKey[i])) c.detail = i;
+		c.highAccuracy = boolean(o, "highAccuracy", c.highAccuracy);
+	}
 
 	for (const auto& v : root.value(QStringLiteral("slots")).toArray()) {
 		const QJsonObject o = v.toObject();
@@ -472,16 +504,33 @@ void removeUnusedFiles(const QString& recipeDir, const Setup& a, const Setup& b)
 		if (!keep.contains(name) && !keptAside.contains(name.toUtf8())) QFile::remove(dir.filePath(name));
 }
 
-bool sameFid0Settings(const Fid0& a, const Fid0& b)
+bool sameCircleFinder(const CircleFinder& a, const CircleFinder& b)
 {
-	return a.xy.set == b.xy.set && a.xy.x == b.xy.x && a.xy.y == b.xy.y
+	return a.dia.minMm == b.dia.minMm && a.dia.maxMm == b.dia.maxMm && a.polarity == b.polarity && a.minScore == b.minScore
+		&& a.smoothness == b.smoothness && a.detail == b.detail && a.highAccuracy == b.highAccuracy;
+}
+
+QString circleKindName(int kind)
+{
+	switch (kind) {
+	case CircleCorner: return QStringLiteral("corner circles");
+	case CircleSlot: return QStringLiteral("slot circles");
+	default: return QStringLiteral("fid0 circle");
+	}
+}
+
+bool sameFid0Settings(const Setup& sa, const Setup& sb)
+{
+	const Fid0& a = sa.fid0;
+	const Fid0& b = sb.fid0;
+	return sameCircleFinder(sa.circle[CircleFid0], sb.circle[CircleFid0])
+		&& a.xy.set == b.xy.set && a.xy.x == b.xy.x && a.xy.y == b.xy.y
 		&& a.startSet == b.startSet && a.startZ == b.startZ && a.stopSet == b.stopSet && a.stopZ == b.stopZ
 		&& a.stepMm == b.stepMm && a.refineStages == b.refineStages && a.focusBoxMm == b.focusBoxMm
 		&& a.patternFile == b.patternFile && a.minScore == b.minScore
 		&& a.patternToCirclePx.set == b.patternToCirclePx.set && a.patternToCirclePx.x == b.patternToCirclePx.x && a.patternToCirclePx.y == b.patternToCirclePx.y
 		&& a.patternAtPx.set == b.patternAtPx.set && a.patternAtPx.x == b.patternAtPx.x && a.patternAtPx.y == b.patternAtPx.y
-		&& a.patternOtherCopiesPx == b.patternOtherCopiesPx
-		&& a.dia.minMm == b.dia.minMm && a.dia.maxMm == b.dia.maxMm;
+		&& a.patternOtherCopiesPx == b.patternOtherCopiesPx;
 }
 
 gs2geo::RectFit taughtFit(const Setup& s)

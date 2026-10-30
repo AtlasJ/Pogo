@@ -48,9 +48,13 @@ namespace {
 	//the head: the IPC (2026-10-30 20:05-20:12) failed three Finds with the encoders at 0.000 and the circle
 	//jumping 0.27-0.74 px between snaps, after the finder settled on a weaker edge (160 px across, score ~81).
 	//Then the last kQuietSnaps are taken, averaged, if every one is within kJitterPx (27 um) of their mean.
+	//A stray snap among steady ones (1.5-2.4 px, IPC 2026-10-30 20:53-20:58) must not fail the lot: the
+	//median of the five is the reference and at least kQuietAgree within kJitterPx of it are averaged.
 	constexpr int kQuietMs = 1500;
 	constexpr int kQuietSnaps = 5;
+	constexpr int kQuietAgree = 3;
 	constexpr double kJitterPx = 1.0;
+	constexpr int kStabilitySnaps = 10;      //Stability test
 	constexpr int kStillMaxMs = 6000;        //the IPC took 0.8-4.7 s
 	constexpr int kStillGapMs = 50;          //between snaps, so a Stop gets through
 	constexpr double kExpectTolMm = 1.0;     //fid0 must be this close to where the pattern puts it; its neighbours are ~12.7 mm away
@@ -445,12 +449,115 @@ void VisionApp::gs2MachineIdle()
 	_zsBusy = false;
 }
 
+namespace {
+
 /*
-* Every circle in the diameter range, drawn on the FOV (green = the one picked); the one nearest
-* the image centre is returned with its offset from the centre in world mm. Where the camera stood
-* is the caller's: only it knows where this image was taken.
+* The Matrox circle model finder with every setting of a gs2::CircleFinder. mtrx::find_circles fixes
+* all but the size and quietly turns "either polarity" into "bright", so the Guided Setup (new) runs
+* its own. Matrox errors are not shown as message boxes on this thread while it runs - one bad setting
+* would otherwise pop a box per call - and come back as why. Smoothness, detail and accuracy are
+* tuning: one Matrox does not take is logged and left at its default rather than failing the find.
 */
-bool VisionApp::gs2FindCircle(const QImage& image, double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why, const QPointF* nearPx,
+bool milCircles(const QImage& img, const gs2::CircleFinder& cf, double minR, double maxR, std::vector<mtrx::Circle>& out,
+	std::vector<double>& fitErr, QString& why)
+{
+	out.clear();
+	fitErr.clear();
+	MappControl(M_DEFAULT, M_ERROR + M_THREAD_CURRENT, M_PRINT_DISABLE);
+	//an error this thread already had before the finder ran is not the finder's, whether Matrox clears
+	//the current error on every call or keeps the last one
+	const MIL_INT before = MappGetError(M_DEFAULT, M_CURRENT, M_NULL);
+	auto errorNow = [before]() {
+		const MIL_INT e = MappGetError(M_DEFAULT, M_CURRENT, M_NULL);
+		return (e == M_NULL_ERROR || e == before) ? (MIL_INT)M_NULL_ERROR : e;
+	};
+	QString failedAt;
+	auto failed = [&](const char* step) {
+		const MIL_INT e = errorNow();
+		if (e != M_NULL_ERROR && failedAt.isEmpty()) failedAt = QStringLiteral("%1 (Matrox error %2)").arg(QLatin1String(step)).arg((qlonglong)e);
+		return !failedAt.isEmpty();
+	};
+	auto tune = [&](const char* setting) {
+		const MIL_INT e = errorNow();
+		if (e != M_NULL_ERROR) ct::logger::warn("[GuidedSetup2] Circle finder: Matrox did not take %s (error %lld) - left at its default", setting, (long long)e);
+	};
+
+	MIL_ID mBuf = mtrx::to_milID(img);
+	MIL_ID mMono = mBuf != M_NULL ? mtrx::to_mono(mBuf) : M_NULL;
+	MIL_ID ctx = M_NULL, res = M_NULL;
+	if (mMono != M_NULL) {
+		//judged by the handles, not the error code
+		MmodAlloc(M_DEFAULT_HOST, M_SHAPE_CIRCLE, M_DEFAULT, &ctx);
+		if (ctx != M_NULL) MmodAllocResult(M_DEFAULT_HOST, M_SHAPE_CIRCLE, &res);
+		if (ctx == M_NULL || res == M_NULL) failedAt = QStringLiteral("allocating the finder");
+	}
+	if (ctx != M_NULL && res != M_NULL && failedAt.isEmpty()) {
+		const double rExp = (minR + maxR) / 2.0;
+		const MIL_INT fg = cf.polarity == gs2::PolarityDark ? M_FOREGROUND_BLACK
+			: cf.polarity == gs2::PolarityEither ? M_FOREGROUND_ANY : M_FOREGROUND_WHITE;
+		MmodDefine(ctx, M_CIRCLE, fg, rExp, M_DEFAULT, M_DEFAULT, M_DEFAULT);
+		if (!failed("the circle model (polarity)")) {
+			MmodControl(ctx, 0, M_SCALE_MIN_FACTOR, minR / rExp);
+			MmodControl(ctx, 0, M_SCALE_MAX_FACTOR, maxR / rExp);
+			failed("the diameter range");
+		}
+		if (failedAt.isEmpty()) { MmodControl(ctx, M_DEFAULT, M_ACCEPTANCE, (MIL_DOUBLE)cf.minScore); failed("min score"); }
+		if (failedAt.isEmpty()) { MmodControl(ctx, 0, M_NUMBER, M_ALL); failed("the number of circles"); }
+		if (failedAt.isEmpty()) {
+			MmodControl(ctx, M_CONTEXT, M_SMOOTHNESS, (MIL_DOUBLE)cf.smoothness);
+			tune("edge smoothness");
+			MmodControl(ctx, M_CONTEXT, M_DETAIL_LEVEL, cf.detail == gs2::DetailVeryHigh ? M_VERY_HIGH : cf.detail == gs2::DetailHigh ? M_HIGH : M_MEDIUM);
+			tune("edge detail");
+			MmodControl(ctx, M_CONTEXT, M_ACCURACY, cf.highAccuracy ? M_HIGH : M_MEDIUM);
+			tune("accuracy");
+			MmodPreprocess(ctx, M_DEFAULT);
+			failed("preparing the finder");
+		}
+		if (failedAt.isEmpty()) { MmodFind(ctx, mMono, res); failed("finding"); }
+		MIL_INT n = 0;
+		if (failedAt.isEmpty()) { MmodGetResult(res, M_DEFAULT, M_NUMBER + M_TYPE_MIL_INT, &n); failed("reading the count"); }
+		if (failedAt.isEmpty() && n > 0) {
+			const size_t count = static_cast<size_t>(n);
+			std::vector<MIL_DOUBLE> cx(count), cy(count), r(count), sc(count), fe(count, -1.0);
+			MmodGetResult(res, M_DEFAULT, M_CENTER_X + M_TYPE_MIL_DOUBLE, cx.data());
+			MmodGetResult(res, M_DEFAULT, M_CENTER_Y + M_TYPE_MIL_DOUBLE, cy.data());
+			MmodGetResult(res, M_DEFAULT, M_RADIUS + M_TYPE_MIL_DOUBLE, r.data());
+			MmodGetResult(res, M_DEFAULT, M_SCORE + M_TYPE_MIL_DOUBLE, sc.data());
+			if (!failed("reading the circles")) {
+				MmodGetResult(res, M_DEFAULT, M_FIT_ERROR + M_TYPE_MIL_DOUBLE, fe.data());
+				if (errorNow() != M_NULL_ERROR) std::fill(fe.begin(), fe.end(), -1.0); //not reported: fine
+				for (size_t i = 0; i < count; i++) {
+					out.push_back(mtrx::Circle{ r[i], cx[i] - r[i], cy[i] - r[i], cx[i], cy[i], sc[i] });
+					fitErr.push_back(fe[i]);
+				}
+			}
+		}
+	}
+	//read before the clean-up: mtrx::free_buffer sets the id it frees back to M_NULL
+	const bool imageHandedOver = mBuf != M_NULL && mMono != M_NULL;
+	if (res != M_NULL) MmodFree(res);
+	if (ctx != M_NULL) MmodFree(ctx);
+	if (mMono != M_NULL) mtrx::free_buffer(mMono);
+	if (mBuf != M_NULL) mtrx::free_buffer(mBuf);
+	MappControl(M_DEFAULT, M_ERROR + M_THREAD_CURRENT, M_PRINT_ENABLE);
+
+	if (!imageHandedOver) { why = QStringLiteral("the image could not be handed to the circle finder"); return false; }
+	if (!failedAt.isEmpty()) {
+		ct::logger::error("[GuidedSetup2] Circle finder failed at %s", qPrintable(failedAt));
+		why = QStringLiteral("the circle finder failed at %1 - check the circle settings").arg(failedAt);
+		return false;
+	}
+	return true;
+}
+
+} // namespace
+
+/*
+* Every circle the finder accepts, drawn on the FOV (green = the one picked); the one nearest the
+* image centre (or nearPx) is returned with its offset from the centre in world mm. Where the camera
+* stood is the caller's: only it knows where this image was taken.
+*/
+bool VisionApp::gs2FindCircle(const QImage& image, const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx,
 	QVector<QPointF>* allPx)
 {
 	out = Gs2Circle();
@@ -460,24 +567,20 @@ bool VisionApp::gs2FindCircle(const QImage& image, double minDiaMm, double maxDi
 	if (!gs2Conversion(image.width(), image.height(), a, why)) return false;
 	const double mmPerPx = std::sqrt(std::abs(a[0][0] * a[1][1] - a[0][1] * a[1][0])); //the conversion's mean scale
 	if (!(mmPerPx > 0.0)) { why = QStringLiteral("the pixel-to-mm conversion is empty"); return false; }
-	if (!(minDiaMm > 0.0) || !(maxDiaMm > minDiaMm)) { why = QStringLiteral("the diameter range is not valid"); return false; }
+	if (!cf.dia.valid()) { why = QStringLiteral("the diameter range is not valid"); return false; }
 
 	const QImage img = milReady(image);
 
-	const double minPx = minDiaMm / mmPerPx;
-	const double maxPx = maxDiaMm / mmPerPx;
+	const double minPx = cf.dia.minMm / mmPerPx;
+	const double maxPx = cf.dia.maxMm / mmPerPx;
 	std::vector<mtrx::Circle> circles;
-	MIL_ID mBuf = mtrx::to_milID(img);
-	if (mBuf == M_NULL) { why = QStringLiteral("the image could not be handed to the circle finder"); return false; }
-	MIL_ID mMono = mtrx::to_mono(mBuf);
-	mtrx::find_circles(circles, mMono, minPx / 2.0, maxPx / 2.0, mtrx::FOREGROUND_ANY);
-	mtrx::free_buffer(mMono);
-	mtrx::free_buffer(mBuf);
+	std::vector<double> fitErr;
+	if (!milCircles(img, cf, minPx / 2.0, maxPx / 2.0, circles, fitErr, why)) { clearGuidedMarks(); return false; }
 
 	if (circles.empty()) {
 		clearGuidedMarks();
 		why = QStringLiteral("no circle between %1 and %2 mm (%3 .. %4 px) in the image")
-			.arg(mm(minDiaMm), mm(maxDiaMm)).arg(std::lround(minPx)).arg(std::lround(maxPx));
+			.arg(mm(cf.dia.minMm), mm(cf.dia.maxMm)).arg(std::lround(minPx)).arg(std::lround(maxPx));
 		return false;
 	}
 
@@ -499,6 +602,7 @@ bool VisionApp::gs2FindCircle(const QImage& image, double minDiaMm, double maxDi
 	out.diaPx = 2.0 * c.radius;
 	out.diaMm = out.diaPx * mmPerPx;
 	out.score = c.score;
+	out.fitErr = nearest < (int)fitErr.size() ? fitErr[nearest] : -1.0;
 	out.count = (int)circles.size();
 	out.imgW = img.width();
 	out.imgH = img.height();
@@ -515,7 +619,7 @@ bool VisionApp::gs2FindCircle(const QImage& image, double minDiaMm, double maxDi
 * itself rather than guessing a delay. With the encoders still for kQuietMs, a circle that keeps
 * jittering under kJitterPx is the finder, and the last kQuietSnaps are averaged instead.
 */
-bool VisionApp::gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why, const QPointF* nearPx)
+bool VisionApp::gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx)
 {
 	if (SystemData::instance()._snapDelay_ms > 0) zsPause(SystemData::instance()._snapDelay_ms);
 
@@ -557,7 +661,7 @@ bool VisionApp::gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, 
 		if (!guidedSnapFov(img, kSnapTimeoutMs)) { why = QStringLiteral("no image from the camera"); return false; }
 		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 		Gs2Circle cur;
-		if (!gs2FindCircle(img, minDiaMm, maxDiaMm, cur, why, nearPx)) return false;
+		if (!gs2FindCircle(img, cf, cur, why, nearPx)) return false;
 		cur.haveStage = true;
 		cur.stageX = *x;
 		cur.stageY = *y;
@@ -577,25 +681,33 @@ bool VisionApp::gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, 
 			how = QStringLiteral("3 in a row within %1 px").arg(kStillPx);
 			break;
 		}
-		//the encoders have been still a while: the jitter left is the finder's, averaged away over more snaps
+		//the encoders have been still a while: what still jumps is the finder. The snaps that agree with
+		//the median of the last five are averaged; a stray one is left out
 		if (n >= kQuietSnaps && timer.elapsed() - quietSince >= kQuietMs) {
-			const double spread = average(quiet, kQuietSnaps);
-			if (spread <= kJitterPx) {
-				how = QStringLiteral("encoders still %1 ms, last %2 within %3 px of their average")
-					.arg(timer.elapsed() - quietSince).arg(kQuietSnaps).arg(spread, 0, 'f', 2);
+			QVector<double> xs, ys;
+			for (int i = n - kQuietSnaps; i < n; i++) { xs << quiet[i].px; ys << quiet[i].py; }
+			std::sort(xs.begin(), xs.end());
+			std::sort(ys.begin(), ys.end());
+			const double mx = xs[kQuietSnaps / 2], my = ys[kQuietSnaps / 2];
+			QVector<Gs2Circle> agree;
+			for (int i = n - kQuietSnaps; i < n; i++)
+				if (std::hypot(quiet[i].px - mx, quiet[i].py - my) <= kJitterPx) agree << quiet[i];
+			if (agree.size() >= kQuietAgree) {
+				const double spread = average(agree, agree.size());
+				how = QStringLiteral("encoders still %1 ms, %2 of the last %3 within %4 px of their median (spread %5 px)")
+					.arg(timer.elapsed() - quietSince).arg(agree.size()).arg(kQuietSnaps).arg(kJitterPx).arg(spread, 0, 'f', 2);
 				break;
 			}
 		}
 		if (timer.elapsed() > kStillMaxMs) {
 			if (n >= kQuietSnaps && timer.elapsed() - quietSince >= kQuietMs) {
-				const double spread = average(quiet, kQuietSnaps); //out is not used after a failure
 				QStringList at;
 				for (int i = n - kQuietSnaps; i < n; i++) at << QStringLiteral("(%1, %2)").arg(quiet[i].px, 0, 'f', 2).arg(quiet[i].py, 0, 'f', 2);
 				ct::logger::warn("[GuidedSetup2] Circle would not hold still with the encoders still: last %d at %s px",
 					kQuietSnaps, qPrintable(at.join(QStringLiteral(" "))));
-				why = QStringLiteral("the circle measurement would not hold still: with the encoders still, the last %1 snaps "
-					"spread up to %2 px from their average (limit %3) - check the circle is clean, in focus and evenly lit")
-					.arg(kQuietSnaps).arg(spread, 0, 'f', 2).arg(kJitterPx);
+				why = QStringLiteral("the circle measurement would not hold still: with the encoders still, fewer than %1 of the last %2 "
+					"snaps agreed within %3 px - run the Stability test and tune the circle settings, or check it is clean, in focus and evenly lit")
+					.arg(kQuietAgree).arg(kQuietSnaps).arg(kJitterPx);
 			}
 			else {
 				why = QStringLiteral("the camera did not settle within %1 s: between the last two snaps the circle moved %2 px and the encoders %3 / %4 mm")
@@ -624,11 +736,11 @@ bool VisionApp::gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, 
 * the trolley, "nearest the image centre" took a neighbour 13 mm away (IPC 2026-10-30 17:50).
 * After a move the camera stands on that circle, so the centre is right again.
 */
-bool VisionApp::gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx)
+bool VisionApp::gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx)
 {
 	moves = 0;
 	setProgress(_zsBusyWindow, QStringLiteral("Snap and find the circle..."));
-	if (!gs2SnapCircle(minDiaMm, maxDiaMm, out, why, expectPx)) return false;
+	if (!gs2SnapCircle(cf, out, why, expectPx)) return false;
 	if (expectPx) {
 		const double mmPerPx = out.diaPx > 0.0 ? out.diaMm / out.diaPx : 0.0;
 		const double offMm = std::hypot(out.px - expectPx->x(), out.py - expectPx->y()) * mmPerPx;
@@ -653,7 +765,7 @@ bool VisionApp::gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, G
 		setProgress(_zsBusyWindow, QStringLiteral("Moving onto the circle at X %1, Y %2 (%3 mm away)...").arg(mm(out.wx), mm(out.wy), mm(lastOff)));
 		if (!zsMove({ { (int)Axis::X, out.wx }, { (int)Axis::Y, out.wy } }, why)) return false;
 		moves++;
-		if (!gs2SnapCircle(minDiaMm, maxDiaMm, out, why)) return false;
+		if (!gs2SnapCircle(cf, out, why)) return false;
 
 		const double off = std::hypot(out.offX, out.offY);
 		if (off > kCentreTolMm && off > lastOff + 0.05) {
@@ -676,13 +788,13 @@ bool VisionApp::gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, G
 * saved Measured one. pass = the conversion IN USE agrees. Nothing is saved here; a measurement
 * with a good fit is kept for Save measured.
 */
-bool VisionApp::gs2CheckDirection(double minDiaMm, double maxDiaMm, bool& pass, QString& report, QString& why)
+bool VisionApp::gs2CheckDirection(const gs2::CircleFinder& cf, bool& pass, QString& report, QString& why)
 {
 	pass = false;
 	_gs2LastMeasure = gs2::CameraCal();
 	Gs2Circle c0;
 	int moves = 0;
-	if (!gs2LocateCircle(minDiaMm, maxDiaMm, true, c0, moves, why)) { why = QStringLiteral("centring on the circle: %1").arg(why); return false; }
+	if (!gs2LocateCircle(cf, true, c0, moves, why)) { why = QStringLiteral("centring on the circle: %1").arg(why); return false; }
 	const double x0 = c0.stageX, y0 = c0.stageY;
 	const auto z0 = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
 	const double mmPerPx = c0.diaPx > 0.0 ? c0.diaMm / c0.diaPx : 0.0;
@@ -704,7 +816,7 @@ bool VisionApp::gs2CheckDirection(double minDiaMm, double maxDiaMm, bool& pass, 
 	for (int n = 0; n < (int)shots.size(); n++) {
 		auto& s = shots[n];
 		setProgress(_zsBusyWindow, QStringLiteral("Position %1 of %2: X %3, Y %4").arg(n + 1).arg(shots.size()).arg(mm(x0 + s.dx), mm(y0 + s.dy)));
-		if (!zsMove({ { (int)Axis::X, x0 + s.dx }, { (int)Axis::Y, y0 + s.dy } }, why) || !gs2SnapCircle(minDiaMm, maxDiaMm, s.c, why)) { ok = false; break; }
+		if (!zsMove({ { (int)Axis::X, x0 + s.dx }, { (int)Axis::Y, y0 + s.dy } }, why) || !gs2SnapCircle(cf, s.c, why)) { ok = false; break; }
 		if (std::abs(s.c.diaPx - c0.diaPx) > 0.15 * c0.diaPx) {
 			why = QStringLiteral("lost the circle: %1 px across here, %2 px at the start - another circle is nearer the image centre")
 				.arg(s.c.diaPx, 0, 'f', 1).arg(c0.diaPx, 0, 'f', 1);
@@ -870,14 +982,71 @@ bool VisionApp::gs2CheckDirection(double minDiaMm, double maxDiaMm, bool& pass, 
 	return true;
 }
 
+/*
+* Stability test: the circle snapped kStabilitySnaps times where the camera stands, nothing moved.
+* How far its centre and diameter wander from snap to snap is what the settle has to live with, so
+* this is the number to tune the circle settings against.
+*/
+bool VisionApp::gs2StabilityTest(const gs2::CircleFinder& cf, QString& report, QString& why)
+{
+	QVector<Gs2Circle> shots;
+	QPointF follow;
+	for (int i = 0; i < kStabilitySnaps; i++) {
+		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
+		setProgress(_zsBusyWindow, QStringLiteral("Snap %1 of %2...").arg(i + 1).arg(kStabilitySnaps));
+		QImage img;
+		if (!guidedSnapFov(img, kSnapTimeoutMs)) { why = QStringLiteral("no image from the camera"); return false; }
+		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
+		Gs2Circle c;
+		//the same circle every time: the one nearest the first snap's
+		if (!gs2FindCircle(img, cf, c, why, shots.isEmpty() ? nullptr : &follow)) { why = QStringLiteral("snap %1: %2").arg(i + 1).arg(why); return false; }
+		if (shots.isEmpty()) follow = QPointF(c.px, c.py);
+		shots << c;
+		ct::logger::info("[GuidedSetup2] Stability snap %d: centre (%.2f, %.2f) px, dia %.2f px, score %.2f, fit error %.3f, %d in range",
+			i + 1, c.px, c.py, c.diaPx, c.score, c.fitErr, c.count);
+		zsPause(kStillGapMs);
+	}
+
+	QVector<double> xs, ys;
+	for (const auto& c : shots) { xs << c.px; ys << c.py; }
+	std::sort(xs.begin(), xs.end());
+	std::sort(ys.begin(), ys.end());
+	const double mx = xs[xs.size() / 2], my = ys[ys.size() / 2];
+	double worst = 0.0, sum2 = 0.0, dMin = shots[0].diaPx, dMax = dMin, sMin = shots[0].score, sMax = sMin, fitMax = -1.0;
+	int agree = 0;
+	for (const auto& c : shots) {
+		const double d = std::hypot(c.px - mx, c.py - my);
+		worst = std::max(worst, d);
+		sum2 += d * d;
+		if (d <= kJitterPx) agree++;
+		dMin = std::min(dMin, c.diaPx); dMax = std::max(dMax, c.diaPx);
+		sMin = std::min(sMin, c.score); sMax = std::max(sMax, c.score);
+		fitMax = std::max(fitMax, c.fitErr);
+	}
+	const double rms = std::sqrt(sum2 / shots.size());
+	const double umPerPx = shots[0].diaPx > 0.0 ? 1000.0 * shots[0].diaMm / shots[0].diaPx : 0.0;
+	const QString verdict = worst <= kStillPx ? QStringLiteral("Steady: the settle takes three snaps in a row.")
+		: agree >= shots.size() - 1 ? QStringLiteral("Usable: a stray snap is outvoted, but tighter is better.")
+		: QStringLiteral("Unsteady: tighten the diameter range round the real edge, raise Edge smoothness or try the other polarity.");
+	report = QStringLiteral("%1 snaps without moving. Centre: furthest %2 px (%3 um) from the median, typical %4 px; %5 of %1 within %6 px. "
+		"Diameter %7 .. %8 px. Score %9 .. %10%11.\n%12")
+		.arg(shots.size()).arg(worst, 0, 'f', 2).arg(std::lround(worst * umPerPx)).arg(rms, 0, 'f', 2).arg(agree).arg(kJitterPx)
+		.arg(dMin, 0, 'f', 1).arg(dMax, 0, 'f', 1).arg(sMin, 0, 'f', 1).arg(sMax, 0, 'f', 1)
+		.arg(fitMax >= 0.0 ? QStringLiteral(", fit error up to %1").arg(fitMax, 0, 'f', 2) : QString())
+		.arg(verdict);
+	ct::logger::info("[GuidedSetup2] Stability test: furthest %.2f px, rms %.2f px, %d of %d within %.1f px, dia %.1f..%.1f px, score %.1f..%.1f",
+		worst, rms, agree, shots.size(), kJitterPx, dMin, dMax, sMin, sMax);
+	return true;
+}
+
 void VisionApp::gs2RunTool(int action)
 {
 	if (!_gs2Page || _zsBusy) return;
 	if (action == GuidedSetup2Page::ToolSaveMeasured) { gs2SaveMeasured(); return; }
 
 	QString what;
-	const gs2::DiaRange dia = _gs2Page->toolCircle(&what);
-	if (!dia.valid()) {
+	const gs2::CircleFinder cf = _gs2Page->toolCircle(&what);
+	if (!cf.dia.valid()) {
 		_gs2Page->showToolResult(QStringLiteral("Type the %1 diameter range first (min above 0, max above min).").arg(what), false);
 		return;
 	}
@@ -885,15 +1054,16 @@ void VisionApp::gs2RunTool(int action)
 	if (!ui.graphicsViewFOV->isVisible()) toggleFOVView();
 
 	auto describe = [&](const QString& title, const Gs2Circle& c) {
-		return QStringLiteral("%1 (%2): %3 circle(s) in range; nearest %4 mm across (%5 px), score %6, %7 / %8 mm from the image centre.")
+		return QStringLiteral("%1 (%2): %3 circle(s) in range; nearest %4 mm across (%5 px), score %6%7, %8 / %9 mm from the image centre.")
 			.arg(title, what).arg(c.count).arg(mm(c.diaMm)).arg(c.diaPx, 0, 'f', 1).arg(c.score, 0, 'f', 2)
+			.arg(c.fitErr >= 0.0 ? QStringLiteral(", fit error %1").arg(c.fitErr, 0, 'f', 2) : QString())
 			.arg(signedMm(c.offX), signedMm(c.offY));
 	};
 
 	if (action == GuidedSetup2Page::ToolFindInImage) {
 		Gs2Circle c;
 		QString why;
-		if (!gs2FindCircle(_imageFOV, dia.minMm, dia.maxMm, c, why)) {
+		if (!gs2FindCircle(_imageFOV, cf, c, why)) {
 			_gs2Page->showToolResult(QStringLiteral("Find in image (%1): %2.").arg(what, why), false);
 			return;
 		}
@@ -913,10 +1083,13 @@ void VisionApp::gs2RunTool(int action)
 
 	const bool direction = action == GuidedSetup2Page::ToolDirection;
 	const bool centre = action == GuidedSetup2Page::ToolCentre;
-	const QString title = direction ? QStringLiteral("Check camera direction") : (centre ? QStringLiteral("Centre on circle") : QStringLiteral("Snap + find"));
+	const bool stability = action == GuidedSetup2Page::ToolStability;
+	const QString title = direction ? QStringLiteral("Check camera direction") : stability ? QStringLiteral("Stability test")
+		: (centre ? QStringLiteral("Centre on circle") : QStringLiteral("Snap + find"));
 	if (!gs2MachineBusy(title, direction
 		? QStringLiteral("The camera centres on the circle, snaps it from a 3 x 3 grid +/- %1 mm round it (about 20 s), and comes back.\n"
 			"Everything else is locked until it finishes.").arg(kDirStepMm, 0, 'f', 0)
+		: stability ? QStringLiteral("The camera snaps the circle %1 times without moving.\nEverything else is locked until it finishes.").arg(kStabilitySnaps)
 		: QStringLiteral("The camera snaps and moves onto the circle if it needs to.\nEverything else is locked until it finishes."))) return;
 
 	const int trolleyEpoch = _zsTrolleyEpoch;
@@ -924,7 +1097,8 @@ void VisionApp::gs2RunTool(int action)
 	Gs2Circle c;
 	int moves = 0;
 	bool pass = false;
-	bool ok = direction ? gs2CheckDirection(dia.minMm, dia.maxMm, pass, text, why) : gs2LocateCircle(dia.minMm, dia.maxMm, centre, c, moves, why);
+	bool ok = direction ? gs2CheckDirection(cf, pass, text, why)
+		: stability ? gs2StabilityTest(cf, text, why) : gs2LocateCircle(cf, centre, c, moves, why);
 	const bool stopped = _stopRun;
 	//the trolley guard changed meanwhile: what was found belongs to a table that is gone
 	if (ok && trolleyEpoch != _zsTrolleyEpoch) {
@@ -938,6 +1112,7 @@ void VisionApp::gs2RunTool(int action)
 		text = QStringLiteral("%1 (%2): %3.").arg(title, what, stopped ? QStringLiteral("stopped - nothing else was moved") : why);
 		ct::logger::warn("[GuidedSetup2] %s failed: %s", qPrintable(title), qPrintable(stopped ? QStringLiteral("stopped") : why));
 	}
+	else if (stability) text = QStringLiteral("%1 (%2): %3").arg(title, what, text);
 	else if (!direction) {
 		text = describe(title, c) + QStringLiteral("\nCircle at X %1, Y %2 (camera at X %3, Y %4; %5 move(s)).")
 			.arg(mm(c.wx), mm(c.wy), mm(c.stageX), mm(c.stageY)).arg(moves);
@@ -1050,8 +1225,10 @@ bool VisionApp::gs2MatchPatterns(const QImage& image, const QString& patternPath
 * trolley, docked - and locate the fid0 circle (snap + convert, moving onto it only if it is outside
 * the middle half). The caller holds the machine lock.
 */
-bool VisionApp::gs2FindFid0(const gs2::Fid0& f, const QString& dir, gs2::Fid0Found& out, QString& why)
+bool VisionApp::gs2FindFid0(const gs2::Setup& s, const QString& dir, gs2::Fid0Found& out, QString& why)
 {
+	const gs2::Fid0& f = s.fid0;
+	const gs2::CircleFinder& cf = s.circle[gs2::CircleFid0];
 	out = gs2::Fid0Found();
 	const double umPerPx = ScaleManager::instance().um_per_px();
 	if (!(umPerPx > 0.0)) { why = QStringLiteral("the camera scale (um per pixel) is not set - run Camera Scaling"); return false; }
@@ -1098,7 +1275,7 @@ bool VisionApp::gs2FindFid0(const gs2::Fid0& f, const QString& dir, gs2::Fid0Fou
 	Gs2Circle any;
 	QVector<QPointF> circles;
 	QString w;
-	if (!gs2FindCircle(img, f.dia.minMm, f.dia.maxMm, any, w, &fid0Taught, &circles) || circles.isEmpty()) {
+	if (!gs2FindCircle(img, cf, any, w, &fid0Taught, &circles) || circles.isEmpty()) {
 		why = QStringLiteral("no circle in the fid0 diameter range in the image");
 		return false;
 	}
@@ -1135,7 +1312,7 @@ bool VisionApp::gs2FindFid0(const gs2::Fid0& f, const QString& dir, gs2::Fid0Fou
 	Gs2Circle circle;
 	int moves = 0;
 	//centred on fid0, as when the pattern was learnt: the most accurate fid0, and the view the check below expects
-	if (!gs2LocateCircle(f.dia.minMm, f.dia.maxMm, true, circle, moves, why, &expect)) { why = QStringLiteral("fid0: %1").arg(why); return false; }
+	if (!gs2LocateCircle(cf, true, circle, moves, why, &expect)) { why = QStringLiteral("fid0: %1").arg(why); return false; }
 
 	/*
 	* A second, independent look from fid0 itself (Jimmy's rule): standing on the real fid0 the
@@ -1213,10 +1390,10 @@ void VisionApp::gs2Teach(int action)
 			return;
 		}
 		//the pattern is learnt WITH where fid0 sits from it, so the camera must be on fid0 now
-		if (!s.fid0.dia.valid()) { _gs2Page->showFid0Result(QStringLiteral("Type the fid0 circle diameter range first."), false); return; }
+		if (!s.circle[gs2::CircleFid0].dia.valid()) { _gs2Page->showFid0Result(QStringLiteral("Set the fid0 circle diameter in Camera and circle finder first."), false); return; }
 		Gs2Circle fid0Here;
 		QString circleWhy;
-		if (!gs2FindCircle(fov, s.fid0.dia.minMm, s.fid0.dia.maxMm, fid0Here, circleWhy)) {
+		if (!gs2FindCircle(fov, s.circle[gs2::CircleFid0], fid0Here, circleWhy)) {
 			_gs2Page->showFid0Result(QStringLiteral("Centre the camera on fid0 first (Teach XY): %1.").arg(circleWhy), false);
 			return;
 		}
@@ -1307,7 +1484,7 @@ void VisionApp::gs2Teach(int action)
 		note = QStringLiteral("The machine goes to home (X 0, Y 0, Z 0) and snaps.");
 		break;
 	case P::TeachXY:
-		if (!s.fid0.dia.valid()) { _gs2Page->showFid0Result(QStringLiteral("Type the fid0 circle diameter range first."), false); return; }
+		if (!s.circle[gs2::CircleFid0].dia.valid()) { _gs2Page->showFid0Result(QStringLiteral("Set the fid0 circle diameter in Camera and circle finder first."), false); return; }
 		title = QStringLiteral("Teach fid0 XY");
 		note = QStringLiteral("The camera centres on the fid0 circle.");
 		break;
@@ -1386,7 +1563,7 @@ void VisionApp::gs2Teach(int action)
 	case P::TeachXY: {
 		Gs2Circle c;
 		int moves = 0;
-		ok = gs2LocateCircle(s.fid0.dia.minMm, s.fid0.dia.maxMm, true, c, moves, why);
+		ok = gs2LocateCircle(s.circle[gs2::CircleFid0], true, c, moves, why);
 		if (ok && trolleyEpoch != _zsTrolleyEpoch) { ok = false; why = QStringLiteral("the trolley was removed or attached meanwhile - nothing kept"); }
 		if (ok && _gs2Page->recipeDir() != dir) { ok = false; why = QStringLiteral("the recipe changed meanwhile - nothing kept"); }
 		if (ok) {
@@ -1403,7 +1580,7 @@ void VisionApp::gs2Teach(int action)
 		break;
 	case P::TeachFind: {
 		gs2::Fid0Found found;
-		ok = gs2FindFid0(s.fid0, dir, found, why);
+		ok = gs2FindFid0(s, dir, found, why);
 		if (ok && trolleyEpoch != _zsTrolleyEpoch) { ok = false; why = QStringLiteral("the trolley was removed or attached meanwhile - the result was discarded"); }
 		if (ok && _gs2Page->recipeDir() != dir) { ok = false; why = QStringLiteral("the recipe changed meanwhile - the result was discarded"); }
 		if (ok) {

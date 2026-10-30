@@ -694,6 +694,7 @@ private:
 	struct Gs2Circle {
 		double px = 0.0, py = 0.0;            //sub-pixel centre in the image
 		double diaPx = 0.0, diaMm = 0.0, score = 0.0;
+		double fitErr = -1.0;                 //how far the edges sit off the fitted circle (Matrox fit error); -1 = not reported
 		int count = 0;                        //circles found in the diameter range
 		int imgW = 0, imgH = 0;
 		double offX = 0.0, offY = 0.0;        //world mm from the image centre, by the conversion in use
@@ -711,12 +712,14 @@ private:
 	void gs2RunTool(int action);
 	//the circle nearest nearPx (image px), or the image centre without it; draws them all
 	//allPx (optional): the centre of every circle in range, px
-	bool gs2FindCircle(const QImage& img, double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr,
+	//cf: how this kind of circle is found (Camera and circle finder) - diameter, polarity, score, edges
+	bool gs2FindCircle(const QImage& img, const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr,
 		QVector<QPointF>* allPx = nullptr);
-	bool gs2SnapCircle(double minDiaMm, double maxDiaMm, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr); //snap here, find, convert; no move
+	bool gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr); //snap here, find, convert; no move
 	//expectPx: where the circle must be in the FIRST snap (the pattern said so), within kExpectTolMm, or it fails
-	bool gs2LocateCircle(double minDiaMm, double maxDiaMm, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx = nullptr);
-	bool gs2CheckDirection(double minDiaMm, double maxDiaMm, bool& pass, QString& report, QString& why); //false = could not measure
+	bool gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx = nullptr);
+	bool gs2CheckDirection(const gs2::CircleFinder& cf, bool& pass, QString& report, QString& why); //false = could not measure
+	bool gs2StabilityTest(const gs2::CircleFinder& cf, QString& report, QString& why);                //snaps without moving
 	bool gs2MachineBusy(const QString& title, const QString& note);   //lock the screen like a Z search; false = refused
 	void gs2MachineIdle();
 	//build step 3a: section A (Safety check 1) and section B (fid0)
@@ -735,7 +738,7 @@ private:
 	struct Gs2PatternHit { double x = 0.0, y = 0.0, score = 0.0; };   //image px (the model's centre), score 0..1
 	//every copy of the pattern in the image, best first - a trolley can carry the same mark twice side by side
 	bool gs2MatchPatterns(const QImage& img, const QString& patternPath, QVector<Gs2PatternHit>& hits, QString& why);
-	bool gs2FindFid0(const gs2::Fid0& f, const QString& dir, gs2::Fid0Found& out, QString& why); //dir: the recipe folder the action started in
+	bool gs2FindFid0(const gs2::Setup& s, const QString& dir, gs2::Fid0Found& out, QString& why); //dir: the recipe folder the action started in
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data

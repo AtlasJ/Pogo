@@ -32,6 +32,25 @@ struct DiaRange {
 	bool valid() const { return minMm > 0.0 && maxMm > minMm; }
 };
 
+/*
+* How one kind of circle is found (Camera and circle finder): fid0, the four corners and the slot
+* circles each have their own set, saved with the recipe. The Matrox circle model finder underneath
+* (VisionApp::gs2FindCircle) takes them all.
+*/
+enum CircleKind { CircleFid0 = 0, CircleCorner, CircleSlot, CircleKindCount };
+enum CirclePolarity { PolarityBright = 0, PolarityDark, PolarityEither };
+enum CircleDetail { DetailMedium = 0, DetailHigh, DetailVeryHigh };
+struct CircleFinder {
+	DiaRange dia;
+	int polarity = PolarityBright;   //bright = the circle is lighter than around it: what every recipe used until 2026-10-31
+	int minScore = 60;               //0..100: the lowest match the finder keeps
+	int smoothness = 50;             //0..100: how much the edges are smoothed before fitting; higher = less noise, softer edges
+	int detail = DetailMedium;       //how many edges are extracted from the image
+	bool highAccuracy = false;       //finer sub-pixel position, a little slower
+};
+bool sameCircleFinder(const CircleFinder& a, const CircleFinder& b);
+QString circleKindName(int kind);    //"fid0 circle", "corner circles", "slot circles"
+
 //A: the table-not-empty check at the machine home position
 struct Safety1 {
 	QStringList emptyImages;   //file names in the recipe folder (gs2_empty_*.png, grey, 1/8 size), saved with no trolley loaded
@@ -65,11 +84,8 @@ struct Fid0 {
 	//one copy is enough to place fid0, whichever of them is clean that day
 	QVector<QPointF> patternOtherCopiesPx;
 	double minScore = 0.70;
-	DiaRange dia;
 	Fid0Found found;
 };
-//the fid0 settings a Find proves; when any of them changes the last Find no longer counts
-bool sameFid0Settings(const Fid0& a, const Fid0& b);
 
 //C: 3D Centre Z, read by the profiler at fid0 + an offset, starting at the 2D Z
 struct Z3D {
@@ -85,7 +101,6 @@ struct Z3D {
 struct FidRect {
 	double widthMm = 0.0, lengthMm = 0.0;   //typed from the drawing
 	TaughtXY corner[4];                     //TL TR BR BL, offsets from fid0
-	DiaRange dia;
 	double residualLimitMm = 0.10;
 	double maxAngleDeg = 1.0;
 };
@@ -94,7 +109,6 @@ struct FidRect {
 struct SlotSize {
 	bool set = false;
 	double widthMm = 0.0, lengthMm = 0.0;
-	DiaRange dia;               //the slot circles
 };
 
 //F: one slot; its centre is in the trolley frame (the midpoint of its TL and BR circles)
@@ -122,6 +136,7 @@ struct Inspection {
 };
 
 struct Setup {
+	CircleFinder circle[CircleKindCount];   //how each kind of circle is found
 	Safety1 safety1;
 	Fid0 fid0;
 	Z3D z3d;
@@ -135,6 +150,9 @@ struct Setup {
 	bool scanNegative = false;
 	int nextSlotId = 1, nextUnitId = 1;       //ids are handed out once and never reused
 };
+//the fid0 settings a Find proves - section B and how the fid0 circle is found; when any of them
+//changes the last Find no longer counts
+bool sameFid0Settings(const Setup& a, const Setup& b);
 
 //the page's sections; the order is the teaching order
 enum Section { SecSafety1 = 0, SecFid0, Sec3DZ, SecFidRect, SecSlotSize, SecSlots, SecUnits, SecInspections, SectionCount };

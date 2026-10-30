@@ -36,9 +36,9 @@ public:
 	void refreshScale();
 
 	//the Camera and circle finder tools; the actions themselves run in VisionApp
-	enum ToolAction { ToolFindInImage = 0, ToolSnapFind, ToolCentre, ToolDirection, ToolSaveMeasured };
-	//the circle the tools look for: the range typed in B, D or E (unsaved edits count), and its name
-	gs2::DiaRange toolCircle(QString* what = nullptr) const;
+	enum ToolAction { ToolFindInImage = 0, ToolSnapFind, ToolCentre, ToolDirection, ToolSaveMeasured, ToolStability };
+	//the circle the tools look for: the settings of the kind picked in Circle (unsaved edits count), and its name
+	gs2::CircleFinder toolCircle(QString* what = nullptr) const;
 	void showToolResult(const QString& text, bool ok);
 	void setMachineBusy(bool busy);      //tools greyed out while the machine is being driven
 	//the machine-wide pixel-to-mm choice: which one is in use, what it is, and whether a check is waiting to be saved
@@ -84,5 +84,7 @@ private:
 	void discard();
 	QString pxText(double minMm, double maxMm) const;
 	//the Find result that goes with these fid0 settings: the saved one when they are the saved settings
-	gs2::Fid0Found savedFoundFor(const gs2::Fid0& f) const;
+	gs2::Fid0Found savedFoundFor(const gs2::Setup& s) const;
+	int circleKind() const;                 //the kind picked in Circle: gs2::CircleKind
+	QString circleSummary(int kind) const;  //one line for sections B, D and E
 };

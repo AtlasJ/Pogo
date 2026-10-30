@@ -13,6 +13,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -63,7 +64,9 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 	});
 
 	//tools: not part of the recipe, so they never mark the page as edited
-	connect(ui.comboBox_tCircle, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { refreshStatus(); });
+	//the settings shown are the picked kind's; switching kinds is not an edit (fillWidgets blocks it)
+	connect(ui.comboBox_tCircle, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { fillWidgets(); });
+	connect(ui.toolButton_tStability, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolStability); });
 	connect(ui.toolButton_tFindImage, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolFindInImage); });
 	connect(ui.toolButton_tSnapFind, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolSnapFind); });
 	connect(ui.toolButton_tCentre, &QToolButton::clicked, this, [=]() { emit toolRequested(ToolCentre); });
@@ -96,23 +99,38 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 
 void GuidedSetup2Page::modify(const std::function<void(gs2::Setup&)>& change)
 {
-	const gs2::Fid0 before = _work.fid0;
+	const gs2::Setup before = _work;
 	change(_work);
-	if (!gs2::sameFid0Settings(before, _work.fid0)) _work.fid0.found = savedFoundFor(_work.fid0);
+	if (!gs2::sameFid0Settings(before, _work)) _work.fid0.found = savedFoundFor(_work);
 	fillWidgets();
 	emit setupChanged();
 }
 
-gs2::Fid0Found GuidedSetup2Page::savedFoundFor(const gs2::Fid0& f) const
+gs2::Fid0Found GuidedSetup2Page::savedFoundFor(const gs2::Setup& s) const
 {
-	return gs2::sameFid0Settings(f, _saved.fid0) ? _saved.fid0.found : gs2::Fid0Found();
+	return gs2::sameFid0Settings(s, _saved) ? _saved.fid0.found : gs2::Fid0Found();
+}
+
+int GuidedSetup2Page::circleKind() const
+{
+	return std::clamp(ui.comboBox_tCircle->currentIndex(), 0, (int)gs2::CircleKindCount - 1);
+}
+
+QString GuidedSetup2Page::circleSummary(int kind) const
+{
+	const gs2::CircleFinder& c = _work.circle[kind];
+	if (!c.dia.valid()) return QStringLiteral("Diameter not set: Camera and circle finder, %1").arg(gs2::circleKindName(kind));
+	static const char* const polarity[3] = { "bright", "dark", "bright or dark" };
+	return QStringLiteral("%1 .. %2 mm %3, %4, min score %5 (Camera and circle finder)")
+		.arg(QString::number(c.dia.minMm, 'f', 2), QString::number(c.dia.maxMm, 'f', 2), pxText(c.dia.minMm, c.dia.maxMm),
+			QLatin1String(polarity[(c.polarity >= 0 && c.polarity < 3) ? c.polarity : 0])).arg(c.minScore);
 }
 
 void GuidedSetup2Page::recordFid0Found(const gs2::Fid0Found& found)
 {
 	_work.fid0.found = found;
 	//only over a file that loaded (or was saved) cleanly, and only when the file holds these very settings
-	if (_loadResult == gs2::LoadResult::Loaded && !_recipeDir.isEmpty() && gs2::sameFid0Settings(_work.fid0, _saved.fid0)) {
+	if (_loadResult == gs2::LoadResult::Loaded && !_recipeDir.isEmpty() && gs2::sameFid0Settings(_work, _saved)) {
 		gs2::Setup s = _saved; //the file as it is, plus this result - other unsaved edits stay unsaved
 		s.fid0.found = found;
 		QString why;
@@ -157,19 +175,11 @@ void GuidedSetup2Page::setCameraConversion(bool useMeasured, const QString& text
 	ui.toolButton_tSaveMeasured->setEnabled(canSaveMeasured && ui.toolButton_tDirection->isEnabled());
 }
 
-gs2::DiaRange GuidedSetup2Page::toolCircle(QString* what) const
+gs2::CircleFinder GuidedSetup2Page::toolCircle(QString* what) const
 {
-	switch (ui.comboBox_tCircle->currentIndex()) {
-	case 1:
-		if (what) *what = QStringLiteral("corner circle (D)");
-		return _work.fidRect.dia;
-	case 2:
-		if (what) *what = QStringLiteral("slot circle (E)");
-		return _work.slotSize.dia;
-	default:
-		if (what) *what = QStringLiteral("fid0 circle (B)");
-		return _work.fid0.dia;
-	}
+	const int kind = circleKind();
+	if (what) *what = gs2::circleKindName(kind);
+	return _work.circle[kind];
 }
 
 void GuidedSetup2Page::showToolResult(const QString& text, bool ok)
@@ -187,6 +197,7 @@ void GuidedSetup2Page::setMachineBusy(bool busy)
 	ui.toolButton_tDirection->setEnabled(!busy);
 	ui.comboBox_tConversion->setEnabled(!busy);
 	ui.toolButton_tSaveMeasured->setEnabled(!busy && _canSaveMeasured);
+	ui.toolButton_tStability->setEnabled(!busy);
 	for (auto* b : { ui.toolButton_aSnapEmpty, ui.toolButton_aScore, ui.toolButton_aDelete, ui.toolButton_bTeachXY, ui.toolButton_bJogXY,
 		ui.toolButton_bSetStart, ui.toolButton_bSetStop, ui.toolButton_bLearn, ui.toolButton_bFind, ui.toolButton_save, ui.toolButton_discard })
 		b->setEnabled(!busy);
@@ -292,8 +303,6 @@ void GuidedSetup2Page::fillWidgets()
 	ui.spin_bStages->setValue(s.fid0.refineStages);
 	ui.dspin_bBox->setValue(s.fid0.focusBoxMm);
 	ui.dspin_bScore->setValue(s.fid0.minScore);
-	ui.dspin_bDiaMin->setValue(s.fid0.dia.minMm);
-	ui.dspin_bDiaMax->setValue(s.fid0.dia.maxMm);
 
 	ui.dspin_cStep->setValue(s.z3d.stepMm);
 	ui.dspin_cTarget->setValue(s.z3d.targetMm);
@@ -302,13 +311,18 @@ void GuidedSetup2Page::fillWidgets()
 
 	ui.dspin_dWidth->setValue(s.fidRect.widthMm);
 	ui.dspin_dLength->setValue(s.fidRect.lengthMm);
-	ui.dspin_dDiaMin->setValue(s.fidRect.dia.minMm);
-	ui.dspin_dDiaMax->setValue(s.fidRect.dia.maxMm);
 	ui.dspin_dResidual->setValue(s.fidRect.residualLimitMm);
 	ui.dspin_dAngle->setValue(s.fidRect.maxAngleDeg);
 
-	ui.dspin_eDiaMin->setValue(s.slotSize.dia.minMm);
-	ui.dspin_eDiaMax->setValue(s.slotSize.dia.maxMm);
+	//the circle finder settings of the kind picked in Circle
+	const gs2::CircleFinder& cf = s.circle[circleKind()];
+	ui.dspin_tDiaMin->setValue(cf.dia.minMm);
+	ui.dspin_tDiaMax->setValue(cf.dia.maxMm);
+	ui.comboBox_tPolarity->setCurrentIndex(cf.polarity);
+	ui.spin_tScore->setValue(cf.minScore);
+	ui.spin_tSmooth->setValue(cf.smoothness);
+	ui.comboBox_tDetail->setCurrentIndex(cf.detail);
+	ui.checkBox_tHighAcc->setChecked(cf.highAccuracy);
 
 	ui.dspin_gWidth->setValue(s.unitLayout.widthMm);
 	ui.dspin_gLength->setValue(s.unitLayout.lengthMm);
@@ -338,14 +352,21 @@ void GuidedSetup2Page::edited()
 {
 	if (_filling) return;
 	auto& s = _work;
-	const gs2::Fid0 fid0Before = s.fid0;
+	const gs2::Setup setupBefore = s;
 	s.safety1.threshold = shown(ui.dspin_aThreshold);
 
 	s.fid0.stepMm = shown(ui.dspin_bStep);
 	s.fid0.refineStages = ui.spin_bStages->value();
 	s.fid0.focusBoxMm = shown(ui.dspin_bBox);
 	s.fid0.minScore = shown(ui.dspin_bScore);
-	s.fid0.dia = { shown(ui.dspin_bDiaMin), shown(ui.dspin_bDiaMax) };
+
+	gs2::CircleFinder& cf = s.circle[circleKind()];
+	cf.dia = { shown(ui.dspin_tDiaMin), shown(ui.dspin_tDiaMax) };
+	cf.polarity = std::max(0, ui.comboBox_tPolarity->currentIndex());
+	cf.minScore = ui.spin_tScore->value();
+	cf.smoothness = ui.spin_tSmooth->value();
+	cf.detail = std::max(0, ui.comboBox_tDetail->currentIndex());
+	cf.highAccuracy = ui.checkBox_tHighAcc->isChecked();
 
 	s.z3d.stepMm = shown(ui.dspin_cStep);
 	s.z3d.targetMm = shown(ui.dspin_cTarget);
@@ -354,11 +375,8 @@ void GuidedSetup2Page::edited()
 
 	s.fidRect.widthMm = shown(ui.dspin_dWidth);
 	s.fidRect.lengthMm = shown(ui.dspin_dLength);
-	s.fidRect.dia = { shown(ui.dspin_dDiaMin), shown(ui.dspin_dDiaMax) };
 	s.fidRect.residualLimitMm = shown(ui.dspin_dResidual);
 	s.fidRect.maxAngleDeg = shown(ui.dspin_dAngle);
-
-	s.slotSize.dia = { shown(ui.dspin_eDiaMin), shown(ui.dspin_eDiaMax) };
 
 	const gs2::UnitLayout before = s.unitLayout;
 	s.unitLayout.widthMm = shown(ui.dspin_gWidth);
@@ -387,7 +405,7 @@ void GuidedSetup2Page::edited()
 	s.scanNegative = (dir % 2) == 1;
 
 	//a Find proves the fid0 settings it ran with, not these
-	if (!gs2::sameFid0Settings(fid0Before, s.fid0)) s.fid0.found = savedFoundFor(s.fid0);
+	if (!gs2::sameFid0Settings(setupBefore, s)) s.fid0.found = savedFoundFor(s);
 
 	refreshStatus();
 	emit setupChanged();
@@ -437,7 +455,7 @@ void GuidedSetup2Page::refreshStatus()
 	ui.label_bPattern->setText(s.fid0.patternFile.isEmpty() ? QStringLiteral("not learnt") : s.fid0.patternFile);
 	const double umPerPx = ScaleManager::instance().um_per_px();
 	ui.label_bBoxPx->setText(umPerPx > 0.0 ? QStringLiteral("= %1 px").arg(std::lround(s.fid0.focusBoxMm * 1000.0 / umPerPx)) : QString());
-	ui.label_bDiaPx->setText(pxText(s.fid0.dia.minMm, s.fid0.dia.maxMm));
+	ui.label_bCircle->setText(circleSummary(gs2::CircleFid0));
 
 	ui.label_cSpot->setText(xyText(s.z3d.offset, QStringLiteral("d")));
 	ui.label_cDiff->setText(s.z3d.diffSet ? QStringLiteral("%1 mm").arg(mm3(s.z3d.diffMm)) : QStringLiteral("not set"));
@@ -447,7 +465,7 @@ void GuidedSetup2Page::refreshStatus()
 	for (int i = 0; i < 4; i++)
 		corners << QStringLiteral("%1   %2").arg(QLatin1String(cornerName[i]), xyText(s.fidRect.corner[i], QStringLiteral("d")));
 	ui.label_dCorners->setText(corners.join(QLatin1Char('\n')));
-	ui.label_dDiaPx->setText(pxText(s.fidRect.dia.minMm, s.fidRect.dia.maxMm));
+	ui.label_dCircle->setText(circleSummary(gs2::CircleCorner));
 
 	const gs2geo::RectFit fit = gs2::taughtFit(s);
 	if (!fit.pose.valid) {
@@ -466,7 +484,7 @@ void GuidedSetup2Page::refreshStatus()
 
 	ui.label_eSize->setText(s.slotSize.set ? QStringLiteral("%1 x %2 mm").arg(mm3(s.slotSize.widthMm), mm3(s.slotSize.lengthMm))
 		: QStringLiteral("not measured"));
-	ui.label_eDiaPx->setText(pxText(s.slotSize.dia.minMm, s.slotSize.dia.maxMm));
+	ui.label_eCircle->setText(circleSummary(gs2::CircleSlot));
 
 	ui.listWidget_fSlots->clear();
 	for (const auto& sl : s.slotList)
@@ -509,11 +527,11 @@ void GuidedSetup2Page::refreshStatus()
 	ui.label_iState->setText(QStringLiteral("Build steps 3 and 4"));
 	ui.label_iState->setStyleSheet(QStringLiteral("color:#A8B0BF;"));
 
-	QString circleName;
-	const gs2::DiaRange circle = toolCircle(&circleName);
-	ui.label_tRange->setText(circle.valid()
-		? QStringLiteral("%1 .. %2 mm %3").arg(mm3(circle.minMm), mm3(circle.maxMm), pxText(circle.minMm, circle.maxMm))
-		: QStringLiteral("Type the %1 diameter range first").arg(circleName));
+	static const char* const usedBy[gs2::CircleKindCount] = { "used by section B: Teach XY, Learn pattern, Find",
+		"used by section D: the four corners", "used by section E: the slot circles" };
+	const gs2::CircleFinder& cf = s.circle[circleKind()];
+	ui.label_tRange->setText(QLatin1String(usedBy[circleKind()]));
+	ui.label_tDiaPx->setText(cf.dia.valid() ? pxText(cf.dia.minMm, cf.dia.maxMm) : QStringLiteral("type the diameter range"));
 
 	const bool dirty = isDirty();
 	ui.toolButton_save->setEnabled(dirty && !_recipeDir.isEmpty());
