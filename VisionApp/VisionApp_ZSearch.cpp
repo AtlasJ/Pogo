@@ -10,6 +10,7 @@
 #include "VisionApp.h"
 #include "AuditLog.h"
 #include "3DOpticsTab.h"
+#include "AxisMoveSequence.h"
 
 #include <QSaveFile>
 #include <QDir>
@@ -778,8 +779,33 @@ void VisionApp::zsPause(int ms)
 * target - the same test JobThread::settleAxis applies, with up to two re-issues. The event loop
 * keeps running (only the on-screen Stop among user input - see StopOnlyInput) so a Stop from the
 * panel or the screen lands: VisionApp::stopRun stops the axes and sets _stopRun, which ends the wait.
+* Several axes go out in the groups the Axis Move Sequence setting gives (AxisMoveSequence.h), each
+* landed before the next is sent.
 */
 bool VisionApp::zsMove(const QVector<QPair<int, double>>& targets, QString& why)
+{
+	for (const auto& t : targets)
+		if (!zsCheckTarget(t.first, t.second, why)) return false;
+	if (targets.size() < 2) return zsMoveGroup(targets, why);
+
+	QVector<int> axes;
+	bool zDown = false;
+	for (const auto& t : targets) {
+		axes.push_back(t.first);
+		if (t.first != (int)Axis::Z) continue;
+		const auto pz = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
+		zDown = pz && t.second > *pz;
+	}
+	const auto groups = axisseq::groups(SystemData::instance()._axisMoveSequence.load(), axes, zDown, (int)Axis::X, (int)Axis::Y, (int)Axis::Z);
+	for (const auto& g : groups) {
+		QVector<QPair<int, double>> part;
+		for (const auto& t : targets) if (g.contains(t.first)) part.push_back(t);
+		if (!zsMoveGroup(part, why)) return false;
+	}
+	return true;
+}
+
+bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString& why)
 {
 	auto& mc = MotionController::instance();
 	for (const auto& t : targets)

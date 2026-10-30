@@ -150,6 +150,8 @@ public:
 
 	std::atomic<bool> _homeOnStartup = true; //auto home the machine after login
 
+	std::atomic<int> _axisMoveSequence = 1; //axisseq::Sequence: how multi-axis moves go out (AxisMoveSequence.h)
+
 	//barcode reader production flow (recipe settings + taught camera-to-reader offsets)
 	std::atomic<int> _brFirstReader = 1;        //which reader scans first: 1 or 2
 	std::atomic<int> _brR1Duration_ms = 2000;   //read duration per reader

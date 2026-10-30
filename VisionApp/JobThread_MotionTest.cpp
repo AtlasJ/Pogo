@@ -461,7 +461,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 	auto runRandom = [&](int pct, int seconds) {
 		const QString tag = pct == 100 ? QStringLiteral("Part C") : QStringLiteral("Part C %1 %").arg(pct);
 		section(QStringLiteral("PART C - RANDOM MOVES, ALL THREE AXES, %1 % SPEED").arg(pct));
-		out << "  X, Y and Z go together (as jog() sends them) to random points inside the middle 98 % of the soft limits,\n"
+		out << "  X, Y and Z go together (as jog() sent them before 30 Oct 2026) to random points inside the middle 98 % of the soft limits,\n"
 			<< "  at " << pct << " % of the speeds set now, for " << seconds << " s. From each axis's own \"move done\" its encoder is read every\n"
 			<< "  few ms for " << kFollowMs / 1000 << " s.\n"
 			<< "  Error = encoder - target. Settled = within the tolerance from then on, to the end of that second.\n"
@@ -515,7 +515,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 			}
 			say(QStringLiteral("%1: random X/Y/Z moves for %2 s - Z goes down to its lowest soft limit").arg(tag).arg(seconds));
 
-			const int order[3] = { (int)Axis::Z, (int)Axis::X, (int)Axis::Y }; //as jog() sends them
+			const int order[3] = { (int)Axis::Z, (int)Axis::X, (int)Axis::Y }; //as jog() sent them before 30 Oct 2026
 			auto stopAll = [&]() { for (int axis = 0; axis < 3; axis++) mc.stop_move(m_motionID, axis); };
 			auto allDone = [&]() {
 				for (int axis = 0; axis < 3; axis++) if (!mc.move_done(m_motionID, 0, axis)) return false;
@@ -1043,7 +1043,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 	*/
 	if (pairSeconds > 0) {
 		section(QStringLiteral("PART E - TWO AXES TOGETHER, THE THIRD STANDING STILL"));
-		out << "  X+Y, then X+Z, then Y+Z, " << pairSeconds << " s each. The two go together (as jog() sends them) to random points in\n"
+		out << "  X+Y, then X+Z, then Y+Z, " << pairSeconds << " s each. The two go together (as jog() sent them before 30 Oct 2026) to random points in\n"
 			<< "  the middle 98 % of their soft limits at the speeds set now; every landing is followed for " << kFollowMs / 1000 << " s. The third\n"
 			<< "  axis is read (encoder - command) before and after every move.\n"
 			<< "  STEP = a settled error, or the still axis's reading, that changed by " << f3(kStepMm) << " mm or more with one move.\n"
@@ -1072,7 +1072,7 @@ void JobThread::motionAccuracyTest(int axesMask, double distanceMm, int repeats,
 				int dir[3] = {};          //+1 / -1 for a moving axis, 0 for the still one
 			};
 			const int pairs[3][2] = { { (int)Axis::X, (int)Axis::Y }, { (int)Axis::X, (int)Axis::Z }, { (int)Axis::Y, (int)Axis::Z } };
-			const int order[3] = { (int)Axis::Z, (int)Axis::X, (int)Axis::Y }; //as jog() sends them
+			const int order[3] = { (int)Axis::Z, (int)Axis::X, (int)Axis::Y }; //as jog() sent them before 30 Oct 2026
 			const int last = kFollowMarks - 1;
 			bool eAborted = false;
 			QString eWhy;

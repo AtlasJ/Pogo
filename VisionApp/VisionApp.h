@@ -751,6 +751,7 @@ private:
 	bool zsCheckTarget(int axis, double target, QString& why);
 	bool zsCheckSetup(bool threeD, double x, double y, QString& why); //settings complete and every target inside the soft limits
 	bool zsMove(const QVector<QPair<int, double>>& targets, QString& why); //checked: refused, stopped or not landed = false
+	bool zsMoveGroup(const QVector<QPair<int, double>>& targets, QString& why); //zsMove's axes that go out together
 	bool zsMoveToXY(double x, double y, double clearZ, QString& why);    //lifts to clearZ first, never slides below it
 	void zsPause(int ms);
 	bool zsSample2D(double z, bool confirm, zsearch::FocusSample& out, QString& why);

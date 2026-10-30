@@ -286,6 +286,7 @@
     <ClInclude Include="AlgoSetupTypes.h" />
     <ClInclude Include="SafetyCheckTypes.h" />
     <ClInclude Include="GuidedSetupTypes.h" />
+    <ClInclude Include="AxisMoveSequence.h" />
     <ClInclude Include="ZSearchTypes.h" />
     <ClInclude Include="ZSearch.h" />
     <ClInclude Include="GuidedSetup2Types.h" />

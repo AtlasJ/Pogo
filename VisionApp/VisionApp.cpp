@@ -53,6 +53,7 @@
 
 #include "CAMManager.h"
 #include "SystemData.h"
+#include "AxisMoveSequence.h"
 
 #include <QMetaType>
 
@@ -1449,6 +1450,16 @@ void VisionApp::connectSignalAndSlot()
 		_autoLogoutMinutes = (idx >= 0 && idx < 6) ? kAutoLogoutMin[idx] : 0;
 		if (_autoLogoutMinutes > 0) _idleLogoutTimer->start(_autoLogoutMinutes * 60000);
 	}
+
+	//machine-wide; takes effect from the next move (JobThread::jog, homing, zsMove read it per move)
+	connect(ui.comboBox_axisMoveSequence, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=](int idx) {
+		if (idx < 0 || idx >= axisseq::SequenceCount) return;
+		SystemData::instance()._axisMoveSequence = idx;
+		_systemObj.insert(QStringLiteral("Axis_Move_Sequence"), axisseq::key(idx));
+		updateSystemInfo(_systemObj);
+		ct::logger::info("[Motion] Axis Move Sequence set to: %s", qPrintable(axisseq::name(idx)));
+		AuditLog::instance().log(QStringLiteral("AXIS_MOVE_SEQUENCE"), axisseq::name(idx));
+	});
 
 	connect(ui.checkBox_machineDebugMode, &QCheckBox::stateChanged, this, [=](int state) {
 		SystemData::instance()._machineDebugMode = state;
@@ -5077,6 +5088,8 @@ void VisionApp::setUserEnvironment(AccessLevel accessLevel)
 	ui.comboBox_autoLogout->setToolTip(maySetAutoLogout
 		? QString()
 		: tr("Only Admin and Engineer can change the auto logout period."));
+	//how the machine moves: the same two levels
+	ui.comboBox_axisMoveSequence->setEnabled(maySetAutoLogout);
 
 	//handle adaptive resolution
 	if (g_viewMode == (int)ViewMode::PLANE) {
@@ -9411,6 +9424,17 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			int idx = 5; //Never
 			for (int i = 0; i < 6; i++) if (kAutoLogoutMin[i] == mins) { idx = i; break; }
 			ui.comboBox_autoLogout->setCurrentIndex(idx);
+		}
+
+		//Axis Move Sequence: how multi-axis moves go out (AxisMoveSequence.h); missing = XY together, Z alone
+		{
+			const int seq = systemObj.contains("Axis_Move_Sequence")
+				? axisseq::fromKey(jsonHelper::getString(_systemObj, "Axis_Move_Sequence"))
+				: (systemObj.insert("Axis_Move_Sequence", axisseq::key(axisseq::XYTogetherZAlone)), (int)axisseq::XYTogetherZAlone);
+			SystemData::instance()._axisMoveSequence = seq;
+			QSignalBlocker b(ui.comboBox_axisMoveSequence);
+			ui.comboBox_axisMoveSequence->setCurrentIndex(seq);
+			ct::logger::info("[Motion] Axis Move Sequence: %s", qPrintable(axisseq::name(seq)));
 		}
 
 		SystemData::instance()._enableFiducialRotate = systemObj.contains("Enable_Fiducial_Rotate")

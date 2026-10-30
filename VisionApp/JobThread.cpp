@@ -16,6 +16,7 @@
 #include <QDateTime>
 #include <QTextStream>
 #include "SystemData.h"
+#include "AxisMoveSequence.h"
 #include "CAMManager.h"
 #include "ProfilerManager.h"
 #include "KeyenceSettings.h"
@@ -7202,14 +7203,40 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 	moveParams.push_back(x_param);
 	moveParams.push_back(y_param);
 
-	MotionController::instance().absolute_move(m_motionID, axisZ, z_mm);
-	if (type == "3D") {
-		MotionController::instance().absolute_move(m_motionID, axisX, x_mm);
-	}
-	else {
-		MotionController::instance().absolute_move(m_motionID, axisX, x_mm);
-		MotionController::instance().absolute_move(m_motionID, axisY, y_mm);
-		//MotionController::instance().absolute_multi_move(m_motionID, moveParams);
+	/*
+	* The axes go out in the groups the Axis Move Sequence setting gives (AxisMoveSequence.h), each
+	* group waited for and settled before the next is sent; the last one is waited for below. A 3D
+	* move leaves Y where it is. Z unreadable counts as not going down: Z first, as the old order.
+	* A group the card refuses (soft limit, motion disabled) ends the move there: the groups after it
+	* assumed it happened - XY must not slide over the trolley after a refused Z up - and only the
+	* axes actually sent are settled below, since settleAxis re-issues the move of an axis it finds off.
+	*/
+	//MotionController::instance().absolute_multi_move(m_motionID, moveParams);
+	const auto zNow = MotionController::instance().get_position_mm(m_motionID, 0, axisZ);
+	const bool zDown = zNow.has_value() && z_mm > zNow.value();
+	//Z already there (under half a pulse off) stays out of it: no extra step, wait and settle per move
+	QVector<int> axes;
+	if (!zNow.has_value() || std::abs(z_mm - zNow.value()) > 0.0005) axes.push_back(axisZ);
+	axes.push_back(axisX);
+	if (type != "3D") axes.push_back(axisY);
+	const auto groups = axisseq::groups(SystemData::instance()._axisMoveSequence.load(), axes, zDown, axisX, axisY, axisZ);
+	auto target = [&](int axis) { return axis == axisX ? x_mm : axis == axisY ? y_mm : z_mm; };
+	QVector<int> sent;
+	for (int g = 0; g < groups.size(); g++) {
+		if (g > 0 && m_stopRun) break;
+		bool refused = false;
+		for (int axis : groups[g]) {
+			if (MotionController::instance().absolute_move(m_motionID, axis, target(axis))) sent.push_back(axis);
+			else refused = true;
+		}
+		if (refused) {
+			ct::logger::error("[Motion] Jog to %.3f, %.3f, %.3f: the card refused part of the move - the rest is not sent", x_mm, y_mm, z_mm);
+			break;
+		}
+		if (g + 1 == groups.size()) break;
+		os_tool::doNothing(m_motionReadDelay_ms);
+		for (int axis : groups[g]) waitAxis(axis);
+		for (int axis : groups[g]) settleAxis(axis, target(axis));
 	}
 
 	if (waitJogDone) {
@@ -7224,9 +7251,9 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 		}
 
 		//the card's own feedback, read now, decides whether each axis really landed
-		settleAxis(axisX, x_mm);
-		if (type != "3D") settleAxis(axisY, y_mm);
-		settleAxis(axisZ, z_mm);
+		if (sent.contains(axisX)) settleAxis(axisX, x_mm);
+		if (sent.contains(axisY)) settleAxis(axisY, y_mm);
+		if (sent.contains(axisZ)) settleAxis(axisZ, z_mm);
 
 		/*
 		* Read from the card, not from SystemData's coordinate: that is the UI's 300 ms poll,
@@ -7737,7 +7764,8 @@ void JobThread::homeAll()
 }
 
 /*
-* Home X, Y and Z in that order, leaving out the axes in `skip`.
+* Home in the order the Axis Move Sequence setting gives a move up (Z first, unless all axes go
+* together), leaving out the axes in `skip`. A Stop part-way zeroes nothing and reports IDLE.
 *
 * A skipped axis is not homed, not waited on - waitAxis() on an alarmed drive sits out its full
 * two-minute timeout - and not zeroed, because zeroing an axis that never reached its switch
@@ -7763,12 +7791,21 @@ void JobThread::homeAxesExcept(const QSet<int>& skip)
 			"until %1 is recovered and homed too.").arg(left.join("/")));
 	}
 
-	for (int i = 0; i < 3; i++)
-		if (!skip.contains(axes[i])) MotionController::instance().home(m_motionID, axes[i]);
-
-	os_tool::doNothing(m_motionReadDelay_ms);
-	for (int i = 0; i < 3; i++)
-		if (!skip.contains(axes[i])) waitAxis(axes[i]);
+	//homing takes Z up: in the groups the Axis Move Sequence setting gives a move up (see jog())
+	QVector<int> homing;
+	for (int i = 2; i >= 0; i--) if (!skip.contains(axes[i])) homing.push_back(axes[i]);
+	const auto groups = axisseq::groups(SystemData::instance()._axisMoveSequence.load(), homing, false, axes[0], axes[1], axes[2]);
+	for (int g = 0; g < groups.size() && !m_stopRun; g++) {
+		for (int axis : groups[g]) MotionController::instance().home(m_motionID, axis);
+		os_tool::doNothing(m_motionReadDelay_ms);
+		for (int axis : groups[g]) waitAxis(axis);
+	}
+	//an axis never sent home, or stopped on the way: zeroing now would plant a false origin
+	if (m_stopRun) {
+		ct::logger::warn("[Motion] Homing stopped - no axis zeroed, the machine is NOT homed");
+		MachineController::instance().notifyEvent(MachineEvent::IDLE);
+		return;
+	}
 
 	for (int i = 0; i < 3; i++)
 		if (!skip.contains(axes[i])) MotionController::instance().set_position_mm(m_motionID, 0, axes[i], 0.0);

@@ -14770,6 +14770,71 @@ border: none;
                        </item>
                       </layout>
                      </item>
+                     <item row="19" column="0">
+                      <layout class="QHBoxLayout" name="hl_axisMoveSequence">
+                       <item>
+                        <widget class="QLabel" name="label_axisMoveSequence">
+                         <property name="font">
+                          <font>
+                           <pointsize>9</pointsize>
+                          </font>
+                         </property>
+                         <property name="toolTip">
+                          <string>How a move that needs more than one axis goes out. Each group lands before the next one starts. Going down, the sideways move comes first and Z last; otherwise Z first, then sideways.&#10;One axis at a time: X, Y, Z going down, else Z, Y, X.&#10;XY together, Z alone: X and Y move together, Z always on its own.&#10;All axes together: everything at once (the behaviour before 30 Oct 2026).&#10;Used by production moves, homing, the Z search and the Guided Setup (new). The Motion Accuracy Test keeps its own.</string>
+                         </property>
+                         <property name="styleSheet">
+                          <string notr="true">color:#F0F0F0;</string>
+                         </property>
+                         <property name="text">
+                          <string>Axis Move Sequence</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QComboBox" name="comboBox_axisMoveSequence">
+                         <property name="font">
+                          <font>
+                           <pointsize>9</pointsize>
+                          </font>
+                         </property>
+                         <property name="toolTip">
+                          <string>How a move that needs more than one axis goes out. Each group lands before the next one starts. Going down, the sideways move comes first and Z last; otherwise Z first, then sideways.&#10;One axis at a time: X, Y, Z going down, else Z, Y, X.&#10;XY together, Z alone: X and Y move together, Z always on its own.&#10;All axes together: everything at once (the behaviour before 30 Oct 2026).&#10;Used by production moves, homing, the Z search and the Guided Setup (new). The Motion Accuracy Test keeps its own.</string>
+                         </property>
+                         <property name="currentIndex">
+                          <number>1</number>
+                         </property>
+                         <item>
+                          <property name="text">
+                           <string>One axis at a time</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>XY together, Z alone</string>
+                          </property>
+                         </item>
+                         <item>
+                          <property name="text">
+                           <string>All axes together</string>
+                          </property>
+                         </item>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="hs_axisMoveSequence">
+                         <property name="orientation">
+                          <enum>Qt::Horizontal</enum>
+                         </property>
+                         <property name="sizeHint" stdset="0">
+                          <size>
+                           <width>40</width>
+                           <height>20</height>
+                          </size>
+                         </property>
+                        </spacer>
+                       </item>
+                      </layout>
+                     </item>
                      <item row="17" column="0">
                       <widget class="QCheckBox" name="checkBox_bypassInspectionMode">
                        <property name="font">
