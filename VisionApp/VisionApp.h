@@ -713,8 +713,9 @@ private:
 	//the circle nearest nearPx (image px), or the image centre without it; draws them all
 	//allPx (optional): the centre of every circle in range, px
 	//cf: how this kind of circle is found (Camera and circle finder) - diameter, polarity, score, edges
+	//none (optional): set when the finder ran and saw no circle in range - a snap worth taking again
 	bool gs2FindCircle(const QImage& img, const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr,
-		QVector<QPointF>* allPx = nullptr);
+		QVector<QPointF>* allPx = nullptr, bool* none = nullptr);
 	bool gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr); //snap here, find, convert; no move
 	//expectPx: where the circle must be in the FIRST snap (the pattern said so), within kExpectTolMm, or it fails
 	bool gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx = nullptr);

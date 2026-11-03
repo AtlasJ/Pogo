@@ -34,9 +34,15 @@ namespace {
 	constexpr int kSnapTimeoutMs = 4000;
 	constexpr double kCentreTolMm = 0.1;     //Centre on circle: done once the circle is this close to the image centre
 	constexpr int kCentreMoves = 3;          //a move lands within 0.05 mm, so one is normally enough
-	constexpr double kDirStepMm = 5.0;       //direction check: +/- this on each axis, about 180 px at 27 um/px
+	//direction check: +/- this on each axis, about 180 px at 27 um/px. Not more: the trolley's circles
+	//sit ~12.7 mm apart, and at the diagonal corners of a bigger grid a neighbour is nearer the image
+	//centre than the circle being measured
+	constexpr double kDirStepMm = 5.0;
 	constexpr double kDirMaxScalePct = 0.3;  //0.3 % is 0.05 mm at a quarter of the image from the centre
-	constexpr double kDirMaxAngleDeg = 0.15; //0.15 deg is 0.045 mm there
+	//0.3 deg is 0.09 mm there. The Y axis's rotation comes out -0.34 .. -0.53 deg run to run (IPC
+	//2026-10-30 and 2026-11-03; X's agrees within 0.01): X does not hold still while Y moves. At 0.15
+	//a re-check failed the measurement it had just saved
+	constexpr double kDirMaxAngleDeg = 0.3;
 	//a point further than this from the fitted matrix: something moved, or another circle was picked
 	//(those give 3-4 px and tens of px). Settled IPC checks (2026-10-30 16:31/16:33) sit at 0.4-0.5 px rms,
 	//0.73-0.97 max, in the same pattern twice: the head and the encoders differ by ~20 um from move to
@@ -54,6 +60,9 @@ namespace {
 	constexpr int kQuietSnaps = 5;
 	constexpr int kQuietAgree = 3;
 	constexpr double kJitterPx = 1.0;
+	//A circle fitted worse than this is no measurement: good fits are 0.15-0.27 px, the stray ones on the
+	//IPC (2026-11-03) 10-17 px. A snap like that, or one with no circle at all, is snapped again
+	constexpr double kMaxFitErrPx = 2.0;
 	constexpr int kStabilitySnaps = 10;      //Stability test
 	constexpr int kStillMaxMs = 6000;        //the IPC took 0.8-4.7 s
 	constexpr int kStillGapMs = 50;          //between snaps, so a Stop gets through
@@ -63,6 +72,10 @@ namespace {
 	QString mm(double v) { return QString::number(v, 'f', 3); }
 	QString signedMm(double v) { return (v >= 0.0 ? QStringLiteral("+") : QString()) + QString::number(v, 'f', 3); }
 	QString signedNum(double v, int decimals) { return (v >= 0.0 ? QStringLiteral("+") : QString()) + QString::number(v, 'f', decimals); }
+	QString badFit(double diaPx, double fitErr)
+	{
+		return QStringLiteral("a bad fit: %1 px across, edges %2 px off the circle").arg(diaPx, 0, 'f', 1).arg(fitErr, 0, 'f', 1);
+	}
 
 	//image px per stage mm (how a fixed circle moves when the stage moves) from world mm per image px
 	bool pxPerMm(const double a[2][2], double e[2][2])
@@ -455,8 +468,9 @@ namespace {
 * The Matrox circle model finder with every setting of a gs2::CircleFinder. mtrx::find_circles fixes
 * all but the size and quietly turns "either polarity" into "bright", so the Guided Setup (new) runs
 * its own. Matrox errors are not shown as message boxes on this thread while it runs - one bad setting
-* would otherwise pop a box per call - and come back as why. Smoothness, detail and accuracy are
-* tuning: one Matrox does not take is logged and left at its default rather than failing the find.
+* would otherwise pop a box per call - and come back as why. Smoothness and detail are tuning: one
+* Matrox does not take is logged and left at its default rather than failing the find. (M_ACCURACY
+* was here until the IPC showed every circle model refusing it, error 21001 - 2026-11-03.)
 */
 bool milCircles(const QImage& img, const gs2::CircleFinder& cf, double minR, double maxR, std::vector<mtrx::Circle>& out,
 	std::vector<double>& fitErr, QString& why)
@@ -508,8 +522,6 @@ bool milCircles(const QImage& img, const gs2::CircleFinder& cf, double minR, dou
 			tune("edge smoothness");
 			MmodControl(ctx, M_CONTEXT, M_DETAIL_LEVEL, cf.detail == gs2::DetailVeryHigh ? M_VERY_HIGH : cf.detail == gs2::DetailHigh ? M_HIGH : M_MEDIUM);
 			tune("edge detail");
-			MmodControl(ctx, M_CONTEXT, M_ACCURACY, cf.highAccuracy ? M_HIGH : M_MEDIUM);
-			tune("accuracy");
 			MmodPreprocess(ctx, M_DEFAULT);
 			failed("preparing the finder");
 		}
@@ -558,10 +570,11 @@ bool milCircles(const QImage& img, const gs2::CircleFinder& cf, double minR, dou
 * stood is the caller's: only it knows where this image was taken.
 */
 bool VisionApp::gs2FindCircle(const QImage& image, const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx,
-	QVector<QPointF>* allPx)
+	QVector<QPointF>* allPx, bool* none)
 {
 	out = Gs2Circle();
 	if (allPx) allPx->clear();
+	if (none) *none = false;
 	if (image.isNull()) { why = QStringLiteral("there is no image"); return false; }
 	double a[2][2];
 	if (!gs2Conversion(image.width(), image.height(), a, why)) return false;
@@ -579,6 +592,7 @@ bool VisionApp::gs2FindCircle(const QImage& image, const gs2::CircleFinder& cf, 
 
 	if (circles.empty()) {
 		clearGuidedMarks();
+		if (none) *none = true;
 		why = QStringLiteral("no circle between %1 and %2 mm (%3 .. %4 px) in the image")
 			.arg(mm(cf.dia.minMm), mm(cf.dia.maxMm)).arg(std::lround(minPx)).arg(std::lround(maxPx));
 		return false;
@@ -650,7 +664,7 @@ bool VisionApp::gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QStri
 	QVector<Gs2Circle> quiet; //the snaps since the encoders last moved
 	qint64 quietSince = 0;
 	QString how;
-	int snaps = 0;
+	int snaps = 0, missed = 0;
 	while (true) {
 		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
@@ -661,13 +675,34 @@ bool VisionApp::gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QStri
 		if (!guidedSnapFov(img, kSnapTimeoutMs)) { why = QStringLiteral("no image from the camera"); return false; }
 		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 		Gs2Circle cur;
-		if (!gs2FindCircle(img, cf, cur, why, nearPx)) return false;
+		bool none = false;
+		QString miss;
+		if (!gs2FindCircle(img, cf, cur, miss, nearPx, nullptr, &none)) {
+			if (!none) { why = miss; return false; } //the finder itself failed: another snap will not help
+		}
+		else if (cur.fitErr > kMaxFitErrPx) {
+			none = true;
+			miss = badFit(cur.diaPx, cur.fitErr);
+		}
+		snaps++;
+		//a frame now and then comes back without the circle or with a bad fit (IPC 2026-11-03: the same
+		//grid point of the direction check passed twice and failed twice) - snap again, within the time
+		if (none) {
+			missed++;
+			ct::logger::info("[GuidedSetup2] Circle snap %d missed: %s", snaps, qPrintable(miss));
+			if (timer.elapsed() > kStillMaxMs) {
+				why = QStringLiteral("the camera did not settle within %1 s: %2 of %3 snaps missed the circle (last: %4)")
+					.arg(kStillMaxMs / 1000).arg(missed).arg(snaps).arg(miss);
+				return false;
+			}
+			zsPause(kStillGapMs);
+			continue;
+		}
 		cur.haveStage = true;
 		cur.stageX = *x;
 		cur.stageY = *y;
 		cur.wx = cur.stageX + cur.offX;
 		cur.wy = cur.stageY + cur.offY;
-		snaps++;
 
 		const Gs2Circle prev = quiet.isEmpty() ? cur : quiet.back();
 		if (!quiet.isEmpty() && !stageStill(cur, prev)) quiet.clear();
@@ -718,6 +753,7 @@ bool VisionApp::gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QStri
 		}
 		zsPause(kStillGapMs);
 	}
+	if (missed > 0) how += QStringLiteral("; %1 snap(s) missed the circle").arg(missed);
 
 	ct::logger::info("[GuidedSetup2] Circle: %d in range, nearest dia %.1f px score %.2f at (%.2f, %.2f) px = %+.3f, %+.3f mm off centre; camera %.3f, %.3f -> circle %.3f, %.3f (still after %d snaps, %lld ms: %s)",
 		out.count, out.diaPx, out.score, out.px, out.py, out.offX, out.offY, out.stageX, out.stageY, out.wx, out.wy, snaps, (long long)timer.elapsed(), qPrintable(how));
@@ -985,11 +1021,13 @@ bool VisionApp::gs2CheckDirection(const gs2::CircleFinder& cf, bool& pass, QStri
 /*
 * Stability test: the circle snapped kStabilitySnaps times where the camera stands, nothing moved.
 * How far its centre and diameter wander from snap to snap is what the settle has to live with, so
-* this is the number to tune the circle settings against.
+* this is the number to tune the circle settings against. A snap with no circle or a bad fit is
+* counted as missed and left out, as the settle leaves it out and snaps again.
 */
 bool VisionApp::gs2StabilityTest(const gs2::CircleFinder& cf, QString& report, QString& why)
 {
 	QVector<Gs2Circle> shots;
+	QStringList misses; //snaps with no circle or a bad fit: counted, not measured - the settle snaps those again
 	QPointF follow;
 	for (int i = 0; i < kStabilitySnaps; i++) {
 		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
@@ -998,13 +1036,32 @@ bool VisionApp::gs2StabilityTest(const gs2::CircleFinder& cf, QString& report, Q
 		if (!guidedSnapFov(img, kSnapTimeoutMs)) { why = QStringLiteral("no image from the camera"); return false; }
 		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 		Gs2Circle c;
-		//the same circle every time: the one nearest the first snap's
-		if (!gs2FindCircle(img, cf, c, why, shots.isEmpty() ? nullptr : &follow)) { why = QStringLiteral("snap %1: %2").arg(i + 1).arg(why); return false; }
-		if (shots.isEmpty()) follow = QPointF(c.px, c.py);
-		shots << c;
-		ct::logger::info("[GuidedSetup2] Stability snap %d: centre (%.2f, %.2f) px, dia %.2f px, score %.2f, fit error %.3f, %d in range",
-			i + 1, c.px, c.py, c.diaPx, c.score, c.fitErr, c.count);
+		bool none = false;
+		QString miss;
+		//the same circle every time: the one nearest the first one found
+		if (!gs2FindCircle(img, cf, c, miss, shots.isEmpty() ? nullptr : &follow, nullptr, &none)) {
+			if (!none) { why = QStringLiteral("snap %1: %2").arg(i + 1).arg(miss); return false; }
+		}
+		else if (c.fitErr > kMaxFitErrPx) {
+			none = true;
+			miss = badFit(c.diaPx, c.fitErr);
+		}
+		if (none) {
+			misses << miss;
+			ct::logger::info("[GuidedSetup2] Stability snap %d: missed - %s", i + 1, qPrintable(miss));
+		}
+		else {
+			if (shots.isEmpty()) follow = QPointF(c.px, c.py);
+			shots << c;
+			ct::logger::info("[GuidedSetup2] Stability snap %d: centre (%.2f, %.2f) px, dia %.2f px, score %.2f, fit error %.3f, %d in range",
+				i + 1, c.px, c.py, c.diaPx, c.score, c.fitErr, c.count);
+		}
 		zsPause(kStillGapMs);
+	}
+	const int missed = misses.size();
+	if (shots.size() < 3) {
+		why = QStringLiteral("the circle was missed in %1 of %2 snaps (last: %3)").arg(missed).arg(kStabilitySnaps).arg(misses.back());
+		return false;
 	}
 
 	QVector<double> xs, ys;
@@ -1025,17 +1082,19 @@ bool VisionApp::gs2StabilityTest(const gs2::CircleFinder& cf, QString& report, Q
 	}
 	const double rms = std::sqrt(sum2 / shots.size());
 	const double umPerPx = shots[0].diaPx > 0.0 ? 1000.0 * shots[0].diaMm / shots[0].diaPx : 0.0;
-	const QString verdict = worst <= kStillPx ? QStringLiteral("Steady: the settle takes three snaps in a row.")
-		: agree >= shots.size() - 1 ? QStringLiteral("Usable: a stray snap is outvoted, but tighter is better.")
+	const QString verdict = missed == 0 && worst <= kStillPx ? QStringLiteral("Steady: the settle takes three snaps in a row.")
+		: missed <= 2 && agree >= shots.size() - 1 ? QStringLiteral("Usable: a stray snap is outvoted and a missed one snapped again, but tighter is better.")
 		: QStringLiteral("Unsteady: tighten the diameter range round the real edge, raise Edge smoothness or try the other polarity.");
-	report = QStringLiteral("%1 snaps without moving. Centre: furthest %2 px (%3 um) from the median, typical %4 px; %5 of %1 within %6 px. "
+	report = QStringLiteral("%1 snaps without moving%2. ").arg(kStabilitySnaps)
+		.arg(missed > 0 ? QStringLiteral(", the circle missed in %1 (last: %2)").arg(missed).arg(misses.back()) : QString())
+		+ QStringLiteral("Centre: furthest %1 px (%2 um) from the median, typical %3 px; %4 of %5 within %6 px. "
 		"Diameter %7 .. %8 px. Score %9 .. %10%11.\n%12")
-		.arg(shots.size()).arg(worst, 0, 'f', 2).arg(std::lround(worst * umPerPx)).arg(rms, 0, 'f', 2).arg(agree).arg(kJitterPx)
+		.arg(worst, 0, 'f', 2).arg(std::lround(worst * umPerPx)).arg(rms, 0, 'f', 2).arg(agree).arg(shots.size()).arg(kJitterPx)
 		.arg(dMin, 0, 'f', 1).arg(dMax, 0, 'f', 1).arg(sMin, 0, 'f', 1).arg(sMax, 0, 'f', 1)
 		.arg(fitMax >= 0.0 ? QStringLiteral(", fit error up to %1").arg(fitMax, 0, 'f', 2) : QString())
 		.arg(verdict);
-	ct::logger::info("[GuidedSetup2] Stability test: furthest %.2f px, rms %.2f px, %d of %d within %.1f px, dia %.1f..%.1f px, score %.1f..%.1f",
-		worst, rms, agree, shots.size(), kJitterPx, dMin, dMax, sMin, sMax);
+	ct::logger::info("[GuidedSetup2] Stability test: furthest %.2f px, rms %.2f px, %d of %d within %.1f px, dia %.1f..%.1f px, score %.1f..%.1f, %d missed",
+		worst, rms, agree, shots.size(), kJitterPx, dMin, dMax, sMin, sMax, missed);
 	return true;
 }
 
@@ -1087,7 +1146,7 @@ void VisionApp::gs2RunTool(int action)
 	const QString title = direction ? QStringLiteral("Check camera direction") : stability ? QStringLiteral("Stability test")
 		: (centre ? QStringLiteral("Centre on circle") : QStringLiteral("Snap + find"));
 	if (!gs2MachineBusy(title, direction
-		? QStringLiteral("The camera centres on the circle, snaps it from a 3 x 3 grid +/- %1 mm round it (about 20 s), and comes back.\n"
+		? QStringLiteral("The camera centres on the circle, snaps it from a 3 x 3 grid +/- %1 mm round it (about 30 s), and comes back.\n"
 			"Everything else is locked until it finishes.").arg(kDirStepMm, 0, 'f', 0)
 		: stability ? QStringLiteral("The camera snaps the circle %1 times without moving.\nEverything else is locked until it finishes.").arg(kStabilitySnaps)
 		: QStringLiteral("The camera snaps and moves onto the circle if it needs to.\nEverything else is locked until it finishes."))) return;

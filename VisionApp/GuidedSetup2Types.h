@@ -46,7 +46,7 @@ struct CircleFinder {
 	int minScore = 60;               //0..100: the lowest match the finder keeps
 	int smoothness = 50;             //0..100: how much the edges are smoothed before fitting; higher = less noise, softer edges
 	int detail = DetailMedium;       //how many edges are extracted from the image
-	bool highAccuracy = false;       //finer sub-pixel position, a little slower
+	//no accuracy setting: Matrox refuses M_ACCURACY on a circle model (error 21001, IPC 2026-11-03)
 };
 bool sameCircleFinder(const CircleFinder& a, const CircleFinder& b);
 QString circleKindName(int kind);    //"fid0 circle", "corner circles", "slot circles"

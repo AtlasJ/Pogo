@@ -322,7 +322,6 @@ void GuidedSetup2Page::fillWidgets()
 	ui.spin_tScore->setValue(cf.minScore);
 	ui.spin_tSmooth->setValue(cf.smoothness);
 	ui.comboBox_tDetail->setCurrentIndex(cf.detail);
-	ui.checkBox_tHighAcc->setChecked(cf.highAccuracy);
 
 	ui.dspin_gWidth->setValue(s.unitLayout.widthMm);
 	ui.dspin_gLength->setValue(s.unitLayout.lengthMm);
@@ -366,7 +365,6 @@ void GuidedSetup2Page::edited()
 	cf.minScore = ui.spin_tScore->value();
 	cf.smoothness = ui.spin_tSmooth->value();
 	cf.detail = std::max(0, ui.comboBox_tDetail->currentIndex());
-	cf.highAccuracy = ui.checkBox_tHighAcc->isChecked();
 
 	s.z3d.stepMm = shown(ui.dspin_cStep);
 	s.z3d.targetMm = shown(ui.dspin_cTarget);

@@ -188,7 +188,6 @@ QJsonObject toJson(const Setup& s)
 		o.insert(QStringLiteral("minScore"), c.minScore);
 		o.insert(QStringLiteral("smoothness"), c.smoothness);
 		o.insert(QStringLiteral("detail"), QLatin1String(kDetailKey[(c.detail >= 0 && c.detail < 3) ? c.detail : 0]));
-		o.insert(QStringLiteral("highAccuracy"), c.highAccuracy);
 		cf.insert(QLatin1String(kCircleKey[k]), o);
 	}
 	root.insert(QStringLiteral("circleFinder"), cf);
@@ -375,7 +374,7 @@ Setup fromJson(const QJsonObject& root)
 		c.minScore = std::clamp(integer(o, "minScore", c.minScore), 1, 100);
 		c.smoothness = std::clamp(integer(o, "smoothness", c.smoothness), 0, 100);
 		for (int i = 0; i < 3; i++) if (str(o, "detail") == QLatin1String(kDetailKey[i])) c.detail = i;
-		c.highAccuracy = boolean(o, "highAccuracy", c.highAccuracy);
+		//"highAccuracy" from the 2026-10-30 exe is ignored: Matrox never took it
 	}
 
 	for (const auto& v : root.value(QStringLiteral("slots")).toArray()) {
@@ -507,7 +506,7 @@ void removeUnusedFiles(const QString& recipeDir, const Setup& a, const Setup& b)
 bool sameCircleFinder(const CircleFinder& a, const CircleFinder& b)
 {
 	return a.dia.minMm == b.dia.minMm && a.dia.maxMm == b.dia.maxMm && a.polarity == b.polarity && a.minScore == b.minScore
-		&& a.smoothness == b.smoothness && a.detail == b.detail && a.highAccuracy == b.highAccuracy;
+		&& a.smoothness == b.smoothness && a.detail == b.detail;
 }
 
 QString circleKindName(int kind)
