@@ -1,7 +1,7 @@
 //
 //  Guided Setup (new): the right-panel page. Build step 1 = the recipe file, Save / Discard and the
-//  typed settings; build step 2 = the Camera and circle finder tools; the teach and test buttons
-//  arrive in build steps 3 and 4.
+//  typed settings; build step 2 = the Camera and circle finder tools; build step 3 = the teach
+//  buttons of sections A-D and the Locate test; E-H and the visits arrive in build step 4.
 //
 #include "GuidedSetup2Page.h"
 #include "ScaleManager.h"
@@ -94,6 +94,21 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 	connect(ui.toolButton_bFind, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachFind); });
 	connect(ui.toolButton_bPatternBox, &QToolButton::toggled, this, [=](bool on) { emit patternBoxToggled(on); });
 
+	//C, D and the Locate test
+	connect(ui.toolButton_cSetSpot, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachZ3DSpot); });
+	connect(ui.toolButton_cFind, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachZ3DFind); });
+	connect(ui.toolButton_cSetDiff, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachZ3DDiff); });
+	connect(ui.toolButton_dTeachTL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachCornerTL); });
+	connect(ui.toolButton_dTeachTR, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachCornerTR); });
+	connect(ui.toolButton_dTeachBR, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachCornerBR); });
+	connect(ui.toolButton_dTeachBL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachCornerBL); });
+	connect(ui.toolButton_dJogTL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogCornerTL); });
+	connect(ui.toolButton_dJogTR, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogCornerTR); });
+	connect(ui.toolButton_dJogBR, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogCornerBR); });
+	connect(ui.toolButton_dJogBL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogCornerBL); });
+	connect(ui.toolButton_dCheck, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachRectCheck); });
+	connect(ui.toolButton_iLocate, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachLocate); });
+
 	fillWidgets();
 }
 
@@ -101,14 +116,16 @@ void GuidedSetup2Page::modify(const std::function<void(gs2::Setup&)>& change)
 {
 	const gs2::Setup before = _work;
 	change(_work);
-	if (!gs2::sameFid0Settings(before, _work)) _work.fid0.found = savedFoundFor(_work);
+	keepResults(before, _work);
 	fillWidgets();
 	emit setupChanged();
 }
 
-gs2::Fid0Found GuidedSetup2Page::savedFoundFor(const gs2::Setup& s) const
+void GuidedSetup2Page::keepResults(const gs2::Setup& before, gs2::Setup& s) const
 {
-	return gs2::sameFid0Settings(s, _saved) ? _saved.fid0.found : gs2::Fid0Found();
+	if (!gs2::sameFid0Settings(before, s)) s.fid0.found = gs2::sameFid0Settings(s, _saved) ? _saved.fid0.found : gs2::Fid0Found();
+	if (!gs2::sameZ3DSettings(before, s)) s.z3d.found = gs2::sameZ3DSettings(s, _saved) ? _saved.z3d.found : gs2::Z3DFound();
+	if (!gs2::sameFidRectSettings(before, s)) s.fidRect.found = gs2::sameFidRectSettings(s, _saved) ? _saved.fidRect.found : gs2::FidRectFound();
 }
 
 int GuidedSetup2Page::circleKind() const
@@ -126,23 +143,38 @@ QString GuidedSetup2Page::circleSummary(int kind) const
 			QLatin1String(polarity[(c.polarity >= 0 && c.polarity < 3) ? c.polarity : 0])).arg(c.minScore);
 }
 
-void GuidedSetup2Page::recordFid0Found(const gs2::Fid0Found& found)
+void GuidedSetup2Page::recordResult(const char* what, const std::function<void(gs2::Setup&)>& put, bool (*same)(const gs2::Setup&, const gs2::Setup&))
 {
-	_work.fid0.found = found;
+	put(_work);
 	//only over a file that loaded (or was saved) cleanly, and only when the file holds these very settings
-	if (_loadResult == gs2::LoadResult::Loaded && !_recipeDir.isEmpty() && gs2::sameFid0Settings(_work, _saved)) {
+	if (_loadResult == gs2::LoadResult::Loaded && !_recipeDir.isEmpty() && same(_work, _saved)) {
 		gs2::Setup s = _saved; //the file as it is, plus this result - other unsaved edits stay unsaved
-		s.fid0.found = found;
+		put(s);
 		QString why;
 		if (gs2::save(_recipeDir, s, why)) {
 			_saved = s;
-			ct::logger::info("[GuidedSetup2] Find result saved to %s", gs2::filePath(_recipeDir).toStdString().c_str());
+			ct::logger::info("[GuidedSetup2] %s result saved to %s", what, gs2::filePath(_recipeDir).toStdString().c_str());
 		}
-		else ct::logger::error("[GuidedSetup2] Find result NOT saved (%s): it stays on the page as an unsaved change", why.toStdString().c_str());
+		else ct::logger::error("[GuidedSetup2] %s result NOT saved (%s): it stays on the page as an unsaved change", what, why.toStdString().c_str());
 	}
-	else ct::logger::info("[GuidedSetup2] Find result kept with the unsaved fid0 settings it ran with: Save or Discard decides both");
+	else ct::logger::info("[GuidedSetup2] %s result kept with the unsaved settings it ran with: Save or Discard decides both", what);
 	fillWidgets();
 	emit setupChanged();
+}
+
+void GuidedSetup2Page::recordFid0Found(const gs2::Fid0Found& found)
+{
+	recordResult("fid0 Find", [&](gs2::Setup& s) { s.fid0.found = found; }, gs2::sameFid0Settings);
+}
+
+void GuidedSetup2Page::recordZ3DFound(const gs2::Z3DFound& found)
+{
+	recordResult("3D Z Find", [&](gs2::Setup& s) { s.z3d.found = found; }, gs2::sameZ3DSettings);
+}
+
+void GuidedSetup2Page::recordFidRectFound(const gs2::FidRectFound& found)
+{
+	recordResult("fidRect Check", [&](gs2::Setup& s) { s.fidRect.found = found; }, gs2::sameFidRectSettings);
 }
 
 void GuidedSetup2Page::showSafetyScore(const QString& text, bool ok)
@@ -155,6 +187,24 @@ void GuidedSetup2Page::showFid0Result(const QString& text, bool ok)
 {
 	ui.label_bFound->setText(text);
 	ui.label_bFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
+void GuidedSetup2Page::showZ3DResult(const QString& text, bool ok)
+{
+	ui.label_cFound->setText(text);
+	ui.label_cFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
+void GuidedSetup2Page::showRectResult(const QString& text, bool ok)
+{
+	ui.label_dFound->setText(text);
+	ui.label_dFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
+void GuidedSetup2Page::showLocateResult(const QString& text, bool ok)
+{
+	ui.label_iResult->setText(text);
+	ui.label_iResult->setStyleSheet(ok ? kDoneColour : kTodoColour);
 }
 
 void GuidedSetup2Page::setPatternBoxShown(bool shown)
@@ -199,7 +249,11 @@ void GuidedSetup2Page::setMachineBusy(bool busy)
 	ui.toolButton_tSaveMeasured->setEnabled(!busy && _canSaveMeasured);
 	ui.toolButton_tStability->setEnabled(!busy);
 	for (auto* b : { ui.toolButton_aSnapEmpty, ui.toolButton_aScore, ui.toolButton_aDelete, ui.toolButton_bTeachXY, ui.toolButton_bJogXY,
-		ui.toolButton_bSetStart, ui.toolButton_bSetStop, ui.toolButton_bLearn, ui.toolButton_bFind, ui.toolButton_save, ui.toolButton_discard })
+		ui.toolButton_bSetStart, ui.toolButton_bSetStop, ui.toolButton_bLearn, ui.toolButton_bFind,
+		ui.toolButton_cSetSpot, ui.toolButton_cFind, ui.toolButton_cSetDiff,
+		ui.toolButton_dTeachTL, ui.toolButton_dTeachTR, ui.toolButton_dTeachBR, ui.toolButton_dTeachBL, ui.toolButton_dCheck,
+		ui.toolButton_dJogTL, ui.toolButton_dJogTR, ui.toolButton_dJogBR, ui.toolButton_dJogBL,
+		ui.toolButton_iLocate, ui.toolButton_save, ui.toolButton_discard })
 		b->setEnabled(!busy);
 	if (!busy) refreshStatus(); //Save / Discard follow the edits again
 }
@@ -236,6 +290,12 @@ void GuidedSetup2Page::loadRecipe(const QString& recipeDir, const QString& recip
 	ui.label_aResult->setStyleSheet(QString());
 	ui.label_bFound->setText(QStringLiteral("Find has not run with these settings."));
 	ui.label_bFound->setStyleSheet(QString());
+	ui.label_cFound->setText(QStringLiteral("Find has not run with these settings."));
+	ui.label_cFound->setStyleSheet(QString());
+	ui.label_dFound->setText(QStringLiteral("Check has not run with these corners and settings."));
+	ui.label_dFound->setStyleSheet(QString());
+	ui.label_iResult->setText(QStringLiteral("Locate has not run."));
+	ui.label_iResult->setStyleSheet(QString());
 	fillWidgets();
 	emit setupChanged();
 }
@@ -304,7 +364,7 @@ void GuidedSetup2Page::fillWidgets()
 	ui.dspin_bBox->setValue(s.fid0.focusBoxMm);
 	ui.dspin_bScore->setValue(s.fid0.minScore);
 
-	ui.dspin_cStep->setValue(s.z3d.stepMm);
+	ui.checkBox_cAddLaser->setChecked(s.z3d.addLaserOffset);
 	ui.dspin_cTarget->setValue(s.z3d.targetMm);
 	ui.dspin_cSpread->setValue(s.z3d.maxSpreadMm);
 	ui.dspin_cDiffTol->setValue(s.z3d.diffTolMm);
@@ -366,7 +426,7 @@ void GuidedSetup2Page::edited()
 	cf.smoothness = ui.spin_tSmooth->value();
 	cf.detail = std::max(0, ui.comboBox_tDetail->currentIndex());
 
-	s.z3d.stepMm = shown(ui.dspin_cStep);
+	s.z3d.addLaserOffset = ui.checkBox_cAddLaser->isChecked();
 	s.z3d.targetMm = shown(ui.dspin_cTarget);
 	s.z3d.maxSpreadMm = shown(ui.dspin_cSpread);
 	s.z3d.diffTolMm = shown(ui.dspin_cDiffTol);
@@ -402,8 +462,8 @@ void GuidedSetup2Page::edited()
 	s.scanAxis = dir >= 2 ? QStringLiteral("Y") : QStringLiteral("X");
 	s.scanNegative = (dir % 2) == 1;
 
-	//a Find proves the fid0 settings it ran with, not these
-	if (!gs2::sameFid0Settings(setupBefore, s)) s.fid0.found = savedFoundFor(s);
+	//a Find or Check proves the settings it ran with, not these
+	keepResults(setupBefore, s);
 
 	refreshStatus();
 	emit setupChanged();
@@ -450,13 +510,23 @@ void GuidedSetup2Page::refreshStatus()
 	ui.label_bXY->setText(xyText(s.fid0.xy));
 	ui.label_bZ->setText(QStringLiteral("Start %1   Stop %2")
 		.arg(s.fid0.startSet ? mm3(s.fid0.startZ) : QStringLiteral("not set"), s.fid0.stopSet ? mm3(s.fid0.stopZ) : QStringLiteral("not set")));
+	ui.label_bFocusZ->setText(s.fid0.found.ok ? QStringLiteral("%1   (Find %2)").arg(mm3(s.fid0.found.z), s.fid0.found.when)
+		: QStringLiteral("- (Find has not passed with these settings)"));
 	ui.label_bPattern->setText(s.fid0.patternFile.isEmpty() ? QStringLiteral("not learnt") : s.fid0.patternFile);
 	const double umPerPx = ScaleManager::instance().um_per_px();
 	ui.label_bBoxPx->setText(umPerPx > 0.0 ? QStringLiteral("= %1 px").arg(std::lround(s.fid0.focusBoxMm * 1000.0 / umPerPx)) : QString());
 	ui.label_bCircle->setText(circleSummary(gs2::CircleFid0));
 
 	ui.label_cSpot->setText(xyText(s.z3d.offset, QStringLiteral("d")));
+	ui.label_c3DZ->setText(s.z3d.found.ok ? QStringLiteral("%1   (reading %2 mm at the 2D Z %3, Find %4)")
+		.arg(mm3(s.z3d.found.z), mm3(s.z3d.found.reading), mm3(s.z3d.found.z2D), s.z3d.found.when)
+		: QStringLiteral("- (Find has not passed with these settings)"));
 	ui.label_cDiff->setText(s.z3d.diffSet ? QStringLiteral("%1 mm").arg(mm3(s.z3d.diffMm)) : QStringLiteral("not set"));
+	if (s.z3d.found.ok)
+		showZ3DResult(QStringLiteral("Find passed %1: reading %2 mm at the 2D Z %3, so 3D Centre Z %4 (2D - 3D = %5 mm)")
+			.arg(s.z3d.found.when, mm3(s.z3d.found.reading), mm3(s.z3d.found.z2D), mm3(s.z3d.found.z), mm3(s.z3d.found.z2D - s.z3d.found.z)), true);
+	else if (ui.label_cFound->styleSheet() == kDoneColour)
+		showZ3DResult(QStringLiteral("Find has not run with these settings."), false);
 
 	static const char* const cornerName[4] = { "TL", "TR", "BR", "BL" };
 	QStringList corners;
@@ -464,6 +534,10 @@ void GuidedSetup2Page::refreshStatus()
 		corners << QStringLiteral("%1   %2").arg(QLatin1String(cornerName[i]), xyText(s.fidRect.corner[i], QStringLiteral("d")));
 	ui.label_dCorners->setText(corners.join(QLatin1Char('\n')));
 	ui.label_dCircle->setText(circleSummary(gs2::CircleCorner));
+	//a corner's Jog only once it is taught, and like Teach never while the machine is busy
+	QToolButton* jog[4] = { ui.toolButton_dJogTL, ui.toolButton_dJogTR, ui.toolButton_dJogBR, ui.toolButton_dJogBL };
+	for (int i = 0; i < 4; i++)
+		jog[i]->setEnabled(s.fidRect.corner[i].set && ui.toolButton_dTeachTL->isEnabled());
 
 	const gs2geo::RectFit fit = gs2::taughtFit(s);
 	if (!fit.pose.valid) {
@@ -479,6 +553,14 @@ void GuidedSetup2Page::refreshStatus()
 				.arg(mm3(fit.residual[0]), mm3(fit.residual[1]), mm3(fit.residual[2]), mm3(fit.residual[3]), mm3(s.fidRect.residualLimitMm));
 		ui.label_dFit->setText(t);
 	}
+	if (s.fidRect.found.ok) {
+		const auto& r = s.fidRect.found;
+		showRectResult(QStringLiteral("Check passed %1: centre X %2, Y %3, angle %4 deg. Residuals TL %5, TR %6, BR %7, BL %8 mm. Measured %9 x %10 mm")
+			.arg(r.when, mm3(r.cx), mm3(r.cy), QString::number(r.angleDeg, 'f', 3), mm3(r.residual[0]), mm3(r.residual[1]), mm3(r.residual[2]), mm3(r.residual[3]))
+			.arg(mm3(r.widthMeasured), mm3(r.lengthMeasured)), true);
+	}
+	else if (ui.label_dFound->styleSheet() == kDoneColour)
+		showRectResult(QStringLiteral("Check has not run with these corners and settings."), false);
 
 	ui.label_eSize->setText(s.slotSize.set ? QStringLiteral("%1 x %2 mm").arg(mm3(s.slotSize.widthMm), mm3(s.slotSize.lengthMm))
 		: QStringLiteral("not measured"));
@@ -522,7 +604,7 @@ void GuidedSetup2Page::refreshStatus()
 		state[i]->setText(done ? QString(QChar(0x2713)) + QStringLiteral(" Done") : QStringLiteral("Not done: %1").arg(why));
 		state[i]->setStyleSheet(done ? kDoneColour : kTodoColour);
 	}
-	ui.label_iState->setText(QStringLiteral("Build steps 3 and 4"));
+	ui.label_iState->setText(QStringLiteral("Locate; the visits come in build step 4"));
 	ui.label_iState->setStyleSheet(QStringLiteral("color:#A8B0BF;"));
 
 	static const char* const usedBy[gs2::CircleKindCount] = { "used by section B: Teach XY, Learn pattern, Find",

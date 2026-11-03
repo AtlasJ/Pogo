@@ -41,7 +41,7 @@ GuidedSetup2View::GuidedSetup2View(QWidget* parent)
 void GuidedSetup2View::setSetup(const gs2::Setup& s)
 {
 	_s = s;
-	_fit = gs2::taughtFit(s);
+	_fit = _located ? _locFit : gs2::taughtFit(s);
 	//a selection that no longer exists is dropped
 	bool still = false;
 	if (_selKind == QLatin1String("slot")) still = gs2::findSlot(_s, _selId) != nullptr;
@@ -55,6 +55,35 @@ void GuidedSetup2View::setWorld(bool known, double xLo, double xHi, double yLo, 
 	_worldKnown = known && xLo < xHi && yLo < yHi;
 	_world = _worldKnown ? QRectF(QPointF(xLo, yLo), QPointF(xHi, yHi)) : QRectF();
 	update();
+}
+
+void GuidedSetup2View::setLocated(const gs2geo::RectFit& fit, gs2geo::Pt fid0, const gs2geo::Pt corners[4], const QString& what)
+{
+	_located = fit.pose.valid;
+	_locFit = fit;
+	_locFid0 = fid0;
+	for (int i = 0; i < 4; i++) _locCorner[i] = corners[i];
+	_locWhat = what;
+	_fit = _located ? _locFit : gs2::taughtFit(_s);
+	update();
+}
+
+void GuidedSetup2View::clearLocated()
+{
+	if (!_located) return;
+	_located = false;
+	_fit = gs2::taughtFit(_s);
+	update();
+}
+
+gs2geo::Pt GuidedSetup2View::fid0At() const
+{
+	return _located ? _locFid0 : gs2geo::Pt{ _s.fid0.xy.x, _s.fid0.xy.y };
+}
+
+gs2geo::Pt GuidedSetup2View::cornerAt(int i) const
+{
+	return _located ? _locCorner[i] : gs2geo::Pt{ _s.fid0.xy.x + _s.fidRect.corner[i].x, _s.fid0.xy.y + _s.fidRect.corner[i].y };
 }
 
 void GuidedSetup2View::setCamera(bool known, double x, double y, double fovWmm, double fovHmm)
@@ -72,9 +101,9 @@ QRectF GuidedSetup2View::contentMm() const
 		const QRectF p(QPointF(x, y), QSizeF(1e-6, 1e-6));
 		r = r.isNull() ? p : r.united(p);
 	};
-	if (_s.fid0.xy.set) add(_s.fid0.xy.x, _s.fid0.xy.y);
+	if (fid0Shown()) add(fid0At().x, fid0At().y);
 	for (int i = 0; i < 4; i++)
-		if (_s.fid0.xy.set && _s.fidRect.corner[i].set) add(_s.fid0.xy.x + _s.fidRect.corner[i].x, _s.fid0.xy.y + _s.fidRect.corner[i].y);
+		if (cornerShown(i)) add(cornerAt(i).x, cornerAt(i).y);
 	if (_fit.pose.valid)
 		for (const auto& sl : _s.slotList) {
 			gs2geo::Pt c[4];
@@ -218,8 +247,7 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 			rectPoly = screenPoly(n);
 		}
 		else {
-			for (int i = 0; i < 4; i++)
-				rectPoly << toScreen(_s.fid0.xy.x + _s.fidRect.corner[i].x, _s.fid0.xy.y + _s.fidRect.corner[i].y);
+			for (int i = 0; i < 4; i++) rectPoly << toScreen(cornerAt(i));
 		}
 		p.setBrush(Qt::NoBrush);
 		p.setPen(QPen(kFid, 1.2, Qt::DashLine));
@@ -238,12 +266,12 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 		label(o + ay + QPointF(3, 10), QStringLiteral("y'"), kFrame, small);
 	}
 
-	//fid0, the corners and the 3D Z spot
-	if (_s.fid0.xy.set) {
+	//fid0, the corners and the 3D Z spot; found ones carry their residual from the drawing rectangle
+	if (fid0Shown()) {
 		static const char* const cornerName[4] = { "fidTL", "fidTR", "fidBR", "fidBL" };
 		for (int i = 0; i < 4; i++) {
-			if (!_s.fidRect.corner[i].set) continue;
-			const QPointF q = toScreen(_s.fid0.xy.x + _s.fidRect.corner[i].x, _s.fid0.xy.y + _s.fidRect.corner[i].y);
+			if (!cornerShown(i)) continue;
+			const QPointF q = toScreen(cornerAt(i));
 			p.setPen(QPen(kFid, 2.0));
 			p.setBrush(kBackground);
 			p.drawEllipse(q, 6.0, 6.0);
@@ -252,11 +280,12 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 			p.drawLine(q + QPointF(0, -3), q + QPointF(0, 3));
 			const bool right = i == gs2geo::TR || i == gs2geo::BR;
 			const bool bottom = i == gs2geo::BR || i == gs2geo::BL;
-			label(q + QPointF(right ? 9 : -9, bottom ? 18 : -6), QLatin1String(cornerName[i]), kFid, small,
-				(right ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignBottom);
+			const QString name = _located && _s.fidRect.widthMm > 0.0 && _s.fidRect.lengthMm > 0.0
+				? QStringLiteral("%1  %2 mm").arg(QLatin1String(cornerName[i]), mm3(_locFit.residual[i])) : QString(QLatin1String(cornerName[i]));
+			label(q + QPointF(right ? 9 : -9, bottom ? 18 : -6), name, kFid, small, (right ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignBottom);
 		}
 		if (_s.z3d.offset.set) {
-			const QPointF q = toScreen(_s.fid0.xy.x + _s.z3d.offset.x, _s.fid0.xy.y + _s.z3d.offset.y);
+			const QPointF q = toScreen(fid0At().x + _s.z3d.offset.x, fid0At().y + _s.z3d.offset.y);
 			QPolygonF d;
 			d << q + QPointF(0, -6) << q + QPointF(6, 0) << q + QPointF(0, 6) << q + QPointF(-6, 0);
 			p.setPen(QPen(kFid, 1.8));
@@ -264,7 +293,7 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 			p.drawPolygon(d);
 			label(q + QPointF(-9, 4), QStringLiteral("3D Z"), kFid, small, Qt::AlignRight | Qt::AlignVCenter);
 		}
-		const QPointF f = toScreen(_s.fid0.xy.x, _s.fid0.xy.y);
+		const QPointF f = toScreen(fid0At());
 		p.setPen(QPen(kFid, 2.0));
 		p.setBrush(kFid);
 		p.drawEllipse(f, 7.0, 7.0);
@@ -290,9 +319,11 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 	lines << (_worldKnown
 		? QStringLiteral("World (soft limits): X %1 .. %2   Y %3 .. %4 mm").arg(mm3(_world.left()), mm3(_world.right()), mm3(_world.top()), mm3(_world.bottom()))
 		: QStringLiteral("Soft limits unknown (motion not loaded): drawn around the taught layout"));
-	if (!_s.fid0.xy.set) lines << QStringLiteral("Nothing taught yet: teach fid0 and the four corners first.");
+	const QString angle = QString::number(pose.angle * 180.0 / 3.14159265358979323846, 'f', 3);
+	if (_located) lines << QStringLiteral("Drawn where %1 found it (trolley angle %2 deg, worst corner residual %3 mm)").arg(_locWhat, angle, mm3(_locFit.maxResidual()));
+	else if (!_s.fid0.xy.set) lines << QStringLiteral("Nothing taught yet: teach fid0 and the four corners first.");
 	else if (!pose.valid) lines << QStringLiteral("Teach all four corners to place the slots and units.");
-	else lines << QStringLiteral("Drawn where it was taught (trolley angle %1 deg)").arg(QString::number(pose.angle * 180.0 / 3.14159265358979323846, 'f', 3));
+	else lines << QStringLiteral("Drawn where it was taught (trolley angle %1 deg)").arg(angle);
 	const QString sel = selectionText();
 	if (!sel.isEmpty()) lines << sel;
 	p.setFont(normal);

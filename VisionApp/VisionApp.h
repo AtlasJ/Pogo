@@ -717,8 +717,10 @@ private:
 	bool gs2FindCircle(const QImage& img, const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr,
 		QVector<QPointF>* allPx = nullptr, bool* none = nullptr);
 	bool gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QString& why, const QPointF* nearPx = nullptr); //snap here, find, convert; no move
-	//expectPx: where the circle must be in the FIRST snap (the pattern said so), within kExpectTolMm, or it fails
-	bool gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx = nullptr);
+	//expectPx: where the circle must be in the FIRST snap (the pattern or the taught layout said so), within
+	//expectTolMm (0 = 1 mm), or it fails
+	bool gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx = nullptr,
+		double expectTolMm = 0.0);
 	bool gs2CheckDirection(const gs2::CircleFinder& cf, bool& pass, QString& report, QString& why); //false = could not measure
 	bool gs2StabilityTest(const gs2::CircleFinder& cf, QString& report, QString& why);                //snaps without moving
 	bool gs2MachineBusy(const QString& title, const QString& note);   //lock the screen like a Z search; false = refused
@@ -727,7 +729,10 @@ private:
 	QDragBox* _gs2PatternBox = nullptr;      //where the fid0 pattern is learnt from, on the FOV
 	struct Gs2Session {                      //found on THIS trolley in this session - never saved
 		bool fid0 = false;
-		double fid0X = 0.0, fid0Y = 0.0, z2D = 0.0;
+		double fid0X = 0.0, fid0Y = 0.0, z2D = 0.0;   //fid0 as last located (Find, a corner teach, Check)
+		bool has3D = false;
+		double z3D = 0.0, z3DFrom2D = 0.0;            //C's last Find and the 2D Z it started from
+		bool z3DAddLaser = true;                      //...and whether it added the camera-to-laser XY
 		int trolleyEpoch = -1;
 		QString recipeDir;
 	} _gs2Session;
@@ -740,6 +745,20 @@ private:
 	//every copy of the pattern in the image, best first - a trolley can carry the same mark twice side by side
 	bool gs2MatchPatterns(const QImage& img, const QString& patternPath, QVector<Gs2PatternHit>& hits, QString& why);
 	bool gs2FindFid0(const gs2::Setup& s, const QString& dir, gs2::Fid0Found& out, QString& why); //dir: the recipe folder the action started in
+	//build step 3b: section C (3D Z), section D (the corners and Check) and the Locate test. Each needs
+	//fid0 as found on this trolley in this session; the actions hold the machine lock
+	//...and its 2D Z inside the Start Z .. Stop Z set now: an action that goes back down to it must not pass a
+	//Stop Z raised since
+	bool gs2SessionFid0(const gs2::Setup& s, const QString& dir, QString& why) const;
+	bool gs2Find3DZ(const gs2::Setup& s, gs2::Z3DFound& out, QString& why);   //START step 3
+	bool gs2RelocateFid0(const gs2::Setup& s, Gs2Circle& out, QString& why);  //to where fid0 was last located, at the current Z, and locate it
+	struct Gs2RectCheck {
+		gs2geo::Pt fid0, corner[4];          //world, as found
+		gs2geo::RectFit fit;                 //the drawing rectangle on the four corners
+		bool pass = false;
+		QString report;                      //every corner's residual and the angle, against their limits
+	};
+	bool gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why); //START step 4; false = could not measure
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data
@@ -776,6 +795,8 @@ private:
 	bool jobThreadIdle(int waitMs);         //the job thread runs a queued no-op within waitMs = no run in progress
 	bool zsCheckTarget(int axis, double target, QString& why);
 	bool zsCheckSetup(bool threeD, double x, double y, QString& why); //settings complete and every target inside the soft limits
+	bool zsCheck3D(const ZSearch3DConfig& c, double camX, double camY, QString& why); //the 3D part: profiler ready, laser point and Z inside
+	bool zsCheck3DRead(double camX, double camY, QString& why); //profiler ready, laser point inside (zsCheck3D without the search)
 	bool zsMove(const QVector<QPair<int, double>>& targets, QString& why); //checked: refused, stopped or not landed = false
 	bool zsMoveGroup(const QVector<QPair<int, double>>& targets, QString& why); //zsMove's axes that go out together
 	bool zsMoveToXY(double x, double y, double clearZ, QString& why);    //lifts to clearZ first, never slides below it
@@ -788,7 +809,9 @@ private:
 	bool zsSample2D(double z, int boxPx, bool confirm, zsearch::FocusSample& out, QString& why, QLabel* status);
 	bool zsFind2D(const ZSearch2DConfig& c, double x, double y, bool confirm, double& foundZ, QString& why, QLabel* status);
 	bool zsReadProfile(zsearch::ProfileStats& st, int& offered, QString& why);
-	bool zsFind3D(double camX, double camY, double& foundZ, QString& why);
+	bool zsFind3D(const ZSearch3DConfig& c, double camX, double camY, const double* predictedZ, double& foundZ, QString& why, QLabel* status);
+	//one 3D read, no search: the laser over (camX, camY) with the head at z. valid = enough points, spread within maxSpreadMm
+	bool zsRead3DAt(double camX, double camY, double z, double maxSpreadMm, zsearch::ProfileStats& st, bool& valid, QString& why, QLabel* status);
 	void zsRunFind(bool threeD);
 	void zsCalibrateCamLaser();
 	void zsSetDifference();

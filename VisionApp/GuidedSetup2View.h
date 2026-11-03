@@ -24,6 +24,10 @@ public:
 	void setSetup(const gs2::Setup& s);
 	void setWorld(bool known, double xLo, double xHi, double yLo, double yHi);
 	void setCamera(bool known, double x, double y, double fovWmm, double fovHmm);
+	//a Check or Locate found the trolley: fid0, the corners (with their residuals) and everything
+	//placed from the fidRect are drawn there, not where they were taught, until clearLocated()
+	void setLocated(const gs2geo::RectFit& fit, gs2geo::Pt fid0, const gs2geo::Pt corners[4], const QString& what);
+	void clearLocated();
 
 protected:
 	void paintEvent(QPaintEvent*) override;
@@ -35,7 +39,15 @@ protected:
 
 private:
 	gs2::Setup _s;
-	gs2geo::RectFit _fit;            //the taught fidRect pose
+	gs2geo::RectFit _fit;            //the fidRect pose drawn: where it was found, else where it was taught
+	bool _located = false;
+	gs2geo::RectFit _locFit;
+	gs2geo::Pt _locFid0, _locCorner[4];
+	QString _locWhat;                //"Check 10:41", "Locate 10:44 (FAILED)"
+	bool fid0Shown() const { return _located || _s.fid0.xy.set; }
+	gs2geo::Pt fid0At() const;       //where fid0 is drawn: found, else its search XY
+	bool cornerShown(int i) const { return _located || (_s.fid0.xy.set && _s.fidRect.corner[i].set); }
+	gs2geo::Pt cornerAt(int i) const; //where a corner is drawn: found, else fid0 + its offset
 	bool _worldKnown = false;
 	QRectF _world;                   //soft limits in mm (x = X, y = Y)
 	bool _camKnown = false;

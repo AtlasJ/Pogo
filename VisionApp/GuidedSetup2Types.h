@@ -87,14 +87,34 @@ struct Fid0 {
 	Fid0Found found;
 };
 
-//C: 3D Centre Z, read by the profiler at fid0 + an offset, starting at the 2D Z
+//C: the last Find that passed with the settings as they are; any change to them clears it
+struct Z3DFound {
+	bool ok = false;
+	double z = 0.0;            //3D Centre Z
+	double z2D = 0.0;          //the 2D Z of the fid0 Find, where the profiler read
+	double reading = 0.0;      //the profiler reading there, mm
+	QString when;
+};
+
+//C: 3D Centre Z, from one profiler read at fid0 + an offset with the head at fid0's 2D Z (no Z search)
 struct Z3D {
 	TaughtXY offset;           //camera position of the flat spot, as an offset from fid0
-	double stepMm = 2.0;
+	bool addLaserOffset = true; //the laser goes where the camera looked (the stage moves by the camera-to-laser XY);
+	                            //off: the stage goes to fid0 + offset as it is and the laser reads wherever that puts it
 	double targetMm = 0.0;     //the profiler reading that counts as centred
 	double maxSpreadMm = 0.2;
 	bool diffSet = false; double diffMm = 0.0;   //taught 2D Z - 3D Z
 	double diffTolMm = 0.3;
+	Z3DFound found;
+};
+
+//D: the last Check that passed with the corners and settings as they are; any change clears it
+struct FidRectFound {
+	bool ok = false;
+	double cx = 0.0, cy = 0.0, angleDeg = 0.0;   //the fidRect centre (world) and angle
+	double residual[4] = { 0.0, 0.0, 0.0, 0.0 }; //TL TR BR BL, mm from the fitted drawing rectangle
+	double widthMeasured = 0.0, lengthMeasured = 0.0;
+	QString when;
 };
 
 //D: the fidRect - four corner fiducials, judged against the drawing rectangle
@@ -103,6 +123,7 @@ struct FidRect {
 	TaughtXY corner[4];                     //TL TR BR BL, offsets from fid0
 	double residualLimitMm = 0.10;
 	double maxAngleDeg = 1.0;
+	FidRectFound found;
 };
 
 //E: slot size, measured once from one slot's TL and BR circles
@@ -153,6 +174,11 @@ struct Setup {
 //the fid0 settings a Find proves - section B and how the fid0 circle is found; when any of them
 //changes the last Find no longer counts
 bool sameFid0Settings(const Setup& a, const Setup& b);
+//the same for section C's Find (the 3D spot and its settings) and section D's Check (the drawing
+//size, the four corners, the limits and how the corner circles are found); both include B's, as
+//both run from fid0
+bool sameZ3DSettings(const Setup& a, const Setup& b);
+bool sameFidRectSettings(const Setup& a, const Setup& b);
 
 //the page's sections; the order is the teaching order
 enum Section { SecSafety1 = 0, SecFid0, Sec3DZ, SecFidRect, SecSlotSize, SecSlots, SecUnits, SecInspections, SectionCount };

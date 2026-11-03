@@ -6,6 +6,8 @@
 //  stack, and its own recipe file guidedSetup2.json. Build step 1 = the page, Save / Discard and
 //  the layout view. Build step 2 = the circle finder and the camera direction check, which move
 //  the machine the way a Z search does: zsMove, one modal busy window with a Stop, START refused.
+//  Build step 3 = teaching sections A-D (Safety check 1, fid0, 3D Z, the four corners) and the
+//  Locate test, which runs START steps 1-5.
 //
 #include "VisionApp.h"
 #include "GuidedSetup2Page.h"
@@ -21,6 +23,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QLabel>
 #include <QMessageBox>
@@ -29,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace {
 	constexpr int kSnapTimeoutMs = 4000;
@@ -67,6 +71,15 @@ namespace {
 	constexpr int kStillMaxMs = 6000;        //the IPC took 0.8-4.7 s
 	constexpr int kStillGapMs = 50;          //between snaps, so a Stop gets through
 	constexpr double kExpectTolMm = 1.0;     //fid0 must be this close to where the pattern puts it; its neighbours are ~12.7 mm away
+	//a corner must be this close to where fid0 + its offset (and the corners found before it) put it:
+	//under half the ~12.7 mm circle pitch, so a neighbouring circle is never taken for it
+	constexpr double kCornerExpectTolMm = 5.0;
+	constexpr double kTeachZTolMm = 0.3;     //corners are taught at fid0's 2D Z or up to this above it: in focus, as Check and START see them
+	constexpr double kTeachZBelowMm = 0.02;  //and below it only by what a Z move lands within (the Z search's on-target)
+	//C: the profiler reading moves this many mm per mm of Z down (+ Z is down; the IPC measured +0.976 on
+	//27 Oct 2026 - head down = reading up), so one read at the 2D Z says where the 3D Centre Z is
+	constexpr double kReadingPerZ = 1.0;
+	const char* const kCornerName[4] = { "fidTL", "fidTR", "fidBR", "fidBL" };   //gs2geo::Corner order
 	const double kPi = 3.14159265358979323846;
 
 	QString mm(double v) { return QString::number(v, 'f', 3); }
@@ -133,6 +146,66 @@ namespace {
 		if (!window) return;
 		if (auto* label = window->findChild<QLabel*>(QStringLiteral("busyProgress"))) label->setText(text);
 	}
+
+	//each section's actions report on that section's result line
+	void showTeachResult(GuidedSetup2Page* page, int action, const QString& text, bool ok)
+	{
+		using P = GuidedSetup2Page;
+		switch (action) {
+		case P::TeachSnapEmpty: case P::TeachScore:
+			page->showSafetyScore(text, ok); break;
+		case P::TeachZ3DSpot: case P::TeachZ3DFind: case P::TeachZ3DDiff:
+			page->showZ3DResult(text, ok); break;
+		case P::TeachCornerTL: case P::TeachCornerTR: case P::TeachCornerBR: case P::TeachCornerBL: case P::TeachRectCheck:
+		case P::TeachJogCornerTL: case P::TeachJogCornerTR: case P::TeachJogCornerBR: case P::TeachJogCornerBL:
+			page->showRectResult(text, ok); break;
+		case P::TeachLocate:
+			page->showLocateResult(text, ok); break;
+		default:
+			page->showFid0Result(text, ok); break;
+		}
+	}
+
+	//everything a section needs before its Find or Check can run: done, but for that run's result
+	bool readyToRun(gs2::Setup s, gs2::Section sec, QString& why)
+	{
+		s.fid0.found.ok = s.z3d.found.ok = s.fidRect.found.ok = true;
+		return gs2::sectionDone(s, sec, &why);
+	}
+
+	//where the laser reads C's spot, as the camera point zsRead3DAt / zsCheck3DRead take (they put the stage at it + the
+	//camera-to-laser XY): the spot itself, or with "Add the camera-to-laser XY offset" off, wherever the laser falls
+	//with the stage at fid0 + the spot offset
+	QPointF z3dReadPoint(const gs2::Setup& s, double fid0X, double fid0Y, const dat::WorldCoordinate& laser)
+	{
+		const double x = fid0X + s.z3d.offset.x, y = fid0Y + s.z3d.offset.y;
+		return s.z3d.addLaserOffset ? QPointF(x, y) : QPointF(x - laser.wx, y - laser.wy);
+	}
+
+	/*
+	* Where the next corner should be, from fid0 (found now) and the corners found before it: the rigid
+	* move (shift + turn) that best takes their taught spots onto where they were found, applied to the
+	* next corner's taught spot. fid0 is a pair of its own (taught = found: it was just located), so the
+	* trolley's turn is known from the first corner on and the later corners land near the image centre.
+	*/
+	gs2geo::Pt predictCorner(gs2geo::Pt fid0, const std::vector<gs2geo::Pt>& taughtDone, const std::vector<gs2geo::Pt>& foundDone, gs2geo::Pt next)
+	{
+		std::vector<gs2geo::Pt> a{ fid0 }, b{ fid0 };
+		a.insert(a.end(), taughtDone.begin(), taughtDone.end());
+		b.insert(b.end(), foundDone.begin(), foundDone.end());
+		const double n = (double)a.size();
+		gs2geo::Pt ca, cb;
+		for (size_t k = 0; k < a.size(); k++) { ca.x += a[k].x / n; ca.y += a[k].y / n; cb.x += b[k].x / n; cb.y += b[k].y / n; }
+		double sDot = 0.0, sCross = 0.0;
+		for (size_t k = 0; k < a.size(); k++) {
+			const double ax = a[k].x - ca.x, ay = a[k].y - ca.y, bx = b[k].x - cb.x, by = b[k].y - cb.y;
+			sDot += ax * bx + ay * by;
+			sCross += ax * by - ay * bx;
+		}
+		const double t = (sDot == 0.0 && sCross == 0.0) ? 0.0 : std::atan2(sCross, sDot);
+		const double dx = next.x - ca.x, dy = next.y - ca.y;
+		return { cb.x + std::cos(t) * dx - std::sin(t) * dy, cb.y + std::sin(t) * dx + std::cos(t) * dy };
+	}
 }
 
 void VisionApp::initGuidedSetup2()
@@ -153,6 +226,10 @@ void VisionApp::initGuidedSetup2()
 
 	_gs2View = new GuidedSetup2View();
 	_gs2ViewIndex = ui.stackedWidgetViewSelection->addWidget(_gs2View);
+	//a trolley taken off or put on is no longer where a Check or Locate found it
+	connect(&MachineController::instance(), &MachineController::signalTrolleyGuard, this, [=](bool) {
+		if (_gs2View) _gs2View->clearLocated();
+	}, Qt::QueuedConnection);
 
 	_gs2CameraTimer = new QTimer(this);
 	_gs2CameraTimer->setInterval(200);
@@ -304,6 +381,7 @@ void VisionApp::gs2RecipeOpened()
 	if (!_gs2Page) return;
 	gs2ShowPatternBox(false);
 	_gs2Session = Gs2Session(); //what was found belongs to the recipe before
+	if (_gs2View) _gs2View->clearLocated();
 	_gs2Page->loadRecipe(Common::Directory::getRecipeCurrentPath(), Common::Directory::CurrentRecipe);
 }
 
@@ -768,22 +846,24 @@ bool VisionApp::gs2SnapCircle(const gs2::CircleFinder& cf, Gs2Circle& out, QStri
 * camera stopped. The pixel-to-mm direction is never guessed: a circle that ends up further from
 * the centre after the camera moved onto it stops the action with that reason.
 * expectPx (fid0 at Find): the pattern says where in this image the circle is; the circle nearest
-* that point is taken, and it must be within kExpectTolMm of it - with rows of identical circles on
-* the trolley, "nearest the image centre" took a neighbour 13 mm away (IPC 2026-10-30 17:50).
-* After a move the camera stands on that circle, so the centre is right again.
+* that point is taken, and it must be within expectTolMm (0 = kExpectTolMm) of it - with rows of
+* identical circles on the trolley, "nearest the image centre" took a neighbour 13 mm away (IPC
+* 2026-10-30 17:50). After a move the camera stands on that circle, so the centre is right again.
 */
-bool VisionApp::gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx)
+bool VisionApp::gs2LocateCircle(const gs2::CircleFinder& cf, bool centre, Gs2Circle& out, int& moves, QString& why, const QPointF* expectPx,
+	double expectTolMm)
 {
 	moves = 0;
 	setProgress(_zsBusyWindow, QStringLiteral("Snap and find the circle..."));
 	if (!gs2SnapCircle(cf, out, why, expectPx)) return false;
 	if (expectPx) {
+		const double tol = expectTolMm > 0.0 ? expectTolMm : kExpectTolMm;
 		const double mmPerPx = out.diaPx > 0.0 ? out.diaMm / out.diaPx : 0.0;
 		const double offMm = std::hypot(out.px - expectPx->x(), out.py - expectPx->y()) * mmPerPx;
-		ct::logger::info("[GuidedSetup2] Circle where the pattern puts it: expected (%.1f, %.1f) px, nearest at (%.1f, %.1f) px, %.3f mm away (limit %.1f)",
-			expectPx->x(), expectPx->y(), out.px, out.py, offMm, kExpectTolMm);
-		if (offMm > kExpectTolMm) {
-			why = QStringLiteral("no circle where the pattern puts fid0 - the nearest is %1 mm from that spot (limit %2 mm)").arg(mm(offMm)).arg(kExpectTolMm, 0, 'f', 1);
+		ct::logger::info("[GuidedSetup2] Circle where expected: expected (%.1f, %.1f) px, nearest at (%.1f, %.1f) px, %.3f mm away (limit %.1f)",
+			expectPx->x(), expectPx->y(), out.px, out.py, offMm, tol);
+		if (offMm > tol) {
+			why = QStringLiteral("no circle where it was expected - the nearest is %1 mm from that spot (limit %2 mm)").arg(mm(offMm)).arg(tol, 0, 'f', 1);
 			return false;
 		}
 	}
@@ -1413,11 +1493,202 @@ bool VisionApp::gs2FindFid0(const gs2::Setup& s, const QString& dir, gs2::Fid0Fo
 	return true;
 }
 
+// ── build step 3b: 3D Z (C), the four corners and Check (D), the Locate test ─────────────────────
+
+bool VisionApp::gs2SessionFid0(const gs2::Setup& s, const QString& dir, QString& why) const
+{
+	if (!_gs2Session.fid0 || _gs2Session.recipeDir != dir) {
+		why = QStringLiteral("run Find in section B first - this works from fid0 as found on the trolley now");
+		return false;
+	}
+	if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch) {
+		why = QStringLiteral("the trolley was removed or attached since fid0 was found - run Find in section B again");
+		return false;
+	}
+	if (!s.fid0.startSet || !s.fid0.stopSet || _gs2Session.z2D < s.fid0.startZ || _gs2Session.z2D > s.fid0.stopZ) {
+		why = QStringLiteral("fid0's 2D Z %1 is outside the Start Z .. Stop Z set now - run Find in section B again").arg(mm(_gs2Session.z2D));
+		return false;
+	}
+	return true;
+}
+
+/*
+* START step 3, no Z search: with the head at fid0's 2D Z, the laser to fid0 + the 3D spot and one
+* profiler read. The 2D Z already puts the trolley in the profiler's range (on the IPC the 3D Centre Z
+* sat 0.09 mm from the 2D Focus Z), so the reading says where the 3D Centre Z is; it must lie inside
+* fid0's Start Z .. Stop Z. Nothing flat read = fail. Z never goes below the 2D Z - as low as the head
+* is known to be clear of this flat trolley - and is left there for D. With a difference taught the
+* result must agree with it: a profiler reading another surface does not.
+*/
+bool VisionApp::gs2Find3DZ(const gs2::Setup& s, gs2::Z3DFound& out, QString& why)
+{
+	out = gs2::Z3DFound();
+	const double z2D = _gs2Session.z2D;
+	const QPointF at = z3dReadPoint(s, _gs2Session.fid0X, _gs2Session.fid0Y, _laserConfig.offset);
+	const double camX = at.x(), camY = at.y();
+	if (!zsCheck3DRead(camX, camY, why)) { why = QStringLiteral("3D Z: %1").arg(why); return false; }
+
+	ct::logger::info("[GuidedSetup2] 3D Z: one read at the 2D Z %.3f, laser on %.3f, %.3f (spot fid0 + %.3f, %.3f, camera-to-laser XY %s)",
+		z2D, camX, camY, s.z3d.offset.x, s.z3d.offset.y, s.z3d.addLaserOffset ? "added" : "NOT added");
+
+	setProgress(_zsBusyWindow, QStringLiteral("3D Z: the laser to the 3D spot at the 2D Z..."));
+	QLabel* progress = _zsBusyWindow ? _zsBusyWindow->findChild<QLabel*>(QStringLiteral("busyProgress")) : nullptr;
+	zsearch::ProfileStats st;
+	bool flat = false;
+	if (!zsRead3DAt(camX, camY, z2D, s.z3d.maxSpreadMm, st, flat, why, progress)) { why = QStringLiteral("3D Z: %1").arg(why); return false; }
+	if (!flat) {
+		why = st.valid > 0
+			? QStringLiteral("3D Z: at the 2D Z %1 the profiler read %2 points with a spread of %3 mm - not one flat surface (Max spread %4, enough points needed): is the laser on the flat area?")
+				.arg(mm(z2D)).arg(st.valid).arg(mm(st.spread), mm(s.z3d.maxSpreadMm))
+			: QStringLiteral("3D Z: the profiler read nothing at the 2D Z %1 - is the laser on the trolley there?").arg(mm(z2D));
+		return false;
+	}
+
+	//where the reading would be the target; it must lie inside the range fid0's Find may search
+	const double z = z2D + (s.z3d.targetMm - st.median) / kReadingPerZ;
+	const double diff = z2D - z;
+	ct::logger::info("[GuidedSetup2] 3D reading %.4f at the 2D Z %.3f (target %.4f): 3D Centre Z %.3f, 2D Z - 3D Z = %.3f mm%s",
+		st.median, z2D, s.z3d.targetMm, z, diff, !s.z3d.diffSet ? ""
+		: qPrintable(QStringLiteral(" (taught %1, tolerance %2)").arg(mm(s.z3d.diffMm), mm(s.z3d.diffTolMm))));
+	if (z < s.fid0.startZ || z > s.fid0.stopZ) {
+		why = QStringLiteral("3D Z: the reading %1 mm at the 2D Z %2 puts the 3D Centre Z at %3, outside fid0's Start Z %4 .. Stop Z %5")
+			.arg(mm(st.median), mm(z2D), mm(z), mm(s.fid0.startZ), mm(s.fid0.stopZ));
+		return false;
+	}
+	if (s.z3d.diffSet && std::abs(diff - s.z3d.diffMm) > s.z3d.diffTolMm) {
+		why = QStringLiteral("3D Z: 2D Z - 3D Z is %1 mm on this trolley but %2 mm was taught (tolerance %3) - the profiler may be reading another surface")
+			.arg(mm(diff), mm(s.z3d.diffMm), mm(s.z3d.diffTolMm));
+		return false;
+	}
+	out.ok = true;
+	out.z = z;
+	out.z2D = z2D;
+	out.reading = st.median;
+	out.when = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"));
+	return true;
+}
+
+/*
+* fid0 again, where it was last located and at the current Z (the caller keeps that at the 2D Z). A
+* corner's offset is measured against fid0 as it is now, so a slow drift of the trolley or an axis
+* between teaches (IPC 2026-11-03: Y crept 0.16 mm in 8 minutes) does not go into it.
+*/
+bool VisionApp::gs2RelocateFid0(const gs2::Setup& s, Gs2Circle& out, QString& why)
+{
+	setProgress(_zsBusyWindow, QStringLiteral("Locating fid0 again..."));
+	//no sideways move over a trolley that has been taken off or put on since fid0 was found
+	if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch) { why = QStringLiteral("the trolley was removed or attached - nothing else was moved"); return false; }
+	const int w = CAMManager::instance().getWidth(QStringLiteral("cam1")), h = CAMManager::instance().getHeight(QStringLiteral("cam1"));
+	if (w <= 0 || h <= 0) { why = QStringLiteral("the camera image size is unknown - is the camera connected?"); return false; }
+	if (!zsMove({ { (int)Axis::X, _gs2Session.fid0X }, { (int)Axis::Y, _gs2Session.fid0Y } }, why)) return false;
+	//fid0 is where it was a few minutes ago, so at the image centre: a neighbour 12.7 mm away is never taken
+	const QPointF centre(w / 2.0, h / 2.0);
+	int moves = 0;
+	if (!gs2LocateCircle(s.circle[gs2::CircleFid0], false, out, moves, why, &centre)) { why = QStringLiteral("fid0 again: %1").arg(why); return false; }
+	ct::logger::info("[GuidedSetup2] fid0 located again at %.3f, %.3f: %+.3f, %+.3f mm from where it was last located",
+		out.wx, out.wy, out.wx - _gs2Session.fid0X, out.wy - _gs2Session.fid0Y);
+	_gs2Session.fid0X = out.wx;
+	_gs2Session.fid0Y = out.wy;
+	return true;
+}
+
+/*
+* START step 4: fid0 located again at the 2D Z, then the four corners at that Z, the one nearest
+* fid0 first and on round the rectangle: until one corner is found the trolley's turn is unknown and
+* the error grows with the distance from fid0. Each is looked for where fid0 + its offset puts it,
+* turned by what the corners before it showed (predictCorner). The drawing rectangle is fitted onto
+* the four (shift + turn) and every corner's residual and the angle are judged against the recipe's
+* limits. All of it is logged on every run, so the limits can be set from real numbers.
+*/
+bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why)
+{
+	out = Gs2RectCheck();
+	const gs2::FidRect& r = s.fidRect;
+	//the 2D Z is gone back down to: it must still be inside the Start Z .. Stop Z of these settings
+	if (!s.fid0.startSet || !s.fid0.stopSet || _gs2Session.z2D < s.fid0.startZ || _gs2Session.z2D > s.fid0.stopZ) {
+		why = QStringLiteral("fid0's 2D Z %1 is outside Start Z .. Stop Z - run Find in section B again").arg(mm(_gs2Session.z2D));
+		return false;
+	}
+	//down to the 2D Z at fid0 only, where the Find swept; every move after that is sideways at that Z
+	setProgress(_zsBusyWindow, QStringLiteral("To fid0 at the 2D Z..."));
+	if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, s.fid0.startZ, why)) return false;
+	if (!zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why)) return false;
+	Gs2Circle f;
+	if (!gs2RelocateFid0(s, f, why)) return false;
+	out.fid0 = { f.wx, f.wy };
+
+	const QPointF centre(f.imgW / 2.0, f.imgH / 2.0);
+	gs2geo::Pt taught[4];
+	int first = 0;
+	for (int i = 0; i < 4; i++) {
+		taught[i] = { f.wx + r.corner[i].x, f.wy + r.corner[i].y };
+		if (std::hypot(r.corner[i].x, r.corner[i].y) < std::hypot(r.corner[first].x, r.corner[first].y)) first = i;
+	}
+	std::vector<gs2geo::Pt> taughtDone, foundDone;
+	for (int k = 0; k < 4; k++) {
+		const int i = (first + k) % 4;
+		//no sideways move over a trolley that has been taken off or put on during the Check
+		if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch) { why = QStringLiteral("the trolley was removed or attached during the Check"); return false; }
+		const gs2geo::Pt expect = predictCorner(out.fid0, taughtDone, foundDone, taught[i]);
+		setProgress(_zsBusyWindow, QStringLiteral("Corner %1 of 4: %2 at X %3, Y %4...").arg(k + 1).arg(QLatin1String(kCornerName[i]), mm(expect.x), mm(expect.y)));
+		Gs2Circle c;
+		int moves = 0;
+		if (!zsMove({ { (int)Axis::X, expect.x }, { (int)Axis::Y, expect.y } }, why)
+			|| !gs2LocateCircle(s.circle[gs2::CircleCorner], false, c, moves, why, &centre, kCornerExpectTolMm)) {
+			why = QStringLiteral("%1 not found: %2%3").arg(QLatin1String(kCornerName[i]), why,
+				k == 0 ? QStringLiteral(" - is the trolley turned more than when it was taught, or not the one taught?") : QString());
+			return false;
+		}
+		out.corner[i] = { c.wx, c.wy };
+		taughtDone.push_back(taught[i]);
+		foundDone.push_back(out.corner[i]);
+		ct::logger::info("[GuidedSetup2] %s at %.3f, %.3f: %.3f mm from where expected, %.3f mm from fid0 + its taught offset (%d move(s))",
+			kCornerName[i], c.wx, c.wy, gs2geo::dist(out.corner[i], expect), gs2geo::dist(out.corner[i], taught[i]), moves);
+	}
+
+	out.fit = gs2geo::fitRect(out.corner, r.widthMm, r.lengthMm);
+	const double angleDeg = out.fit.pose.angle * 180.0 / kPi;
+	int worst = 0;
+	for (int i = 1; i < 4; i++) if (out.fit.residual[i] > out.fit.residual[worst]) worst = i;
+	const bool residualOk = out.fit.residual[worst] <= r.residualLimitMm;
+	const bool angleOk = std::abs(angleDeg) <= r.maxAngleDeg;
+	out.pass = residualOk && angleOk;
+	ct::logger::info("[GuidedSetup2] fidRect %s: centre %.3f, %.3f, angle %.4f deg (limit %.2f); residuals TL %.4f TR %.4f BR %.4f BL %.4f mm (limit %.3f); "
+		"measured %.3f x %.3f mm, drawing %.3f x %.3f", out.pass ? "PASS" : "FAIL", out.fit.pose.cx, out.fit.pose.cy, angleDeg, r.maxAngleDeg,
+		out.fit.residual[0], out.fit.residual[1], out.fit.residual[2], out.fit.residual[3], r.residualLimitMm,
+		out.fit.widthMeasured, out.fit.lengthMeasured, r.widthMm, r.lengthMm);
+
+	QStringList failed;
+	if (!residualOk) failed << QStringLiteral("%1 is %2 mm off the drawing rectangle (limit %3)").arg(QLatin1String(kCornerName[worst]), mm(out.fit.residual[worst]), mm(r.residualLimitMm));
+	if (!angleOk) failed << QStringLiteral("the trolley is turned %1 deg (limit %2)").arg(QString::number(angleDeg, 'f', 3), QString::number(r.maxAngleDeg, 'f', 2));
+	out.report = (failed.isEmpty() ? QString() : failed.join(QStringLiteral("; ")) + QStringLiteral(". "))
+		+ QStringLiteral("Residuals TL %1, TR %2, BR %3, BL %4 mm (limit %5); angle %6 deg (limit %7); measured %8 x %9 mm, drawing %10 x %11")
+		.arg(mm(out.fit.residual[0]), mm(out.fit.residual[1]), mm(out.fit.residual[2]), mm(out.fit.residual[3]), mm(r.residualLimitMm))
+		.arg(QString::number(angleDeg, 'f', 3), QString::number(r.maxAngleDeg, 'f', 2), mm(out.fit.widthMeasured), mm(out.fit.lengthMeasured))
+		.arg(mm(r.widthMm), mm(r.lengthMm));
+	return true;
+}
+
+//a passed Check as section D keeps it
+static gs2::FidRectFound rectFound(const gs2geo::RectFit& fit)
+{
+	gs2::FidRectFound f;
+	f.ok = true;
+	f.cx = fit.pose.cx;
+	f.cy = fit.pose.cy;
+	f.angleDeg = fit.pose.angle * 180.0 / kPi;
+	for (int i = 0; i < 4; i++) f.residual[i] = fit.residual[i];
+	f.widthMeasured = fit.widthMeasured;
+	f.lengthMeasured = fit.lengthMeasured;
+	f.when = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"));
+	return f;
+}
+
 void VisionApp::gs2Teach(int action)
 {
 	if (!_gs2Page || _zsBusy) return;
 	using P = GuidedSetup2Page;
-	if (_gs2Page->recipeDir().isEmpty()) { _gs2Page->showFid0Result(QStringLiteral("Open a recipe first."), false); return; }
+	if (_gs2Page->recipeDir().isEmpty()) { showTeachResult(_gs2Page, action, QStringLiteral("Open a recipe first."), false); return; }
 	//a copy: the page's working copy can be replaced while an action pumps events (a recipe load)
 	const gs2::Setup s = _gs2Page->setup();
 	const QString dir = _gs2Page->recipeDir();
@@ -1524,7 +1795,60 @@ void VisionApp::gs2Teach(int action)
 		return;
 	}
 
+	//── no motion: C's Set spot and Set Difference
+	if (action == P::TeachZ3DSpot) {
+		QString w;
+		if (!gs2SessionFid0(s, dir, w)) { _gs2Page->showZ3DResult(QStringLiteral("Set spot: %1.").arg(w), false); return; }
+		auto& mc = MotionController::instance();
+		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
+		const auto y = mc.get_position_mm(_motionID, 0, (int)Axis::Y);
+		if (!x || !y) { _gs2Page->showZ3DResult(QStringLiteral("Could not read the X / Y position - is motion connected?"), false); return; }
+		const bool addLaser = s.z3d.addLaserOffset;
+		const double wx = _laserConfig.offset.wx, wy = _laserConfig.offset.wy;
+		const double lx = addLaser ? *x + wx : *x, ly = addLaser ? *y + wy : *y; //the stage for the 3D read
+		if (!zsCheckTarget((int)Axis::X, lx, w) || !zsCheckTarget((int)Axis::Y, ly, w)) {
+			_gs2Page->showZ3DResult(QStringLiteral("Set spot: the laser cannot reach this spot - %1 (camera point + laser offset).").arg(w), false);
+			return;
+		}
+		const double dx = *x - _gs2Session.fid0X, dy = *y - _gs2Session.fid0Y;
+		_gs2Page->modify([&](gs2::Setup& ws) { ws.z3d.offset = { true, dx, dy }; });
+		_gs2Session.has3D = false; //a 3D Find at the old spot is not this spot's difference
+		_gs2Page->showZ3DResult(QStringLiteral("3D spot set: the camera at X %1, Y %2 = fid0 %3, %4 mm; %5 Run Find.")
+			.arg(mm(*x), mm(*y), signedMm(dx), signedMm(dy), addLaser
+				? QStringLiteral("the stage goes to X %1, Y %2 so the laser reads here.").arg(mm(lx), mm(ly))
+				: QStringLiteral("the stage comes back here (camera-to-laser XY not added), so the laser reads X %1, Y %2.").arg(mm(*x - wx), mm(*y - wy))), false);
+		ct::logger::info("[GuidedSetup2] 3D spot set: camera %.3f, %.3f = fid0 %+.3f, %+.3f; stage for the read %.3f, %.3f (camera-to-laser XY %s)",
+			*x, *y, dx, dy, lx, ly, addLaser ? "added" : "NOT added");
+		AuditLog::instance().log(QStringLiteral("GS2_Z3D_SPOT"), QStringLiteral("fid0 %1, %2").arg(signedMm(dx), signedMm(dy)));
+		return;
+	}
+	if (action == P::TeachZ3DDiff) {
+		QString w;
+		if (!gs2SessionFid0(s, dir, w)) { _gs2Page->showZ3DResult(QStringLiteral("Set Difference: %1.").arg(w), false); return; }
+		if (!_gs2Session.has3D || _gs2Session.z3DAddLaser != s.z3d.addLaserOffset) {
+			_gs2Page->showZ3DResult(QStringLiteral("Run Find here first, with Laser XY as it is now: the difference is taken from it."), false);
+			return;
+		}
+		const double diff = std::round((_gs2Session.z3DFrom2D - _gs2Session.z3D) * 1000.0) / 1000.0;
+		_gs2Page->modify([&](gs2::Setup& ws) { ws.z3d.diffSet = true; ws.z3d.diffMm = diff; });
+		_gs2Page->showZ3DResult(QStringLiteral("Difference set: 2D Z %1 - 3D Z %2 = %3 mm. Run Find again: from now on it must agree within the tolerance.")
+			.arg(mm(_gs2Session.z3DFrom2D), mm(_gs2Session.z3D), mm(diff)), false);
+		ct::logger::info("[GuidedSetup2] 2D - 3D difference set: %.3f - %.3f = %.3f mm", _gs2Session.z3DFrom2D, _gs2Session.z3D, diff);
+		AuditLog::instance().log(QStringLiteral("GS2_Z3D_DIFF"), mm(diff));
+		return;
+	}
+
 	//── the rest moves the machine
+	//what Find fid0 needs before it moves: B's Find and Locate
+	auto fid0Ready = [&](QString& w) {
+		if (!readyToRun(s, gs2::SecFid0, w)) return false;
+		if (s.fid0.stepMm < 0.1 || s.fid0.stepMm > s.fid0.stopZ - s.fid0.startZ) {
+			w = QStringLiteral("the max step must be between 0.1 mm and the Start-Stop range");
+			return false;
+		}
+		return zsCheckTarget((int)Axis::X, s.fid0.xy.x, w) && zsCheckTarget((int)Axis::Y, s.fid0.xy.y, w)
+			&& zsCheckTarget((int)Axis::Z, s.fid0.startZ, w) && zsCheckTarget((int)Axis::Z, s.fid0.stopZ, w);
+	};
 	QString why, title, note;
 	switch (action) {
 	case P::TeachSnapEmpty:
@@ -1555,21 +1879,76 @@ void VisionApp::gs2Teach(int action)
 		break;
 	case P::TeachFind: {
 		QString w;
-		if (!gs2::sectionDone(s, gs2::SecFid0, &w) && w != QStringLiteral("Find has not passed with these settings")) {
-			_gs2Page->showFid0Result(QStringLiteral("Find cannot start: %1.").arg(w), false);
-			return;
-		}
-		if (s.fid0.stepMm < 0.1 || s.fid0.stepMm > s.fid0.stopZ - s.fid0.startZ) {
-			_gs2Page->showFid0Result(QStringLiteral("Find cannot start: the max step must be between 0.1 mm and the Start-Stop range."), false);
-			return;
-		}
-		if (!zsCheckTarget((int)Axis::X, s.fid0.xy.x, w) || !zsCheckTarget((int)Axis::Y, s.fid0.xy.y, w)
-			|| !zsCheckTarget((int)Axis::Z, s.fid0.startZ, w) || !zsCheckTarget((int)Axis::Z, s.fid0.stopZ, w)) {
-			_gs2Page->showFid0Result(QStringLiteral("Find cannot start: %1.").arg(w), false);
-			return;
-		}
+		if (!fid0Ready(w)) { _gs2Page->showFid0Result(QStringLiteral("Find cannot start: %1.").arg(w), false); return; }
 		title = QStringLiteral("Find fid0");
 		note = QStringLiteral("To the search XY at Start Z, Z sweep for the sharpest image (never past Stop Z), pattern, circle.");
+		break;
+	}
+	case P::TeachZ3DFind: {
+		QString w;
+		const QPointF at = z3dReadPoint(s, _gs2Session.fid0X, _gs2Session.fid0Y, _laserConfig.offset);
+		if (!gs2SessionFid0(s, dir, w) || !readyToRun(s, gs2::Sec3DZ, w) || !zsCheck3DRead(at.x(), at.y(), w)) {
+			_gs2Page->showZ3DResult(QStringLiteral("Find cannot start: %1.").arg(w), false);
+			return;
+		}
+		title = QStringLiteral("Find 3D Z");
+		note = QStringLiteral("Z up to fid0's 2D Z if it is lower, the laser to the 3D spot, Z to the 2D Z and one profiler read - no Z search.");
+		break;
+	}
+	case P::TeachCornerTL: case P::TeachCornerTR: case P::TeachCornerBR: case P::TeachCornerBL: {
+		QString w;
+		if (!gs2SessionFid0(s, dir, w)) { _gs2Page->showRectResult(QStringLiteral("Teach: %1.").arg(w), false); return; }
+		if (!s.circle[gs2::CircleCorner].dia.valid()) { _gs2Page->showRectResult(QStringLiteral("Set the corner circle diameter in Camera and circle finder first."), false); return; }
+		const auto z = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
+		if (!z) { _gs2Page->showRectResult(QStringLiteral("Could not read the Z position - is motion connected?"), false); return; }
+		//at the 2D Z or a little above, never below it: the teach moves sideways at this Z, and the 2D Z is as
+		//low as the head is known to be clear of the trolley (+ Z is down)
+		if (*z < _gs2Session.z2D - kTeachZTolMm || *z > _gs2Session.z2D + kTeachZBelowMm) {
+			_gs2Page->showRectResult(QStringLiteral("The camera is at Z %1 but fid0's 2D Z is %2: jog Z to %2 (not lower) so the corner circle is in focus, then teach.")
+				.arg(mm(*z), mm(_gs2Session.z2D)), false);
+			return;
+		}
+		title = QStringLiteral("Teach %1").arg(QLatin1String(kCornerName[action - P::TeachCornerTL]));
+		note = QStringLiteral("The camera centres on the corner circle, then goes to fid0 at the same Z and locates it again.");
+		break;
+	}
+	case P::TeachJogCornerTL: case P::TeachJogCornerTR: case P::TeachJogCornerBR: case P::TeachJogCornerBL: {
+		const int i = action - P::TeachJogCornerTL;
+		QString w;
+		if (!s.fidRect.corner[i].set) { _gs2Page->showRectResult(QStringLiteral("Teach %1 first.").arg(QLatin1String(kCornerName[i])), false); return; }
+		if (!gs2SessionFid0(s, dir, w)) { _gs2Page->showRectResult(QStringLiteral("Jog: %1.").arg(w), false); return; }
+		if (!zsCheckTarget((int)Axis::X, _gs2Session.fid0X + s.fidRect.corner[i].x, w) || !zsCheckTarget((int)Axis::Y, _gs2Session.fid0Y + s.fidRect.corner[i].y, w)) {
+			_gs2Page->showRectResult(QStringLiteral("Jog cannot start: %1.").arg(w), false);
+			return;
+		}
+		title = QStringLiteral("Jog to %1").arg(QLatin1String(kCornerName[i]));
+		note = QStringLiteral("Z up to fid0's 2D Z if it is lower, the camera to fid0 (as found now) + the taught %1 offset, Z to the 2D Z.")
+			.arg(QLatin1String(kCornerName[i]));
+		break;
+	}
+	case P::TeachRectCheck: {
+		QString w;
+		if (!gs2SessionFid0(s, dir, w) || !readyToRun(s, gs2::SecFidRect, w)) { _gs2Page->showRectResult(QStringLiteral("Check cannot start: %1.").arg(w), false); return; }
+		for (int i = 0; i < 4 && w.isEmpty(); i++)
+			if (!zsCheckTarget((int)Axis::X, _gs2Session.fid0X + s.fidRect.corner[i].x, w) || !zsCheckTarget((int)Axis::Y, _gs2Session.fid0Y + s.fidRect.corner[i].y, w))
+				w = QStringLiteral("%1: %2").arg(QLatin1String(kCornerName[i]), w);
+		if (!w.isEmpty()) { _gs2Page->showRectResult(QStringLiteral("Check cannot start: %1.").arg(w), false); return; }
+		title = QStringLiteral("Check fidRect");
+		note = QStringLiteral("Z up to Start Z if it is lower, to fid0 and down to its 2D Z, fid0 located again, then each corner at that Z.");
+		break;
+	}
+	case P::TeachLocate: {
+		QString w;
+		const QPointF at = z3dReadPoint(s, s.fid0.xy.x, s.fid0.xy.y, _laserConfig.offset);
+		if (!gs2::sectionDone(s, gs2::SecSafety1, &w)) w = QStringLiteral("A: %1").arg(w);
+		else if (!fid0Ready(w)) w = QStringLiteral("B: %1").arg(w);
+		else if (!readyToRun(s, gs2::Sec3DZ, w)) w = QStringLiteral("C: %1").arg(w);
+		else if (!readyToRun(s, gs2::SecFidRect, w)) w = QStringLiteral("D: %1").arg(w);
+		else if (!zsCheck3DRead(at.x(), at.y(), w)) w = QStringLiteral("C: %1").arg(w);
+		else w.clear();
+		if (!w.isEmpty()) { _gs2Page->showLocateResult(QStringLiteral("Locate cannot start: %1.").arg(w), false); return; }
+		title = QStringLiteral("Locate");
+		note = QStringLiteral("START steps 1-5 as production will run them: home and Safety check 1, Find fid0 (Z sweep, pattern, circle), 3D Z (one read at the 2D Z), the four corners.");
 		break;
 	}
 	default:
@@ -1581,6 +1960,44 @@ void VisionApp::gs2Teach(int action)
 	const int trolleyEpoch = _zsTrolleyEpoch;
 	bool ok = false;
 	QString result;
+	//a result belongs to the trolley and the recipe the action started with
+	auto stillHere = [&](QString& w) {
+		if (trolleyEpoch != _zsTrolleyEpoch) { w = QStringLiteral("the trolley was removed or attached meanwhile - the result was discarded"); return false; }
+		if (_gs2Page->recipeDir() != dir) { w = QStringLiteral("the recipe changed meanwhile - the result was discarded"); return false; }
+		return true;
+	};
+	//passed START steps: into the page (and the file, see recordResult) and into this session
+	auto keepFid0 = [&](const gs2::Fid0Found& found) {
+		_gs2Page->recordFid0Found(found);
+		//a 3D Find from another trolley or recipe must not become this one's 2D - 3D difference
+		if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch || _gs2Session.recipeDir != dir) _gs2Session.has3D = false;
+		_gs2Session.fid0 = true;
+		_gs2Session.fid0X = found.x;
+		_gs2Session.fid0Y = found.y;
+		_gs2Session.z2D = found.z;
+		_gs2Session.trolleyEpoch = _zsTrolleyEpoch;
+		_gs2Session.recipeDir = dir;
+		AuditLog::instance().log(QStringLiteral("GS2_FID0_FIND"), QStringLiteral("X %1, Y %2, Z %3, score %4")
+			.arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2));
+	};
+	auto keep3D = [&](const gs2::Z3DFound& found) {
+		_gs2Page->recordZ3DFound(found);
+		_gs2Session.has3D = true;
+		_gs2Session.z3D = found.z;
+		_gs2Session.z3DFrom2D = found.z2D;
+		_gs2Session.z3DAddLaser = s.z3d.addLaserOffset;
+		AuditLog::instance().log(QStringLiteral("GS2_Z3D_FIND"), QStringLiteral("Z %1 from 2D Z %2").arg(mm(found.z), mm(found.z2D)));
+	};
+	auto keepRect = [&](const Gs2RectCheck& r) {
+		_gs2Page->recordFidRectFound(rectFound(r.fit));
+		AuditLog::instance().log(QStringLiteral("GS2_FIDRECT_CHECK"), QStringLiteral("centre %1, %2, angle %3, worst residual %4")
+			.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual())));
+	};
+	//the layout drawn where the corners were found, passed or not: a failed corner shows where it is
+	auto showFound = [&](const Gs2RectCheck& r) {
+		if (_gs2View) _gs2View->setLocated(r.fit, r.fid0, r.corner, QStringLiteral("%1 %2%3").arg(title, QTime::currentTime().toString(QStringLiteral("hh:mm")),
+			r.pass ? QString() : QStringLiteral(" (FAILED)")));
+	};
 	switch (action) {
 	case P::TeachSnapEmpty: {
 		QImage small;
@@ -1637,26 +2054,114 @@ void VisionApp::gs2Teach(int action)
 		ok = zsMoveToXY(s.fid0.xy.x, s.fid0.xy.y, s.fid0.startZ, why);
 		if (ok) result = QStringLiteral("At the fid0 search XY.");
 		break;
+	//sideways at the 2D Z (or higher), as Check moves between corners: the corner arrives in focus
+	case P::TeachJogCornerTL: case P::TeachJogCornerTR: case P::TeachJogCornerBR: case P::TeachJogCornerBL: {
+		const int i = action - P::TeachJogCornerTL;
+		const double x = _gs2Session.fid0X + s.fidRect.corner[i].x, y = _gs2Session.fid0Y + s.fidRect.corner[i].y;
+		ok = zsMoveToXY(x, y, _gs2Session.z2D, why) && zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why);
+		if (ok) result = QStringLiteral("At %1: X %2, Y %3, Z %4 (fid0 as found now + its taught offset, at the 2D Z). Teach %5 here to teach it again.")
+			.arg(QLatin1String(kCornerName[i]), mm(x), mm(y), mm(_gs2Session.z2D), QLatin1String(kCornerName[i] + 3));
+		break;
+	}
 	case P::TeachFind: {
 		gs2::Fid0Found found;
-		ok = gs2FindFid0(s, dir, found, why);
-		if (ok && trolleyEpoch != _zsTrolleyEpoch) { ok = false; why = QStringLiteral("the trolley was removed or attached meanwhile - the result was discarded"); }
-		if (ok && _gs2Page->recipeDir() != dir) { ok = false; why = QStringLiteral("the recipe changed meanwhile - the result was discarded"); }
+		ok = gs2FindFid0(s, dir, found, why) && stillHere(why);
+		if (ok) keepFid0(found);
+		//after a failed Find Z goes back up to Start Z, as the Z search does - up only, never down to it
+		else if (!_stopRun) why += QStringLiteral(". ") + zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z"));
+		break;
+	}
+	case P::TeachZ3DFind: {
+		gs2::Z3DFound found;
+		ok = gs2Find3DZ(s, found, why) && stillHere(why);
+		if (ok) keep3D(found);
+		else if (!_stopRun) why += QStringLiteral(". ") + zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z"));
+		break;
+	}
+	case P::TeachCornerTL: case P::TeachCornerTR: case P::TeachCornerBR: case P::TeachCornerBL: {
+		const int i = action - P::TeachCornerTL;
+		const double wasX = _gs2Session.fid0X, wasY = _gs2Session.fid0Y;
+		Gs2Circle corner, f;
+		int moves = 0;
+		ok = gs2LocateCircle(s.circle[gs2::CircleCorner], true, corner, moves, why);
+		if (!ok) why = QStringLiteral("the corner circle: %1").arg(why);
+		else ok = gs2RelocateFid0(s, f, why) && stillHere(why);
 		if (ok) {
-			_gs2Page->recordFid0Found(found);
-			_gs2Session.fid0 = true;
-			_gs2Session.fid0X = found.x;
-			_gs2Session.fid0Y = found.y;
-			_gs2Session.z2D = found.z;
-			_gs2Session.trolleyEpoch = _zsTrolleyEpoch;
-			_gs2Session.recipeDir = dir;
-			AuditLog::instance().log(QStringLiteral("GS2_FID0_FIND"), QStringLiteral("X %1, Y %2, Z %3, score %4")
-				.arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2));
+			const double dx = corner.wx - f.wx, dy = corner.wy - f.wy;
+			_gs2Page->modify([&](gs2::Setup& ws) { ws.fidRect.corner[i] = { true, dx, dy }; });
+			result = QStringLiteral("%1 taught: the circle at X %2, Y %3 (%4 mm across) = fid0 %5, %6 mm. fid0 was located again at X %7, Y %8, %9 mm from before. %10")
+				.arg(QLatin1String(kCornerName[i]), mm(corner.wx), mm(corner.wy), mm(corner.diaMm), signedMm(dx), signedMm(dy), mm(f.wx), mm(f.wy),
+					mm(std::hypot(f.wx - wasX, f.wy - wasY)))
+				.arg(QStringLiteral("Teach the other corners, then Check."));
+			ct::logger::info("[GuidedSetup2] %s taught: circle %.3f, %.3f (%.3f mm across, %d move(s)), fid0 %.3f, %.3f -> offset %+.3f, %+.3f",
+				kCornerName[i], corner.wx, corner.wy, corner.diaMm, moves, f.wx, f.wy, dx, dy);
+			AuditLog::instance().log(QStringLiteral("GS2_CORNER"), QStringLiteral("%1 fid0 %2, %3").arg(QLatin1String(kCornerName[i]), signedMm(dx), signedMm(dy)));
 		}
-		else if (!_stopRun) {
-			//after a failed Find Z goes back up to Start Z, as the Z search does - up only, never down to it
-			why += QStringLiteral(". ") + zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z"));
+		break;
+	}
+	case P::TeachRectCheck: {
+		Gs2RectCheck r;
+		ok = gs2CheckRect(s, r, why) && stillHere(why);
+		if (ok) {
+			showFound(r);
+			if (r.pass) keepRect(r);
+			else { ok = false; why = r.report; }
 		}
+		if (!ok && !_stopRun) why += QStringLiteral(". ") + zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z"));
+		break;
+	}
+	case P::TeachLocate: {
+		QElapsedTimer timer;
+		timer.start();
+		QStringList steps;
+		//1: Safety check 1 at home
+		QImage small;
+		QVector<double> scores;
+		ok = gs2SnapHome(small, why) && gs2SafetyScores(small, s.safety1.emptyImages, scores, why);
+		if (ok) {
+			const double lowest = *std::min_element(scores.begin(), scores.end());
+			ct::logger::info("[GuidedSetup2] Locate: Safety check 1 lowest score %.1f, threshold %.1f", lowest, s.safety1.threshold);
+			if (lowest <= s.safety1.threshold) {
+				ok = false;
+				why = QStringLiteral("the table looks empty (score %1, threshold %2) - load a trolley").arg(lowest, 0, 'f', 1).arg(s.safety1.threshold, 0, 'f', 1);
+			}
+			else steps << QStringLiteral("Safety check 1 score %1 (threshold %2)").arg(lowest, 0, 'f', 1).arg(s.safety1.threshold, 0, 'f', 1);
+		}
+		if (!ok) why = QStringLiteral("Safety check 1: %1").arg(why);
+		//2: fid0
+		gs2::Fid0Found found;
+		if (ok) ok = gs2FindFid0(s, dir, found, why) && stillHere(why);
+		if (ok) {
+			keepFid0(found);
+			steps << QStringLiteral("fid0 at X %1, Y %2, 2D Z %3 (pattern %4)").arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2);
+		}
+		//3: 3D Z
+		gs2::Z3DFound z3;
+		if (ok) ok = gs2Find3DZ(s, z3, why) && stillHere(why);
+		if (ok) {
+			keep3D(z3);
+			steps << QStringLiteral("3D Z %1").arg(mm(z3.z));
+		}
+		//4: the four corners
+		Gs2RectCheck r;
+		if (ok) ok = gs2CheckRect(s, r, why) && stillHere(why);
+		if (ok) {
+			showFound(r);
+			if (r.pass) {
+				keepRect(r);
+				steps << QStringLiteral("trolley centre X %1, Y %2, angle %3 deg, worst residual %4 mm")
+					.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual()));
+			}
+			else { ok = false; why = QStringLiteral("the corners: %1").arg(r.report); }
+		}
+		//5: the layout drawn where the trolley is - the slots, units and their reach come with build step 4
+		if (ok) {
+			result = QStringLiteral("Locate passed in %1 s: %2. The layout shows the trolley where it was found.")
+				.arg(timer.elapsed() / 1000.0, 0, 'f', 1).arg(steps.join(QStringLiteral("; ")));
+			ct::logger::info("[GuidedSetup2] Locate passed in %.1f s", timer.elapsed() / 1000.0);
+			AuditLog::instance().log(QStringLiteral("GS2_LOCATE"), QStringLiteral("passed"));
+		}
+		else if (!_stopRun) why += QStringLiteral(". ") + zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z"));
 		break;
 	}
 	default:
@@ -1670,7 +2175,10 @@ void VisionApp::gs2Teach(int action)
 		ct::logger::warn("[GuidedSetup2] %s failed: %s", qPrintable(title), qPrintable(stopped ? QStringLiteral("stopped") : why));
 	}
 	if (!_gs2Page) return;
-	if (action == P::TeachSnapEmpty || action == P::TeachScore) _gs2Page->showSafetyScore(result, ok);
-	else if (action != P::TeachFind || !ok) _gs2Page->showFid0Result(result, ok && action == P::TeachFind);
-	//a Find that passed is shown by the page from the working copy
+	//a Find or Check that passed is shown by the page from the working copy; a taught value is not a
+	//section done, so it is shown as still to do
+	const bool runResult = action == P::TeachFind || action == P::TeachZ3DFind || action == P::TeachRectCheck;
+	if (!ok || !runResult)
+		showTeachResult(_gs2Page, action, result, ok && (action == P::TeachSnapEmpty || action == P::TeachScore || action == P::TeachLocate));
+	if (ok && action == P::TeachLocate) gs2ShowLayoutView();
 }

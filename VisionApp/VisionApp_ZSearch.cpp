@@ -731,6 +731,7 @@ bool VisionApp::zsCheckSetup(bool threeD, double x, double y, QString& why)
 	const QString which = threeD ? QStringLiteral("3D") : QStringLiteral("2D");
 
 	if (!xySet || !startSet || !stopSet) { why = QStringLiteral("set the %1 Search XY, Start Z and Stop Z first").arg(which); return false; }
+	if (threeD) return zsCheck3D(_zSearch.s3d, x, y, why);
 	if (!(startZ < stopZ)) {
 		why = QStringLiteral("%1 Start Z must be ABOVE Stop Z - the smaller number, since + Z is down").arg(which);
 		return false;
@@ -740,27 +741,42 @@ bool VisionApp::zsCheckSetup(bool threeD, double x, double y, QString& why)
 		return false;
 	}
 
-	double lx = x, ly = y;
-	if (threeD) {
-		lx += _laserConfig.offset.wx;
-		ly += _laserConfig.offset.wy;
+	if (!zsCheckTarget((int)Axis::X, x, why) || !zsCheckTarget((int)Axis::Y, y, why)) return false;
+	return zsCheckTarget((int)Axis::Z, startZ, why) && zsCheckTarget((int)Axis::Z, stopZ, why);
+}
 
-		auto& pm = ProfilerManager::instance();
-		if (!pm.isConnected(_profilerID)) { why = QStringLiteral("the 3D profiler is not connected"); return false; }
-		if (_zsLiveProfileOn) { why = QStringLiteral("the live profile on the 3D Optics page is running - stop it first"); return false; }
-		const double range = pm.liveZRangeMm(_profilerID);
-		if (range > 0.0 && step > range / 4.0) {
-			why = QStringLiteral("the 3D step %1 mm could step over a surface - keep it under %2 mm (a quarter of the profiler's %3 mm range)")
-				.arg(mm(step)).arg(mm(range / 4.0)).arg(mm(range));
-			return false;
-		}
-	}
-
-	if (!zsCheckTarget((int)Axis::X, lx, why) || !zsCheckTarget((int)Axis::Y, ly, why)) {
-		if (threeD) why += QStringLiteral(" (the laser point: Search XY + laser offset)");
+//the 3D half of zsCheckSetup, for any 3D settings: the Z search's own and the Guided Setup (new)'s
+bool VisionApp::zsCheck3D(const ZSearch3DConfig& c, double camX, double camY, QString& why)
+{
+	if (!(c.startZ < c.stopZ)) {
+		why = QStringLiteral("3D Start Z must be ABOVE Stop Z - the smaller number, since + Z is down");
 		return false;
 	}
-	return zsCheckTarget((int)Axis::Z, startZ, why) && zsCheckTarget((int)Axis::Z, stopZ, why);
+	if (c.stepMm < kMinCoarseStepMm || c.stepMm > c.stopZ - c.startZ) {
+		why = QStringLiteral("the 3D step must be between %1 mm and the Start-Stop range").arg(kMinCoarseStepMm);
+		return false;
+	}
+
+	if (!zsCheck3DRead(camX, camY, why)) return false;
+	const double range = ProfilerManager::instance().liveZRangeMm(_profilerID);
+	if (range > 0.0 && c.stepMm > range / 4.0) {
+		why = QStringLiteral("the 3D step %1 mm could step over a surface - keep it under %2 mm (a quarter of the profiler's %3 mm range)")
+			.arg(mm(c.stepMm)).arg(mm(range / 4.0)).arg(mm(range));
+		return false;
+	}
+	return zsCheckTarget((int)Axis::Z, c.startZ, why) && zsCheckTarget((int)Axis::Z, c.stopZ, why);
+}
+
+bool VisionApp::zsCheck3DRead(double camX, double camY, QString& why)
+{
+	auto& pm = ProfilerManager::instance();
+	if (!pm.isConnected(_profilerID)) { why = QStringLiteral("the 3D profiler is not connected"); return false; }
+	if (_zsLiveProfileOn) { why = QStringLiteral("the live profile on the 3D Optics page is running - stop it first"); return false; }
+	if (!zsCheckTarget((int)Axis::X, camX + _laserConfig.offset.wx, why) || !zsCheckTarget((int)Axis::Y, camY + _laserConfig.offset.wy, why)) {
+		why += QStringLiteral(" (the laser point: camera point + laser offset)");
+		return false;
+	}
+	return true;
 }
 
 void VisionApp::zsPause(int ms)
@@ -1109,10 +1125,11 @@ bool VisionApp::zsReadProfile(zsearch::ProfileStats& st, int& offered, QString& 
 * Step down until the profiler reads a flat surface, measure how the reading moves with Z (sign and
 * scale - neither is assumed), then move until the reading is the target. The controller is put in
 * live mode for the reads and ALWAYS put back in encoder batch mode, which production scans need.
+* predictedZ (optional): where the surface is expected, read first - stepping from Start Z only
+* when nothing flat is there.
 */
-bool VisionApp::zsFind3D(double camX, double camY, double& foundZ, QString& why)
+bool VisionApp::zsFind3D(const ZSearch3DConfig& c, double camX, double camY, const double* predictedZ, double& foundZ, QString& why, QLabel* status)
 {
-	const auto& c = _zSearch.s3d;
 	auto& pm = ProfilerManager::instance();
 
 	const double lx = camX + _laserConfig.offset.wx;
@@ -1133,7 +1150,7 @@ bool VisionApp::zsFind3D(double camX, double camY, double& foundZ, QString& why)
 			valid = st.valid >= std::max(kMinProfilePoints, offered / 2) && st.spread <= c.maxSpreadMm;
 			ct::logger::info("[ZSearch] 3D z=%.3f points=%d/%d reading=%.4f spread=%.4f %s",
 				z, st.valid, offered, st.median, st.spread, valid ? "FLAT" : "-");
-			_zsw.status3->setText(st.valid > 0
+			if (status) status->setText(st.valid > 0
 				? QStringLiteral("Z %1  reading %2 mm  spread %3 mm  (%4 of %5 points)%6").arg(mm(z)).arg(st.median, 0, 'f', 3)
 					.arg(st.spread, 0, 'f', 3).arg(st.valid).arg(offered).arg(valid ? QString() : QStringLiteral("  - not flat enough"))
 				: QStringLiteral("Z %1  nothing in range").arg(mm(z)));
@@ -1144,14 +1161,15 @@ bool VisionApp::zsFind3D(double camX, double camY, double& foundZ, QString& why)
 		zsearch::ProfileStats s0;
 		bool valid = false, found = false;
 
-		//first where the 2D result says it should be, when this recipe's difference is taught
-		if (_zFound.has2D && _zSearch.diffSet) {
-			const double predicted = _zFound.z2D - _zSearch.diffMm;
+		//first where the 2D result says it should be
+		if (predictedZ) {
+			const double predicted = *predictedZ;
 			if (predicted >= c.startZ && predicted <= c.stopZ) {
 				if (!readAt(predicted, s0, valid)) return false;
 				if (valid) { z0 = predicted; found = true; }
 				ct::logger::info("[ZSearch] 3D predicted from 2D Focus Z: %.3f - %s", predicted, valid ? "surface there" : "nothing, stepping from Start Z");
 			}
+			else ct::logger::info("[ZSearch] 3D predicted from 2D Focus Z: %.3f - outside Start Z .. Stop Z, stepping from Start Z", predicted);
 		}
 		for (int i = 0; !found; i++) {
 			const double z = c.startZ + i * c.stepMm;
@@ -1211,6 +1229,43 @@ bool VisionApp::zsFind3D(double camX, double camY, double& foundZ, QString& why)
 }
 
 /*
+* One read where the head already is clear: Z up to z first when the head is lower, the laser over the
+* camera point, Z to z, five live profiles. No search - the caller knows z puts the surface in range.
+* The controller is ALWAYS put back in encoder batch mode, which production scans need.
+*/
+bool VisionApp::zsRead3DAt(double camX, double camY, double z, double maxSpreadMm, zsearch::ProfileStats& st, bool& valid, QString& why, QLabel* status)
+{
+	auto& pm = ProfilerManager::instance();
+	valid = false;
+	const double lx = camX + _laserConfig.offset.wx;
+	const double ly = camY + _laserConfig.offset.wy;
+	if (!zsMoveToXY(lx, ly, z, why)) return false;
+	if (!zsMove({ { (int)Axis::Z, z } }, why)) return false;
+
+	pm.stop(_profilerID); //live reads need scan acquisition stopped
+	if (!pm.startLive(_profilerID)) { why = QStringLiteral("the profiler could not enter live mode"); return false; }
+	int offered = 0;
+	bool ok = zsReadProfile(st, offered, why);
+	if (ok) {
+		valid = st.valid >= std::max(kMinProfilePoints, offered / 2) && st.spread <= maxSpreadMm;
+		ct::logger::info("[ZSearch] 3D read, laser at %.3f, %.3f (camera %.3f, %.3f), z=%.3f points=%d/%d reading=%.4f spread=%.4f %s",
+			lx, ly, camX, camY, z, st.valid, offered, st.median, st.spread, valid ? "FLAT" : "-");
+		if (status) status->setText(st.valid > 0
+			? QStringLiteral("Z %1  reading %2 mm  spread %3 mm  (%4 of %5 points)%6").arg(mm(z)).arg(st.median, 0, 'f', 3)
+				.arg(st.spread, 0, 'f', 3).arg(st.valid).arg(offered).arg(valid ? QString() : QStringLiteral("  - not flat enough"))
+			: QStringLiteral("Z %1  nothing in range").arg(mm(z)));
+	}
+
+	if (!pm.stopLive(_profilerID)) {
+		ct::logger::error("[ZSearch] FAILED to restore the profiler's encoder batch mode after the 3D read");
+		why = (ok ? QString() : why + QStringLiteral("\n\n")) + QStringLiteral(
+			"The profiler did NOT go back to encoder batch mode - press Start/Stop Live on the 3D Optics page before scanning.");
+		ok = false;
+	}
+	return ok;
+}
+
+/*
 * Find Z for one frame. On failure Z goes straight back up to Start Z and nothing else moves; a Stop
 * from the panel moves nothing at all.
 */
@@ -1241,7 +1296,11 @@ void VisionApp::zsRunFind(bool threeD)
 
 	double z = 0.0;
 	const int trolleyEpoch = _zsTrolleyEpoch;
-	bool ok = threeD ? zsFind3D(x, y, z, why) : zsFind2D(_zSearch.s2d, x, y, _zSearch.s2d.confirmSafetyCheck, z, why, _zsw.status2);
+	//3D starts where the 2D result says, when this recipe's difference is taught
+	const double predicted = _zFound.z2D - _zSearch.diffMm;
+	const double* predictedZ = (_zFound.has2D && _zSearch.diffSet) ? &predicted : nullptr;
+	bool ok = threeD ? zsFind3D(_zSearch.s3d, x, y, predictedZ, z, why, _zsw.status3)
+		: zsFind2D(_zSearch.s2d, x, y, _zSearch.s2d.confirmSafetyCheck, z, why, _zsw.status2);
 	const bool stopped = _stopRun;
 	//the trolley guard changed while it searched: the Z it found belongs to a table that is gone
 	if (ok && trolleyEpoch != _zsTrolleyEpoch) {
@@ -1315,7 +1374,12 @@ void VisionApp::zsCalibrateCamLaser()
 		"until it finishes. Stop ends it at once; the panel Stop and the e-stop also stop it."));
 
 	double z2 = 0.0, z3 = 0.0;
-	const bool ok = zsFind2D(_zSearch.s2d, x, y, false, z2, why, _zsw.status2) && zsFind3D(x, y, z3, why);
+	bool ok = zsFind2D(_zSearch.s2d, x, y, false, z2, why, _zsw.status2);
+	if (ok) {
+		//read when the 3D search starts, as before it took its settings as parameters
+		const double predicted = _zFound.z2D - _zSearch.diffMm;
+		ok = zsFind3D(_zSearch.s3d, x, y, (_zFound.has2D && _zSearch.diffSet) ? &predicted : nullptr, z3, why, _zsw.status3);
+	}
 	QString after;
 	if (ok) {
 		_zCalibration.set = true;

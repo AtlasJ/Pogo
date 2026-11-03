@@ -121,12 +121,14 @@ bool sectionDone(const Setup& s, Section sec, QString* why)
 		return true;
 	case Sec3DZ:
 		if (!s.z3d.offset.set) return fail(QStringLiteral("flat spot not set"));
+		if (!s.z3d.found.ok) return fail(QStringLiteral("Find has not passed with these settings"));
 		return true;
 	case SecFidRect:
 		if (s.fidRect.widthMm <= 0.0 || s.fidRect.lengthMm <= 0.0) return fail(QStringLiteral("drawing width / length not typed"));
 		for (int i = 0; i < 4; i++)
 			if (!s.fidRect.corner[i].set) return fail(QStringLiteral("fid%1 not taught").arg(QLatin1String(kCornerKey[i])));
 		if (!s.circle[CircleCorner].dia.valid()) return fail(QStringLiteral("corner circle diameter not set (Camera and circle finder)"));
+		if (!s.fidRect.found.ok) return fail(QStringLiteral("Check has not passed with these corners and settings"));
 		return true;
 	case SecSlotSize:
 		if (!s.slotSize.set || s.slotSize.widthMm <= 0.0 || s.slotSize.lengthMm <= 0.0) return fail(QStringLiteral("TL and BR not set"));
@@ -226,11 +228,19 @@ QJsonObject toJson(const Setup& s)
 
 	QJsonObject c;
 	putXY(c, "offsetFromFid0", s.z3d.offset);
-	c.insert(QStringLiteral("stepMm"), s.z3d.stepMm);
+	c.insert(QStringLiteral("addLaserOffset"), s.z3d.addLaserOffset);
 	c.insert(QStringLiteral("targetMm"), s.z3d.targetMm);
 	c.insert(QStringLiteral("maxSpreadMm"), s.z3d.maxSpreadMm);
 	if (s.z3d.diffSet) c.insert(QStringLiteral("diffMm"), s.z3d.diffMm);
 	c.insert(QStringLiteral("diffTolMm"), s.z3d.diffTolMm);
+	if (s.z3d.found.ok) {
+		QJsonObject f;
+		f.insert(QStringLiteral("z"), s.z3d.found.z);
+		f.insert(QStringLiteral("z2D"), s.z3d.found.z2D);
+		f.insert(QStringLiteral("reading"), s.z3d.found.reading);
+		f.insert(QStringLiteral("when"), s.z3d.found.when);
+		c.insert(QStringLiteral("lastFind"), f);
+	}
 	root.insert(QStringLiteral("z3d"), c);
 
 	QJsonObject d;
@@ -242,6 +252,16 @@ QJsonObject toJson(const Setup& s)
 	putDia(d, "diaMm", s.circle[CircleCorner].dia); //as above
 	d.insert(QStringLiteral("residualLimitMm"), s.fidRect.residualLimitMm);
 	d.insert(QStringLiteral("maxAngleDeg"), s.fidRect.maxAngleDeg);
+	if (s.fidRect.found.ok) {
+		const FidRectFound& r = s.fidRect.found;
+		QJsonObject f;
+		f.insert(QStringLiteral("centre"), QJsonArray{ r.cx, r.cy });
+		f.insert(QStringLiteral("angleDeg"), r.angleDeg);
+		f.insert(QStringLiteral("residualMm"), QJsonArray{ r.residual[0], r.residual[1], r.residual[2], r.residual[3] });
+		f.insert(QStringLiteral("measuredMm"), QJsonArray{ r.widthMeasured, r.lengthMeasured });
+		f.insert(QStringLiteral("when"), r.when);
+		d.insert(QStringLiteral("lastCheck"), f);
+	}
 	root.insert(QStringLiteral("fidRect"), d);
 
 	QJsonObject e;
@@ -340,12 +360,21 @@ Setup fromJson(const QJsonObject& root)
 
 	const QJsonObject c = root.value(QStringLiteral("z3d")).toObject();
 	s.z3d.offset = getXY(c, "offsetFromFid0");
-	s.z3d.stepMm = num(c, "stepMm", s.z3d.stepMm);
-	s.z3d.targetMm = num(c, "targetMm", s.z3d.targetMm);
+	s.z3d.addLaserOffset = boolean(c, "addLaserOffset", true);
+	s.z3d.targetMm = num(c, "targetMm", s.z3d.targetMm);   //"stepMm" (the Z search C had before 3 Nov 2026) is ignored
 	s.z3d.maxSpreadMm = num(c, "maxSpreadMm", s.z3d.maxSpreadMm);
 	s.z3d.diffSet = c.contains(QStringLiteral("diffMm"));
 	s.z3d.diffMm = num(c, "diffMm", 0.0);
 	s.z3d.diffTolMm = num(c, "diffTolMm", s.z3d.diffTolMm);
+	const QJsonObject cf3 = c.value(QStringLiteral("lastFind")).toObject();
+	//a Find from the Z search C had before 3 Nov 2026 has no reading: it asks for a new one
+	if (cf3.contains(QStringLiteral("z")) && cf3.contains(QStringLiteral("z2D")) && cf3.contains(QStringLiteral("reading"))) {
+		s.z3d.found.ok = true;
+		s.z3d.found.z = num(cf3, "z", 0.0);
+		s.z3d.found.z2D = num(cf3, "z2D", 0.0);
+		s.z3d.found.reading = num(cf3, "reading", 0.0);
+		s.z3d.found.when = str(cf3, "when");
+	}
 
 	const QJsonObject d = root.value(QStringLiteral("fidRect")).toObject();
 	s.fidRect.widthMm = num(d, "widthMm", 0.0);
@@ -354,6 +383,20 @@ Setup fromJson(const QJsonObject& root)
 	for (int i = 0; i < 4; i++) s.fidRect.corner[i] = getXY(corners, kCornerKey[i]);
 	s.fidRect.residualLimitMm = num(d, "residualLimitMm", s.fidRect.residualLimitMm);
 	s.fidRect.maxAngleDeg = num(d, "maxAngleDeg", s.fidRect.maxAngleDeg);
+	const QJsonObject rc = d.value(QStringLiteral("lastCheck")).toObject();
+	const QJsonArray rcc = rc.value(QStringLiteral("centre")).toArray();
+	const QJsonArray rcr = rc.value(QStringLiteral("residualMm")).toArray();
+	if (rcc.size() == 2 && rcr.size() == 4) {
+		FidRectFound& r = s.fidRect.found;
+		r.ok = true;
+		r.cx = rcc[0].toDouble();
+		r.cy = rcc[1].toDouble();
+		r.angleDeg = num(rc, "angleDeg", 0.0);
+		for (int i = 0; i < 4; i++) r.residual[i] = rcr[i].toDouble();
+		const QJsonArray m = rc.value(QStringLiteral("measuredMm")).toArray();
+		if (m.size() == 2) { r.widthMeasured = m[0].toDouble(); r.lengthMeasured = m[1].toDouble(); }
+		r.when = str(rc, "when");
+	}
 
 	const QJsonObject e = root.value(QStringLiteral("slotSize")).toObject();
 	s.slotSize.set = boolean(e, "set", false);
@@ -530,6 +573,29 @@ bool sameFid0Settings(const Setup& sa, const Setup& sb)
 		&& a.patternToCirclePx.set == b.patternToCirclePx.set && a.patternToCirclePx.x == b.patternToCirclePx.x && a.patternToCirclePx.y == b.patternToCirclePx.y
 		&& a.patternAtPx.set == b.patternAtPx.set && a.patternAtPx.x == b.patternAtPx.x && a.patternAtPx.y == b.patternAtPx.y
 		&& a.patternOtherCopiesPx == b.patternOtherCopiesPx;
+}
+
+//C's Find runs from fid0 inside fid0's Start Z .. Stop Z and D's Check locates fid0 again with its
+//circle settings, so B's settings are part of what each of them proves
+bool sameZ3DSettings(const Setup& sa, const Setup& sb)
+{
+	const Z3D& a = sa.z3d;
+	const Z3D& b = sb.z3d;
+	return sameFid0Settings(sa, sb)
+		&& a.offset.set == b.offset.set && a.offset.x == b.offset.x && a.offset.y == b.offset.y
+		&& a.addLaserOffset == b.addLaserOffset
+		&& a.targetMm == b.targetMm && a.maxSpreadMm == b.maxSpreadMm
+		&& a.diffSet == b.diffSet && a.diffMm == b.diffMm && a.diffTolMm == b.diffTolMm;
+}
+
+bool sameFidRectSettings(const Setup& sa, const Setup& sb)
+{
+	const FidRect& a = sa.fidRect;
+	const FidRect& b = sb.fidRect;
+	if (!sameFid0Settings(sa, sb) || !sameCircleFinder(sa.circle[CircleCorner], sb.circle[CircleCorner])) return false;
+	for (int i = 0; i < 4; i++)
+		if (a.corner[i].set != b.corner[i].set || a.corner[i].x != b.corner[i].x || a.corner[i].y != b.corner[i].y) return false;
+	return a.widthMm == b.widthMm && a.lengthMm == b.lengthMm && a.residualLimitMm == b.residualLimitMm && a.maxAngleDeg == b.maxAngleDeg;
 }
 
 gs2geo::RectFit taughtFit(const Setup& s)

@@ -44,16 +44,27 @@ public:
 	//the machine-wide pixel-to-mm choice: which one is in use, what it is, and whether a check is waiting to be saved
 	void setCameraConversion(bool useMeasured, const QString& text, bool warn, bool canSaveMeasured);
 
-	//sections A and B (build step 3a): VisionApp drives the machine and writes the result back with modify()
-	enum TeachAction { TeachSnapEmpty = 0, TeachScore, TeachXY, TeachJogXY, TeachSetStart, TeachSetStop, TeachLearnPattern, TeachFind };
-	//a taught value into the working copy (unsaved until Save); a changed fid0 setting clears its last Find
+	//sections A-D and the Locate test (build step 3): VisionApp drives the machine and writes the result
+	//back with modify() or a record...() call
+	enum TeachAction { TeachSnapEmpty = 0, TeachScore, TeachXY, TeachJogXY, TeachSetStart, TeachSetStop, TeachLearnPattern, TeachFind,
+		TeachZ3DSpot, TeachZ3DFind, TeachZ3DDiff,
+		TeachCornerTL, TeachCornerTR, TeachCornerBR, TeachCornerBL,   //in gs2geo::Corner order
+		TeachRectCheck, TeachLocate,
+		TeachJogCornerTL, TeachJogCornerTR, TeachJogCornerBR, TeachJogCornerBL };   //in gs2geo::Corner order
+	//a taught value into the working copy (unsaved until Save); a changed setting clears the run result
+	//it no longer goes with (B's Find, C's Find, D's Check)
 	void modify(const std::function<void(gs2::Setup&)>& change);
-	//a passed Find. A run result, not an edit: when the file holds the fid0 settings it ran with it is
-	//written there at once and never asked Save or Discard; run with unsaved fid0 settings it stays
-	//with them in the working copy and goes wherever they go
+	//a passed Find or Check. A run result, not an edit: when the file holds the settings it ran with it
+	//is written there at once and never asked Save or Discard; run with unsaved settings it stays with
+	//them in the working copy and goes wherever they go
 	void recordFid0Found(const gs2::Fid0Found& found);
+	void recordZ3DFound(const gs2::Z3DFound& found);
+	void recordFidRectFound(const gs2::FidRectFound& found);
 	void showSafetyScore(const QString& text, bool ok);
 	void showFid0Result(const QString& text, bool ok);
+	void showZ3DResult(const QString& text, bool ok);
+	void showRectResult(const QString& text, bool ok);
+	void showLocateResult(const QString& text, bool ok);
 	void setPatternBoxShown(bool shown);  //keep the Pattern box button in step when the box is hidden elsewhere
 
 signals:
@@ -83,8 +94,12 @@ private:
 	bool save();
 	void discard();
 	QString pxText(double minMm, double maxMm) const;
-	//the Find result that goes with these fid0 settings: the saved one when they are the saved settings
-	gs2::Fid0Found savedFoundFor(const gs2::Setup& s) const;
+	//s changed from before: each run result whose settings changed becomes the saved one when they are
+	//back to the saved settings, else none
+	void keepResults(const gs2::Setup& before, gs2::Setup& s) const;
+	//put the result into the working copy, and into the file at once when it holds the settings the
+	//result proves (same); what = its name in the log
+	void recordResult(const char* what, const std::function<void(gs2::Setup&)>& put, bool (*same)(const gs2::Setup&, const gs2::Setup&));
 	int circleKind() const;                 //the kind picked in Circle: gs2::CircleKind
 	QString circleSummary(int kind) const;  //one line for sections B, D and E
 };
