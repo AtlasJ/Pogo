@@ -123,6 +123,10 @@ struct FidRect {
 	TaughtXY corner[4];                     //TL TR BR BL, offsets from fid0
 	double residualLimitMm = 0.10;
 	double maxAngleDeg = 1.0;
+	//Check takes the circle nearest where a corner should be, up to this far from it. The first corner has no
+	//turn to go on (1 deg moves a corner 350 mm from fid0 by ~6 mm); a neighbour taken past half the circle
+	//spacing ends mm off the drawing rectangle and fails the residual limit
+	double searchMm = 5.0;
 	FidRectFound found;
 };
 

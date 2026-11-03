@@ -373,6 +373,7 @@ void GuidedSetup2Page::fillWidgets()
 	ui.dspin_dLength->setValue(s.fidRect.lengthMm);
 	ui.dspin_dResidual->setValue(s.fidRect.residualLimitMm);
 	ui.dspin_dAngle->setValue(s.fidRect.maxAngleDeg);
+	ui.dspin_dSearch->setValue(s.fidRect.searchMm);
 
 	//the circle finder settings of the kind picked in Circle
 	const gs2::CircleFinder& cf = s.circle[circleKind()];
@@ -435,6 +436,7 @@ void GuidedSetup2Page::edited()
 	s.fidRect.lengthMm = shown(ui.dspin_dLength);
 	s.fidRect.residualLimitMm = shown(ui.dspin_dResidual);
 	s.fidRect.maxAngleDeg = shown(ui.dspin_dAngle);
+	s.fidRect.searchMm = shown(ui.dspin_dSearch);
 
 	const gs2::UnitLayout before = s.unitLayout;
 	s.unitLayout.widthMm = shown(ui.dspin_gWidth);

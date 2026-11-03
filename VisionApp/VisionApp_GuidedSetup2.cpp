@@ -71,9 +71,6 @@ namespace {
 	constexpr int kStillMaxMs = 6000;        //the IPC took 0.8-4.7 s
 	constexpr int kStillGapMs = 50;          //between snaps, so a Stop gets through
 	constexpr double kExpectTolMm = 1.0;     //fid0 must be this close to where the pattern puts it; its neighbours are ~12.7 mm away
-	//a corner must be this close to where fid0 + its offset (and the corners found before it) put it:
-	//under half the ~12.7 mm circle pitch, so a neighbouring circle is never taken for it
-	constexpr double kCornerExpectTolMm = 5.0;
 	constexpr double kTeachZTolMm = 0.3;     //corners are taught at fid0's 2D Z or up to this above it: in focus, as Check and START see them
 	constexpr double kTeachZBelowMm = 0.02;  //and below it only by what a Z move lands within (the Z search's on-target)
 	//C: the profiler reading moves this many mm per mm of Z down (+ Z is down; the IPC measured +0.976 on
@@ -1636,9 +1633,9 @@ bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& wh
 		Gs2Circle c;
 		int moves = 0;
 		if (!zsMove({ { (int)Axis::X, expect.x }, { (int)Axis::Y, expect.y } }, why)
-			|| !gs2LocateCircle(s.circle[gs2::CircleCorner], false, c, moves, why, &centre, kCornerExpectTolMm)) {
+			|| !gs2LocateCircle(s.circle[gs2::CircleCorner], false, c, moves, why, &centre, r.searchMm)) {
 			why = QStringLiteral("%1 not found: %2%3").arg(QLatin1String(kCornerName[i]), why,
-				k == 0 ? QStringLiteral(" - is the trolley turned more than when it was taught, or not the one taught?") : QString());
+				k == 0 ? QStringLiteral(" - is the trolley turned more than when it was taught (raise Corner search in D), or not the one taught?") : QString());
 			return false;
 		}
 		out.corner[i] = { c.wx, c.wy };

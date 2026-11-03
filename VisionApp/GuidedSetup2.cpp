@@ -252,6 +252,7 @@ QJsonObject toJson(const Setup& s)
 	putDia(d, "diaMm", s.circle[CircleCorner].dia); //as above
 	d.insert(QStringLiteral("residualLimitMm"), s.fidRect.residualLimitMm);
 	d.insert(QStringLiteral("maxAngleDeg"), s.fidRect.maxAngleDeg);
+	d.insert(QStringLiteral("cornerSearchMm"), s.fidRect.searchMm);
 	if (s.fidRect.found.ok) {
 		const FidRectFound& r = s.fidRect.found;
 		QJsonObject f;
@@ -383,6 +384,7 @@ Setup fromJson(const QJsonObject& root)
 	for (int i = 0; i < 4; i++) s.fidRect.corner[i] = getXY(corners, kCornerKey[i]);
 	s.fidRect.residualLimitMm = num(d, "residualLimitMm", s.fidRect.residualLimitMm);
 	s.fidRect.maxAngleDeg = num(d, "maxAngleDeg", s.fidRect.maxAngleDeg);
+	s.fidRect.searchMm = num(d, "cornerSearchMm", s.fidRect.searchMm);
 	const QJsonObject rc = d.value(QStringLiteral("lastCheck")).toObject();
 	const QJsonArray rcc = rc.value(QStringLiteral("centre")).toArray();
 	const QJsonArray rcr = rc.value(QStringLiteral("residualMm")).toArray();
@@ -595,7 +597,8 @@ bool sameFidRectSettings(const Setup& sa, const Setup& sb)
 	if (!sameFid0Settings(sa, sb) || !sameCircleFinder(sa.circle[CircleCorner], sb.circle[CircleCorner])) return false;
 	for (int i = 0; i < 4; i++)
 		if (a.corner[i].set != b.corner[i].set || a.corner[i].x != b.corner[i].x || a.corner[i].y != b.corner[i].y) return false;
-	return a.widthMm == b.widthMm && a.lengthMm == b.lengthMm && a.residualLimitMm == b.residualLimitMm && a.maxAngleDeg == b.maxAngleDeg;
+	return a.widthMm == b.widthMm && a.lengthMm == b.lengthMm && a.residualLimitMm == b.residualLimitMm && a.maxAngleDeg == b.maxAngleDeg
+		&& a.searchMm == b.searchMm;
 }
 
 gs2geo::RectFit taughtFit(const Setup& s)
