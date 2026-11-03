@@ -525,6 +525,7 @@ bool VisionApp::gs2MachineBusy(const QString& title, const QString& note)
 {
 	if (zsRefuseIfBusy()) return false;
 	_zsBusy = true;
+	_zsLooseXYLanding = true; //every measurement reads where the camera stopped, so a little past the target costs nothing
 	_stopRun = false;
 	if (_gs2Page) _gs2Page->setMachineBusy(true);
 	_zsBusyWindow = showBusyWindow(title, note + QStringLiteral("\nStop ends it at once; the panel Stop and the e-stop also stop it."));
@@ -537,6 +538,7 @@ void VisionApp::gs2MachineIdle()
 	//anything still queued from the action lands on the still-disabled tools, not as a new command
 	QCoreApplication::processEvents();
 	if (_gs2Page) _gs2Page->setMachineBusy(false);
+	_zsLooseXYLanding = false;
 	_zsBusy = false;
 }
 

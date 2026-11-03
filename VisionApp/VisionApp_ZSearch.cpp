@@ -83,6 +83,10 @@ namespace {
 	*/
 	constexpr double kOnTargetXYMm = 0.05;
 	constexpr double kOnTargetZMm = 0.02;
+	//Guided Setup (new) accepts X / Y this far off once the settle is over: it reads where the camera
+	//really stopped before it measures anything, and on 3 Nov 2026 the IPC's X parked 0.063-0.064 mm off
+	//where re-issuing never moved it - a failed Teach or Find for nothing. Still warned in the log.
+	constexpr double kOnTargetXYGs2Mm = 0.1;
 	constexpr int kMaxCorrections = 2;
 
 	constexpr double kMinCoarseStepMm = 0.1;
@@ -870,17 +874,19 @@ bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString&
 		//on target by the card's own feedback, given half a second to close the last fraction
 		QElapsedTimer settle;
 		settle.start();
-		bool onTarget = false;
+		bool onTarget = false, withinGs2 = false;
 		QString off;
 		while (!onTarget) {
-			onTarget = true;
+			onTarget = withinGs2 = true;
 			off.clear();
 			for (const auto& t : targets) {
 				const auto p = mc.get_position_mm(_motionID, 0, t.first);
 				if (!p) { why = QStringLiteral("could not read the %1 position").arg(axisName(t.first)); return false; }
-				if (std::abs(*p - t.second) > onTargetMm(t.first)) {
+				const double miss = std::abs(*p - t.second);
+				if (miss > onTargetMm(t.first)) {
 					onTarget = false;
 					off = QStringLiteral("%1 is at %2, %3 mm from %4").arg(axisName(t.first)).arg(mm(*p)).arg(mm(*p - t.second)).arg(mm(t.second));
+					if (t.first == (int)Axis::Z || miss > kOnTargetXYGs2Mm) withinGs2 = false;
 				}
 			}
 			if (onTarget || settle.elapsed() >= kSettleMs) break;
@@ -889,6 +895,11 @@ bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString&
 		}
 		if (onTarget) {
 			if (attempt > 0) ct::logger::warn("[ZSearch] On target after %d correction(s)", attempt);
+			return true;
+		}
+		if (_zsLooseXYLanding && withinGs2) {
+			ct::logger::warn("[ZSearch] Landed past %.2f mm (%s) - within Guided Setup's %.2f mm, accepted",
+				kOnTargetXYMm, qPrintable(off), kOnTargetXYGs2Mm);
 			return true;
 		}
 		why = off;
