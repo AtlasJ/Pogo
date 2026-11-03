@@ -130,10 +130,12 @@ struct FidRect {
 	FidRectFound found;
 };
 
-//E: slot size, measured once from one slot's TL and BR circles
+//E: slot size, measured once from one slot's TL and BR circles: width / length = BR - TL along the
+//trolley axes, set once both are taught and BR lies right of and below TL
 struct SlotSize {
 	bool set = false;
 	double widthMm = 0.0, lengthMm = 0.0;
+	TaughtXY tl, br;   //the two circle centres, trolley frame
 };
 
 //F: one slot; its centre is in the trolley frame (the midpoint of its TL and BR circles)
@@ -217,6 +219,8 @@ gs2geo::Pt unitCentreLocal(const Setup& s, const Slot& slot, int row, int col); 
 void unitCornersWorld(const Setup& s, const gs2geo::Pose& pose, const Slot& slot, int row, int col, gs2geo::Pt out[4]);
 gs2geo::Pt inspectionWorld(const Setup& s, const gs2geo::Pose& pose, const Slot& slot, int row, int col, InspType t);
 const Slot* findSlot(const Setup& s, const QString& id);
+//a new slot at (cx, cy) in the trolley frame: the next id and the first free name S1, S2... (not added)
+Slot newSlot(Setup& s, double cx, double cy);
 
 /*
 * Keeps the unit list in step with slots x layout: existing units keep their id and name, units of

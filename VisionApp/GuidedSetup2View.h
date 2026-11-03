@@ -11,8 +11,9 @@
 * Drawn the way the operator stands: operator side at the bottom, +X to the right, +Y (towards the
 * operator) downwards. Until a Locate finds the trolley it is drawn where it was taught.
 *
-* Nothing can be dragged. Click selects a slot or unit; the wheel zooms round the cursor, dragging
-* pans, a double-click fits everything back in.
+* Nothing can be dragged. Click selects the unit or slot under the cursor, Ctrl+click adds or removes
+* a slot - the page's slot list follows (slotsPicked) and is followed (setSelectedSlots). The wheel
+* zooms round the cursor, dragging pans, a double-click fits everything back in.
 */
 class GuidedSetup2View : public QWidget
 {
@@ -28,6 +29,11 @@ public:
 	//placed from the fidRect are drawn there, not where they were taught, until clearLocated()
 	void setLocated(const gs2geo::RectFit& fit, gs2geo::Pt fid0, const gs2geo::Pt corners[4], const QString& what);
 	void clearLocated();
+	//the slots selected in the page's list; a selected unit stays only while its slot is one of them
+	void setSelectedSlots(const QStringList& ids);
+
+signals:
+	void slotsPicked(const QStringList& ids);   //a click here changed which slots are selected
 
 protected:
 	void paintEvent(QPaintEvent*) override;
@@ -59,13 +65,14 @@ private:
 	QPoint _pressPos;
 	QPointF _panAtPress;
 
-	QString _selKind, _selId;        //"slot" / "unit" and its id; empty = nothing selected
+	QStringList _selSlots;           //selected slot ids (Ctrl+click: several)
+	QString _selUnit;                //a selected unit's id, picked by a plain click
 
 	QRectF contentMm() const;        //what has to fit on screen: the World, else everything drawn
 	double baseScale(const QRectF& r) const;
 	QPointF toScreen(gs2geo::Pt p) const;
 	QPointF toScreen(double x, double y) const { return toScreen(gs2geo::Pt{ x, y }); }
 	QPolygonF screenPoly(const gs2geo::Pt pts[4]) const;
-	void pick(QPointF screen);
+	void pick(QPointF screen, bool add);   //add = Ctrl: the slot under the cursor in or out of the selection
 	QString selectionText() const;
 };

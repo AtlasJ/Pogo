@@ -269,6 +269,8 @@ QJsonObject toJson(const Setup& s)
 	e.insert(QStringLiteral("set"), s.slotSize.set);
 	e.insert(QStringLiteral("widthMm"), s.slotSize.widthMm);
 	e.insert(QStringLiteral("lengthMm"), s.slotSize.lengthMm);
+	putXY(e, "tl", s.slotSize.tl);
+	putXY(e, "br", s.slotSize.br);
 	putDia(e, "circleDiaMm", s.circle[CircleSlot].dia); //as above
 	root.insert(QStringLiteral("slotSize"), e);
 
@@ -404,6 +406,8 @@ Setup fromJson(const QJsonObject& root)
 	s.slotSize.set = boolean(e, "set", false);
 	s.slotSize.widthMm = num(e, "widthMm", 0.0);
 	s.slotSize.lengthMm = num(e, "lengthMm", 0.0);
+	s.slotSize.tl = getXY(e, "tl");
+	s.slotSize.br = getXY(e, "br");
 
 	//how each circle is found; a file from before circleFinder has only the three diameter ranges
 	const QJsonObject cf = root.value(QStringLiteral("circleFinder")).toObject();
@@ -650,6 +654,19 @@ const Slot* findSlot(const Setup& s, const QString& id)
 {
 	for (const auto& sl : s.slotList) if (sl.id == id) return &sl;
 	return nullptr;
+}
+
+Slot newSlot(Setup& s, double cx, double cy)
+{
+	Slot sl;
+	sl.id = QStringLiteral("s%1").arg(s.nextSlotId++);
+	QSet<QString> used;
+	for (const auto& other : s.slotList) used.insert(other.name);
+	for (int k = 1; sl.name.isEmpty(); k++)
+		if (!used.contains(QStringLiteral("S%1").arg(k))) sl.name = QStringLiteral("S%1").arg(k);
+	sl.cx = cx;
+	sl.cy = cy;
+	return sl;
 }
 
 QStringList gridNames(const Setup& s)

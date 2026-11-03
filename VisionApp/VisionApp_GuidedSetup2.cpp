@@ -7,7 +7,8 @@
 //  the layout view. Build step 2 = the circle finder and the camera direction check, which move
 //  the machine the way a Z search does: zsMove, one modal busy window with a Stop, START refused.
 //  Build step 3 = teaching sections A-D (Safety check 1, fid0, 3D Z, the four corners) and the
-//  Locate test, which runs START steps 1-5.
+//  Locate test, which runs START steps 1-5. Build step 4a = sections E (slot size), F (slots) and
+//  H's Set, all taught in the trolley frame a Check or Locate found in this session.
 //
 #include "VisionApp.h"
 #include "GuidedSetup2Page.h"
@@ -73,6 +74,7 @@ namespace {
 	constexpr double kExpectTolMm = 1.0;     //fid0 must be this close to where the pattern puts it; its neighbours are ~12.7 mm away
 	constexpr double kTeachZTolMm = 0.3;     //corners are taught at fid0's 2D Z or up to this above it: in focus, as Check and START see them
 	constexpr double kTeachZBelowMm = 0.02;  //and below it only by what a Z move lands within (the Z search's on-target)
+	constexpr double kRowYTolMm = 1.0;       //F's Interpolate: the 2 end slots of a row line up this well in Y (trolley frame)
 	//C: the profiler reading moves this many mm per mm of Z down (+ Z is down; the IPC measured +0.976 on
 	//27 Oct 2026 - head down = reading up), so one read at the 2D Z says where the 3D Centre Z is
 	constexpr double kReadingPerZ = 1.0;
@@ -156,6 +158,12 @@ namespace {
 		case P::TeachCornerTL: case P::TeachCornerTR: case P::TeachCornerBR: case P::TeachCornerBL: case P::TeachRectCheck:
 		case P::TeachJogCornerTL: case P::TeachJogCornerTR: case P::TeachJogCornerBR: case P::TeachJogCornerBL:
 			page->showRectResult(text, ok); break;
+		case P::TeachSlotTL: case P::TeachSlotBR:
+			page->showSlotSizeResult(text, ok); break;
+		case P::TeachSlotAdd: case P::TeachSlotInterpolate:
+			page->showSlotsResult(text, ok); break;
+		case P::TeachInsp2D: case P::TeachInspBarcodeOcr: case P::TeachInsp3D:
+			page->showInspResult(text, ok); break;
 		case P::TeachLocate:
 			page->showLocateResult(text, ok); break;
 		default:
@@ -238,6 +246,9 @@ void VisionApp::initGuidedSetup2()
 	connect(_gs2Page, &GuidedSetup2Page::conversionChosen, this, [=](bool measured) { gs2ChooseConversion(measured); });
 	connect(_gs2Page, &GuidedSetup2Page::teachRequested, this, [=](int action) { gs2Teach(action); });
 	connect(_gs2Page, &GuidedSetup2Page::patternBoxToggled, this, [=](bool on) { gs2ShowPatternBox(on); });
+	//one slot selection: F's list and the layout view follow each other
+	connect(_gs2Page, &GuidedSetup2Page::slotSelectionChanged, this, [=](const QStringList& ids) { if (_gs2View) _gs2View->setSelectedSlots(ids); });
+	connect(_gs2View, &GuidedSetup2View::slotsPicked, this, [=](const QStringList& ids) { if (_gs2Page) _gs2Page->selectSlots(ids); });
 	gs2LoadCameraCal();
 	gs2RefreshCalUi();
 
@@ -1512,6 +1523,37 @@ bool VisionApp::gs2SessionFid0(const gs2::Setup& s, const QString& dir, QString&
 }
 
 /*
+* A slot, unit or inspection point is stored in the trolley frame, so teaching one converts the
+* camera position with the frame a Check or Locate found on this trolley in this session. A frame
+* found with other corners or another drawing size is another frame: the corners define it.
+*/
+bool VisionApp::gs2SessionRect(const gs2::Setup& s, const QString& dir, QString& why) const
+{
+	if (!gs2SessionFid0(s, dir, why)) return false;
+	const auto& by = _gs2Session.rectBy;
+	bool same = _gs2Session.rect && _gs2Session.pose.valid && by.widthMm == s.fidRect.widthMm && by.lengthMm == s.fidRect.lengthMm;
+	for (int i = 0; i < 4 && same; i++)
+		same = by.corner[i].set == s.fidRect.corner[i].set && by.corner[i].x == s.fidRect.corner[i].x && by.corner[i].y == s.fidRect.corner[i].y;
+	if (!same) {
+		why = QStringLiteral("run Check in section D (or Locate) on this trolley first - this is taught in the trolley frame it finds");
+		return false;
+	}
+	return true;
+}
+
+bool VisionApp::gs2SlotInWorld(const gs2::Setup& s, const gs2::Slot& slot, const gs2geo::Pose& pose, QString& why)
+{
+	gs2geo::Pt c[4];
+	gs2::slotCornersWorld(s, pose, slot, c);
+	for (int i = 0; i < 4; i++)
+		if (!zsCheckTarget((int)Axis::X, c[i].x, why) || !zsCheckTarget((int)Axis::Y, c[i].y, why)) {
+			why = QStringLiteral("%1 would leave the World at its %2 corner (%3)").arg(slot.name, QLatin1String(kCornerName[i] + 3), why);
+			return false;
+		}
+	return true;
+}
+
+/*
 * START step 3, no Z search: with the head at fid0's 2D Z, the laser to fid0 + the 3D spot and one
 * profiler read. The 2D Z already puts the trolley in the profiler's range (on the IPC the 3D Centre Z
 * sat 0.09 mm from the 2D Focus Z), so the reading says where the 3D Centre Z is; it must lie inside
@@ -1588,6 +1630,7 @@ bool VisionApp::gs2RelocateFid0(const gs2::Setup& s, Gs2Circle& out, QString& wh
 		out.wx, out.wy, out.wx - _gs2Session.fid0X, out.wy - _gs2Session.fid0Y);
 	_gs2Session.fid0X = out.wx;
 	_gs2Session.fid0Y = out.wy;
+	_gs2Session.fid0AtMs = QDateTime::currentMSecsSinceEpoch();
 	return true;
 }
 
@@ -1837,6 +1880,216 @@ void VisionApp::gs2Teach(int action)
 		return;
 	}
 
+	//── sections E, F and H (build step 4a): positions go into the trolley frame the session holds
+	static const char* const kSlotCorner[4] = { "TL", "TR", "BR", "BL" };   //gs2geo::Corner order
+	const int addCorner = _gs2Page->slotAddCorner();                        //read once: the busy window is modal
+	auto r3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
+	//the frame the Check found, moved by what fid0 has moved since: the trolley or an axis creeps (IPC
+	//2026-11-03: 0.09-0.16 mm in 8 min). The circle teaches locate fid0 again first, so theirs is fresh
+	auto framePose = [&]() {
+		gs2geo::Pose p = _gs2Session.pose;
+		p.cx += _gs2Session.fid0X - _gs2Session.rectFid0.x;
+		p.cy += _gs2Session.fid0Y - _gs2Session.rectFid0.y;
+		return p;
+	};
+	auto toFrame = [&](double x, double y) { return gs2geo::toLocal(framePose(), { x, y }); };
+	//for what takes the camera position as it is (no fid0 trip): how old the frame's fid0 is
+	auto fid0Age = [&]() -> QString {
+		const qint64 min = (QDateTime::currentMSecsSinceEpoch() - _gs2Session.fid0AtMs) / 60000;
+		return min < 5 ? QString()
+			: QStringLiteral(" fid0 was last located %1 min ago: if the trolley may have crept since, run Find in B and do this again.").arg(min);
+	};
+	auto camera = [&](gs2geo::Pt& here, QString& w) {
+		auto& mc = MotionController::instance();
+		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
+		const auto y = mc.get_position_mm(_motionID, 0, (int)Axis::Y);
+		if (!x || !y) { w = QStringLiteral("could not read the X / Y position - is motion connected?"); return false; }
+		here = { *x, *y };
+		return true;
+	};
+	//a slot circle is centred sideways at the current Z: at the 2D Z or a little above, never below it (+ Z is down)
+	auto atTwoDZ = [&](QString& w) {
+		const auto z = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
+		if (!z) { w = QStringLiteral("could not read the Z position - is motion connected?"); return false; }
+		if (*z < _gs2Session.z2D - kTeachZTolMm || *z > _gs2Session.z2D + kTeachZBelowMm) {
+			w = QStringLiteral("the camera is at Z %1 but fid0's 2D Z is %2: jog Z to %2 (not lower) so the circle is in focus").arg(mm(*z), mm(_gs2Session.z2D));
+			return false;
+		}
+		return true;
+	};
+	//E: one of the slot's two circles, found at world (x, y); the size once both are there
+	auto keepSlotCircle = [&](bool br, double x, double y) -> QString {
+		const gs2geo::Pt p = toFrame(x, y);
+		const gs2::TaughtXY xy{ true, r3(p.x), r3(p.y) };
+		gs2::SlotSize z;
+		bool restarted = false;
+		_gs2Page->modify([&](gs2::Setup& w) {
+			auto& ss = w.slotSize;
+			//with a size already measured the other circle may be another slot's: this starts a new pair
+			restarted = ss.set;
+			if (restarted) (br ? ss.tl : ss.br) = gs2::TaughtXY();
+			(br ? ss.br : ss.tl) = xy;
+			ss.set = false;
+			ss.widthMm = ss.lengthMm = 0.0;
+			if (ss.tl.set && ss.br.set && ss.br.x > ss.tl.x && ss.br.y > ss.tl.y) {
+				ss.set = true;
+				ss.widthMm = r3(ss.br.x - ss.tl.x);
+				ss.lengthMm = r3(ss.br.y - ss.tl.y);
+			}
+			z = ss;
+		});
+		ct::logger::info("[GuidedSetup2] slot %s circle at %.3f, %.3f = trolley frame %.3f, %.3f; slot size %s", br ? "BR" : "TL", x, y, xy.x, xy.y,
+			z.set ? qPrintable(QStringLiteral("%1 x %2 mm").arg(mm(z.widthMm), mm(z.lengthMm))) : "not set");
+		AuditLog::instance().log(QStringLiteral("GS2_SLOT_SIZE"), QStringLiteral("%1 %2, %3").arg(br ? QStringLiteral("BR") : QStringLiteral("TL"), mm(xy.x), mm(xy.y)));
+		QString t = QStringLiteral("%1 circle at x %2, y %3 (trolley frame). ").arg(br ? QStringLiteral("BR") : QStringLiteral("TL"), mm(xy.x), mm(xy.y));
+		if (z.set) return t + QStringLiteral("Slot size %1 x %2 mm.").arg(mm(z.widthMm), mm(z.lengthMm));
+		if (!z.tl.set || !z.br.set) return t + QStringLiteral("Now Set %1 on the same slot%2.").arg(br ? QStringLiteral("TL") : QStringLiteral("BR"),
+			restarted ? QStringLiteral(" (the size measured before is cleared)") : QString());
+		return t + QStringLiteral("BR is not right of and below TL (BR - TL = %1, %2 mm): set the TL and BR circles of one slot.")
+			.arg(mm(z.br.x - z.tl.x), mm(z.br.y - z.tl.y));
+	};
+	//F: the slot whose `corner` is at world (x, y), formed from E's size; w = what happened
+	auto addSlot = [&](int corner, double x, double y, QString& w) {
+		static const double kx[4] = { 0.5, -0.5, -0.5, 0.5 }, ky[4] = { 0.5, 0.5, -0.5, -0.5 };
+		gs2::Setup t = _gs2Page->setup();
+		const double sw = t.slotSize.widthMm, sl = t.slotSize.lengthMm;
+		const gs2geo::Pt p = toFrame(x, y);
+		const gs2::Slot slot = gs2::newSlot(t, r3(p.x + kx[corner] * sw), r3(p.y + ky[corner] * sl));
+		for (const auto& o : t.slotList)
+			if (gs2geo::slotsTouch({ slot.cx, slot.cy }, { o.cx, o.cy }, sw, sl)) {
+				w = QStringLiteral("this slot would touch %1 - is it already added, or the wrong corner picked?").arg(o.name);
+				return false;
+			}
+		if (!gs2SlotInWorld(t, slot, framePose(), w)) return false;
+		_gs2Page->modify([&](gs2::Setup& ws) {
+			ws.slotList.append(slot);
+			ws.nextSlotId = t.nextSlotId;
+			gs2::syncUnits(ws);
+		});
+		w = QStringLiteral("%1 added from its %2 corner: centre x %3, y %4 (trolley frame), %5 units.")
+			.arg(slot.name, QLatin1String(kSlotCorner[corner]), mm(slot.cx), mm(slot.cy)).arg(t.unitLayout.rows * t.unitLayout.cols);
+		ct::logger::info("[GuidedSetup2] slot %s (%s) added from its %s corner at %.3f, %.3f: centre %.3f, %.3f (trolley frame)",
+			qPrintable(slot.name), qPrintable(slot.id), kSlotCorner[corner], x, y, slot.cx, slot.cy);
+		AuditLog::instance().log(QStringLiteral("GS2_SLOT_ADD"), QStringLiteral("%1 %2, %3").arg(slot.name, mm(slot.cx), mm(slot.cy)));
+		return true;
+	};
+
+	//F: Add from a corner taken by eye (TR, BL); TL and BR are circles and move the machine below
+	if (action == P::TeachSlotAdd) {
+		QString w;
+		if (!gs2SessionRect(s, dir, w)) { _gs2Page->showSlotsResult(QStringLiteral("Add: %1.").arg(w), false); return; }
+		if (!s.slotSize.set) { _gs2Page->showSlotsResult(QStringLiteral("Add: measure the slot size (E) first - a slot is formed from it."), false); return; }
+		if (addCorner == gs2geo::TR || addCorner == gs2geo::BL) {
+			gs2geo::Pt here;
+			const bool added = camera(here, w) && addSlot(addCorner, here.x, here.y, w);
+			_gs2Page->showSlotsResult(added ? w + fid0Age() : QStringLiteral("Add: %1.").arg(w), false);
+			return;
+		}
+	}
+	//F: Interpolate between the 2 slots selected in the list - an edit, but the World check needs the soft limits
+	if (action == P::TeachSlotInterpolate) {
+		auto say = [&](const QString& t) { _gs2Page->showSlotsResult(QStringLiteral("Interpolate: %1.").arg(t), false); };
+		const QStringList ids = _gs2Page->selectedSlotIds();
+		if (ids.size() != 2) { say(QStringLiteral("select exactly 2 slots of one row in the list")); return; }
+		if (!s.slotSize.set) { say(QStringLiteral("measure the slot size (E) first")); return; }
+		const gs2::Slot* a = gs2::findSlot(s, ids[0]);
+		const gs2::Slot* b = gs2::findSlot(s, ids[1]);
+		if (!a || !b) { say(QStringLiteral("the selected slots are no longer there - select them again")); return; }
+		if (a->cx > b->cx) std::swap(a, b);
+		const double sw = s.slotSize.widthMm, sl = s.slotSize.lengthMm;
+		const double rowDy = std::abs(a->cy - b->cy);
+		if (rowDy > sl / 2) {
+			say(QStringLiteral("%1 and %2 are not in one row - they are %3 mm apart in Y").arg(a->name, b->name, mm(rowDy)));
+			return;
+		}
+		//both ends move to the average Y: only by a little, or one of them was taught on the wrong spot
+		if (rowDy > kRowYTolMm) {
+			say(QStringLiteral("%1 and %2 are %3 mm apart in Y, and a row lines up within %4 mm - teach one of them again")
+				.arg(a->name, b->name, mm(rowDy)).arg(kRowYTolMm, 0, 'f', 1));
+			return;
+		}
+		const int n = _gs2Page->slotsBetween();
+		const double pitch = (b->cx - a->cx) / (n + 1);
+		if (pitch <= sw) {
+			say(QStringLiteral("%1 slots between %2 and %3 would touch: %4 mm apart, and a slot is %5 mm wide").arg(n).arg(a->name, b->name, mm(pitch), mm(sw)));
+			return;
+		}
+		const double y = r3((a->cy + b->cy) / 2);
+		gs2::Setup t = s;
+		QStringList row{ a->id, b->id }, added;
+		for (auto& o : t.slotList) if (row.contains(o.id)) o.cy = y;
+		for (int k = 1; k <= n; k++) {
+			const gs2::Slot ns = gs2::newSlot(t, r3(a->cx + k * pitch), y);
+			t.slotList.append(ns);
+			row << ns.id;
+			added << ns.name;
+		}
+		for (const auto& p : t.slotList) {
+			if (!row.contains(p.id)) continue;
+			for (const auto& o : t.slotList)
+				if (!row.contains(o.id) && gs2geo::slotsTouch({ p.cx, p.cy }, { o.cx, o.cy }, sw, sl)) { say(QStringLiteral("%1 would touch %2").arg(p.name, o.name)); return; }
+		}
+		//the World check where the trolley was found this session, else where it was taught
+		QString w;
+		const gs2geo::Pose pose = gs2SessionRect(s, dir, w) ? framePose() : gs2::taughtFit(s).pose;
+		if (!pose.valid) { say(QStringLiteral("teach fid0 and the four corners first - the World check needs the trolley")); return; }
+		for (const auto& p : t.slotList) if (row.contains(p.id) && !gs2SlotInWorld(t, p, pose, w)) { say(w); return; }
+		_gs2Page->modify([&](gs2::Setup& ws) {
+			ws.slotList = t.slotList;
+			ws.nextSlotId = t.nextSlotId;
+			gs2::syncUnits(ws);
+		});
+		_gs2Page->showSlotsResult(QStringLiteral("%1 added between %2 and %3, %4 mm apart; all of them at y %5 (trolley frame) - %2 and %3 moved %6 mm in Y to get there.")
+			.arg(added.join(QStringLiteral(", ")), a->name, b->name, mm(pitch), mm(y), mm(rowDy / 2)), false);
+		ct::logger::info("[GuidedSetup2] slots %s interpolated between %s and %s: pitch %.3f, y %.3f", qPrintable(added.join(QStringLiteral(", "))),
+			qPrintable(a->name), qPrintable(b->name), pitch, y);
+		AuditLog::instance().log(QStringLiteral("GS2_SLOT_INTERPOLATE"), QStringLiteral("%1 between %2 and %3").arg(added.join(QStringLiteral(", ")), a->name, b->name));
+		return;
+	}
+	//H: Set - the camera position as the offset from the nearest unit's reference
+	if (action == P::TeachInsp2D || action == P::TeachInspBarcodeOcr || action == P::TeachInsp3D) {
+		const int type = action - P::TeachInsp2D;
+		const QString what = gs2::inspTypeName((gs2::InspType)type);
+		auto say = [&](const QString& t) { _gs2Page->showInspResult(QStringLiteral("Set %1: %2.").arg(what, t), false); };
+		QString w;
+		const auto& u = s.unitLayout;
+		if (!gs2SessionRect(s, dir, w)) { say(w); return; }
+		if (s.units.isEmpty() || u.widthMm <= 0.0 || u.lengthMm <= 0.0) { say(QStringLiteral("add slots (F) and type the unit size (G) first - the point is taken from the nearest unit")); return; }
+		gs2geo::Pt here;
+		if (!camera(here, w)) { say(w); return; }
+		const gs2geo::Pt p = toFrame(here.x, here.y);
+		int best = -1;
+		double bestD = 0.0;
+		gs2geo::Pt centre;
+		for (int i = 0; i < s.units.size(); i++) {
+			const gs2::Slot* sl = gs2::findSlot(s, s.units[i].slotId);
+			if (!sl) continue;
+			const gs2geo::Pt c = gs2::unitCentreLocal(s, *sl, s.units[i].row, s.units[i].col);
+			const double d = std::hypot(p.x - c.x, p.y - c.y);
+			if (best < 0 || d < bestD) { best = i; bestD = d; centre = c; }
+		}
+		if (best < 0) { say(QStringLiteral("no unit has a slot")); return; }
+		const int ref = s.insp[type].ref;
+		const gs2geo::Pt r = gs2geo::unitRefPoint(ref, u.widthMm, u.lengthMm);
+		const double dx = r3(p.x - (centre.x + r.x)), dy = r3(p.y - (centre.y + r.y));
+		if (std::abs(dx) > 500.0 || std::abs(dy) > 500.0) {   //the page's offset boxes hold +/-500
+			say(QStringLiteral("the camera is %1, %2 mm from %3's %4 - an offset holds at most 500 mm").arg(mm(dx), mm(dy), s.units[best].name, gs2::refName(ref)));
+			return;
+		}
+		_gs2Page->modify([&](gs2::Setup& ws) {
+			auto& in = ws.insp[type];
+			in.enabled = true;
+			in.dx = dx;
+			in.dy = dy;
+		});
+		_gs2Page->showInspResult(QStringLiteral("%1 point set from %2 (%3): offset %4, %5 mm along the trolley axes; the camera is %6 mm from that unit's centre. %1 is switched on.")
+			.arg(what, s.units[best].name, gs2::refName(ref), signedMm(dx), signedMm(dy), mm(bestD)) + fid0Age(), false);
+		ct::logger::info("[GuidedSetup2] %s point set: camera %.3f, %.3f = trolley frame %.3f, %.3f; from %s (%s) offset %+.3f, %+.3f",
+			qPrintable(what), here.x, here.y, p.x, p.y, qPrintable(s.units[best].name), qPrintable(gs2::refName(ref)), dx, dy);
+		AuditLog::instance().log(QStringLiteral("GS2_INSP_SET"), QStringLiteral("%1 %2, %3").arg(what, signedMm(dx), signedMm(dy)));
+		return;
+	}
+
 	//── the rest moves the machine
 	//what Find fid0 needs before it moves: B's Find and Locate
 	auto fid0Ready = [&](QString& w) {
@@ -1925,6 +2178,21 @@ void VisionApp::gs2Teach(int action)
 			.arg(QLatin1String(kCornerName[i]));
 		break;
 	}
+	//E's Set TL / BR and F's Add on a TL / BR circle (Add from TR / BL never gets here)
+	case P::TeachSlotTL: case P::TeachSlotBR: case P::TeachSlotAdd: {
+		const bool add = action == P::TeachSlotAdd;
+		const QString which = QLatin1String(add ? kSlotCorner[addCorner] : action == P::TeachSlotTL ? "TL" : "BR");
+		auto say = [&](const QString& t) { if (add) _gs2Page->showSlotsResult(t, false); else _gs2Page->showSlotSizeResult(t, false); };
+		const QString verb = add ? QStringLiteral("Add") : QStringLiteral("Set %1").arg(which);
+		QString w;
+		if (!gs2SessionRect(s, dir, w)) { say(QStringLiteral("%1: %2.").arg(verb, w)); return; }
+		if (!s.circle[gs2::CircleSlot].dia.valid()) { say(QStringLiteral("Set the slot circle diameter in Camera and circle finder first.")); return; }
+		if (!atTwoDZ(w)) { say(QStringLiteral("%1: %2.").arg(verb, w)); return; }
+		title = add ? QStringLiteral("Add slot from its %1 circle").arg(which) : QStringLiteral("Set slot %1").arg(which);
+		note = QStringLiteral("The camera centres on the slot circle nearest the image centre (the slot's %1 circle), "
+			"goes to fid0 at the same Z to locate it again, and comes back over the circle.").arg(which);
+		break;
+	}
 	case P::TeachRectCheck: {
 		QString w;
 		if (!gs2SessionFid0(s, dir, w) || !readyToRun(s, gs2::SecFidRect, w)) { _gs2Page->showRectResult(QStringLiteral("Check cannot start: %1.").arg(w), false); return; }
@@ -1968,11 +2236,12 @@ void VisionApp::gs2Teach(int action)
 	//passed START steps: into the page (and the file, see recordResult) and into this session
 	auto keepFid0 = [&](const gs2::Fid0Found& found) {
 		_gs2Page->recordFid0Found(found);
-		//a 3D Find from another trolley or recipe must not become this one's 2D - 3D difference
-		if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch || _gs2Session.recipeDir != dir) _gs2Session.has3D = false;
+		//a 3D Find or a trolley frame from another trolley or recipe is not this one's
+		if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch || _gs2Session.recipeDir != dir) _gs2Session.has3D = _gs2Session.rect = false;
 		_gs2Session.fid0 = true;
 		_gs2Session.fid0X = found.x;
 		_gs2Session.fid0Y = found.y;
+		_gs2Session.fid0AtMs = QDateTime::currentMSecsSinceEpoch();
 		_gs2Session.z2D = found.z;
 		_gs2Session.trolleyEpoch = _zsTrolleyEpoch;
 		_gs2Session.recipeDir = dir;
@@ -1989,6 +2258,10 @@ void VisionApp::gs2Teach(int action)
 	};
 	auto keepRect = [&](const Gs2RectCheck& r) {
 		_gs2Page->recordFidRectFound(rectFound(r.fit));
+		_gs2Session.rect = true;          //sections E, F and H teach in this frame
+		_gs2Session.pose = r.fit.pose;
+		_gs2Session.rectBy = s.fidRect;
+		_gs2Session.rectFid0 = r.fid0;
 		AuditLog::instance().log(QStringLiteral("GS2_FIDRECT_CHECK"), QStringLiteral("centre %1, %2, angle %3, worst residual %4")
 			.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual())));
 	};
@@ -2062,6 +2335,26 @@ void VisionApp::gs2Teach(int action)
 			.arg(QLatin1String(kCornerName[i]), mm(x), mm(y), mm(_gs2Session.z2D), QLatin1String(kCornerName[i] + 3));
 		break;
 	}
+	case P::TeachSlotTL: case P::TeachSlotBR: case P::TeachSlotAdd: {
+		Gs2Circle c, f;
+		int moves = 0;
+		const double wasX = _gs2Session.fid0X, wasY = _gs2Session.fid0Y;
+		ok = gs2LocateCircle(s.circle[gs2::CircleSlot], true, c, moves, why);
+		if (!ok) { why = QStringLiteral("the slot circle: %1").arg(why); break; }
+		ct::logger::info("[GuidedSetup2] slot circle at %.3f, %.3f (%.3f mm across, %d move(s))", c.wx, c.wy, c.diaMm, moves);
+		//fid0 again, as the corner teach does: what crept since the Check moves the frame, not the slot
+		ok = gs2RelocateFid0(s, f, why) && stillHere(why);
+		if (!ok) break;
+		const QString fid0Note = QStringLiteral(" fid0 was located again %1, %2 mm from before.").arg(signedMm(f.wx - wasX), signedMm(f.wy - wasY));
+		if (action != P::TeachSlotAdd) result = keepSlotCircle(action == P::TeachSlotBR, c.wx, c.wy) + fid0Note;
+		else if (!(ok = addSlot(addCorner, c.wx, c.wy, why))) why = QStringLiteral("not added - %1").arg(why);
+		else result = why + fid0Note;
+		//back over the circle at the same Z, so the next one is taught from near here
+		QString back;
+		if (ok && trolleyEpoch == _zsTrolleyEpoch && !zsMove({ { (int)Axis::X, c.wx }, { (int)Axis::Y, c.wy } }, back))
+			result += QStringLiteral(" The camera did not go back over the circle: %1.").arg(back);
+		break;
+	}
 	case P::TeachFind: {
 		gs2::Fid0Found found;
 		ok = gs2FindFid0(s, dir, found, why) && stillHere(why);
@@ -2100,6 +2393,7 @@ void VisionApp::gs2Teach(int action)
 	}
 	case P::TeachRectCheck: {
 		Gs2RectCheck r;
+		_gs2Session.rect = false; //only a Check that passes gives the frame E, F and H teach in
 		ok = gs2CheckRect(s, r, why) && stillHere(why);
 		if (ok) {
 			showFound(r);
@@ -2113,6 +2407,7 @@ void VisionApp::gs2Teach(int action)
 		QElapsedTimer timer;
 		timer.start();
 		QStringList steps;
+		_gs2Session.rect = false;
 		//1: Safety check 1 at home
 		QImage small;
 		QVector<double> scores;

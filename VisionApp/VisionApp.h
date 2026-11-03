@@ -733,6 +733,11 @@ private:
 		bool has3D = false;
 		double z3D = 0.0, z3DFrom2D = 0.0;            //C's last Find and the 2D Z it started from
 		bool z3DAddLaser = true;                      //...and whether it added the camera-to-laser XY
+		bool rect = false;                            //the trolley frame the last passed Check / Locate found
+		gs2geo::Pose pose;
+		gs2::FidRect rectBy;                          //...with these corners and drawing size
+		gs2geo::Pt rectFid0;                          //...and fid0 where it located it: the frame moves with fid0 since
+		qint64 fid0AtMs = 0;                          //when fid0 was last located (ms since the epoch)
 		int trolleyEpoch = -1;
 		QString recipeDir;
 	} _gs2Session;
@@ -759,6 +764,10 @@ private:
 		QString report;                      //every corner's residual and the angle, against their limits
 	};
 	bool gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why); //START step 4; false = could not measure
+	//build step 4a: sections E, F and H teach in the trolley frame, so they need it as a passed Check or Locate
+	//found it on this trolley in this session, with the corners and drawing size there are now
+	bool gs2SessionRect(const gs2::Setup& s, const QString& dir, QString& why) const;
+	bool gs2SlotInWorld(const gs2::Setup& s, const gs2::Slot& slot, const gs2geo::Pose& pose, QString& why); //every corner inside the soft limits
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data

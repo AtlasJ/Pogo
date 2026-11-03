@@ -1,15 +1,18 @@
 //
 //  Guided Setup (new): the right-panel page. Build step 1 = the recipe file, Save / Discard and the
 //  typed settings; build step 2 = the Camera and circle finder tools; build step 3 = the teach
-//  buttons of sections A-D and the Locate test; E-H and the visits arrive in build step 4.
+//  buttons of sections A-D and the Locate test; build step 4a = sections E, F and H's Set. The
+//  visits arrive in build step 4b.
 //
 #include "GuidedSetup2Page.h"
 #include "ScaleManager.h"
 #include "Logger.h"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
@@ -109,7 +112,97 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 	connect(ui.toolButton_dCheck, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachRectCheck); });
 	connect(ui.toolButton_iLocate, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachLocate); });
 
+	//E, F and H: the machine measures; Delete and Rename are only edits
+	connect(ui.toolButton_eSetTL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSlotTL); });
+	connect(ui.toolButton_eSetBR, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSlotBR); });
+	connect(ui.toolButton_fAdd, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSlotAdd); });
+	connect(ui.toolButton_fInterp, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSlotInterpolate); });
+	connect(ui.toolButton_fDelete, &QToolButton::clicked, this, [=]() { deleteSlots(); });
+	connect(ui.toolButton_fRename, &QToolButton::clicked, this, [=]() { renameSlot(); });
+	connect(ui.toolButton_hSet2D, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachInsp2D); });
+	connect(ui.toolButton_hSetBc, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachInspBarcodeOcr); });
+	connect(ui.toolButton_hSet3D, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachInsp3D); });
+	ui.listWidget_fSlots->setSelectionMode(QAbstractItemView::ExtendedSelection);
+	connect(ui.listWidget_fSlots, &QListWidget::itemSelectionChanged, this, [=]() { emit slotSelectionChanged(selectedSlotIds()); });
+
+	//a number typed into a box counts only on Enter or when the box loses focus, and a tool button does not
+	//take the focus: take it as the button goes down, so Save, Check or Interpolate never use the old number
+	for (auto* b : findChildren<QToolButton*>())
+		connect(b, &QToolButton::pressed, this, [=]() {
+			if (auto* box = qobject_cast<QAbstractSpinBox*>(QApplication::focusWidget()))
+				if (isAncestorOf(box)) box->interpretText();
+		});
+
 	fillWidgets();
+}
+
+int GuidedSetup2Page::slotAddCorner() const
+{
+	return std::clamp(ui.comboBox_fCorner->currentIndex(), 0, 3);
+}
+
+QStringList GuidedSetup2Page::selectedSlotIds() const
+{
+	QStringList ids;
+	for (const auto* item : ui.listWidget_fSlots->selectedItems()) {
+		const QString id = item->data(Qt::UserRole).toString();
+		if (!id.isEmpty()) ids << id;
+	}
+	return ids;
+}
+
+int GuidedSetup2Page::slotsBetween() const
+{
+	return ui.spin_fBetween->value();
+}
+
+void GuidedSetup2Page::selectSlots(const QStringList& ids)
+{
+	QSignalBlocker b(ui.listWidget_fSlots);
+	QListWidgetItem* first = nullptr;
+	for (int i = 0; i < ui.listWidget_fSlots->count(); i++) {
+		auto* item = ui.listWidget_fSlots->item(i);
+		const bool on = ids.contains(item->data(Qt::UserRole).toString());
+		item->setSelected(on);
+		if (on && !first) first = item;
+	}
+	if (first) ui.listWidget_fSlots->scrollToItem(first);
+}
+
+void GuidedSetup2Page::deleteSlots()
+{
+	const QStringList ids = selectedSlotIds();
+	if (ids.isEmpty()) { showSlotsResult(QStringLiteral("Select the slots to delete in the list first."), false); return; }
+	QStringList names;
+	for (const auto& id : ids) if (const auto* sl = gs2::findSlot(_work, id)) names << sl->name;
+	const auto reply = QMessageBox::question(this, QStringLiteral("Delete slots"),
+		QStringLiteral("Delete %1 and their units?\n\nDiscard brings them back until you Save.").arg(names.join(QStringLiteral(", "))),
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+	if (reply != QMessageBox::Yes) return;
+	modify([&](gs2::Setup& s) {
+		for (int i = s.slotList.size() - 1; i >= 0; i--) if (ids.contains(s.slotList[i].id)) s.slotList.removeAt(i);
+		gs2::syncUnits(s);
+	});
+	showSlotsResult(QStringLiteral("Deleted %1.").arg(names.join(QStringLiteral(", "))), false);
+	ct::logger::info("[GuidedSetup2] Slots deleted: %s", qPrintable(names.join(QStringLiteral(", "))));
+}
+
+void GuidedSetup2Page::renameSlot()
+{
+	const QStringList ids = selectedSlotIds();
+	if (ids.size() != 1) { showSlotsResult(QStringLiteral("Select one slot in the list to rename."), false); return; }
+	const auto* sl = gs2::findSlot(_work, ids.first());
+	if (!sl) return;
+	const QString was = sl->name;
+	bool ok = false;
+	const QString name = QInputDialog::getText(this, QStringLiteral("Rename slot"), QStringLiteral("New name for %1:").arg(was),
+		QLineEdit::Normal, was, &ok).trimmed();
+	if (!ok || name == was) return;
+	if (name.isEmpty()) { showSlotsResult(QStringLiteral("A slot needs a name."), false); return; }
+	for (const auto& other : _work.slotList)
+		if (other.id != ids.first() && other.name == name) { showSlotsResult(QStringLiteral("%1 is already a slot's name.").arg(name), false); return; }
+	modify([&](gs2::Setup& s) { for (auto& other : s.slotList) if (other.id == ids.first()) other.name = name; });
+	showSlotsResult(QStringLiteral("%1 renamed %2.").arg(was, name), false);
 }
 
 void GuidedSetup2Page::modify(const std::function<void(gs2::Setup&)>& change)
@@ -207,6 +300,24 @@ void GuidedSetup2Page::showLocateResult(const QString& text, bool ok)
 	ui.label_iResult->setStyleSheet(ok ? kDoneColour : kTodoColour);
 }
 
+void GuidedSetup2Page::showSlotSizeResult(const QString& text, bool ok)
+{
+	ui.label_eFound->setText(text);
+	ui.label_eFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
+void GuidedSetup2Page::showSlotsResult(const QString& text, bool ok)
+{
+	ui.label_fFound->setText(text);
+	ui.label_fFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
+void GuidedSetup2Page::showInspResult(const QString& text, bool ok)
+{
+	ui.label_hFound->setText(text);
+	ui.label_hFound->setStyleSheet(ok ? kDoneColour : kTodoColour);
+}
+
 void GuidedSetup2Page::setPatternBoxShown(bool shown)
 {
 	QSignalBlocker b(ui.toolButton_bPatternBox);
@@ -253,6 +364,8 @@ void GuidedSetup2Page::setMachineBusy(bool busy)
 		ui.toolButton_cSetSpot, ui.toolButton_cFind, ui.toolButton_cSetDiff,
 		ui.toolButton_dTeachTL, ui.toolButton_dTeachTR, ui.toolButton_dTeachBR, ui.toolButton_dTeachBL, ui.toolButton_dCheck,
 		ui.toolButton_dJogTL, ui.toolButton_dJogTR, ui.toolButton_dJogBR, ui.toolButton_dJogBL,
+		ui.toolButton_eSetTL, ui.toolButton_eSetBR, ui.toolButton_fAdd, ui.toolButton_fInterp, ui.toolButton_fDelete, ui.toolButton_fRename,
+		ui.toolButton_hSet2D, ui.toolButton_hSetBc, ui.toolButton_hSet3D,
 		ui.toolButton_iLocate, ui.toolButton_save, ui.toolButton_discard })
 		b->setEnabled(!busy);
 	if (!busy) refreshStatus(); //Save / Discard follow the edits again
@@ -262,12 +375,14 @@ void GuidedSetup2Page::connectEdits()
 {
 	for (auto* w : findChildren<QDoubleSpinBox*>())
 		connect(w, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [=]() { edited(); });
+	//F's corner and count say what Add / Interpolate do next; they are not recipe settings
 	for (auto* w : findChildren<QSpinBox*>())
-		connect(w, QOverload<int>::of(&QSpinBox::valueChanged), this, [=]() { edited(); });
+		if (w != ui.spin_fBetween)
+			connect(w, QOverload<int>::of(&QSpinBox::valueChanged), this, [=]() { edited(); });
 	for (auto* w : findChildren<QCheckBox*>())
 		connect(w, &QCheckBox::toggled, this, [=]() { edited(); });
 	for (auto* w : findChildren<QComboBox*>())
-		if (w != ui.comboBox_tCircle && w != ui.comboBox_tConversion)
+		if (w != ui.comboBox_tCircle && w != ui.comboBox_tConversion && w != ui.comboBox_fCorner)
 			connect(w, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { edited(); });
 }
 
@@ -296,6 +411,7 @@ void GuidedSetup2Page::loadRecipe(const QString& recipeDir, const QString& recip
 	ui.label_dFound->setStyleSheet(QString());
 	ui.label_iResult->setText(QStringLiteral("Locate has not run."));
 	ui.label_iResult->setStyleSheet(QString());
+	for (auto* l : { ui.label_eFound, ui.label_fFound, ui.label_hFound }) { l->clear(); l->setStyleSheet(QString()); }
 	fillWidgets();
 	emit setupChanged();
 }
@@ -464,10 +580,23 @@ void GuidedSetup2Page::edited()
 	s.scanAxis = dir >= 2 ? QStringLiteral("Y") : QStringLiteral("X");
 	s.scanNegative = (dir % 2) == 1;
 
+	//a new Ref keeps the point where it is: the offset becomes the one from the new reference
+	bool refChanged = false;
+	const double uw = s.unitLayout.widthMm, ul = s.unitLayout.lengthMm;
+	for (int t = 0; t < gs2::InspTypeCount; t++) {
+		auto& in = s.insp[t];
+		if (in.ref == setupBefore.insp[t].ref || uw <= 0.0 || ul <= 0.0) continue;
+		const gs2geo::Pt was = gs2geo::unitRefPoint(setupBefore.insp[t].ref, uw, ul), now = gs2geo::unitRefPoint(in.ref, uw, ul);
+		in.dx = std::clamp(std::round((in.dx + was.x - now.x) * 1000.0) / 1000.0, -500.0, 500.0);   //the offset boxes hold +/-500
+		in.dy = std::clamp(std::round((in.dy + was.y - now.y) * 1000.0) / 1000.0, -500.0, 500.0);
+		refChanged = true;
+	}
+
 	//a Find or Check proves the settings it ran with, not these
 	keepResults(setupBefore, s);
 
-	refreshStatus();
+	if (refChanged) fillWidgets(); //shows the new offsets (and refreshes)
+	else refreshStatus();
 	emit setupChanged();
 }
 
@@ -564,14 +693,40 @@ void GuidedSetup2Page::refreshStatus()
 	else if (ui.label_dFound->styleSheet() == kDoneColour)
 		showRectResult(QStringLiteral("Check has not run with these corners and settings."), false);
 
-	ui.label_eSize->setText(s.slotSize.set ? QStringLiteral("%1 x %2 mm").arg(mm3(s.slotSize.widthMm), mm3(s.slotSize.lengthMm))
-		: QStringLiteral("not measured"));
+	{
+		const auto& z = s.slotSize;
+		QString t = z.set ? QStringLiteral("%1 x %2 mm").arg(mm3(z.widthMm), mm3(z.lengthMm)) : QStringLiteral("not measured");
+		if (z.tl.set || z.br.set)
+			t += QStringLiteral("\nTL circle %1\nBR circle %2  (trolley frame)").arg(xyText(z.tl), xyText(z.br));
+		ui.label_eSize->setText(t);
+	}
 	ui.label_eCircle->setText(circleSummary(gs2::CircleSlot));
 
-	ui.listWidget_fSlots->clear();
-	for (const auto& sl : s.slotList)
-		ui.listWidget_fSlots->addItem(QStringLiteral("%1     centre x %2   y %3   (trolley frame)").arg(sl.name, mm3(sl.cx), mm3(sl.cy)));
-	if (s.slotList.isEmpty()) ui.listWidget_fSlots->addItem(QStringLiteral("No slots yet."));
+	//rebuilt only when it changed, keeping the selection (by slot id) that Delete, Rename and Interpolate use
+	{
+		QStringList lines, ids;
+		for (const auto& sl : s.slotList) {
+			lines << QStringLiteral("%1     centre x %2   y %3   (trolley frame)").arg(sl.name, mm3(sl.cx), mm3(sl.cy));
+			ids << sl.id;
+		}
+		QStringList shownLines, shownIds;
+		for (int i = 0; i < ui.listWidget_fSlots->count(); i++) {
+			shownLines << ui.listWidget_fSlots->item(i)->text();
+			shownIds << ui.listWidget_fSlots->item(i)->data(Qt::UserRole).toString();
+		}
+		//the ids too: a slot deleted and added again can read the same with a new id
+		if (s.slotList.isEmpty() ? shownLines != QStringList{ QStringLiteral("No slots yet.") } : (shownLines != lines || shownIds != ids)) {
+			const QStringList keep = selectedSlotIds();
+			QSignalBlocker b(ui.listWidget_fSlots);   //the view drops slots that are gone itself (setSetup)
+			ui.listWidget_fSlots->clear();
+			for (int i = 0; i < lines.size(); i++) {
+				auto* item = new QListWidgetItem(lines[i], ui.listWidget_fSlots);
+				item->setData(Qt::UserRole, ids[i]);
+				item->setSelected(keep.contains(ids[i]));
+			}
+			if (s.slotList.isEmpty()) ui.listWidget_fSlots->addItem(QStringLiteral("No slots yet."));
+		}
+	}
 
 	const auto& u = s.unitLayout;
 	if (!s.slotSize.set) {
@@ -606,7 +761,7 @@ void GuidedSetup2Page::refreshStatus()
 		state[i]->setText(done ? QString(QChar(0x2713)) + QStringLiteral(" Done") : QStringLiteral("Not done: %1").arg(why));
 		state[i]->setStyleSheet(done ? kDoneColour : kTodoColour);
 	}
-	ui.label_iState->setText(QStringLiteral("Locate; the visits come in build step 4"));
+	ui.label_iState->setText(QStringLiteral("Locate; the visits come in build step 4b"));
 	ui.label_iState->setStyleSheet(QStringLiteral("color:#A8B0BF;"));
 
 	static const char* const usedBy[gs2::CircleKindCount] = { "used by section B: Teach XY, Learn pattern, Find",

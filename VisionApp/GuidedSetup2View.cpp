@@ -43,10 +43,19 @@ void GuidedSetup2View::setSetup(const gs2::Setup& s)
 	_s = s;
 	_fit = _located ? _locFit : gs2::taughtFit(s);
 	//a selection that no longer exists is dropped
+	for (int i = _selSlots.size() - 1; i >= 0; i--) if (!gs2::findSlot(_s, _selSlots[i])) _selSlots.removeAt(i);
 	bool still = false;
-	if (_selKind == QLatin1String("slot")) still = gs2::findSlot(_s, _selId) != nullptr;
-	if (_selKind == QLatin1String("unit")) for (const auto& u : _s.units) still = still || u.id == _selId;
-	if (!still) { _selKind.clear(); _selId.clear(); }
+	for (const auto& u : _s.units) still = still || u.id == _selUnit;
+	if (!still) _selUnit.clear();
+	update();
+}
+
+void GuidedSetup2View::setSelectedSlots(const QStringList& ids)
+{
+	_selSlots = ids;
+	QString unitSlot;
+	for (const auto& u : _s.units) if (u.id == _selUnit) unitSlot = u.slotId;
+	if (!ids.contains(unitSlot)) _selUnit.clear();
 	update();
 }
 
@@ -182,7 +191,7 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 			gs2geo::Pt c[4];
 			gs2::slotCornersWorld(_s, pose, sl, c);
 			const QPolygonF poly = screenPoly(c);
-			const bool sel = _selKind == QLatin1String("slot") && _selId == sl.id;
+			const bool sel = _selSlots.contains(sl.id);
 			p.setPen(QPen(sel ? kSelected : kSlot, sel ? 2.5 : 1.5));
 			QColor fill = kSlot; fill.setAlpha(45);
 			p.setBrush(fill);
@@ -195,7 +204,7 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 			gs2geo::Pt c[4];
 			gs2::unitCornersWorld(_s, pose, *sl, u.row, u.col, c);
 			const QPolygonF poly = screenPoly(c);
-			const bool sel = _selKind == QLatin1String("unit") && _selId == u.id;
+			const bool sel = _selUnit == u.id;
 			p.setPen(QPen(sel ? kSelected : kUnit, sel ? 2.2 : 1.0));
 			QColor fill = kUnit; fill.setAlpha(sel ? 110 : 60);
 			p.setBrush(fill);
@@ -361,47 +370,64 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 	p.drawText(QRectF(a0.x() + 6, a0.y() + 22, 40, 16), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("+Y"));
 }
 
-void GuidedSetup2View::pick(QPointF screen)
+void GuidedSetup2View::pick(QPointF screen, bool add)
 {
-	_selKind.clear();
-	_selId.clear();
+	QString unitId, slotId;
 	if (_fit.pose.valid) {
 		for (const auto& u : _s.units) {
 			const gs2::Slot* sl = gs2::findSlot(_s, u.slotId);
 			if (!sl) continue;
 			gs2geo::Pt c[4];
 			gs2::unitCornersWorld(_s, _fit.pose, *sl, u.row, u.col, c);
-			if (screenPoly(c).containsPoint(screen, Qt::OddEvenFill)) { _selKind = QStringLiteral("unit"); _selId = u.id; break; }
+			if (screenPoly(c).containsPoint(screen, Qt::OddEvenFill)) { unitId = u.id; slotId = u.slotId; break; }
 		}
-		if (_selKind.isEmpty())
+		if (slotId.isEmpty())
 			for (const auto& sl : _s.slotList) {
 				gs2geo::Pt c[4];
 				gs2::slotCornersWorld(_s, _fit.pose, sl, c);
-				if (screenPoly(c).containsPoint(screen, Qt::OddEvenFill)) { _selKind = QStringLiteral("slot"); _selId = sl.id; break; }
+				if (screenPoly(c).containsPoint(screen, Qt::OddEvenFill)) { slotId = sl.id; break; }
 			}
 	}
+	if (add) {
+		//Ctrl+click works on slots, also through a unit; on nothing it changes nothing
+		if (slotId.isEmpty()) return;
+		_selUnit.clear();
+		if (_selSlots.contains(slotId)) _selSlots.removeAll(slotId);
+		else _selSlots << slotId;
+	}
+	else {
+		_selUnit = unitId;
+		_selSlots = slotId.isEmpty() ? QStringList() : QStringList{ slotId };
+	}
 	update();
+	emit slotsPicked(_selSlots);
 }
 
 QString GuidedSetup2View::selectionText() const
 {
 	if (!_fit.pose.valid) return QString();
-	if (_selKind == QLatin1String("slot")) {
-		const gs2::Slot* sl = gs2::findSlot(_s, _selId);
-		if (!sl) return QString();
-		const gs2geo::Pt w = gs2geo::toWorld(_fit.pose, { sl->cx, sl->cy });
-		return QStringLiteral("Selected slot %1: centre X %2  Y %3 (as taught), x %4  y %5 in the trolley frame")
-			.arg(sl->name, mm3(w.x), mm3(w.y), mm3(sl->cx), mm3(sl->cy));
-	}
-	if (_selKind == QLatin1String("unit")) {
+	const QString where = _located ? QStringLiteral("as found") : QStringLiteral("as taught");
+	if (!_selUnit.isEmpty()) {
 		for (const auto& u : _s.units) {
-			if (u.id != _selId) continue;
+			if (u.id != _selUnit) continue;
 			const gs2::Slot* sl = gs2::findSlot(_s, u.slotId);
 			if (!sl) return QString();
 			const gs2geo::Pt w = gs2geo::toWorld(_fit.pose, gs2::unitCentreLocal(_s, *sl, u.row, u.col));
-			return QStringLiteral("Selected unit %1 in %2 (row %3, column %4): centre X %5  Y %6 (as taught)")
-				.arg(u.name, sl->name).arg(u.row + 1).arg(u.col + 1).arg(mm3(w.x), mm3(w.y));
+			return QStringLiteral("Selected unit %1 in %2 (row %3, column %4): centre X %5  Y %6 (%7)")
+				.arg(u.name, sl->name).arg(u.row + 1).arg(u.col + 1).arg(mm3(w.x), mm3(w.y), where);
 		}
+	}
+	if (_selSlots.size() == 1) {
+		const gs2::Slot* sl = gs2::findSlot(_s, _selSlots.first());
+		if (!sl) return QString();
+		const gs2geo::Pt w = gs2geo::toWorld(_fit.pose, { sl->cx, sl->cy });
+		return QStringLiteral("Selected slot %1: centre X %2  Y %3 (%4), x %5  y %6 in the trolley frame. Ctrl+click adds slots")
+			.arg(sl->name, mm3(w.x), mm3(w.y), where, mm3(sl->cx), mm3(sl->cy));
+	}
+	if (_selSlots.size() > 1) {
+		QStringList names;
+		for (const auto& id : _selSlots) if (const gs2::Slot* sl = gs2::findSlot(_s, id)) names << sl->name;
+		return QStringLiteral("Selected slots %1. Ctrl+click adds or removes one").arg(names.join(QStringLiteral(", ")));
 	}
 	return QString();
 }
@@ -427,7 +453,7 @@ void GuidedSetup2View::mouseMoveEvent(QMouseEvent* e)
 
 void GuidedSetup2View::mouseReleaseEvent(QMouseEvent* e)
 {
-	if (_pressed && !_dragged && e->button() == Qt::LeftButton) pick(e->pos());
+	if (_pressed && !_dragged && e->button() == Qt::LeftButton) pick(e->pos(), (e->modifiers() & Qt::ControlModifier) != 0);
 	_pressed = false;
 	_dragged = false;
 	unsetCursor();

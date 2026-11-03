@@ -7,8 +7,8 @@
 /*
 * The right-panel page of the Guided Setup (new). It edits a working copy of one recipe's
 * guidedSetup2.json; nothing reaches the file until Save, and Discard goes back to what was saved.
-* Taught values (positions, sizes measured by the machine) are shown read-only here; the buttons
-* that teach them arrive in later build steps. Typed settings can be edited at any time.
+* Taught values (positions, sizes measured by the machine) are shown read-only here and taught by
+* the section buttons, which VisionApp carries out. Typed settings can be edited at any time.
 */
 class GuidedSetup2Page : public QWidget
 {
@@ -50,7 +50,15 @@ public:
 		TeachZ3DSpot, TeachZ3DFind, TeachZ3DDiff,
 		TeachCornerTL, TeachCornerTR, TeachCornerBR, TeachCornerBL,   //in gs2geo::Corner order
 		TeachRectCheck, TeachLocate,
-		TeachJogCornerTL, TeachJogCornerTR, TeachJogCornerBR, TeachJogCornerBL };   //in gs2geo::Corner order
+		TeachJogCornerTL, TeachJogCornerTR, TeachJogCornerBR, TeachJogCornerBL,   //in gs2geo::Corner order
+		TeachSlotTL, TeachSlotBR, TeachSlotAdd, TeachSlotInterpolate,          //sections E and F (build step 4)
+		TeachInsp2D, TeachInspBarcodeOcr, TeachInsp3D };                       //section H's Set, in gs2::InspType order
+	//what F's Add and Interpolate are asked to do: the corner the camera is on (gs2geo::Corner), the slots
+	//selected in the list (ids) and how many go between them
+	int slotAddCorner() const;
+	QStringList selectedSlotIds() const;
+	int slotsBetween() const;
+	void selectSlots(const QStringList& ids);   //the layout view picked these; no slotSelectionChanged back
 	//a taught value into the working copy (unsaved until Save); a changed setting clears the run result
 	//it no longer goes with (B's Find, C's Find, D's Check)
 	void modify(const std::function<void(gs2::Setup&)>& change);
@@ -65,6 +73,9 @@ public:
 	void showZ3DResult(const QString& text, bool ok);
 	void showRectResult(const QString& text, bool ok);
 	void showLocateResult(const QString& text, bool ok);
+	void showSlotSizeResult(const QString& text, bool ok);
+	void showSlotsResult(const QString& text, bool ok);
+	void showInspResult(const QString& text, bool ok);
 	void setPatternBoxShown(bool shown);  //keep the Pattern box button in step when the box is hidden elsewhere
 
 signals:
@@ -74,6 +85,7 @@ signals:
 	void conversionChosen(bool measured); //the operator picked Set or Measured
 	void teachRequested(int action);     //a TeachAction
 	void patternBoxToggled(bool shown);
+	void slotSelectionChanged(const QStringList& ids);   //the operator changed the selection in F's list
 
 private:
 	Ui::GuidedSetup2Page ui;
@@ -100,6 +112,8 @@ private:
 	//put the result into the working copy, and into the file at once when it holds the settings the
 	//result proves (same); what = its name in the log
 	void recordResult(const char* what, const std::function<void(gs2::Setup&)>& put, bool (*same)(const gs2::Setup&, const gs2::Setup&));
+	void deleteSlots();                     //F's Delete and Rename: edits, no machine
+	void renameSlot();
 	int circleKind() const;                 //the kind picked in Circle: gs2::CircleKind
 	QString circleSummary(int kind) const;  //one line for sections B, D and E
 };
