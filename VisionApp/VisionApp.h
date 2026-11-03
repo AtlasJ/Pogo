@@ -768,6 +768,9 @@ private:
 	//found it on this trolley in this session, with the corners and drawing size there are now
 	bool gs2SessionRect(const gs2::Setup& s, const QString& dir, QString& why) const;
 	bool gs2SlotInWorld(const gs2::Setup& s, const gs2::Slot& slot, const gs2geo::Pose& pose, QString& why); //every corner inside the soft limits
+	//build step 4b: every place production drives the camera, a barcode reader or the laser to for these points
+	//(START step 5, and before the visits) inside the soft limits - refused, never clamped
+	bool gs2CheckReach(const gs2::Setup& s, const QVector<gs2::RunPoint>& points, double z2D, double z3D, QString& why);
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data
@@ -1313,6 +1316,14 @@ private:
 
 	void startAcquisition();
 	void startProduction();
+	void gs2PrepareProductionRun();   //Guided Setup (new): startProduction's run setup, without its gates
+	struct Gs2RunFlags {
+		bool active = false;          //the production table follows the last Guided Setup (new) run (until the next START)
+		bool barcode = false, height = false;   //...which took Barcode + OCR / 3D, so those results are required
+		bool capturing = false;       //a Snap and scan is running: no auto trolley release at its end
+		bool holdPrompts = false;     //...and job-thread prompts are held for its result, not shown mid-run
+		QStringList heldPrompts;
+	} _gs2Run;
 	void startProductionS();
 
 	//production mode selector (DI X108): ON locks the UI to the production page

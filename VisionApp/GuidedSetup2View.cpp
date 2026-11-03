@@ -20,7 +20,8 @@ const QColor kFid(255, 201, 51);
 const QColor kFrame(136, 169, 224);
 const QColor kSlot(111, 156, 226);
 const QColor kUnit(79, 194, 180);
-const QColor kInsp(242, 108, 176);
+const QColor kInsp(242, 108, 176);   //2D and Barcode + OCR points: where the 2D camera looks
+const QColor kScan(255, 150, 60);    //3D scans, dotted: where the laser measures
 const QColor kCamera(255, 231, 35);
 const QColor kSelected(255, 255, 255);
 
@@ -231,11 +232,17 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 					p.drawRect(QRectF(q.x() - 3, q.y() - 3, 6, 6));
 				}
 				else {
-					//the scan runs along a machine axis from its start point
+					//a 3D scan, dotted and in its own colour: it runs along a machine axis from its start, drawn where
+					//the laser measures (H's 3D laser XY), not where the camera would look
+					const gs2geo::Pt r = gs2::scanReadPoint(_s, w, _laserWx, _laserWy);
+					const QPointF rq = toScreen(r);
 					const double len = _s.insp[t].scanLengthMm * (_s.scanNegative ? -1.0 : 1.0);
-					const gs2geo::Pt end = _s.scanAxis == QLatin1String("Y") ? gs2geo::Pt{ w.x, w.y + len } : gs2geo::Pt{ w.x + len, w.y };
-					p.drawLine(q, toScreen(end));
-					p.drawEllipse(q, 2.0, 2.0);
+					const gs2geo::Pt end = _s.scanAxis == QLatin1String("Y") ? gs2geo::Pt{ r.x, r.y + len } : gs2geo::Pt{ r.x + len, r.y };
+					p.setPen(QPen(kScan, 1.6, Qt::DotLine));
+					p.drawLine(rq, toScreen(end));
+					p.setPen(QPen(kScan, 1.4));
+					p.drawEllipse(rq, 2.5, 2.5);
+					p.setPen(QPen(kInsp, 1.4));
 				}
 			}
 		}
@@ -328,6 +335,7 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 	lines << (_worldKnown
 		? QStringLiteral("World (soft limits): X %1 .. %2   Y %3 .. %4 mm").arg(mm3(_world.left()), mm3(_world.right()), mm3(_world.top()), mm3(_world.bottom()))
 		: QStringLiteral("Soft limits unknown (motion not loaded): drawn around the taught layout"));
+	lines << QStringLiteral("Positions are where the 2D camera looks; the dotted 3D scans are drawn where the laser measures.");
 	const QString angle = QString::number(pose.angle * 180.0 / 3.14159265358979323846, 'f', 3);
 	if (_located) lines << QStringLiteral("Drawn where %1 found it (trolley angle %2 deg, worst corner residual %3 mm)").arg(_locWhat, angle, mm3(_locFit.maxResidual()));
 	else if (!_s.fid0.xy.set) lines << QStringLiteral("Nothing taught yet: teach fid0 and the four corners first.");
@@ -337,17 +345,24 @@ void GuidedSetup2View::paintEvent(QPaintEvent*)
 	if (!sel.isEmpty()) lines << sel;
 	p.setFont(normal);
 	p.setPen(kHint);
-	p.drawText(QRectF(10, 6, width() - 170, 60), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, lines.join(QLatin1Char('\n')));   //clear of the legend
+	p.drawText(QRectF(10, 6, width() - 170, 80), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, lines.join(QLatin1Char('\n')));   //clear of the legend
 
 	//legend, top right
-	struct Key { QColor c; const char* t; };
-	const Key keys[] = { { kFid, "fiducials" }, { kSlot, "slots" }, { kUnit, "units" }, { kInsp, "inspection points" }, { kCamera, "camera" } };
+	struct Key { QColor c; const char* t; bool dotted; };
+	const Key keys[] = { { kFid, "fiducials", false }, { kSlot, "slots", false }, { kUnit, "units", false },
+		{ kInsp, "2D points (camera)", false }, { kScan, "3D scans (laser)", true }, { kCamera, "camera", false } };
 	p.setFont(small);
 	double ly = 10;
 	for (const auto& k : keys) {
-		p.setPen(Qt::NoPen);
-		p.setBrush(k.c);
-		p.drawRect(QRectF(width() - 150, ly + 2, 10, 8));
+		if (k.dotted) {
+			p.setPen(QPen(k.c, 2.0, Qt::DotLine));
+			p.drawLine(QPointF(width() - 152, ly + 6), QPointF(width() - 139, ly + 6));
+		}
+		else {
+			p.setPen(Qt::NoPen);
+			p.setBrush(k.c);
+			p.drawRect(QRectF(width() - 150, ly + 2, 10, 8));
+		}
 		p.setPen(kHint);
 		p.drawText(QRectF(width() - 134, ly - 2, 130, 16), Qt::AlignLeft | Qt::AlignVCenter, QLatin1String(k.t));
 		ly += 15;

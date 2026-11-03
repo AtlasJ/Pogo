@@ -66,6 +66,21 @@ public:
 
 	JobThread(QObject* parent = nullptr) : QThread(parent) {
 	}
+
+	/*
+	* Guided Setup (new), build step 5: production's acquisition for points the GUI thread has already
+	* worked out from the trolley it found - in order, each with production's own code: a 2D snap
+	* (main optic) saved as <unit>_2D, a Barcode + OCR read (acquireBarcodeAndOcrAt), a 3D scan
+	* (scan(), every 3D optic). Call it on this thread; gs2RunFinished always follows.
+	*/
+	struct Gs2Shot {
+		QString unitID;                     //the unit's name: its PMF position
+		int kind = 0;                       //0 = 2D snap, 1 = Barcode + OCR, 2 = 3D scan (along X)
+		double x = 0.0, y = 0.0, z = 0.0;   //2D / Barcode + OCR: the camera point and Z; 3D: where the laser starts measuring and the scan Z
+		double scanEndX = 0.0;              //3D: where the laser stops measuring
+		double clearZ = 0.0;                //Z goes up to this (if lower) before moving sideways to the shot, as Move only does
+	};
+	void runGs2(const QVector<Gs2Shot>& shots);
 	~JobThread() {
 		// The SR-X sockets live in this thread, so they must NOT be deleted from
 		// here (the destructor runs on the caller's thread). Stop the event loop
@@ -595,6 +610,7 @@ signals:
 	void barcodeDecoded(QString code);
 	void unitBarcode(QString unitID, QString code, int reader); //reader that decoded: 1/2, 0 = none //per pitch unit (or "board"), for the live status table
 	void unitStarted(QString unitID); //a pitch run is about to visit this unit (in each pass that visits it)
+	void gs2RunFinished(bool completed, int shotsDone, int missing2D); //runGs2 is over: every shot taken (completed), or stopped / failed after shotsDone; missing2D = 2D snaps with no image
 	void locatedBarcode(QRectF roi, int index, bool pass, QString code);
 	void barcodeFailed();
 

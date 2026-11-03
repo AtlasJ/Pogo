@@ -31,6 +31,9 @@ public:
 	void clearLocated();
 	//the slots selected in the page's list; a selected unit stays only while its slot is one of them
 	void setSelectedSlots(const QStringList& ids);
+	QString selectedUnit() const { return _selUnit; }   //the unit a plain click picked, else empty
+	//the machine's camera-to-laser XY: a 3D scan whose recipe does not add it is drawn where the laser measures
+	void setLaserOffset(double wx, double wy) { if (wx != _laserWx || wy != _laserWy) { _laserWx = wx; _laserWy = wy; update(); } }
 
 signals:
 	void slotsPicked(const QStringList& ids);   //a click here changed which slots are selected
@@ -65,6 +68,7 @@ private:
 	QPoint _pressPos;
 	QPointF _panAtPress;
 
+	double _laserWx = 0.0, _laserWy = 0.0;
 	QStringList _selSlots;           //selected slot ids (Ctrl+click: several)
 	QString _selUnit;                //a selected unit's id, picked by a plain click
 

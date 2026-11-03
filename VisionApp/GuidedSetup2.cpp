@@ -311,7 +311,10 @@ QJsonObject toJson(const Setup& s)
 		o.insert(QStringLiteral("ref"), QLatin1String(kRefKey[(in.ref >= 0 && in.ref < 5) ? in.ref : 0]));
 		o.insert(QStringLiteral("offset"), QJsonArray{ in.dx, in.dy });
 		o.insert(QStringLiteral("zOffsetMm"), in.zOffsetMm);
-		if (t == Insp3D) o.insert(QStringLiteral("scanLengthMm"), in.scanLengthMm);
+		if (t == Insp3D) {
+			o.insert(QStringLiteral("scanLengthMm"), in.scanLengthMm);
+			o.insert(QStringLiteral("addLaserOffset"), in.addLaserOffset);
+		}
 		h.insert(QLatin1String(kInspKey[t]), o);
 	}
 	root.insert(QStringLiteral("inspections"), h);
@@ -469,6 +472,7 @@ Setup fromJson(const QJsonObject& root)
 		if (off.size() == 2) { in.dx = off[0].toDouble(); in.dy = off[1].toDouble(); }
 		in.zOffsetMm = num(o, "zOffsetMm", 0.0);
 		in.scanLengthMm = num(o, "scanLengthMm", 0.0);
+		in.addLaserOffset = boolean(o, "addLaserOffset", true);
 	}
 
 	const QString dir = str(root, "scanDirection");
@@ -667,6 +671,29 @@ Slot newSlot(Setup& s, double cx, double cy)
 	sl.cx = cx;
 	sl.cy = cy;
 	return sl;
+}
+
+gs2geo::Pt scanReadPoint(const Setup& s, gs2geo::Pt camera, double laserWx, double laserWy)
+{
+	if (s.insp[Insp3D].addLaserOffset) return camera;
+	return { camera.x - laserWx, camera.y - laserWy };
+}
+
+QVector<RunPoint> runPoints(const Setup& s, const gs2geo::Pose& pose, const QStringList& slotIds)
+{
+	QVector<RunPoint> out;
+	if (s.unitLayout.widthMm <= 0.0 || s.unitLayout.lengthMm <= 0.0) return out;
+	QVector<int> order;
+	for (int i = 0; i < s.units.size(); i++)
+		if (findSlot(s, s.units[i].slotId) && (slotIds.isEmpty() || slotIds.contains(s.units[i].slotId))) order << i;
+	std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return naturalLess(s.units[a].name, s.units[b].name); });
+	for (int i : order) {
+		const Slot* sl = findSlot(s, s.units[i].slotId);
+		for (int t = 0; t < InspTypeCount; t++)
+			if (s.insp[t].enabled)
+				out.append({ i, (InspType)t, inspectionWorld(s, pose, *sl, s.units[i].row, s.units[i].col, (InspType)t) });
+	}
+	return out;
 }
 
 QStringList gridNames(const Setup& s)

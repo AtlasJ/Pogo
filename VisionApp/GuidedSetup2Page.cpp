@@ -111,6 +111,9 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 	connect(ui.toolButton_dJogBL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogCornerBL); });
 	connect(ui.toolButton_dCheck, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachRectCheck); });
 	connect(ui.toolButton_iLocate, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachLocate); });
+	connect(ui.toolButton_iMove, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachMoveOnly); });
+	connect(ui.toolButton_iGo, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachGoTo); });
+	connect(ui.toolButton_iCapture, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSnapScan); });
 
 	//E, F and H: the machine measures; Delete and Rename are only edits
 	connect(ui.toolButton_eSetTL, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSlotTL); });
@@ -154,6 +157,26 @@ QStringList GuidedSetup2Page::selectedSlotIds() const
 int GuidedSetup2Page::slotsBetween() const
 {
 	return ui.spin_fBetween->value();
+}
+
+int GuidedSetup2Page::moveOnlyWhat() const
+{
+	return std::clamp(ui.comboBox_iMoveWhat->currentIndex(), (int)Move2D, (int)MoveBoth);
+}
+
+int GuidedSetup2Page::snapScanWhat() const
+{
+	return std::clamp(ui.comboBox_iCaptureWhat->currentIndex(), (int)Move2D, (int)MoveBoth);
+}
+
+int GuidedSetup2Page::goToPosition() const
+{
+	return std::clamp(ui.comboBox_iGoPos->currentIndex(), (int)GoCentre, (int)Go3DStart);
+}
+
+bool GuidedSetup2Page::goToWithProfiler() const
+{
+	return ui.comboBox_iGoWith->currentIndex() == 1;
 }
 
 void GuidedSetup2Page::selectSlots(const QStringList& ids)
@@ -366,7 +389,7 @@ void GuidedSetup2Page::setMachineBusy(bool busy)
 		ui.toolButton_dJogTL, ui.toolButton_dJogTR, ui.toolButton_dJogBR, ui.toolButton_dJogBL,
 		ui.toolButton_eSetTL, ui.toolButton_eSetBR, ui.toolButton_fAdd, ui.toolButton_fInterp, ui.toolButton_fDelete, ui.toolButton_fRename,
 		ui.toolButton_hSet2D, ui.toolButton_hSetBc, ui.toolButton_hSet3D,
-		ui.toolButton_iLocate, ui.toolButton_save, ui.toolButton_discard })
+		ui.toolButton_iLocate, ui.toolButton_iMove, ui.toolButton_iCapture, ui.toolButton_iGo, ui.toolButton_save, ui.toolButton_discard })
 		b->setEnabled(!busy);
 	if (!busy) refreshStatus(); //Save / Discard follow the edits again
 }
@@ -382,7 +405,8 @@ void GuidedSetup2Page::connectEdits()
 	for (auto* w : findChildren<QCheckBox*>())
 		connect(w, &QCheckBox::toggled, this, [=]() { edited(); });
 	for (auto* w : findChildren<QComboBox*>())
-		if (w != ui.comboBox_tCircle && w != ui.comboBox_tConversion && w != ui.comboBox_fCorner)
+		if (w != ui.comboBox_tCircle && w != ui.comboBox_tConversion && w != ui.comboBox_fCorner
+			&& w != ui.comboBox_iMoveWhat && w != ui.comboBox_iCaptureWhat && w != ui.comboBox_iGoPos && w != ui.comboBox_iGoWith)
 			connect(w, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [=]() { edited(); });
 }
 
@@ -519,6 +543,7 @@ void GuidedSetup2Page::fillWidgets()
 		dz[t]->setValue(s.insp[t].zOffsetMm);
 	}
 	ui.dspin_h3DLen->setValue(s.insp[gs2::Insp3D].scanLengthMm);
+	ui.checkBox_hAddLaser->setChecked(s.insp[gs2::Insp3D].addLaserOffset);
 	ui.comboBox_hScanDir->setCurrentIndex((s.scanAxis == QLatin1String("Y") ? 2 : 0) + (s.scanNegative ? 1 : 0));
 	_filling = false;
 	refreshStatus();
@@ -576,6 +601,7 @@ void GuidedSetup2Page::edited()
 		s.insp[t].zOffsetMm = shown(dz[t]);
 	}
 	s.insp[gs2::Insp3D].scanLengthMm = shown(ui.dspin_h3DLen);
+	s.insp[gs2::Insp3D].addLaserOffset = ui.checkBox_hAddLaser->isChecked();
 	const int dir = ui.comboBox_hScanDir->currentIndex();
 	s.scanAxis = dir >= 2 ? QStringLiteral("Y") : QStringLiteral("X");
 	s.scanNegative = (dir % 2) == 1;
@@ -761,7 +787,7 @@ void GuidedSetup2Page::refreshStatus()
 		state[i]->setText(done ? QString(QChar(0x2713)) + QStringLiteral(" Done") : QStringLiteral("Not done: %1").arg(why));
 		state[i]->setStyleSheet(done ? kDoneColour : kTodoColour);
 	}
-	ui.label_iState->setText(QStringLiteral("Locate; the visits come in build step 4b"));
+	ui.label_iState->setText(QStringLiteral("Locate, Move only, Snap and scan, Go to"));
 	ui.label_iState->setStyleSheet(QStringLiteral("color:#A8B0BF;"));
 
 	static const char* const usedBy[gs2::CircleKindCount] = { "used by section B: Teach XY, Learn pattern, Find",

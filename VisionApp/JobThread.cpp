@@ -6826,6 +6826,111 @@ void JobThread::run2D3D() {
 	if (!m_stopRun) emit acquisitionDone();
 }
 
+/*
+* Guided Setup (new): production's acquisition for points worked out on the GUI thread from the trolley
+* a Check / Locate / START found. Nothing here places anything - every XY and Z arrives ready - so the
+* old fiducials, pitch grid and platform Z play no part (the caller holds _platformZOffset at 0). Each
+* shot is taken with production's own code; a 3D scan's Z is handed in less the camera-to-laser Z,
+* because jogLaser adds it back and the Z given is already the laser's own (the 3D Centre Z).
+*/
+void JobThread::runGs2(const QVector<Gs2Shot>& shots)
+{
+	SystemData::instance().StartInspectionTimer = QDateTime::currentDateTime();
+	m_extraMoveLog.clear();
+	m_postResults.clear();
+	m_stopRun = false;
+
+	//getMainOptics() has no answer for a recipe without 2D optics, and no 3D optic means no scan: refuse up front
+	bool any2D = false, any3D = false;
+	for (const auto& s : shots) { any2D = any2D || s.kind == 0; any3D = any3D || s.kind == 2; }
+	const std::deque<QString> opticsSeq = build3DOpticsSeq();
+	if ((any2D && (!m_optics || m_optics->size() == 0)) || (any3D && opticsSeq.empty())) {
+		ct::logger::error("[GS2 run] refused: the recipe has no %s optics", any2D && (!m_optics || m_optics->size() == 0) ? "2D" : "3D");
+		emit gs2RunFinished(false, 0, 0);
+		return;
+	}
+	const OpticsInfo mainOptic = any2D ? getMainOptics() : OpticsInfo();
+	const bool waitImage = SystemData::instance().getLaserType() != "SmartRay";
+	const double laserDz = m_laserOffset ? m_laserOffset->wz : 0.0;
+	ct::logger::info("[GS2 run] %d shots, laser Z offset %.3f taken out of every scan Z", shots.size(), laserDz);
+
+	//up to clearZ first when the head is lower (+ Z is down), XY staying put: every shot then moves sideways at
+	//or above it, the path Move only rehearses
+	auto& mc = MotionController::instance();
+	auto liftTo = [&](double clearZ) {
+		const auto x = mc.get_position_mm(m_motionID, 0, (int)im390::Axis::X);
+		const auto y = mc.get_position_mm(m_motionID, 0, (int)im390::Axis::Y);
+		const auto z = mc.get_position_mm(m_motionID, 0, (int)im390::Axis::Z);
+		if (x && y && z && *z > clearZ + 0.02) jog(*x, *y, clearZ, "2D", true);
+	};
+
+	int done = 0, missing2D = 0;
+	QString last;
+	for (const auto& s : shots) {
+		if (m_stopRun) break;
+		//in each pass, like the pitch run
+		if (s.unitID != last) { last = s.unitID; emit unitStarted(s.unitID); }
+		liftTo(s.clearZ);
+		if (m_stopRun) break;
+
+		if (s.kind == 0) {
+			ct::logger::info("[GS2 run] %s 2D snap at %.3f, %.3f, Z %.3f", qPrintable(s.unitID), s.x, s.y, s.z);
+			jog(s.x, s.y, s.clearZ, "2D", true);
+			if (!m_stopRun) jog(s.x, s.y, s.z, "2D", true);
+			if (m_stopRun) break;
+			if (m_snapDelay_ms > 0) os_tool::doNothing(m_snapDelay_ms);   //the head settles, as production's view snaps do
+			snapOptic(mainOptic, s.unitID + "_2D", "", true);
+			const FrameInfo info = waitForImagePreprocessed(5000);
+			if (info.pImage) {
+				//saved as it is taken: a trolley's worth of frames must not wait in memory for the end
+				ImageSavingThread::instance().enqueue((m_rootPath + s.unitID + "_2D" + g_imgExtension).toStdString().c_str(), info);
+			}
+			else {
+				missing2D++;
+				ct::logger::error("[GS2 run] %s: no 2D image came back - nothing saved for it", qPrintable(s.unitID));
+			}
+		}
+		else if (s.kind == 1) {
+			jog(s.x, s.y, s.clearZ, "2D", true);
+			if (m_stopRun) break;
+			acquireBarcodeAndOcrAt(s.x, s.y, s.z, s.unitID);
+		}
+		else {
+			jogLaser(s.x, s.y, s.clearZ - laserDz, "2D");   //over the scan start at the clear Z; scan() then goes down to it
+			if (m_stopRun) break;
+			dat::WorldCoordinate start, end;
+			start.wx = s.x;
+			start.wy = s.y;
+			start.wz = s.z - laserDz;
+			end = start;
+			end.wx = s.scanEndX;
+			ct::logger::info("[GS2 run] %s 3D scan, laser measuring X %.3f..%.3f at Y %.3f, Z %.3f", qPrintable(s.unitID), s.x, s.scanEndX, s.y, s.z);
+			bool firstRun = true;
+			for (const auto& o : opticsSeq) {
+				if (m_stopRun) break;
+				ProfilerManager::instance().getFrame(m_profilerID)->stitchID = "";
+				ProfilerManager::instance().getFrame(m_profilerID)->postTask.rotationalAngle = 0.0;
+				auto optic = (*m_optics3D)[o];
+				if (!firstRun) optic.intensity = false;
+				scan(s.unitID, start, end, optic, waitImage);
+				firstRun = false;
+			}
+			if (!m_stopRun) emit incrementProgress();
+		}
+		if (m_stopRun) break;
+		done++;
+	}
+
+	//postAcquisition without its fiducial file: the old fiducial algo played no part here
+	m_rgbOverrides.clear();
+	m_postResults.clear();
+	save3DExtraOffset();
+	const bool completed = !m_stopRun && done == shots.size();
+	ct::logger::info("[GS2 run] %s: %d of %d shots, %d 2D snap(s) without an image", completed ? "done" : "stopped", done, shots.size(), missing2D);
+	if (completed) emit acquisitionDone();
+	emit gs2RunFinished(completed, done, missing2D);
+}
+
 void JobThread::calibrateGoldenLightingProfile(QString camID, QRectF roi) {
 	m_stopRun = false;
 	//calibrateOptimumBrightness(m_camID); //TODO: Color camera cant use this method

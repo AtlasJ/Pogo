@@ -160,6 +160,8 @@ struct Inspection {
 	double dx = 0.0, dy = 0.0;   //offset from the reference, camera position
 	double zOffsetMm = 0.0;      //+ = down, from the found 2D Z (2D, Barcode + OCR) or 3D Centre Z (3D)
 	double scanLengthMm = 0.0;   //3D only
+	bool addLaserOffset = true;  //3D only: the laser scans where the camera looked (the stage moves by the camera-to-laser XY);
+	                             //off: the stage goes to the point as it is and the laser scans one offset away
 };
 
 struct Setup {
@@ -221,6 +223,16 @@ gs2geo::Pt inspectionWorld(const Setup& s, const gs2geo::Pose& pose, const Slot&
 const Slot* findSlot(const Setup& s, const QString& id);
 //a new slot at (cx, cy) in the trolley frame: the next id and the first free name S1, S2... (not added)
 Slot newSlot(Setup& s, double cx, double cy);
+
+//one switched-on inspection point of one unit (an index into s.units): where the 2D camera looks, world
+struct RunPoint { int unit = -1; InspType type = Insp2D; gs2geo::Pt camera; };
+//every switched-on inspection point in run order - units by name (X2Y1 before X10Y1), a unit's 2D, then
+//its Barcode + OCR, then its 3D; only the units of slotIds when that is not empty
+QVector<RunPoint> runPoints(const Setup& s, const gs2geo::Pose& pose, const QStringList& slotIds = QStringList());
+//H's 3D: where the laser measures for a point taught as a camera position (laserW = the camera-to-laser XY
+//offset). The stage for it is this + laserW. Z never takes the offset's Z: a scan runs at the 3D Centre Z
+//(found with the laser itself) + the point's Z offset
+gs2geo::Pt scanReadPoint(const Setup& s, gs2geo::Pt camera, double laserWx, double laserWy);
 
 /*
 * Keeps the unit list in step with slots x layout: existing units keep their id and name, units of

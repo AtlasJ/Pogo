@@ -52,7 +52,17 @@ public:
 		TeachRectCheck, TeachLocate,
 		TeachJogCornerTL, TeachJogCornerTR, TeachJogCornerBR, TeachJogCornerBL,   //in gs2geo::Corner order
 		TeachSlotTL, TeachSlotBR, TeachSlotAdd, TeachSlotInterpolate,          //sections E and F (build step 4)
-		TeachInsp2D, TeachInspBarcodeOcr, TeachInsp3D };                       //section H's Set, in gs2::InspType order
+		TeachInsp2D, TeachInspBarcodeOcr, TeachInsp3D,                         //section H's Set, in gs2::InspType order
+		TeachMoveOnly, TeachGoTo,                                              //section I's tests (build step 4b)
+		TeachSnapScan };                                                       //...and production's capture (build step 5)
+	//I's choices: Move only's points (0 = 2D, 1 = 3D, 2 = 2D + 3D); Go to's position (gs2GoPos order) and tool
+	enum MoveWhat { Move2D = 0, Move3D, MoveBoth };
+	enum GoPos { GoCentre = 0, GoTopLeft, GoTop, GoTopRight, GoLeft, GoRight, GoBottomLeft, GoBottom, GoBottomRight,
+		Go2DPoint, GoBarcodePoint, Go3DStart };
+	int moveOnlyWhat() const;
+	int snapScanWhat() const;   //Snap and scan's points, as MoveWhat
+	int goToPosition() const;
+	bool goToWithProfiler() const;
 	//what F's Add and Interpolate are asked to do: the corner the camera is on (gs2geo::Corner), the slots
 	//selected in the list (ids) and how many go between them
 	int slotAddCorner() const;

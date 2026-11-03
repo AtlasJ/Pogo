@@ -32,7 +32,8 @@ void VisionApp::initProductionUI() {
 		if (_processType == ProcessType::PRODUCTION && ui.checkBox_saveFailedOnly->isChecked()) {
 			prunePassedUnitImages();
 		}
-		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._autoLockTrolley) {
+		//not after a Guided Setup (new) Snap and scan: the setup goes on with the trolley locked
+		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._autoLockTrolley && !_gs2Run.capturing) {
 			//end of the production run: release the trolley lock automatically
 			MotionController::instance().set_DO(_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, false);
 			ct::logger::info("[Production] Run ended - trolley lock released (auto)");
@@ -86,10 +87,10 @@ void VisionApp::initProductionUI() {
 		rItem->setData(Qt::UserRole, 0);
 		rItem->setData(Qt::UserRole + 1, codeOk ? 1 : 0);
 
-		//PASS requires only the algos enabled in the recipe
+		//PASS requires only the algos enabled in the recipe - or, for a Guided Setup (new) run, the ones it takes
 		int required = 0;
-		if (SystemData::instance()._pitchEnableBarcode) required |= kOcrPassBit;
-		if (SystemData::instance()._pitchEnable3D) required |= kHeightPassBit;
+		if (_gs2Run.active ? _gs2Run.barcode : SystemData::instance()._pitchEnableBarcode.load()) required |= kOcrPassBit;
+		if (_gs2Run.active ? _gs2Run.height : SystemData::instance()._pitchEnable3D.load()) required |= kHeightPassBit;
 		if (required == 0) required = kOcrPassBit;
 		rItem->setData(Qt::UserRole + 2, required);
 
@@ -122,7 +123,7 @@ void VisionApp::initProductionUI() {
 		* unit is: its cable and position stand in for the barcode (EK761P-230), and the PMF
 		* column it is listed under is its OCR letter - known, so not read.
 		*/
-		if (SystemData::instance()._pitchEnableBarcode || hasUnitRow(unitID)) return;
+		if ((_gs2Run.active ? _gs2Run.barcode : SystemData::instance()._pitchEnableBarcode.load()) || hasUnitRow(unitID)) return;
 		const int position = positionForUnit(unitID);
 		const std::optional<PogoUnitInfo> info = position >= 0 ? getUnitInfo(position) : std::nullopt;
 		auto* bItem = new QTableWidgetItem(info
@@ -638,6 +639,7 @@ void VisionApp::startProduction()
 	ui.lineEdit_inspectionTimeMain->clear();
 
 	_processType = ProcessType::PRODUCTION;
+	_gs2Run = Gs2RunFlags();   //a normal run: the table follows the recipe's checkboxes again
 
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);
@@ -691,6 +693,31 @@ void VisionApp::startProduction()
 	vs_startElapseTimer();
 }
 
+/*
+* Guided Setup (new), build step 5: what startProduction sets up before it hands a run to the job
+* thread - the status table and Live Mapping reset, inspection on, a new production id and folder -
+* without its gates and the old safety check, which the new setup's own steps replace. The old
+* platform Z offset is held at 0: every Z of the new setup was measured on this trolley.
+* startProduction itself is untouched.
+*/
+void VisionApp::gs2PrepareProductionRun()
+{
+	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe + QStringLiteral(" (Guided Setup new)"));
+	ui.lineEdit_inspectionTimeMain->clear();
+	_processType = ProcessType::PRODUCTION;
+	ui.tableWidget_prodStatus->setRowCount(0);
+	resetUnitStates();
+	updateProductionSummary();
+	clearErrorLogs();
+	clearInspectionLogs();
+	InspectionThread::instance().setActive(true);
+	uidGenerator uidGen;
+	_currentProductionID = uidGen.id().c_str();
+	setupProductionDir();
+	SystemData::instance()._platformZOffset = 0.0;
+	SystemData::instance()._offlineRun = false;
+}
+
 void VisionApp::startProductionS()
 {
 	auto state = MachineController::instance().getMachineState();
@@ -738,6 +765,7 @@ void VisionApp::startProductionS()
 
 
 	_processType = ProcessType::PRODUCTION;
+	_gs2Run = Gs2RunFlags();   //a normal run: the table follows the recipe's checkboxes again
 
 	//fresh run: clear the unit status table and the machine status log
 	ui.tableWidget_prodStatus->setRowCount(0);

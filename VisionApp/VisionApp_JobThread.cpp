@@ -18,6 +18,9 @@ void VisionApp::connectJobThread() {
 	qRegisterMetaType<PositionPortabilityType>("PositionPortabilityType");
 
 	QObject::connect(&_jobThread, &JobThread::promptMsg, this, [=](QString msg) {
+		//during a Guided Setup (new) Snap and scan its busy window lets only Stop through: a box now could
+		//never be closed - its text goes into the run's result instead
+		if (_gs2Run.holdPrompts) { _gs2Run.heldPrompts << msg; return; }
 		showMsg(msg);
 	});
 

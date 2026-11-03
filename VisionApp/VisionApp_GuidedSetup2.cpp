@@ -75,6 +75,8 @@ namespace {
 	constexpr double kTeachZTolMm = 0.3;     //corners are taught at fid0's 2D Z or up to this above it: in focus, as Check and START see them
 	constexpr double kTeachZBelowMm = 0.02;  //and below it only by what a Z move lands within (the Z search's on-target)
 	constexpr double kRowYTolMm = 1.0;       //F's Interpolate: the 2 end slots of a row line up this well in Y (trolley frame)
+	constexpr double kScanOvershootMm = 15.0; //production's run past a 3D scan's end (JobThread::kScanOvershootMm, private there)
+	constexpr int kVisitDwellMs = 300;       //Visit 2D: how long each snap stays before the next move
 	//C: the profiler reading moves this many mm per mm of Z down (+ Z is down; the IPC measured +0.976 on
 	//27 Oct 2026 - head down = reading up), so one read at the 2D Z says where the 3D Centre Z is
 	constexpr double kReadingPerZ = 1.0;
@@ -164,7 +166,7 @@ namespace {
 			page->showSlotsResult(text, ok); break;
 		case P::TeachInsp2D: case P::TeachInspBarcodeOcr: case P::TeachInsp3D:
 			page->showInspResult(text, ok); break;
-		case P::TeachLocate:
+		case P::TeachLocate: case P::TeachMoveOnly: case P::TeachGoTo: case P::TeachSnapScan:
 			page->showLocateResult(text, ok); break;
 		default:
 			page->showFid0Result(text, ok); break;
@@ -240,7 +242,11 @@ void VisionApp::initGuidedSetup2()
 	_gs2CameraTimer->setInterval(200);
 	connect(_gs2CameraTimer, &QTimer::timeout, this, [=]() { gs2RefreshCamera(); });
 
-	connect(_gs2Page, &GuidedSetup2Page::setupChanged, this, [=]() { if (_gs2View && _gs2Page) _gs2View->setSetup(_gs2Page->setup()); });
+	connect(_gs2Page, &GuidedSetup2Page::setupChanged, this, [=]() {
+		if (!_gs2View || !_gs2Page) return;
+		_gs2View->setLaserOffset(_laserConfig.offset.wx, _laserConfig.offset.wy);   //3D scans are drawn where the laser measures
+		_gs2View->setSetup(_gs2Page->setup());
+	});
 	connect(_gs2Page, &GuidedSetup2Page::showLayoutToggled, this, [=](bool on) { gs2ShowLayout(on); });
 	connect(_gs2Page, &GuidedSetup2Page::toolRequested, this, [=](int action) { gs2RunTool(action); });
 	connect(_gs2Page, &GuidedSetup2Page::conversionChosen, this, [=](bool measured) { gs2ChooseConversion(measured); });
@@ -320,6 +326,7 @@ void VisionApp::gs2ShowLayoutView()
 	ui.toolButton_toggleWorldView->setChecked(true);
 	ui.toolButton_toggleFovView->setChecked(false);
 	gs2RefreshWorld();
+	_gs2View->setLaserOffset(_laserConfig.offset.wx, _laserConfig.offset.wy);   //an alignment may have changed it meanwhile
 	ui.stackedWidgetViewSelection->setCurrentIndex(_gs2ViewIndex);
 }
 
@@ -1554,6 +1561,54 @@ bool VisionApp::gs2SlotInWorld(const gs2::Setup& s, const gs2::Slot& slot, const
 }
 
 /*
+* START step 5's reach check, run before the visits too: every place production will drive to for
+* these points must be inside the soft limits - refused and named, never clamped (jogLaser clamps
+* today). The camera for 2D; both barcode readers for Barcode + OCR (the first one can fail and the
+* other then reads), each at its taught camera-to-reader XYZ; the laser for 3D, from the point plus the
+* camera-to-laser XY (or not, as H's 3D laser XY says) for the scan length and production's overshoot.
+* Z is the 2D Z (2D, Barcode + OCR) or the 3D Centre Z (3D) plus the point's Z offset - never the
+* camera-to-laser Z, as the 3D Centre Z was found with the laser itself.
+*/
+bool VisionApp::gs2CheckReach(const gs2::Setup& s, const QVector<gs2::RunPoint>& points, double z2D, double z3D, QString& why)
+{
+	auto& sd = SystemData::instance();
+	int bad = 0;
+	QString first;
+	auto check = [&](const gs2::RunPoint& p, const QString& what, double x, double y, double z) {
+		QString w;
+		if (zsCheckTarget((int)Axis::X, x, w) && zsCheckTarget((int)Axis::Y, y, w) && zsCheckTarget((int)Axis::Z, z, w)) return;
+		if (bad++ == 0) first = QStringLiteral("%1 %2, %3: %4").arg(s.units[p.unit].name, gs2::inspTypeName(p.type), what, w);
+	};
+	const bool alongY = s.scanAxis == QLatin1String("Y");
+	const double along = s.scanNegative ? -1.0 : 1.0;
+	for (const auto& p : points) {
+		const auto& in = s.insp[p.type];
+		if (p.type == gs2::Insp2D) check(p, QStringLiteral("camera"), p.camera.x, p.camera.y, z2D + in.zOffsetMm);
+		else if (p.type == gs2::InspBarcodeOcr) {
+			for (int r = 1; r <= 2; r++) {
+				const bool taught = r == 1 ? sd._brR1Taught.load() : sd._brR2Taught.load();
+				const double dx = !taught ? 0.0 : r == 1 ? sd._brR1dx.load() : sd._brR2dx.load();
+				const double dy = !taught ? 0.0 : r == 1 ? sd._brR1dy.load() : sd._brR2dy.load();
+				const double dz = !taught ? 0.0 : r == 1 ? sd._brR1dz.load() : sd._brR2dz.load();
+				check(p, QStringLiteral("reader %1").arg(r), p.camera.x + dx, p.camera.y + dy, z2D + in.zOffsetMm + dz);
+			}
+		}
+		else {
+			//the stage for the scan: where the laser measures + the camera-to-laser XY; never its Z (z3D is the laser's own)
+			const gs2geo::Pt read = gs2::scanReadPoint(s, p.camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
+			const double lx = read.x + _laserConfig.offset.wx, ly = read.y + _laserConfig.offset.wy, z = z3D + in.zOffsetMm;
+			const double run = (in.scanLengthMm + kScanOvershootMm) * along;
+			check(p, QStringLiteral("scan start"), lx, ly, z);
+			check(p, QStringLiteral("scan end + overshoot"), alongY ? lx : lx + run, alongY ? ly + run : ly, z);
+		}
+	}
+	if (bad == 0) return true;
+	why = bad == 1 ? QStringLiteral("out of reach - %1").arg(first)
+		: QStringLiteral("%1 places out of reach, the first %2").arg(bad).arg(first);
+	return false;
+}
+
+/*
 * START step 3, no Z search: with the head at fid0's 2D Z, the laser to fid0 + the 3D spot and one
 * profiler read. The 2D Z already puts the trolley in the profiler's range (on the IPC the 3D Centre Z
 * sat 0.09 mm from the 2D Focus Z), so the reading says where the 3D Centre Z is; it must lie inside
@@ -2102,6 +2157,11 @@ void VisionApp::gs2Teach(int action)
 			&& zsCheckTarget((int)Axis::Z, s.fid0.startZ, w) && zsCheckTarget((int)Axis::Z, s.fid0.stopZ, w);
 	};
 	QString why, title, note;
+	QVector<gs2::RunPoint> visit;   //I's Move only: the points, gathered by the check before the machine moves
+	gs2geo::Pt goTo, goStage;       //I's Go to: where the camera or laser looks, the stage for it, its Z, what it is
+	double goZ = 0.0;
+	bool goProfiler = false;
+	QString goWhat;
 	switch (action) {
 	case P::TeachSnapEmpty:
 		if (MachineController::instance().trolleyAttached()) {
@@ -2191,6 +2251,91 @@ void VisionApp::gs2Teach(int action)
 		title = add ? QStringLiteral("Add slot from its %1 circle").arg(which) : QStringLiteral("Set slot %1").arg(which);
 		note = QStringLiteral("The camera centres on the slot circle nearest the image centre (the slot's %1 circle), "
 			"goes to fid0 at the same Z to locate it again, and comes back over the circle.").arg(which);
+		break;
+	}
+	//I's Move only: the points of the selected slots' units (all units when none is selected) in run order -
+	//the 2D pass, then the 3D pass, as production will run them
+	//...and Snap and scan: the same points, taken with production's own code (build step 5)
+	case P::TeachMoveOnly: case P::TeachSnapScan: {
+		static const char* const kWhatName[3] = { "2D", "3D", "2D + 3D" };
+		const bool capture = action == P::TeachSnapScan;
+		const int what = capture ? _gs2Page->snapScanWhat() : _gs2Page->moveOnlyWhat();
+		const QString name = QStringLiteral("%1 (%2)").arg(capture ? QStringLiteral("Snap and scan") : QStringLiteral("Move only"), QLatin1String(kWhatName[what]));
+		auto say = [&](const QString& t) { _gs2Page->showLocateResult(QStringLiteral("%1: %2.").arg(name, t), false); };
+		QString w;
+		if (!gs2SessionRect(s, dir, w)) { say(w); return; }
+		const QStringList only = _gs2Page->selectedSlotIds();
+		const QVector<gs2::RunPoint> all = gs2::runPoints(s, framePose(), only);
+		if (what != P::Move3D) for (const auto& p : all) if (p.type != gs2::Insp3D) visit << p;
+		if (what != P::Move2D) for (const auto& p : all) if (p.type == gs2::Insp3D) visit << p;
+		if (visit.isEmpty()) {
+			say(QStringLiteral("no such point is switched on in H%1").arg(only.isEmpty() ? QString() : QStringLiteral(" for the units of the selected slots")));
+			return;
+		}
+		const bool any3D = visit.last().type == gs2::Insp3D;
+		if (any3D && !_gs2Session.has3D) { say(QStringLiteral("run Find in section C (or Locate) first - the 3D scans run at the 3D Centre Z")); return; }
+		if (any3D && s.insp[gs2::Insp3D].scanLengthMm <= 0.0) { say(QStringLiteral("type the 3D scan length in H first")); return; }
+		if (!gs2CheckReach(s, visit, _gs2Session.z2D, _gs2Session.z3D, w)) { say(w); return; }
+		if (capture && any3D) {
+			//production's scan move travels X only (JobThread::jog sends no Y for a 3D move)
+			if (s.scanAxis == QLatin1String("Y")) { say(QStringLiteral("production's 3D scans run along X only - set H's 3D scan direction to +X or -X")); return; }
+			const gs2geo::Pt read = gs2::scanReadPoint(s, visit.last().camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
+			if (!zsCheck3DRead(read.x, read.y, w)) { say(w); return; }
+		}
+		QSet<int> units;
+		for (const auto& p : visit) units.insert(p.unit);
+		title = name;
+		const QString scope = QStringLiteral("%1 points of %2 units%3 in run order").arg(visit.size()).arg(units.size())
+			.arg(only.isEmpty() ? QString() : QStringLiteral(" (the selected slots)"));
+		note = capture
+			? QStringLiteral("%1, with production's own code: a 2D snap saved as <unit>_2D, the barcode readers + OCR, the 3D scans - into a new "
+				"production folder, inspected as in production.").arg(scope)
+			: QStringLiteral("%1, no snap and no scan: the camera to each 2D and Barcode + OCR point, the laser along each 3D scan at the "
+				"3D Centre Z. Sideways moves are never below the 2D Z.").arg(scope);
+		break;
+	}
+	//I's Go to: a position of the unit selected in the layout (else the one selected slot), with the camera or the profiler
+	case P::TeachGoTo: {
+		static const char* const kPosName[] = { "centre", "top left", "top", "top right", "left", "right", "bottom left", "bottom", "bottom right",
+			"2D point", "Barcode + OCR point", "3D scan start" };
+		const int pos = _gs2Page->goToPosition();
+		goProfiler = _gs2Page->goToWithProfiler();
+		auto say = [&](const QString& t) { _gs2Page->showLocateResult(QStringLiteral("Go to: %1.").arg(t), false); };
+		QString w;
+		if (!gs2SessionRect(s, dir, w)) { say(w); return; }
+		if (goProfiler && !_gs2Session.has3D) { say(QStringLiteral("run Find in section C (or Locate) first - the profiler goes to the 3D Centre Z")); return; }
+		const gs2geo::Pose pose = framePose();
+		const QString unitId = _gs2View ? _gs2View->selectedUnit() : QString();
+		const QStringList picked = _gs2Page->selectedSlotIds();
+		const gs2::Unit* unit = nullptr;
+		for (const auto& u : s.units) if (u.id == unitId) unit = &u;
+		const gs2::Slot* slot = unit ? gs2::findSlot(s, unit->slotId) : picked.size() == 1 ? gs2::findSlot(s, picked.first()) : nullptr;
+		if (!slot) { say(QStringLiteral("select one unit (click it in the layout) or one slot")); return; }
+		double zOff = 0.0;
+		if (pos >= P::Go2DPoint) {
+			if (!unit) { say(QStringLiteral("the inspection points are a unit's - click a unit in the layout")); return; }
+			const gs2::InspType t = pos == P::Go2DPoint ? gs2::Insp2D : pos == P::GoBarcodePoint ? gs2::InspBarcodeOcr : gs2::Insp3D;
+			if (!s.insp[t].enabled) { say(QStringLiteral("the %1 point is switched off in H").arg(gs2::inspTypeName(t))); return; }
+			goTo = gs2::inspectionWorld(s, pose, *slot, unit->row, unit->col, t);
+			if (t == gs2::Insp3D) goTo = gs2::scanReadPoint(s, goTo, _laserConfig.offset.wx, _laserConfig.offset.wy);
+			if ((t == gs2::Insp3D) == goProfiler) zOff = s.insp[t].zOffsetMm;   //its own Z offset when its own tool goes there
+		}
+		else {
+			//on the unit's or the slot's rectangle; top = far side, as in the layout
+			static const double fx[9] = { 0.0, -0.5, 0.0, 0.5, -0.5, 0.5, -0.5, 0.0, 0.5 }, fy[9] = { 0.0, -0.5, -0.5, -0.5, 0.0, 0.0, 0.5, 0.5, 0.5 };
+			const double rw = unit ? s.unitLayout.widthMm : s.slotSize.widthMm, rl = unit ? s.unitLayout.lengthMm : s.slotSize.lengthMm;
+			if (pos != P::GoCentre && (rw <= 0.0 || rl <= 0.0)) { say(unit ? QStringLiteral("type the unit size in G first") : QStringLiteral("measure the slot size in E first")); return; }
+			const gs2geo::Pt c = unit ? gs2::unitCentreLocal(s, *slot, unit->row, unit->col) : gs2geo::Pt{ slot->cx, slot->cy };
+			goTo = gs2geo::toWorld(pose, { c.x + fx[pos] * rw, c.y + fy[pos] * rl });
+		}
+		goWhat = QStringLiteral("the %1 of %2").arg(QLatin1String(kPosName[pos]), unit ? unit->name : slot->name);
+		goZ = (goProfiler ? _gs2Session.z3D : _gs2Session.z2D) + zOff;
+		goStage = goProfiler ? gs2geo::Pt{ goTo.x + _laserConfig.offset.wx, goTo.y + _laserConfig.offset.wy } : goTo;
+		if (!zsCheckTarget((int)Axis::X, goStage.x, w) || !zsCheckTarget((int)Axis::Y, goStage.y, w) || !zsCheckTarget((int)Axis::Z, goZ, w)) { say(w); return; }
+		title = QStringLiteral("Go to %1").arg(goWhat);
+		note = goProfiler
+			? QStringLiteral("Sideways at the 2D Z or higher, the laser over %1 where the trolley is now (the stage moves by the camera-to-laser XY), Z to the 3D Centre Z.").arg(goWhat)
+			: QStringLiteral("Sideways at the 2D Z or higher, the camera over %1 where the trolley is now, Z to the 2D Z.").arg(goWhat);
 		break;
 	}
 	case P::TeachRectCheck: {
@@ -2355,6 +2500,167 @@ void VisionApp::gs2Teach(int action)
 			result += QStringLiteral(" The camera did not go back over the circle: %1.").arg(back);
 		break;
 	}
+	/*
+	* Move only: the points one after another, as production's 2D pass and then its 3D pass will reach them,
+	* without snapping or scanning. Each move goes sideways at the higher of the 2D Z and the point's own Z
+	* (+ Z is down), then down to the point's Z; a 3D point then runs along its scan. Z is the 2D Z or the
+	* 3D Centre Z plus the point's Z offset - never the camera-to-laser Z.
+	*/
+	case P::TeachMoveOnly: {
+		QElapsedTimer timer;
+		timer.start();
+		const bool alongY = s.scanAxis == QLatin1String("Y");
+		const double along = s.scanNegative ? -1.0 : 1.0;
+		int done = 0;
+		ok = true;
+		for (int k = 0; k < visit.size() && ok; k++) {
+			const auto& p = visit[k];
+			const auto& in = s.insp[p.type];
+			const QString name = s.units[p.unit].name, type = gs2::inspTypeName(p.type);
+			if (trolleyEpoch != _zsTrolleyEpoch) { ok = false; why = QStringLiteral("the trolley was removed or attached - nothing else was moved"); break; }
+			setProgress(_zsBusyWindow, QStringLiteral("%1 of %2: %3 %4").arg(k + 1).arg(visit.size()).arg(name, type));
+			const bool threeD = p.type == gs2::Insp3D;
+			const double z = (threeD ? _gs2Session.z3D : _gs2Session.z2D) + in.zOffsetMm;
+			const double clearZ = std::min(_gs2Session.z2D, z);
+			if (!threeD) {
+				ok = zsMoveToXY(p.camera.x, p.camera.y, clearZ, why) && zsMove({ { (int)Axis::Z, z } }, why);
+				if (ok) ct::logger::info("[GuidedSetup2] Move only %d/%d: %s %s, camera at %.3f, %.3f, Z %.3f", k + 1, visit.size(), qPrintable(name),
+					qPrintable(type), p.camera.x, p.camera.y, z);
+			}
+			else {
+				//the stage = where the laser measures (H's 3D laser XY) + the camera-to-laser XY
+				const gs2geo::Pt read = gs2::scanReadPoint(s, p.camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
+				const double lx = read.x + _laserConfig.offset.wx, ly = read.y + _laserConfig.offset.wy;
+				const double end = (alongY ? ly : lx) + in.scanLengthMm * along;
+				ok = zsMoveToXY(lx, ly, clearZ, why) && zsMove({ { (int)Axis::Z, z } }, why)
+					&& zsMove({ { alongY ? (int)Axis::Y : (int)Axis::X, end } }, why);
+				if (ok) ct::logger::info("[GuidedSetup2] Move only %d/%d: %s 3D, laser on %.3f, %.3f (stage %.3f, %.3f) to stage %s %.3f, Z %.3f",
+					k + 1, visit.size(), qPrintable(name), read.x, read.y, lx, ly, alongY ? "Y" : "X", end, z);
+			}
+			if (!ok) { why = QStringLiteral("%1 %2: %3").arg(name, type, why); break; }
+			zsPause(kVisitDwellMs);
+			done++;
+		}
+		if (ok) {
+			result = QStringLiteral("%1 went through %2 points in %3 s.").arg(title).arg(done).arg(timer.elapsed() / 1000.0, 0, 'f', 1);
+			ct::logger::info("[GuidedSetup2] %s", qPrintable(result));
+		}
+		else if (!_stopRun) why = QStringLiteral("point %1 of %2, %3. %4").arg(done + 1).arg(visit.size()).arg(why, zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z")));
+		break;
+	}
+	/*
+	* Snap and scan: production's own acquisition (JobThread::runGs2, on the job thread) for the points
+	* gathered above, into a new production folder as a START makes one. The busy window stays up until
+	* the run is over, and its Stop stops the run the way production's Stop does. The recipe's line scan
+	* is set to H's 3D scan direction first: scan() and the height-map orientation follow it.
+	*/
+	case P::TeachSnapScan: {
+		QElapsedTimer timer;
+		timer.start();
+		const double along = s.scanNegative ? -1.0 : 1.0;
+		QVector<JobThread::Gs2Shot> shots;
+		for (const auto& p : visit) {
+			const auto& in = s.insp[p.type];
+			JobThread::Gs2Shot shot;
+			shot.unitID = s.units[p.unit].name;
+			if (p.type == gs2::Insp3D) {
+				//where the laser measures (H's 3D laser XY); the job thread adds the camera-to-laser XY and takes its Z back out
+				const gs2geo::Pt read = gs2::scanReadPoint(s, p.camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
+				shot.kind = 2;
+				shot.x = read.x;
+				shot.y = read.y;
+				shot.z = _gs2Session.z3D + in.zOffsetMm;
+				shot.scanEndX = read.x + in.scanLengthMm * along;
+			}
+			else {
+				shot.kind = p.type == gs2::Insp2D ? 0 : 1;
+				shot.x = p.camera.x;
+				shot.y = p.camera.y;
+				shot.z = _gs2Session.z2D + in.zOffsetMm;
+			}
+			shot.clearZ = std::min(_gs2Session.z2D, shot.z);   //sideways never below the 2D Z, as Move only
+			shots << shot;
+		}
+		bool any2DSnap = false, anyBarcode = false, anyScan = false;
+		for (const auto& sh : shots) { any2DSnap = any2DSnap || sh.kind == 0; anyBarcode = anyBarcode || sh.kind == 1; anyScan = anyScan || sh.kind == 2; }
+		//before anything is changed or made: the optics production's code will ask for
+		if ((any2DSnap && _recipeOptics.isEmpty()) || (anyScan && _recipeOptics3D.isEmpty())) {
+			ok = false;
+			why = QStringLiteral("the recipe has no %1 optics").arg(any2DSnap && _recipeOptics.isEmpty() ? QStringLiteral("2D") : QStringLiteral("3D"));
+			break;
+		}
+		auto& sd = SystemData::instance();
+		const int dirIndex = s.scanNegative ? 1 : 0;
+		//only a run that scans changes the recipe's line scan
+		if (anyScan && (sd._lineScanAxis != 0 || sd._lineScanDirection != dirIndex)) {
+			ct::logger::info("[GuidedSetup2] recipe line scan set to H's 3D scan direction: along X, %s (was along %s, %s)",
+				dirIndex ? "negative" : "positive", sd._lineScanAxis == 1 ? "Y" : "X", sd._lineScanDirection == 1 ? "negative" : "positive");
+			sd._lineScanAxis = 0;
+			sd._lineScanDirection = dirIndex;
+			{
+				QSignalBlocker b1(ui.comboBox_lineScanAxis), b2(ui.comboBox_lineScanDirection);   //their handlers would ask questions mid-run
+				ui.comboBox_lineScanAxis->setCurrentIndex(0);
+				ui.comboBox_lineScanDirection->setCurrentIndex(dirIndex);
+			}
+			saveRecipeConfig();
+			AuditLog::instance().log(QStringLiteral("LINESCAN_DIRECTION_CHANGED"), QStringLiteral("Guided Setup (new): along X, %1").arg(dirIndex ? QStringLiteral("-") : QStringLiteral("+")));
+		}
+		gs2PrepareProductionRun();
+		_gs2Run.active = true;
+		_gs2Run.barcode = anyBarcode;
+		_gs2Run.height = anyScan;
+		_gs2Run.capturing = _gs2Run.holdPrompts = true;
+		_gs2Run.heldPrompts.clear();
+		const QString folder = Common::Directory::getProductionImageSetPath();
+		bool finished = false, completed = false;
+		int taken = 0, missing2D = 0;
+		const auto c1 = connect(&_jobThread, &JobThread::gs2RunFinished, this, [&](bool all, int n, int missing) { finished = true; completed = all; taken = n; missing2D = missing; });
+		const auto c2 = connect(&_jobThread, &JobThread::unitStarted, this, [&](QString unit) {
+			setProgress(_zsBusyWindow, QStringLiteral("At %1 (%2 shots in all)...").arg(unit).arg(shots.size()));
+		});
+		QTimer::singleShot(0, &_jobThread, [this, shots]() { _jobThread.runGs2(shots); });
+		bool stopSent = false, trolleyChanged = false;
+		while (!finished) {
+			zsPause(50);
+			//a trolley taken out or put in stops it too - in debug mode the guard does not
+			if (trolleyEpoch != _zsTrolleyEpoch) trolleyChanged = true;
+			//the busy window's Stop ends the run as production's Stop does; the job thread's flag is set again on
+			//every pass, as runGs2 clears it when it starts
+			if (_stopRun || trolleyChanged) {
+				if (!stopSent) { stopSent = true; stopRun(); }
+				_jobThread.stopRun();
+			}
+		}
+		disconnect(c1);
+		disconnect(c2);
+		if (trolleyChanged) _stopRun = false;   //stopRun() set it: the result says why instead of a plain "stopped"
+		_gs2Run.capturing = _gs2Run.holdPrompts = false;
+		ok = completed && !trolleyChanged;
+		QString tail;
+		if (missing2D) tail += QStringLiteral(" %1 2D snap(s) brought no image - see the log.").arg(missing2D);
+		if (!SystemData::instance()._saveInspImages && (anyBarcode || anyScan))
+			tail += QStringLiteral(" Save Inspection Images is off, so reader images and height maps were not saved.");
+		if (!_gs2Run.heldPrompts.isEmpty()) tail += QStringLiteral(" During the run: %1").arg(_gs2Run.heldPrompts.join(QStringLiteral(" | ")));
+		if (ok) {
+			result = QStringLiteral("%1 took %2 shots in %3 s, into %4. OCR and 3D results come into the production table as their inspection finishes.%5")
+				.arg(title).arg(taken).arg(timer.elapsed() / 1000.0, 0, 'f', 1).arg(folder, tail);
+			ct::logger::info("[GuidedSetup2] %s", qPrintable(result));
+		}
+		else if (trolleyChanged)
+			why = QStringLiteral("the trolley was removed or attached - the run was stopped after %1 of %2 shots.%3").arg(taken).arg(shots.size()).arg(tail);
+		else if (!_stopRun)
+			why = QStringLiteral("the run ended after %1 of %2 shots - see the log.%3 %4").arg(taken).arg(shots.size())
+				.arg(tail, zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z")));
+		else if (!tail.isEmpty()) ct::logger::info("[GuidedSetup2] Snap and scan stopped.%s", qPrintable(tail));
+		break;
+	}
+	case P::TeachGoTo:
+		ok = zsMoveToXY(goStage.x, goStage.y, std::min(_gs2Session.z2D, goZ), why) && zsMove({ { (int)Axis::Z, goZ } }, why);
+		if (ok) result = goProfiler
+			? QStringLiteral("The 3D profiler is over %1: the laser on X %2, Y %3 (stage X %4, Y %5), Z %6.").arg(goWhat, mm(goTo.x), mm(goTo.y), mm(goStage.x), mm(goStage.y), mm(goZ))
+			: QStringLiteral("The 2D camera is over %1: X %2, Y %3, Z %4.").arg(goWhat, mm(goTo.x), mm(goTo.y), mm(goZ));
+		if (ok) ct::logger::info("[GuidedSetup2] %s", qPrintable(result));
+		break;
 	case P::TeachFind: {
 		gs2::Fid0Found found;
 		ok = gs2FindFid0(s, dir, found, why) && stillHere(why);
@@ -2448,7 +2754,15 @@ void VisionApp::gs2Teach(int action)
 			}
 			else { ok = false; why = QStringLiteral("the corners: %1").arg(r.report); }
 		}
-		//5: the layout drawn where the trolley is - the slots, units and their reach come with build step 4
+		//5: the layout where the trolley is (the view draws it there, showFound), and every place production
+		//will drive to for it inside the soft limits
+		if (ok) {
+			const QVector<gs2::RunPoint> pts = gs2::runPoints(s, r.fit.pose);
+			ok = gs2CheckReach(s, pts, _gs2Session.z2D, z3.z, why);
+			if (ok) steps << QStringLiteral("%1 slots, %2 units, %3 inspection points, all within reach").arg(s.slotList.size()).arg(s.units.size()).arg(pts.size());
+			else why = QStringLiteral("the layout: %1").arg(why);
+			ct::logger::info("[GuidedSetup2] Locate step 5: %d inspection points, %s", pts.size(), ok ? "all within reach" : qPrintable(why));
+		}
 		if (ok) {
 			result = QStringLiteral("Locate passed in %1 s: %2. The layout shows the trolley where it was found.")
 				.arg(timer.elapsed() / 1000.0, 0, 'f', 1).arg(steps.join(QStringLiteral("; ")));
@@ -2473,6 +2787,7 @@ void VisionApp::gs2Teach(int action)
 	//section done, so it is shown as still to do
 	const bool runResult = action == P::TeachFind || action == P::TeachZ3DFind || action == P::TeachRectCheck;
 	if (!ok || !runResult)
-		showTeachResult(_gs2Page, action, result, ok && (action == P::TeachSnapEmpty || action == P::TeachScore || action == P::TeachLocate));
+		showTeachResult(_gs2Page, action, result, ok && (action == P::TeachSnapEmpty || action == P::TeachScore || action == P::TeachLocate
+			|| action == P::TeachMoveOnly || action == P::TeachSnapScan));
 	if (ok && action == P::TeachLocate) gs2ShowLayoutView();
 }
