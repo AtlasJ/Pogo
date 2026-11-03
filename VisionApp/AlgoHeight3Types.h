@@ -110,8 +110,9 @@ enum class AlgoH3SegMethod {
 	*
 	* "Complete" is decided the same way the hole fill decides a gap: a block that runs off
 	* the top or bottom edge of the map was cut by the scan, a block with a plate boundary on
-	* both sides was not. The boundaries come from the step in plate height between blocks,
-	* which survives the tilt along a plate because a step is abrupt and a tilt is not.
+	* both sides was not. A boundary is the slot between two blocks, which the sensor sees
+	* nothing across, or a step in plate height between them, which survives the tilt along
+	* a plate because a step is abrupt and a tilt is not.
 	*/
 	CompleteBand = 1
 };

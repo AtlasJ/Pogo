@@ -805,6 +805,115 @@ static bool h3PartRotation(const cv::Mat& validMask, double maxDeg, double& thet
 }
 
 /*
+* How far the part is rotated, from the edges where the plate stops.
+*
+* The slot between two blocks and the space beyond the field's ends are lines the sensor
+* sees nothing on, and they are the straightest, longest things in the map: a plate edge
+* runs the full width of the part at the part's own angle. Each narrow strip of columns is
+* walked down for the rows where the plate gives way to nothing and where it comes back,
+* those crossings are fitted across the strips, and the slope the most strips agree on is
+* the rotation.
+*
+* Tried before the pin-shadow lines (h3PartRotation below): a shadow row is a string of
+* blobs that are only roughly collinear, a plate edge is a hard line. The strips are narrow
+* enough that the rotation itself cannot smear an edge across more than a couple of rows
+* inside one of them.
+*
+* Returns false when no edge runs across at least half of the strips.
+*/
+static bool h3EdgeRotation(const cv::Mat& validMask, double maxDeg, double& thetaDeg)
+{
+	const int h = validMask.rows, w = validMask.cols;
+	if (h < 64 || w < 512) return false;
+
+	const int strip = 64;
+	const int nStrips = w / strip;
+	const double kVoid = 0.15, kPlate = 0.5;
+	const int minVoid = 8;              //rows of nothing before it counts as an edge
+
+	struct Pt { double x, y; int kind; };   //kind 0: plate begins below a void, 1: plate ends
+	std::vector<Pt> pts;
+	std::vector<double> cover(h);
+	for (int si = 0; si < nStrips; si++) {
+		const int x0 = si * strip;
+		for (int y = 0; y < h; y++) {
+			const uchar* m = validMask.ptr<uchar>(y) + x0;
+			int n = 0;
+			for (int x = 0; x < strip; x++) n += (m[x] != 0);
+			cover[y] = (double)n / strip;
+		}
+		const double xc = x0 + strip / 2.0;
+		int voidRun = 0, voidStart = -1, lastPlate = -1;
+		for (int y = 0; y < h; y++) {
+			if (cover[y] < kVoid) {
+				if (voidRun == 0) voidStart = y;
+				voidRun++;
+				//the plate ended just above this run of nothing
+				if (voidRun == minVoid && lastPlate >= 0 && voidStart - lastPlate <= 6)
+					pts.push_back({ xc, (double)voidStart, 1 });
+			}
+			else if (cover[y] > kPlate) {
+				//the plate begins just below a run of nothing (or below the top of the map)
+				if (voidRun >= minVoid && y - (voidStart + voidRun) <= 6)
+					pts.push_back({ xc, (double)y, 0 });
+				lastPlate = y;
+				voidRun = 0;
+			}
+			else {
+				//neither: a chamfer or a pin row. It breaks a void run but is not plate
+				if (voidRun > 0 && voidRun < minVoid) voidRun = 0;
+			}
+		}
+	}
+	if ((int)pts.size() < nStrips / 2) return false;
+
+	/*
+	* Fit lines through the crossings, each kind on its own: every pair far enough apart in x
+	* proposes a slope, the proposal with the most crossings on it wins, and the slope is
+	* refitted on those. The same exhaustive search as the shadow lines use, for the same
+	* reason - a few hundred points, a stable answer.
+	*/
+	const double maxSlope = std::tan(maxDeg * CV_PI / 180.0);
+	const double minSpan = w * 0.25;
+	const double tol = std::max(3.0, h * 0.002);
+	const int needed = std::max(4, nStrips / 2);
+
+	std::vector<std::pair<int, double>> found;
+	for (int kind = 0; kind < 2; kind++) {
+		std::vector<const Pt*> k;
+		for (const Pt& q : pts) if (q.kind == kind) k.push_back(&q);
+		for (size_t i = 0; i < k.size(); i++) {
+			for (size_t j = i + 1; j < k.size(); j++) {
+				const double dx = k[j]->x - k[i]->x;
+				if (std::fabs(dx) < minSpan) continue;
+				const double m = (k[j]->y - k[i]->y) / dx;
+				if (std::fabs(m) > maxSlope) continue;
+				const double c = k[i]->y - m * k[i]->x;
+				int n = 0; double sx = 0, sy = 0, sxx = 0, sxy = 0;
+				for (const Pt* q : k) {
+					if (std::fabs(q->y - (m * q->x + c)) > tol) continue;
+					n++; sx += q->x; sy += q->y; sxx += q->x * q->x; sxy += q->x * q->y;
+				}
+				if (n < needed) continue;
+				const double den = n * sxx - sx * sx;
+				if (std::fabs(den) < 1e-9) continue;
+				found.emplace_back(n, (n * sxy - sx * sy) / den);
+			}
+		}
+	}
+	if (found.empty()) return false;
+
+	std::sort(found.begin(), found.end(),
+		[](const std::pair<int, double>& l, const std::pair<int, double>& r) { return l.first > r.first; });
+	const size_t keep = std::min<size_t>(found.size(), 8);
+	std::vector<double> slopes;
+	for (size_t i = 0; i < keep; i++) slopes.push_back(found[i].second);
+	std::nth_element(slopes.begin(), slopes.begin() + slopes.size() / 2, slopes.end());
+	thetaDeg = std::atan(slopes[slopes.size() / 2]) * 180.0 / CV_PI;
+	return true;
+}
+
+/*
 * Find the block the scan captured WHOLE, and pose it.
 *
 * A pogo field is several blocks stacked along the scan direction, each sitting on its own
@@ -812,8 +921,9 @@ static bool h3PartRotation(const cv::Mat& validMask, double maxDeg, double& thet
 * side, and a part measured off a clipped block is measured off whatever fraction of it
 * happened to land in frame.
 *
-*   1. How far the part is rotated, from the lines of dropout that run along it (above). This
-*      has to come first. The boundaries between blocks are parallel to it, so a cut made
+*   1. How far the part is rotated, from the plate edges where the sensor stops seeing
+*      anything, or failing those from the lines of dropout that run along the part (both
+*      above). This has to come first. The boundaries between blocks are parallel to it, so a cut made
 *      before the angle is known is a cut at the wrong angle - and on a long block that keeps
 *      a wedge of the neighbour at one end while losing a wedge of the block at the other.
 *   2. The plate level along each line at that angle: the MODE of the valid heights on it. The
@@ -823,12 +933,16 @@ static bool h3PartRotation(const cv::Mat& validMask, double maxDeg, double& thet
 *   4. The step response: the change in level across a short window. This is what separates a
 *      block boundary from the tilt along a plate - on a long block the tilt totals as much as
 *      the step does, but it is spread over the whole block and the step is not.
-*   5. Cut at each step above the threshold, strongest first, suppressing anything within half
-*      a band of a cut already taken, so one boundary yields one cut.
-*   6. Of the bands between the cuts, keep the ones that reach neither end of the sweep - a
-*      band that runs off an end was cut by the scan. Take the tallest, since a real block is
-*      much taller than any sliver two nearby boundaries can enclose.
-*   7. Pose it directly from the angle already known, sized to the block's own extent. Not by
+*   5. The gaps: runs of lines the sensor saw almost nothing on. The slot between two blocks
+*      and the space beyond the field's ends are both such runs, and both are boundaries
+*      whether or not the plates either side differ in height - on this part they mostly do
+*      not, and the step alone found nothing between them.
+*   6. Cut at each step above the threshold, strongest first, suppressing anything within half
+*      a band of a boundary already taken, so one boundary yields one cut.
+*   7. Of the bands between the boundaries, keep the ones bounded on BOTH sides - a band that
+*      runs off an end of the sweep was cut by the scan. Take the tallest, since a real block
+*      is much taller than any sliver two nearby boundaries can enclose.
+*   8. Pose it directly from the angle already known, sized to the block's own extent. Not by
 *      min-area rect over a contour: the fixture rails that run down either side of the field
 *      sit several thousand counts BELOW the plate and reach into the band like everything
 *      else there, and a rect fitted around one of those is stretched sideways and square to
@@ -855,7 +969,7 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 	//5 degrees is already far more than a part can sit out in its fixture; allowing more only
 	//lets a chance alignment of unrelated dropouts pass for a pin row
 	double thetaDeg = 0.0;
-	h3PartRotation(mask, 5.0, thetaDeg);
+	if (!h3EdgeRotation(mask, 5.0, thetaDeg)) h3PartRotation(mask, 5.0, thetaDeg);
 	const double tanT = std::tan(thetaDeg * CV_PI / 180.0);
 
 	/*
@@ -885,13 +999,15 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 
 	std::vector<int> hist((size_t)uCount * kBins, 0);
 	std::vector<int> total(uCount, 0);
+	std::vector<int> lineLen(uCount, 0);   //every pixel on the line, seen or not
 	for (int y = 0; y < h; y++) {
 		const ushort* row = src16.ptr<ushort>(y);
 		const uchar* mrow = mask.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
-			if (!mrow[x]) continue;
 			int ui = (int)std::lround(y - x * tanT) - uMin;
 			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
+			lineLen[ui]++;
+			if (!mrow[x]) continue;
 			int b = (int)((row[x] - lo) / binW);
 			if (b < 0) b = 0; else if (b >= kBins) b = kBins - 1;
 			hist[(size_t)ui * kBins + b]++;
@@ -948,15 +1064,49 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 		resp[u] = (aSum - bSum) / W;
 	}
 
-	// ── 5. cuts, strongest first ──
+	/*
+	* ── 5. the gaps ──
+	*
+	* Where one block ends and the next begins the sensor sees nothing: the slot between
+	* them sits below the plate and the edges either side of it are chamfered, so the seam
+	* is a line of dropout running the full width of the part, a few tens of rows of it. The
+	* field's own ends are the same thing with nothing at all beyond them. Either way the
+	* plate simply stops, and a line it stops on is a boundary whether or not the next plate
+	* sits at a different height - on this part the neighbours are coplanar to within a few
+	* counts, and the step alone finds nothing between them.
+	*
+	* A pin row is NOT a gap: the pins shadow the plate into blobs, but the plate between the
+	* blobs is still seen, so the line keeps well over a third of its pixels. The seam keeps
+	* none. A run of such lines is one boundary however long it is, and the step cuts below
+	* are kept away from it - the step at a seam, where there is one, IS the seam.
+	*/
+	const double kGapCover = 0.15;
+	std::vector<char> isGap(uCount, 0);
+	for (int u = 0; u < uCount; u++)
+		isGap[u] = (lineLen[u] == 0) || ((double)total[u] / lineLen[u] < kGapCover);
+
+	struct Sep { int a, b; };            //a boundary: the lines it occupies, inclusive
+	std::vector<Sep> seps;
+	for (int u = 0; u < uCount; ) {
+		if (!isGap[u]) { u++; continue; }
+		int v = u;
+		while (v + 1 < uCount && isGap[v + 1]) v++;
+		if (v - u + 1 >= 2) seps.push_back({ u, v });
+		u = v + 1;
+	}
+
+	std::vector<char> taken(uCount, 0);
+	for (const Sep& g : seps)
+		for (int i = std::max(0, g.a - minBand / 2); i <= std::min(uCount - 1, g.b + minBand / 2); i++)
+			taken[i] = 1;
+
+	// ── 6. the steps, strongest first ──
 	std::vector<int> order(uCount);
 	for (int u = 0; u < uCount; u++) order[u] = u;
 	std::sort(order.begin(), order.end(),
 		[&](int l, int r) { return std::fabs(resp[l]) > std::fabs(resp[r]); });
 
 	const double thresh = std::max(1.0, p.segBandStepRaw);
-	std::vector<char> taken(uCount, 0);
-	std::vector<int> cuts;
 	for (int u : order) {
 		if (std::fabs(resp[u]) < thresh) break;
 		bool near = false;
@@ -964,36 +1114,40 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 			if (taken[i]) { near = true; break; }
 		if (near) continue;
 		taken[u] = 1;
-		cuts.push_back(u);
+		seps.push_back({ u, u });
 	}
-	std::sort(cuts.begin(), cuts.end());
+	std::sort(seps.begin(), seps.end(), [](const Sep& l, const Sep& r) { return l.a < r.a; });
 
-	// ── 6. the tallest band that reaches neither end of the sweep ──
-	std::vector<int> edges;
-	edges.push_back(0);
-	for (int c : cuts) edges.push_back(c);
-	edges.push_back(uCount);
-
+	// ── 7. the tallest band bounded on both sides ──
+	//a band that starts at the first line of the sweep or runs to the last was cut by the
+	//scan, not by a plate edge; only a band with a boundary on each side was captured whole
 	int bandU0 = -1, bandU1 = -1;
-	for (size_t i = 0; i + 1 < edges.size(); i++) {
-		const int a0 = edges[i], a1 = edges[i + 1] - 1;
-		if (a0 == 0 || a1 == uCount - 1) continue;        //cut by the scan, not by a plate edge
-		if (a1 - a0 + 1 < minBand) continue;
+	auto consider = [&](int a0, int a1, bool bounded) {
+		if (!bounded || a1 < a0) return;
+		if (a1 - a0 + 1 < minBand) return;
 		if (bandU0 < 0 || (a1 - a0) > (bandU1 - bandU0)) { bandU0 = a0; bandU1 = a1; }
+	};
+	int bandStart = 0;
+	bool startBounded = false;
+	for (const Sep& g : seps) {
+		consider(bandStart, g.a - 1, startBounded);
+		bandStart = g.b + 1;
+		startBounded = true;
 	}
+	consider(bandStart, uCount - 1, false);
 
 	if (bandU0 < 0) {
-		why = cuts.size() < 2
+		why = seps.size() < 2
 			? QStringLiteral("Found %1 block boundary across the map - a complete block needs one "
-				"on each side of it. Lower the plate step if the blocks sit at similar heights.")
-				.arg(cuts.size())
+				"on each side of it. A boundary is a gap the sensor saw nothing across, or a "
+				"plate step above the configured size.").arg(seps.size())
 			: QStringLiteral("Every block runs off one end of the scan, so none of them was "
 				"captured whole.");
 		return false;
 	}
 
 	/*
-	* ── 7. pose the block ──
+	* ── 8. pose the block ──
 	*
 	* The angle is already known and the band is already parallel to the part, so the rect
 	* follows from the block's extent along and across that angle - there is nothing left for
@@ -1049,18 +1203,36 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 	for (int i = 2; i < nBlocks; i++)
 		if (bStats.at<int>(i, cv::CC_STAT_AREA) > bStats.at<int>(biggest, cv::CC_STAT_AREA)) biggest = i;
 
+	/*
+	* Along the block, the count per column of pixels that are PLATE - within half a step of
+	* the line's plate level. The pins stand far above that and the end faces lie below it
+	* and scatter, so this counts the surface the frame should be fitted to and nothing else.
+	* Binned straight into a histogram rather than kept as a third list of coordinates: the
+	* two lists below already hold a float for every pixel of the block.
+	*/
+	const double plateTol = std::max(25.0, 0.5 * thresh);
+	const double aCorner[4] = { 0.0, (w - 1) * cosT, (h - 1) * sinT, (w - 1) * cosT + (h - 1) * sinT };
+	const double aMin = std::floor(*std::min_element(aCorner, aCorner + 4));
+	const int aBins = (int)std::ceil(*std::max_element(aCorner, aCorner + 4) - aMin) + 2;
+	std::vector<int> plateCnt(aBins, 0);
+
 	std::vector<float> along, across;
 	along.reserve(1 << 16);
 	across.reserve(1 << 16);
 	for (int y = 0; y < h; y++) {
+		const ushort* row = src16.ptr<ushort>(y);
 		const int* lrow = bLabels.ptr<int>(y);
 		const uchar* brow = blockMask.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
 			//the label comes from the closed mask, the membership from the original: the closing
 			//is there to join the plate up, not to grow it over the gap around it
 			if (!brow[x] || lrow[x] != biggest) continue;
-			along.push_back((float)(x * cosT + y * sinT));
+			const double a = x * cosT + y * sinT;
+			along.push_back((float)a);
 			across.push_back((float)(-x * sinT + y * cosT));
+			const int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (ui >= 0 && ui < uCount && std::fabs((double)row[x] - smooth[ui]) <= plateTol)
+				plateCnt[(int)(a - aMin)]++;
 		}
 	}
 	if (along.size() < 64) {
@@ -1068,15 +1240,52 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 		return false;
 	}
 
-	//a fiftieth of a percent off each end: enough that a thin line of stragglers cannot stretch
-	//the frame, little enough that it never eats into the block itself
+	/*
+	* Across the block (plate edge to plate edge) a fiftieth of a percent off each end is
+	* enough: the gap makes those edges hard, and a thin line of stragglers cannot stretch
+	* the frame.
+	*
+	* Along it the ends are where the PLATE stops, not where the last pixel lies. The end
+	* faces are chamfered, and the sensor catches some of them on one unit and nothing on the
+	* next - a scatter lying below the plate, up to half a millimetre of it. A frame that
+	* reached out to the last of that would sit a quarter of a millimetre off centre on one
+	* unit and dead centre on the next, carrying every ROI with it. So each end is found by
+	* walking outward from the middle to the first column that carries less than half the
+	* plate the interior does and keeps carrying less; the end face, being below the plate,
+	* does not count as plate at all.
+	*/
 	auto pct = [](std::vector<float>& v, double q) {
 		size_t i = (size_t)std::lround(q * (v.size() - 1));
 		i = std::min(i, v.size() - 1);
 		std::nth_element(v.begin(), v.begin() + i, v.end());
 		return (double)v[i];
 	};
-	const double s0 = pct(along, 0.0002), s1 = pct(along, 0.9998);
+	auto endsByCoverage = [](const std::vector<int>& cnt, double origin, double& lo, double& hi) -> bool {
+		int first = 0, last = (int)cnt.size() - 1;
+		while (first < (int)cnt.size() && cnt[first] == 0) first++;
+		while (last >= 0 && cnt[last] == 0) last--;
+		if (last - first < 8) return false;
+		const int n = last - first + 1;
+
+		std::vector<int> mid(cnt.begin() + first + n / 4, cnt.begin() + first + (n - n / 4));
+		std::nth_element(mid.begin(), mid.begin() + mid.size() / 2, mid.end());
+		const int thr = std::max(1, mid[mid.size() / 2] / 2);
+
+		auto thin = [&](int i) { return i < first || i > last || cnt[i] < thr; };
+		int left = first, right = last;
+		for (int i = first + n / 2; i >= first; i--)
+			if (thin(i) && thin(i - 1) && thin(i - 2)) { left = i + 1; break; }
+		for (int i = first + n / 2; i <= last; i++)
+			if (thin(i) && thin(i + 1) && thin(i + 2)) { right = i - 1; break; }
+		lo = origin + left;
+		hi = origin + right + 1;
+		return true;
+	};
+	double s0 = 0.0, s1 = 0.0;
+	if (!endsByCoverage(plateCnt, aMin, s0, s1)) {
+		why = QStringLiteral("The complete block has too little plate to find its ends");
+		return false;
+	}
 	const double n0 = pct(across, 0.0002), n1 = pct(across, 0.9998);
 	if (s1 - s0 < 2.0 || n1 - n0 < 2.0) {
 		why = QStringLiteral("The complete block measured smaller than 2 px");

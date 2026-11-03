@@ -2241,9 +2241,12 @@ void VisionApp::buildAlgoH3SegMethodRows()
 	_algoH3SegBandStep->setToolTip(tr(
 		"The smallest step in plate height that counts as a boundary between two blocks, in raw "
 		"grey levels - the same units as the height map.\n\n"
+		"A gap the sensor sees nothing across - the slot between two blocks, or the space beyond "
+		"the end of the field - is always a boundary, whatever this is set to. The step only "
+		"matters where two blocks touch with no gap between them.\n\n"
 		"It has to clear the tilt ALONG a plate, which on a long block can total as much as the "
-		"step between two of them. Too high and the blocks are never separated; too low and the "
-		"tilt itself gets cut into slivers.\n\n"
+		"step between two of them. Too high and touching blocks are never separated; too low and "
+		"the tilt itself gets cut into slivers.\n\n"
 		"Run once and read the Fail Reason: it says how many boundaries were found."));
 
 	_algoH3SegBandMinLabel = new QLabel(tr("Min Block Height (um)"), ui.widget_algoHeight3Page);
