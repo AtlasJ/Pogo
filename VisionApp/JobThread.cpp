@@ -694,6 +694,11 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 
 	SystemData::instance().m_extraMoveFor3DLaser = 0.0;
 	jogLaser(start.wx, start.wy, start.wz, "2D");
+	//a Stop during the move to the start: arming and the scan move (X, scan length + overshoot) must not go out
+	if (m_stopRun) {
+		ct::logger::info("[Acq] Scan %s: stopped on the way to its start - not armed, not moved further", qPrintable(id));
+		return info;
+	}
 
 	if (SystemData::instance().m_extraMoveFor3DLaser != 0.0) {
 		m_extraMoveLog.append(m_laserOffsetInfo);
