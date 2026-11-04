@@ -397,8 +397,6 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	initImageFiltering();
 	initProductionUI();
 	initSafetyCheckPage();
-	initGuidedSetupPage();
-	initZSearch(); //after the guided page: its frames go into that page's layout
 	initGuidedSetup2();
 	initPmfPage();
 	initTemplateMappingSetup();
@@ -1541,7 +1539,6 @@ void VisionApp::connectSignalAndSlot()
 	connect(_rightMenu, &ExtendedMenu::showNamingConvention, this, [=]() { toPage(UIPage::NAMING_CONVENTION); });
 	connect(_rightMenu, &ExtendedMenu::showUnitConfigTab, this, [=]() {toPage(UIPage::UNIT_CONFIG);});
 	connect(_rightMenu, &ExtendedMenu::showSafetyCheckTab, this, [=]() {toPage(UIPage::SAFETY_CHECK);});
-	connect(_rightMenu, &ExtendedMenu::showGuidedSetupTab, this, [=]() {toPage(UIPage::GUIDED_SETUP);});
 	connect(_rightMenu, &ExtendedMenu::showGuidedSetup2Tab, this, [=]() {toPage(UIPage::GUIDED_SETUP2);});
 	connect(_rightMenu, &ExtendedMenu::showPmfTab, this, [=]() {toPage(UIPage::PMF);});
 
@@ -7196,22 +7193,15 @@ bool VisionApp::toPage(UIPage page) {
 		refreshSafetyCheckPage();
 		showRightTab((int)page, QStringLiteral("Open Safety Check"));
 		return true;
-	case UIPage::GUIDED_SETUP:
-		unlockAllROIs();
-		toggleFOVView(); //teaching centres circles in the single camera FOV
-		refreshGuidedSetupPage();
-		refreshZSearchUi();
-		showRightTab((int)page, QStringLiteral("Open Guided Setup"));
-		return true;
 	case UIPage::GUIDED_SETUP2:
 		if (notAllowToAccess(AccessLevel::OPERATOR)) {
-			showMsg(QStringLiteral("Guided Setup (new) is for engineers. Log in as an engineer or admin to open it."));
+			showMsg(QStringLiteral("Guided Setup is for engineers. Log in as an engineer or admin to open it."));
 			return false;
 		}
 		unlockAllROIs();
 		toggleFOVView();
 		gs2PageOpened();
-		showRightTab((int)page, QStringLiteral("Open Guided Setup (new)"));
+		showRightTab((int)page, QStringLiteral("Open Guided Setup"));
 		return true;
 	case UIPage::UNIT_CONFIG:
 		lockAllROIs();
@@ -7574,11 +7564,11 @@ bool VisionApp::showRightTab(int index, QString status)
 		if (_safetyLearnBox) _safetyLearnBox->hide();
 		clearSafetyMarks();
 	}
-	if (index != (int)UIPage::GUIDED_SETUP) {
-		if (_guidedRoiBox) _guidedRoiBox->hide();
+	//the circle finder's marks belong to the Guided Setup page
+	if (index != (int)UIPage::GUIDED_SETUP2) {
 		clearGuidedMarks();
+		gs2PageLeft();
 	}
-	if (index != (int)UIPage::GUIDED_SETUP2) gs2PageLeft();
 
 	showStatus(status);
 	return propertyShown;

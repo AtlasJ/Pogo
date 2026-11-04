@@ -621,8 +621,11 @@ void VisionApp::startProduction()
 	//a PMF and the template mapping it is laid out on (skipped in debug mode)
 	if (!liveMappingReadyForProduction()) return;
 
-	//Guided Setup (new), build step 5b: a recipe whose saved setup says "START uses this setup" runs that instead -
-	//its own steps (Safety check 1, fid0, 3D Z, the corners) replace the safety check and the pitch teach check below
+	/*
+	* Since the cutover (Guided Setup step 6) every START runs the recipe's Guided Setup, or is refused - gs2TakeStart
+	* always takes it. Its own steps (Safety check 1, fid0, 3D Z, the corners) replaced the safety check and the
+	* pitch teach check below: the old path that follows no longer runs, and is kept only until it is deleted.
+	*/
 	if (gs2TakeStart()) return;
 
 	/*
@@ -721,7 +724,7 @@ void VisionApp::triggerExternalBarcodeReaders()
 void VisionApp::gs2PrepareProductionRun()
 {
 	_gs2Run = Gs2RunFlags();   //the caller says what this run takes
-	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe + QStringLiteral(" (Guided Setup new)"));
+	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe + QStringLiteral(" (Guided Setup)"));
 	ui.lineEdit_inspectionTimeMain->clear();
 	_processType = ProcessType::PRODUCTION;
 	ui.tableWidget_prodStatus->setRowCount(0);
@@ -759,7 +762,7 @@ void VisionApp::startProductionS()
 	//a PMF and the template mapping it is laid out on (skipped in debug mode)
 	if (!liveMappingReadyForProduction()) return;
 
-	//Guided Setup (new), build step 5b - as startProduction
+	//every START runs the Guided Setup since the cutover - as startProduction; the old path below no longer runs
 	if (gs2TakeStart()) return;
 
 	/*

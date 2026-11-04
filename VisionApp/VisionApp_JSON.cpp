@@ -1492,24 +1492,9 @@ bool VisionApp::saveRecipeConfig()
 	obj.insert(QStringLiteral("_doubleFiducialChecking"), (bool)SystemData::instance()._doubleFiducialChecking);
 	obj.insert(QStringLiteral("fourPointFiducial"), (bool)SystemData::instance()._fourPointFiducial);
 
-	//guided setup: only what the page needs to teach again; the taught layout lives in the
-	//fiducials and pitch region 1 like any other recipe's
-	{
-		QJsonObject gs;
-		gs.insert(QStringLiteral("recipeType"), _guidedSetup.recipeType);
-		gs.insert(QStringLiteral("fidMinDiaPx"), _guidedSetup.fidMinDiaPx);
-		gs.insert(QStringLiteral("fidMaxDiaPx"), _guidedSetup.fidMaxDiaPx);
-		gs.insert(QStringLiteral("unitMinDiaPx"), _guidedSetup.unitMinDiaPx);
-		gs.insert(QStringLiteral("unitMaxDiaPx"), _guidedSetup.unitMaxDiaPx);
-		gs.insert(QStringLiteral("roiX"), _guidedSetup.roi.x());
-		gs.insert(QStringLiteral("roiY"), _guidedSetup.roi.y());
-		gs.insert(QStringLiteral("roiW"), _guidedSetup.roi.width());
-		gs.insert(QStringLiteral("roiH"), _guidedSetup.roi.height());
-		gs.insert(QStringLiteral("focusZSet"), _guidedSetup.focusZSet);
-		gs.insert(QStringLiteral("focusZ"), _guidedSetup.focusZ);
-		obj.insert(QStringLiteral("guidedSetup"), gs);
-	}
-	obj.insert(QStringLiteral("zSearch"), zSearchToJson());
+	//the old Guided Setup page's and the old Z search's sections: nothing reads them since the cutover (step 6), but
+	//they are written back as they were loaded, so an older build opening this recipe still finds them
+	for (auto it = _legacyRecipeSections.constBegin(); it != _legacyRecipeSections.constEnd(); ++it) obj.insert(it.key(), it.value());
 
 	int speed, speed3d;
 	_jobThread.getXSpeed(speed, speed3d);
@@ -2021,11 +2006,9 @@ bool VisionApp::loadRecipeConfig()
 	const bool& connected = ProfilerManager::instance().getConnectionStatus();
 	QString currentSensorApi = ProfilerManager::instance().getAPI();
 
-	//reset before reading: a recipe whose file cannot be read must not keep the previous recipe's
-	//Z search, which its next save would otherwise write into this recipe
-	zSearchFromJson(QJsonObject());
-	_zFound = ZFound();
-	refreshZSearchUi();
+	//reset before reading: a recipe whose file cannot be read must not keep the previous recipe's old sections,
+	//which its next save would otherwise write into this recipe
+	_legacyRecipeSections = QJsonObject();
 
 	if (loadJson(jsonPath, root)) {
 		_enable3D = jsonHelper::getBool(root, QStringLiteral("_enable3D"), false);
@@ -2034,27 +2017,9 @@ bool VisionApp::loadRecipeConfig()
 		_passYieldPerc = jsonHelper::getDouble(root, QStringLiteral("_passYieldPercentage"), 100.00);
 		SystemData::instance()._doubleFiducialChecking = jsonHelper::getBool(root, QStringLiteral("_doubleFiducialChecking"), false);
 		SystemData::instance()._fourPointFiducial = jsonHelper::getBool(root, QStringLiteral("fourPointFiducial"), false);
-		{
-			const QJsonObject gs = root.value(QStringLiteral("guidedSetup")).toObject();
-			_guidedSetup = GuidedSetupConfig(); //absent section = defaults
-			_guidedSetup.recipeType = jsonHelper::getString(gs, QStringLiteral("recipeType"));
-			if (_guidedSetup.recipeType.isEmpty()) _guidedSetup.recipeType = QStringLiteral("Pogo");
-			_guidedSetup.fidMinDiaPx = jsonHelper::getInteger(gs, QStringLiteral("fidMinDiaPx"), 280);
-			_guidedSetup.fidMaxDiaPx = jsonHelper::getInteger(gs, QStringLiteral("fidMaxDiaPx"), 320);
-			_guidedSetup.unitMinDiaPx = jsonHelper::getInteger(gs, QStringLiteral("unitMinDiaPx"), 200);
-			_guidedSetup.unitMaxDiaPx = jsonHelper::getInteger(gs, QStringLiteral("unitMaxDiaPx"), 400);
-			_guidedSetup.roi = QRectF(jsonHelper::getDouble(gs, QStringLiteral("roiX"), 0.0),
-				jsonHelper::getDouble(gs, QStringLiteral("roiY"), 0.0),
-				jsonHelper::getDouble(gs, QStringLiteral("roiW"), 0.0),
-				jsonHelper::getDouble(gs, QStringLiteral("roiH"), 0.0));
-			_guidedSetup.focusZSet = jsonHelper::getBool(gs, QStringLiteral("focusZSet"), false);
-			_guidedSetup.focusZ = jsonHelper::getDouble(gs, QStringLiteral("focusZ"), 0.0);
-		}
-
-		//absent section = nothing set up yet; what was found belonged to the previous recipe's search points
-		zSearchFromJson(root.value(QStringLiteral("zSearch")).toObject());
-		_zFound = ZFound();
-		refreshZSearchUi();
+		//kept only to be written back (see the save)
+		for (const char* key : { "guidedSetup", "zSearch" })
+			if (root.contains(QLatin1String(key))) _legacyRecipeSections.insert(QLatin1String(key), root.value(QLatin1String(key)));
 
 		double defaultSpeed = 0;
 		if (_motions.contains(_motionID)) defaultSpeed = _motions[_motionID].axes[(int)Axis::X].move_max_velocity;

@@ -29,6 +29,5 @@ signals:
 	void showUnitConfigTab();
 	void showSafetyCheckTab();
 	void showPmfTab();
-	void showGuidedSetupTab();
 	void showGuidedSetup2Tab();
 };

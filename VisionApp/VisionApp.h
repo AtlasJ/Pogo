@@ -30,7 +30,6 @@
 #include "BarcodeInfo.h"
 #include "AlgoSetupTypes.h"
 #include "SafetyCheckTypes.h"
-#include "GuidedSetupTypes.h"
 #include "ZSearchTypes.h"
 #include "ZSearch.h"
 #include "GuidedSetup2Types.h"
@@ -164,7 +163,8 @@ enum class UIPage {
 	RECIPE, ROI_EDITOR, SCALING, PATH, LIGHTING, TEMPLATE_LIB, RECIPE_SETUP, NAMING_CONVENTION,
 	CONFIG, ANALYSIS, TESTRUN, LASER, PORTABILITY, AIMODEL, COLOR_SEGMENT, ZSTACK, UNIT_CONFIG,
 	OPTICS3D, MOTION, BARCODE_READER, ALGO_SETUP, DRY_RUN, SAFETY_CHECK, GUIDED_SETUP, PMF,
-	GUIDED_SETUP2 //Guided Setup (new): its page is added to stackedWidget in code at this index
+	GUIDED_SETUP2 //the Guided Setup (built as "Guided Setup (new)"): its page is added to stackedWidget in code at this index
+	//GUIDED_SETUP is the old page's slot: an empty placeholder since the cutover (step 6), kept so the pages after it keep their index
 };
 
 enum class UIHierarchy {
@@ -785,47 +785,24 @@ private:
 	//build step 5: Snap and scan's and START's shots, and the recipe line scan set to H's 3D scan direction
 	QVector<JobThread::Gs2Shot> gs2BuildShots(const gs2::Setup& s, const QVector<gs2::RunPoint>& visit, double z2D, double z3D) const;
 	void gs2SetLineScanFromSetup(const gs2::Setup& s);
-	//build step 5b: a production START of a recipe whose SAVED setup says "START uses this setup". false = START runs the
-	//old teach (no guidedSetup2.json, or the switch is off); true = taken here, run or refused with the reason shown
+	//every production START (since the cutover, step 6): runs the recipe's SAVED setup or refuses with the reason shown.
+	//Always true (taken); the bool stays so the old path after it in startProduction can be deleted on its own later
 	bool gs2TakeStart();
 	void gs2StartProduction(const gs2::Setup& s, const QString& dir);
 
-	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
-	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data
-	void initGuidedSetupPage();
-	void refreshGuidedSetupPage();
+	//── shared with the Guided Setup (from the old page, removed at the cutover - step 6; in VisionApp_GuidedSetup2.cpp)
 	bool guidedSnapFov(QImage& img, int timeoutMs);
-	bool guidedFindCircleNearCentre(const QImage& fov, int minDiaPx, int maxDiaPx, mtrx::Circle& out, int& count);
-	bool guidedCentreOnCircle(int minDiaPx, int maxDiaPx, mtrx::Circle& found, QString& why);
-	void guidedTeachFiducial(int i);
-	void guidedTeachUnit(bool last);
-	void guidedTeachUnitRight(); //unit (1,1)'s right circle: unit centre and 3D scan length
-	void guidedTeachFocusZ();    //the 2D camera's in-focus Z, applied to every view and teach point
-	void guidedRecomputePitch(SystemData::PitchRegion& r);
-	int guidedRegion(); //the selected pitch region (shared with the Setup Region page), created if none
-	bool guidedBoardAngleDeg(double& deg, QString& why); //rotation of the taught fiducial rectangle in the machine frame
-	void guidedFindCircleTest(bool unitRange);           //Find Circle button: snap, find, draw every circle, name the nearest
 	void drawGuidedCircles(const std::vector<mtrx::Circle>& circles, int nearest);
 	void clearGuidedMarks();
-	QVector<QGraphicsItem*> _guidedMarkItems;            //circles drawn by the last Find Circle
-	GuidedSetupConfig _guidedSetup;
-	QDragBox* _guidedRoiBox = nullptr;      //reference box whose size is read off live
-	int _guidedSignX = 1, _guidedSignY = 1; //pixel-to-jog sense; flipped if a jog makes the offset grow
+	QVector<QGraphicsItem*> _guidedMarkItems;            //circles drawn by the last circle find
 	quint64 _fovSerial = 0;                 //bumped on every new FOV frame, so a synchronous snap can wait for one
+	QJsonObject _legacyRecipeSections;      //recipeConfig.json "guidedSetup" / "zSearch" as loaded: unused, written back as they were
 
-	//── Z search (VisionApp_ZSearch.cpp): find this table's 2D Focus Z and 3D Centre Z, because
-	//the trolley height varies by centimetres and no taught Z survives it. Two frames on Guided Setup.
-	void initZSearch();
-	void refreshZSearchUi();
-	QJsonObject zSearchToJson() const;
-	void zSearchFromJson(const QJsonObject& o);
-	void loadZCalibration();
-	bool saveZCalibration();
+	//── Z search helpers (VisionApp_ZSearch.cpp): the moves, checks, the 2D focus sweep and the 3D read the Guided
+	//Setup runs. The old Z search frames (Find 2D / 3D Z, camera-to-laser, difference) went at the cutover - step 6.
 	bool zsRefuseIfBusy();
 	bool jobThreadIdle(int waitMs);         //the job thread runs a queued no-op within waitMs = no run in progress
 	bool zsCheckTarget(int axis, double target, QString& why);
-	bool zsCheckSetup(bool threeD, double x, double y, QString& why); //settings complete and every target inside the soft limits
-	bool zsCheck3D(const ZSearch3DConfig& c, double camX, double camY, QString& why); //the 3D part: profiler ready, laser point and Z inside
 	bool zsCheck3DRead(double camX, double camY, QString& why); //profiler ready, laser point inside (zsCheck3D without the search)
 	bool zsMove(const QVector<QPair<int, double>>& targets, QString& why); //checked: refused, stopped or not landed = false
 	bool zsMoveGroup(const QVector<QPair<int, double>>& targets, QString& why); //zsMove's axes that go out together
@@ -839,17 +816,8 @@ private:
 	bool zsSample2D(double z, int boxPx, bool confirm, zsearch::FocusSample& out, QString& why, QLabel* status);
 	bool zsFind2D(const ZSearch2DConfig& c, double x, double y, bool confirm, double& foundZ, QString& why, QLabel* status);
 	bool zsReadProfile(zsearch::ProfileStats& st, int& offered, QString& why);
-	bool zsFind3D(const ZSearch3DConfig& c, double camX, double camY, const double* predictedZ, double& foundZ, QString& why, QLabel* status);
 	//one 3D read, no search: the laser over (camX, camY) with the head at z. valid = enough points, spread within maxSpreadMm
 	bool zsRead3DAt(double camX, double camY, double z, double maxSpreadMm, zsearch::ProfileStats& st, bool& valid, QString& why, QLabel* status);
-	void zsRunFind(bool threeD);
-	void zsCalibrateCamLaser();
-	void zsSetDifference();
-	void zsCopyFromRecipe();
-	ZSearchConfig _zSearch;                 //per recipe, recipeConfig.json "zSearch"
-	ZCalibration _zCalibration;             //machine, config/z_calibration.json
-	ZFound _zFound;                         //this table, this session - never saved
-	ZSearchWidgets _zsw;
 	bool _zsBusy = false;                   //a search is moving the machine
 	bool _zsLooseXYLanding = false;         //a Guided Setup (new) action: X / Y may land within 0.3 mm (it reads where they stopped)
 	int _zsTrolleyEpoch = 0;                //bumped on every trolley guard edge; a search that saw it change discards its result
@@ -1458,7 +1426,6 @@ private:
 public slots:
 	void algoSettingsTouched(); //any algo-setup edit: debounce then save
 	void safetyRoiTouched();   //safety-check ROI moved: capture and save
-	void guidedRoiTouched();   //guided-setup reference box moved: capture and save
 	void refreshAlgoH3Overlay(); //V3's scene overlay only, without repainting the image
 
 	void enableFiducial(bool enable);

@@ -209,7 +209,7 @@ void VisionApp::clearRenderMap(QString mapKey)
 * Guided Setup's Clear render: what was drawn on the CAMERA scene as a result, not a tool -
 * - the render helpers' items (live circle finder, locator, camera align / scaling, portability,
 *   intensity grid), tracked here, so nothing is left pointing at a deleted item;
-* - the old Guided Setup's circle marks (clearGuidedMarks, which owns their list);
+* - the circle finder's marks (clearGuidedMarks, which owns their list);
 * - the last located fiducial / barcode / portability box, hidden - the next find shows it again.
 * Tools stay: the image, search / inspection regions, ROI boxes, the pattern box.
 */
@@ -236,7 +236,7 @@ void VisionApp::clearFovRenders()
 		if (renders.isEmpty()) it = _renderedMaps.erase(it);
 		else ++it;
 	}
-	ct::logger::info("[Render] Clear render: %d drawing(s) and %d old Guided Setup mark(s) removed, %d located box(es) hidden",
+	ct::logger::info("[Render] Clear render: %d drawing(s) and %d circle mark(s) removed, %d located box(es) hidden",
 		removed, marks, hidden);
 }
 

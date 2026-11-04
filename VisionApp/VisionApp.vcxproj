@@ -257,7 +257,6 @@
     <ClCompile Include="VisionApp_Motion.cpp" />
     <ClCompile Include="VisionApp_Production.cpp" />
     <ClCompile Include="VisionApp_SafetyCheck.cpp" />
-    <ClCompile Include="VisionApp_GuidedSetup.cpp" />
     <ClCompile Include="VisionApp_ZSearch.cpp" />
     <ClCompile Include="VisionApp_GuidedSetup2.cpp" />
     <ClCompile Include="GuidedSetup2.cpp" />
@@ -286,7 +285,6 @@
     <ClInclude Include="AlgoHeight3Types.h" />
     <ClInclude Include="AlgoSetupTypes.h" />
     <ClInclude Include="SafetyCheckTypes.h" />
-    <ClInclude Include="GuidedSetupTypes.h" />
     <ClInclude Include="AxisMoveSequence.h" />
     <ClInclude Include="ZSearchTypes.h" />
     <ClInclude Include="ZSearch.h" />

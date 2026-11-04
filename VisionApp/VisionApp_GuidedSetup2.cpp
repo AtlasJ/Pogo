@@ -19,6 +19,7 @@
 #include "CAMManager.h"
 #include "AuditLog.h"
 #include "GantryLog.h"
+#include "3DOpticsTab.h"
 #include "Logger.h"
 #include "mtrx.h"
 
@@ -27,6 +28,8 @@
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QGraphicsEllipseItem>
+#include <QGraphicsLineItem>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -218,6 +221,66 @@ namespace {
 	}
 }
 
+/*
+* A fresh FOV frame, synchronously. snapImage() is a queued hand-off to the job thread and the
+* frame comes back through imagePreprocessed(), so this pumps the event loop until the FOV
+* serial moves - testing _imageFOV itself would happily return the frame from before the jog.
+* (From the old Guided Setup page, VisionApp_GuidedSetup.cpp, removed at the cutover - step 6.)
+*/
+bool VisionApp::guidedSnapFov(QImage& img, int timeoutMs)
+{
+	const quint64 before = _fovSerial;
+	emit snapImage(_mainOptics[_camID], "", "");
+
+	QElapsedTimer t;
+	t.start();
+	while (_fovSerial == before && t.elapsed() < timeoutMs)
+		QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);
+
+	if (_fovSerial == before || _imageFOV.isNull()) return false;
+	img = _imageFOV;
+	return true;
+}
+
+//the circle marks the finder draws on the FOV (also from the old page): Clear render and leaving the page remove them
+void VisionApp::clearGuidedMarks()
+{
+	for (auto* item : _guidedMarkItems) {
+		if (!item) continue;
+		if (item->scene()) item->scene()->removeItem(item);
+		delete item;
+	}
+	_guidedMarkItems.clear();
+}
+
+//green for the circle a teach would centre on, orange for the others; a cross marks each centre
+void VisionApp::drawGuidedCircles(const std::vector<mtrx::Circle>& circles, int nearest)
+{
+	clearGuidedMarks();
+	if (!_pGraphicsSceneFOV) return;
+
+	for (int i = 0; i < (int)circles.size(); i++) {
+		const auto& c = circles[i];
+		const QColor colour = (i == nearest) ? QColor(0, 220, 0) : QColor(255, 150, 40);
+		const QPen pen(colour, (i == nearest) ? 3 : 2);
+
+		auto* ring = new QGraphicsEllipseItem(c.cx - c.radius, c.cy - c.radius, 2 * c.radius, 2 * c.radius);
+		ring->setPen(pen);
+		ring->setBrush(Qt::NoBrush);
+		ring->setZValue((int)UIHierarchy::SHAPE);
+		_pGraphicsSceneFOV->addItem(ring);
+		_guidedMarkItems.append(ring);
+
+		const double arm = std::max(8.0, c.radius * 0.25);
+		auto* h = new QGraphicsLineItem(c.cx - arm, c.cy, c.cx + arm, c.cy);
+		auto* v = new QGraphicsLineItem(c.cx, c.cy - arm, c.cx, c.cy + arm);
+		h->setPen(pen); v->setPen(pen);
+		h->setZValue((int)UIHierarchy::SHAPE); v->setZValue((int)UIHierarchy::SHAPE);
+		_pGraphicsSceneFOV->addItem(h); _pGraphicsSceneFOV->addItem(v);
+		_guidedMarkItems.append(h); _guidedMarkItems.append(v);
+	}
+}
+
 void VisionApp::initGuidedSetup2()
 {
 	_gs2Page = new GuidedSetup2Page();
@@ -238,6 +301,10 @@ void VisionApp::initGuidedSetup2()
 	_gs2ViewIndex = ui.stackedWidgetViewSelection->addWidget(_gs2View);
 	//a trolley taken off or put on is no longer where a Check or Locate found it
 	connect(&MachineController::instance(), &MachineController::signalTrolleyGuard, this, [=](bool on) {
+		//every action that measured the trolley compares this before it keeps or uses a result (gs2KeepFid0, stillHere,
+		//Snap and scan, START...): what was found belongs to the trolley it was found on. Moved here from the old Z search
+		//frames at the cutover (step 6) - they were the only place that counted it
+		_zsTrolleyEpoch++;
 		if (_gs2View) _gs2View->clearLocated();
 		//...nor where a START found it: its run stops (in debug mode the guard raises no machine error that would)
 		if (_gs2Run.fromStart && _gs2Run.acquiring) {
@@ -268,6 +335,14 @@ void VisionApp::initGuidedSetup2()
 			showMsg(QStringLiteral("The production run ended after %1 shot(s) without being stopped - see the log.").arg(taken));
 		}
 	}, Qt::QueuedConnection);
+
+	/*
+	* The 3D Optics live profile reads the profiler from the job thread every 200 ms. A 3D read from here at the
+	* same time would share the controller with it and switch live mode off under it, so zsCheck3DRead refuses
+	* while that view is on. (Also moved from the old Z search frames at the cutover.)
+	*/
+	if (_optics3DTab)
+		connect(_optics3DTab, &Optics3DTab::alignLiveProfile, this, [=](bool on) { _zsLiveProfileOn = on; });
 
 	_gs2CameraTimer = new QTimer(this);
 	_gs2CameraTimer->setInterval(200);
@@ -510,9 +585,9 @@ void VisionApp::gs2ChooseConversion(bool measured)
 		gs2RefreshCalUi();
 		return;
 	}
-	if (QMessageBox::question(this, QStringLiteral("Guided Setup (new)"),
-		QStringLiteral("Use the %1 pixel-to-mm conversion for Guided Setup (new) on this machine?\n\n"
-			"It applies to every recipe's Guided Setup (new). Nothing else in the app uses it.")
+	if (QMessageBox::question(this, QStringLiteral("Guided Setup"),
+		QStringLiteral("Use the %1 pixel-to-mm conversion for Guided Setup on this machine?\n\n"
+			"It applies to every recipe's Guided Setup. Nothing else in the app uses it.")
 			.arg(measured ? QStringLiteral("Measured") : QStringLiteral("Set (Camera Scaling)"))) != QMessageBox::Yes) {
 		gs2RefreshCalUi();
 		return;
@@ -540,7 +615,7 @@ void VisionApp::gs2SaveMeasured()
 	if (_gs2Cal.measured) replaces = QStringLiteral("\n\nIt replaces the one measured %1%2.").arg(_gs2Cal.when,
 		_gs2Cal.useMeasured ? QStringLiteral(", which is in use - this one is used from now on") : QString());
 	if (QMessageBox::question(this, QStringLiteral("Save measured"),
-		QStringLiteral("Save this measurement as the Measured conversion for Guided Setup (new) on this machine?\n\n"
+		QStringLiteral("Save this measurement as the Measured conversion for Guided Setup on this machine?\n\n"
 			"X %1, Y %2 um/px, rotation %3 deg, fit %4 px, measured %5.%6")
 			.arg(m.umPerPxX, 0, 'f', 3).arg(m.umPerPxY, 0, 'f', 3).arg(signedNum(m.angleDeg, 3)).arg(m.fitPx, 0, 'f', 2)
 			.arg(m.when, replaces)) != QMessageBox::Yes) return;
@@ -2009,7 +2084,7 @@ void VisionApp::gs2SetLineScanFromSetup(const gs2::Setup& s)
 		ui.comboBox_lineScanDirection->setCurrentIndex(dirIndex);
 	}
 	saveRecipeConfig();
-	AuditLog::instance().log(QStringLiteral("LINESCAN_DIRECTION_CHANGED"), QStringLiteral("Guided Setup (new): along X, %1").arg(dirIndex ? QStringLiteral("-") : QStringLiteral("+")));
+	AuditLog::instance().log(QStringLiteral("LINESCAN_DIRECTION_CHANGED"), QStringLiteral("Guided Setup: along X, %1").arg(dirIndex ? QStringLiteral("-") : QStringLiteral("+")));
 }
 
 void VisionApp::gs2Teach(int action)
@@ -2969,25 +3044,34 @@ bool VisionApp::gs2TakeStart()
 	QString why;
 	switch (gs2::load(dir, s, why)) {
 	case gs2::LoadResult::Missing:
-		return false;
-	case gs2::LoadResult::Unreadable:
-		//it may say START uses it: running the old teach instead could run the wrong setup, so nothing runs
-		ct::logger::error("[GuidedSetup2] START refused: %s", qPrintable(why));
-		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup (new): guidedSetup2.json unreadable"));
+		//since the cutover (step 6) every recipe runs its Guided Setup; one that has none is not run the old way
+		ct::logger::warn("[GuidedSetup2] START refused: recipe %s has no Guided Setup", qPrintable(Common::Directory::CurrentRecipe));
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup: none for this recipe"));
 		addLogLine(QStringLiteral("START refused - see the prompt"));
-		showMsg(QStringLiteral("Production cannot start: this recipe's Guided Setup (new) file cannot be read, so it is not known which setup START "
-			"should use.\n\n%1\n\nOpen Guided Setup (new) and Save (the unreadable file is kept aside), then START again.").arg(why));
+		_autoCalPending = false;   //an Auto Calibration "Online" waiting for this run: there is none
+		showMsg(QStringLiteral("Production cannot start: recipe %1 has no Guided Setup.\n\nOpen Guided Setup, teach every section and Save, then START again.")
+			.arg(Common::Directory::CurrentRecipe));
+		return true;
+	case gs2::LoadResult::Unreadable:
+		ct::logger::error("[GuidedSetup2] START refused: %s", qPrintable(why));
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup: guidedSetup2.json unreadable"));
+		addLogLine(QStringLiteral("START refused - see the prompt"));
+		_autoCalPending = false;
+		showMsg(QStringLiteral("Production cannot start: this recipe's Guided Setup file cannot be read.\n\n%1\n\n"
+			"Open Guided Setup, teach it again and Save (the unreadable file is kept aside), then START again.").arg(why));
 		return true;
 	case gs2::LoadResult::Loaded:
 		break;
 	}
-	if (!s.startUsesSetup) return false;
-	gs2StartProduction(s, dir);
+	const int runsBefore = _gs2RunSeq;
+	gs2StartProduction(s, dir);   //refuses itself, saying why, while the setup is not complete
+	//an Auto Calibration "Online" waits for this START's run: none was handed over, so none will come
+	if (_gs2RunSeq == runsBefore || !_gs2Run.acquiring) _autoCalPending = false;
 	return true;
 }
 
 /*
-* START with "START uses this setup": the gates START has already passed (busy, machine state, production
+* Every production START since the cutover (step 6): the gates START has already passed (busy, machine state, production
 * selector, Live Mapping) plus this setup's own; then steps 1-5 - Locate's code - with the busy window up;
 * then every inspection point of the units the PMF lists (unit X#Y# = Template Mapping cell X#,Y#, the rule
 * production uses), 2D pass then 3D pass, handed to the job thread as Snap and scan does, into a production
@@ -2998,21 +3082,21 @@ void VisionApp::gs2StartProduction(const gs2::Setup& s, const QString& dir)
 {
 	auto refuse = [&](const QString& w) {
 		ct::logger::warn("[GuidedSetup2] START refused: %s", qPrintable(w));
-		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup (new): %1").arg(w));
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup: %1").arg(w));
 		addLogLine(QStringLiteral("START refused - see the prompt"));
-		showMsg(QStringLiteral("Production cannot start (Guided Setup (new)):\n\n%1").arg(w));
+		showMsg(QStringLiteral("Production cannot start (Guided Setup):\n\n%1").arg(w));
 	};
-	ct::logger::info("[GuidedSetup2] START: recipe %s runs Guided Setup (new)", qPrintable(Common::Directory::CurrentRecipe));
+	ct::logger::info("[GuidedSetup2] START: recipe %s runs Guided Setup", qPrintable(Common::Directory::CurrentRecipe));
 
 	//── gates, nothing moves
 	//never a second run on top of one: steps 1-5 would drive the machine under it
 	if (_productionSetupLocked) { refuse(QStringLiteral("A production run is still in progress - wait for its last result or press Stop.")); return; }
 	if (!_gs2Page || _gs2Page->recipeDir() != dir) {
-		refuse(QStringLiteral("The Guided Setup (new) page holds another recipe - open the Guided Setup (new) page once so it loads this one."));
+		refuse(QStringLiteral("The Guided Setup page holds another recipe - open the Guided Setup page once so it loads this one."));
 		return;
 	}
 	if (_gs2Page->isDirty()) {
-		refuse(QStringLiteral("Guided Setup (new) has unsaved changes for this recipe. START runs the saved setup - Save or Discard them first."));
+		refuse(QStringLiteral("Guided Setup has unsaved changes for this recipe. START runs the saved setup - Save or Discard them first."));
 		return;
 	}
 	for (int i = 0; i < gs2::SectionCount; i++) {
@@ -3053,7 +3137,7 @@ void VisionApp::gs2StartProduction(const gs2::Setup& s, const QString& dir)
 	if (isStartTimer) vs_stopElapseTimer();
 
 	//── steps 1-5
-	if (!gs2MachineBusy(QStringLiteral("START"), QStringLiteral("Guided Setup (new) START steps 1-5: home and Safety check 1, fid0 (Z sweep, pattern, "
+	if (!gs2MachineBusy(QStringLiteral("START"), QStringLiteral("Guided Setup START steps 1-5: home and Safety check 1, fid0 (Z sweep, pattern, "
 		"circle), 3D Z, the four corners, the reach check. The run itself follows on the production page."))) return;
 	QVector<gs2::RunPoint> visit;
 	double z3D = 0.0;
@@ -3092,7 +3176,7 @@ void VisionApp::gs2StartProduction(const gs2::Setup& s, const QString& dir)
 	if (!ok) {
 		if (stopped) {
 			ct::logger::warn("[GuidedSetup2] START stopped during steps 1-5");
-			AuditLog::instance().log(QStringLiteral("PRODUCTION_STOP"), QStringLiteral("Guided Setup (new) START, steps 1-5"));
+			AuditLog::instance().log(QStringLiteral("PRODUCTION_STOP"), QStringLiteral("Guided Setup START, steps 1-5"));
 			addLogLine(QStringLiteral("START stopped - nothing else was moved"));
 		}
 		else {
@@ -3135,7 +3219,7 @@ void VisionApp::gs2StartProduction(const gs2::Setup& s, const QString& dir)
 	}
 	QSet<QString> units;
 	for (const auto& p : visit) units.insert(s.units[p.unit].name);
-	const QString line = QStringLiteral("START (Guided Setup new): steps 1-5 passed in %1 s; %2 shots of %3 unit(s)%4")
+	const QString line = QStringLiteral("START (Guided Setup): steps 1-5 passed in %1 s; %2 shots of %3 unit(s)%4")
 		.arg(timer.elapsed() / 1000.0, 0, 'f', 1).arg(shots.size()).arg(units.size())
 		.arg(fittedCount < s.units.size() ? QStringLiteral(" (%1 unit(s) not in the PMF skipped)").arg(s.units.size() - fittedCount) : QString());
 	ct::logger::info("[GuidedSetup2] %s", qPrintable(line));

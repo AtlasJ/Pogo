@@ -322,7 +322,6 @@ QJsonObject toJson(const Setup& s)
 	root.insert(QStringLiteral("scanDirection"), QString(s.scanNegative ? "-" : "+") + s.scanAxis);
 	root.insert(QStringLiteral("nextSlotId"), s.nextSlotId);
 	root.insert(QStringLiteral("nextUnitId"), s.nextUnitId);
-	root.insert(QStringLiteral("startUsesThisSetup"), s.startUsesSetup);
 	return root;
 }
 
@@ -481,7 +480,6 @@ Setup fromJson(const QJsonObject& root)
 	s.scanAxis = dir.endsWith(QLatin1Char('Y')) ? QStringLiteral("Y") : QStringLiteral("X");
 	s.nextSlotId = std::max(1, integer(root, "nextSlotId", 1));
 	s.nextUnitId = std::max(1, integer(root, "nextUnitId", 1));
-	s.startUsesSetup = boolean(root, "startUsesThisSetup", false);   //files from before step 5b: the old teach
 
 	//never hand out an id the file already uses, even if the counters were edited by hand
 	for (const auto& sl : s.slotList) s.nextSlotId = std::max(s.nextSlotId, sl.id.mid(1).toInt() + 1);

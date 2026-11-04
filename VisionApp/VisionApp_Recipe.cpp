@@ -179,9 +179,6 @@ void VisionApp::logRecipeSummary()
 			r.fidRef1x, r.fidRef1y, r.fidRef2x, r.fidRef2y, r.fidRef3x, r.fidRef3y, r.fidRef4x, r.fidRef4y);
 	}
 
-	ct::logger::info("[Recipe] Guided setup: type %s; fiducial circle %d..%d px; unit circle %d..%d px; focus Z %s %.3f",
-		_guidedSetup.recipeType.toStdString().c_str(), _guidedSetup.fidMinDiaPx, _guidedSetup.fidMaxDiaPx,
-		_guidedSetup.unitMinDiaPx, _guidedSetup.unitMaxDiaPx, _guidedSetup.focusZSet ? "taught" : "not taught", _guidedSetup.focusZ);
 	ct::logger::info("[Recipe] Safety check: %s, method %s, point %s %.3f/%.3f/%.3f, reference height %s %.3f mm slope %.3f, max Z compensation %.1f mm",
 		_safetyCheck.enabled ? "enabled" : "off", _safetyCheck.method == 1 ? "pattern" : "colour",
 		_safetyCheck.pointSet ? "set" : "NOT SET", _safetyCheck.pointX, _safetyCheck.pointY, _safetyCheck.pointZ,

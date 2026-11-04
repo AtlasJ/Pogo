@@ -453,8 +453,8 @@ void GuidedSetup2Page::confirmLeave()
 	if (!isDirty()) return;
 	QMessageBox box(this);
 	box.setIcon(QMessageBox::Question);
-	box.setWindowTitle(QStringLiteral("Guided Setup (new)"));
-	box.setText(QStringLiteral("Recipe %1 has unsaved Guided Setup (new) changes.").arg(_recipeName));
+	box.setWindowTitle(QStringLiteral("Guided Setup"));
+	box.setText(QStringLiteral("Recipe %1 has unsaved Guided Setup changes.").arg(_recipeName));
 	QPushButton* bSave = box.addButton(QStringLiteral("Save"), QMessageBox::AcceptRole);
 	box.addButton(QStringLiteral("Discard"), QMessageBox::DestructiveRole);
 	box.setDefaultButton(bSave);
@@ -470,7 +470,7 @@ bool GuidedSetup2Page::confirmClose()
 	QMessageBox box(this);
 	box.setIcon(QMessageBox::Question);
 	box.setWindowTitle(QStringLiteral("Close"));
-	box.setText(QStringLiteral("Recipe %1 has unsaved Guided Setup (new) changes.").arg(_recipeName));
+	box.setText(QStringLiteral("Recipe %1 has unsaved Guided Setup changes.").arg(_recipeName));
 	box.setInformativeText(QStringLiteral("Save them before the application closes?"));
 	QPushButton* bSave = box.addButton(QStringLiteral("Save and close"), QMessageBox::AcceptRole);
 	QPushButton* bDiscard = box.addButton(QStringLiteral("Discard and close"), QMessageBox::DestructiveRole);
@@ -547,7 +547,6 @@ void GuidedSetup2Page::fillWidgets()
 	ui.dspin_h3DLen->setValue(s.insp[gs2::Insp3D].scanLengthMm);
 	ui.checkBox_hAddLaser->setChecked(s.insp[gs2::Insp3D].addLaserOffset);
 	ui.comboBox_hScanDir->setCurrentIndex((s.scanAxis == QLatin1String("Y") ? 2 : 0) + (s.scanNegative ? 1 : 0));
-	ui.checkBox_startUses->setChecked(s.startUsesSetup);
 	_filling = false;
 	refreshStatus();
 }
@@ -608,7 +607,6 @@ void GuidedSetup2Page::edited()
 	const int dir = ui.comboBox_hScanDir->currentIndex();
 	s.scanAxis = dir >= 2 ? QStringLiteral("Y") : QStringLiteral("X");
 	s.scanNegative = (dir % 2) == 1;
-	s.startUsesSetup = ui.checkBox_startUses->isChecked();
 
 	//a new Ref keeps the point where it is: the offset becomes the one from the new reference
 	bool refChanged = false;
@@ -809,8 +807,7 @@ void GuidedSetup2Page::refreshStatus()
 	}
 	else {
 		//what a production START does with the saved setup
-		const QString start = !_saved.startUsesSetup ? QStringLiteral("; START runs the old teach")
-			: gs2::isComplete(_saved) ? QStringLiteral("; START runs this setup") : QStringLiteral("; START is refused until it is complete");
+		const QString start = gs2::isComplete(_saved) ? QStringLiteral("; START runs this setup") : QStringLiteral("; START is refused until it is complete");
 		ui.label_saveState->setText(_loadResult == gs2::LoadResult::Loaded
 			? (gs2::isComplete(_saved) ? QStringLiteral("Saved - complete") : QStringLiteral("Saved - not complete yet")) + start
 			: QStringLiteral("Nothing saved yet"));
@@ -821,13 +818,13 @@ void GuidedSetup2Page::refreshStatus()
 bool GuidedSetup2Page::save()
 {
 	if (_recipeDir.isEmpty()) {
-		QMessageBox::warning(this, QStringLiteral("Guided Setup (new)"), QStringLiteral("Not saved: no recipe is open."));
+		QMessageBox::warning(this, QStringLiteral("Guided Setup"), QStringLiteral("Not saved: no recipe is open."));
 		return false;
 	}
 	QString why;
 	if (!gs2::save(_recipeDir, _work, why)) {
 		ct::logger::error("[GuidedSetup2] Save failed: %s", why.toStdString().c_str());
-		QMessageBox::warning(this, QStringLiteral("Guided Setup (new)"), QStringLiteral("Not saved: %1").arg(why));
+		QMessageBox::warning(this, QStringLiteral("Guided Setup"), QStringLiteral("Not saved: %1").arg(why));
 		return false;
 	}
 	_saved = _work;
