@@ -6900,8 +6900,10 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots)
 			snapOptic(mainOptic, s.unitID + "_2D", "", true);
 			const FrameInfo info = waitForImagePreprocessed(5000);
 			if (info.pImage) {
-				//saved as it is taken: a trolley's worth of frames must not wait in memory for the end
-				ImageSavingThread::instance().enqueue((m_rootPath + s.unitID + "_2D" + g_imgExtension).toStdString().c_str(), info);
+				//saved as it is taken: a trolley's worth of frames must not wait in memory for the end. The
+				//filename + buffer overload: the FrameInfo one takes its first argument as a FOLDER and adds
+				//<view>_<optic>.jpg, which made "X1Y2_2D.jpgX1Y2_2D_RGB.jpg"
+				ImageSavingThread::instance().enqueue((m_rootPath + s.unitID + "_2D" + g_imgExtension).toStdString(), info.pImage);
 			}
 			else {
 				missing2D++;
