@@ -840,23 +840,29 @@ bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString&
 		//a Stop that landed while the previous move was finishing must not let this one go out
 		if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 
-		QVector<int> sent;
+		//X / Y aimed past by the card's gap to its own encoder, so the ENCODER lands on target (aim_for_encoder) -
+		//every axis read BEFORE any is sent: once one moves, the other's gap is disturbed
+		QVector<QPair<int, double>> sends;
 		for (const auto& t : targets) {
 			if (attempt > 0) {
 				const auto p = mc.get_position_mm(_motionID, 0, t.first);
 				if (p && std::abs(*p - t.second) <= onTargetMm(t.first)) continue;
 			}
-			//X / Y aimed past by the card's gap to its own encoder, so the ENCODER lands on target (aim_for_encoder)
-			const double send = mc.aim_for_encoder(_motionID, t.first, t.second);
-			if (send != t.second && !zsCheckTarget(t.first, send, why)) { stopAll(); return false; }
-			if (!mc.absolute_move(_motionID, t.first, send)) {
+			double send = mc.aim_for_encoder(_motionID, t.first, t.second);
+			QString aimWhy;
+			if (send != t.second && !zsCheckTarget(t.first, send, aimWhy)) send = t.second;   //the plain target was checked above
+			sends.push_back({ t.first, send });
+		}
+		QVector<int> sent;
+		for (const auto& s : sends) {
+			if (!mc.absolute_move(_motionID, s.first, s.second)) {
 				why = mc.motionEnabled()
-					? QStringLiteral("the motion card refused the %1 move to %2 (see the log)").arg(axisName(t.first)).arg(mm(send))
+					? QStringLiteral("the motion card refused the %1 move to %2 (see the log)").arg(axisName(s.first)).arg(mm(s.second))
 					: QStringLiteral("motion is disabled - home the machine or clear the active error");
 				stopAll();
 				return false;
 			}
-			sent.push_back(t.first);
+			sent.push_back(s.first);
 		}
 		if (sent.isEmpty()) return true;
 

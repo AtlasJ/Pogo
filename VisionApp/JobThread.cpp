@@ -7356,10 +7356,12 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 	for (int g = 0; g < groups.size(); g++) {
 		if (g > 0 && m_stopRun) break;
 		bool refused = false;
-		for (int axis : groups[g]) {
-			//X / Y aimed so the encoder lands on target when the card's count has drifted (aim_for_encoder)
-			const double send = MotionController::instance().aim_for_encoder(m_motionID, axis, target(axis));
-			if (MotionController::instance().absolute_move(m_motionID, axis, send)) sent.push_back(axis);
+		//X / Y aimed so the encoder lands on target when the card's count has drifted (aim_for_encoder) -
+		//every axis of the group read BEFORE any is sent: once one moves, the other's gap is disturbed
+		QVector<double> sends;
+		for (int axis : groups[g]) sends << MotionController::instance().aim_for_encoder(m_motionID, axis, target(axis));
+		for (int i = 0; i < groups[g].size(); i++) {
+			if (MotionController::instance().absolute_move(m_motionID, groups[g][i], sends[i])) sent.push_back(groups[g][i]);
 			else refused = true;
 		}
 		if (refused) {

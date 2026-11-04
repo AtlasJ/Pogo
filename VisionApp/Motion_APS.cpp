@@ -895,8 +895,9 @@ bool Motion_APS::stop_move(int axis)
 {
 	if (invalid_axis("Failed to stop", axis)) return false;
 	auto ret = APS_stop_move(axis);
-	gantrylog::write("STOP   %s%s | %s", gantrylog::axisName(axis), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(),
-		gantry_where(axis).c_str());
+	//no card reads here: a Stop loops over the axes, and the next one's stop must not wait for them -
+	//where it came to rest is the DONE line once the card reports it
+	gantrylog::write("STOP   %s%s", gantrylog::axisName(axis), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str());
 	//auto ret = APS_emg_stop(axis);
 	if (log_error_code("Failed to stop", ret)) return false;
 	return true;

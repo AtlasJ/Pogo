@@ -428,14 +428,18 @@ bool MotionController::absolute_move(QString id, int axis, double position_mm)
 * - Up to system.json "Encoder_Gap_Correction_Max_mm" (default 0.5, kept to 0.05-5.0 on load): a
 *   bigger gap is an axis pushed out of place - sent as is, so its landing fails loudly instead of
 *   the machine quietly steering round it. Home clears the gap.
-* - Over kWarnGapMm it is a warning in the main log every time, so a slipping axis never goes quiet.
+* - Only a gap past kMinGapMm, the landing tolerance: under it the move lands within tolerance anyway,
+*   and right after a move the gap is partly settling that is still closing (Y read -0.046 at its
+*   settle and -0.006 a move later) - aiming past that would overshoot. Each correction is a warning
+*   in the main log, so a slipping axis never goes quiet.
+* - An aimed target outside the soft limits is sent as the plain target: the card would refuse (Y) or
+*   clamp (X) a move whose real end is inside them.
 * - system.json "Encoder_Gap_Correction" false turns it off (the motion team, or once X is fixed).
 * The Motion Accuracy Test sends its moves without this - it measures the raw axis.
 */
 double MotionController::aim_for_encoder(QString id, int axis, double target_mm)
 {
-	constexpr double kMinGapMm = 0.002;  //2 pulses: below that the count and the encoder agree
-	constexpr double kWarnGapMm = 0.05;  //the landing tolerance: a gap past it is worth a warning
+	constexpr double kMinGapMm = 0.05;   //the landing tolerance (JobThread::settleAxis, zsMoveGroup)
 	const double maxGapMm = SystemData::instance()._encoderGapMaxMm.load();
 
 	if (axis != 0 && axis != 1) return target_mm; //HARDCODE: X = 0, Y = 1, as Motion_APS
@@ -451,7 +455,7 @@ double MotionController::aim_for_encoder(QString id, int axis, double target_mm)
 
 	const double gap = *fbk - *cmd;
 	const char* name = gantrylog::axisName(axis);
-	if (std::abs(gap) < kMinGapMm) return target_mm;
+	if (std::abs(gap) <= kMinGapMm) return target_mm;
 	if (std::abs(gap) > maxGapMm) {
 		ct::logger::warn("[Motion] %s: the encoder is %+.3f mm from the card's count - more than the %.3f mm corrected (Encoder_Gap_Correction_Max_mm), "
 			"sent uncorrected (the axis was pushed or is slipping - home to clear it)", name, gap, maxGapMm);
@@ -459,9 +463,14 @@ double MotionController::aim_for_encoder(QString id, int axis, double target_mm)
 		return target_mm;
 	}
 	const double send = target_mm - gap;
-	if (std::abs(gap) > kWarnGapMm)
-		ct::logger::warn("[Motion] %s: the encoder is %+.3f mm from the card's count (the axis drifted) - aiming at %.3f so %s lands on %.3f",
-			name, gap, send, name, target_mm);
+	double lo = 0.0, hi = 0.0;
+	if (limits_mm(id, axis, lo, hi) && lo < hi && (send < lo || send > hi)) {
+		gantrylog::write("CORR   %s target %.4f: encoder %+.4f from the card's count, but %.4f is outside the soft limits %.3f..%.3f - NOT corrected",
+			name, target_mm, gap, send, lo, hi);
+		return target_mm;
+	}
+	ct::logger::warn("[Motion] %s: the encoder is %+.3f mm from the card's count (the axis drifted) - aiming at %.3f so %s lands on %.3f",
+		name, gap, send, name, target_mm);
 	gantrylog::write("CORR   %s target %.4f: encoder %+.4f from the card's count - sent %.4f", name, target_mm, gap, send);
 	return send;
 }

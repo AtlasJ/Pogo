@@ -733,6 +733,8 @@ private:
 		bool has3D = false;
 		double z3D = 0.0, z3DFrom2D = 0.0;            //C's last Find and the 2D Z it started from
 		bool z3DAddLaser = true;                      //...and whether it added the camera-to-laser XY
+		bool cLeft = false;                           //where C's read left the stage (it got there sideways at the 2D Z):
+		double cLeftX = 0.0, cLeftY = 0.0, cLeftZ = 0.0;   //D's Check goes back to fid0 at the 2D Z only from here
 		bool rect = false;                            //the trolley frame the last passed Check / Locate found
 		gs2geo::Pose pose;
 		gs2::FidRect rectBy;                          //...with these corners and drawing size

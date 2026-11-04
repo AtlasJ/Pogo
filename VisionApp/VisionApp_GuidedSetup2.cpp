@@ -1636,7 +1636,16 @@ bool VisionApp::gs2Find3DZ(const gs2::Setup& s, gs2::Z3DFound& out, QString& why
 	QLabel* progress = _zsBusyWindow ? _zsBusyWindow->findChild<QLabel*>(QStringLiteral("busyProgress")) : nullptr;
 	zsearch::ProfileStats st;
 	bool flat = false;
+	_gs2Session.cLeft = false;
 	if (!zsRead3DAt(camX, camY, z2D, s.z3d.maxSpreadMm, st, flat, why, progress)) { why = QStringLiteral("3D Z: %1").arg(why); return false; }
+	{
+		//the stage stands where the read put it, reached sideways at the 2D Z: D may go back from here at that Z
+		auto& mc = MotionController::instance();
+		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
+		const auto y = mc.get_position_mm(_motionID, 0, (int)Axis::Y);
+		const auto z = mc.get_position_mm(_motionID, 0, (int)Axis::Z);
+		if (x && y && z) { _gs2Session.cLeft = true; _gs2Session.cLeftX = *x; _gs2Session.cLeftY = *y; _gs2Session.cLeftZ = *z; }
+	}
 	if (!flat) {
 		why = st.valid > 0
 			? QStringLiteral("3D Z: at the 2D Z %1 the profiler read %2 points with a spread of %3 mm - not one flat surface (Max spread %4, enough points needed): is the laser on the flat area?")
@@ -1711,11 +1720,24 @@ bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& wh
 		why = QStringLiteral("fid0's 2D Z %1 is outside Start Z .. Stop Z - run Find in section B again").arg(mm(_gs2Session.z2D));
 		return false;
 	}
-	//to fid0 at the 2D Z (or higher), the height every corner move below slides at: up to it first only if
-	//lower, never back to Start Z - Locate arrives from C already at the 2D Z, and the 107 mm round trip
-	//cost 4.5 s and moved X +0.45 mm (gantry log 2026-11-04 12:44). Down to the 2D Z at fid0 if higher.
+	/*
+	* To fid0, then down to the 2D Z there. Still standing where C's read left the stage (Locate, or a
+	* Check right after C), it goes back at the 2D Z the way C came - the 107 mm round trip to Start Z
+	* cost 4.5 s and moved X +0.45 mm (gantry log 2026-11-04 12:44). From anywhere else the first leg may
+	* start off the trolley, where the 2D Z is not known to be clear: up to Start Z first, as always.
+	*/
+	double clearZ = s.fid0.startZ;
+	{
+		auto& mc = MotionController::instance();
+		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
+		const auto y = mc.get_position_mm(_motionID, 0, (int)Axis::Y);
+		const auto z = mc.get_position_mm(_motionID, 0, (int)Axis::Z);
+		if (_gs2Session.cLeft && x && y && z && std::abs(*x - _gs2Session.cLeftX) <= 0.5 && std::abs(*y - _gs2Session.cLeftY) <= 0.5
+			&& std::abs(*z - _gs2Session.cLeftZ) <= 0.05 && *z <= _gs2Session.z2D + 0.05)
+			clearZ = _gs2Session.z2D;
+	}
 	setProgress(_zsBusyWindow, QStringLiteral("To fid0 at the 2D Z..."));
-	if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, _gs2Session.z2D, why)) return false;
+	if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, clearZ, why)) return false;
 	if (!zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why)) return false;
 	Gs2Circle f;
 	if (!gs2RelocateFid0(s, f, why)) return false;
