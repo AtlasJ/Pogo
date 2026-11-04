@@ -1288,11 +1288,24 @@ void VisionApp::connectSignalAndSlot()
 	/*
 	* Home All beside the Motion Control button (VisionApp.ui), so homing does not need a trip to the
 	* Motion page. It clicks that page's own Home All, so it does exactly what that button does (log,
-	* audit, homeAll) and nothing while that button cannot be pressed.
+	* audit, homeAll) and nothing while that button cannot be pressed. It asks first: in the top bar it
+	* is one stray click from moving the whole gantry. No is the default, so Enter does not home.
 	*/
 	connect(ui.toolButton_homeAllShortcut, &QToolButton::clicked, this, [=]() {
 		if (!ui.toolButton_homeAll->isEnabled()) {
 			ct::logger::warn("[Motion] Top bar Home All: the Motion page's Home All is disabled now - nothing done");
+			return;
+		}
+		const auto reply = QMessageBox::question(this, QStringLiteral("Home All"),
+			QStringLiteral("Home all axes now?\n\nThe gantry moves to its home position. Make sure nothing is in the way."),
+			QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+		if (reply != QMessageBox::Yes) {
+			ct::logger::info("[Motion] Top bar Home All: cancelled");
+			return;
+		}
+		//the state may have changed while the question was open (a run started, an error)
+		if (!ui.toolButton_homeAll->isEnabled() || !ui.toolButton_homeAllShortcut->isEnabled()) {
+			ct::logger::warn("[Motion] Top bar Home All: Home All is disabled now - nothing done");
 			return;
 		}
 		ct::logger::info("[Motion] Top bar Home All -> Motion page Home All");
