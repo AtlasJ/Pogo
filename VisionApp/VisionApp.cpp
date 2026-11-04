@@ -65,6 +65,7 @@
 #include "MachineController.h"
 #include "ImageSavingThread.h"
 #include "AuditLog.h"
+#include "GantryLog.h"
 
 #include <QGuiApplication>
 #include <QScreen>
@@ -180,6 +181,8 @@ VisionApp::VisionApp(QWidget *parent) : QMainWindow(parent)
 	Common::Directory::createDir(log_root_path);
 	ct::logger::init(log_root_path.toStdString());
 	ct::logger::set_level(ct::logger::Level::TRACE);
+	gantrylog::init(log_root_path); //gantry_YYYYMMDD_HH.log beside the main log - see GantryLog.h
+	gantrylog::write("APP    started - gantry log for X / Y / Z movement");
 
 
 	QThreadPool::globalInstance()->setMaxThreadCount(1);
@@ -9437,6 +9440,27 @@ bool VisionApp::readSystemInfo(QJsonObject& systemObj)
 			ui.comboBox_axisMoveSequence->setCurrentIndex(seq);
 			ct::logger::info("[Motion] Axis Move Sequence: %s", qPrintable(axisseq::name(seq)));
 		}
+
+		//X / Y aimed past by the card's gap to its encoder (MotionController::aim_for_encoder); missing = on.
+		//system.json only for now - set false once X holds its position, or while the motion team diagnoses it
+		SystemData::instance()._encoderGapCorrection = systemObj.contains("Encoder_Gap_Correction")
+			? jsonHelper::getBool(_systemObj, "Encoder_Gap_Correction", true)
+			: (systemObj.insert("Encoder_Gap_Correction", true), true);
+		//the largest gap it corrects (missing = 0.5 mm); kept to 0.05-5.0 - a bigger gap is a pushed or slipping axis
+		{
+			constexpr double kMinMax = 0.05, kMaxMax = 5.0;
+			const double asked = systemObj.contains("Encoder_Gap_Correction_Max_mm")
+				? jsonHelper::getDouble(_systemObj, "Encoder_Gap_Correction_Max_mm")
+				: (systemObj.insert("Encoder_Gap_Correction_Max_mm", 0.5), 0.5);
+			const double used = (std::min)(kMaxMax, (std::max)(kMinMax, asked));
+			if (used != asked)
+				ct::logger::warn("[Motion] Encoder_Gap_Correction_Max_mm %.3f is outside %.2f-%.1f - using %.3f", asked, kMinMax, kMaxMax, used);
+			SystemData::instance()._encoderGapMaxMm = used;
+		}
+		ct::logger::info("[Motion] Encoder gap correction (X / Y): %s, up to %.3f mm", SystemData::instance()._encoderGapCorrection ? "ON" : "OFF",
+			SystemData::instance()._encoderGapMaxMm.load());
+		gantrylog::write("CONFIG encoder gap correction (X / Y): %s, up to %.3f mm", SystemData::instance()._encoderGapCorrection ? "ON" : "OFF",
+			SystemData::instance()._encoderGapMaxMm.load());
 
 		SystemData::instance()._enableFiducialRotate = systemObj.contains("Enable_Fiducial_Rotate")
 			? jsonHelper::getBool(_systemObj, "Enable_Fiducial_Rotate", true)

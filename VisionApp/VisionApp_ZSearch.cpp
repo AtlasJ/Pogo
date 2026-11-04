@@ -11,6 +11,7 @@
 #include "AuditLog.h"
 #include "3DOpticsTab.h"
 #include "AxisMoveSequence.h"
+#include "GantryLog.h"
 
 #include <QSaveFile>
 #include <QDir>
@@ -844,9 +845,12 @@ bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString&
 				const auto p = mc.get_position_mm(_motionID, 0, t.first);
 				if (p && std::abs(*p - t.second) <= onTargetMm(t.first)) continue;
 			}
-			if (!mc.absolute_move(_motionID, t.first, t.second)) {
+			//X / Y aimed past by the card's gap to its own encoder, so the ENCODER lands on target (aim_for_encoder)
+			const double send = mc.aim_for_encoder(_motionID, t.first, t.second);
+			if (send != t.second && !zsCheckTarget(t.first, send, why)) { stopAll(); return false; }
+			if (!mc.absolute_move(_motionID, t.first, send)) {
 				why = mc.motionEnabled()
-					? QStringLiteral("the motion card refused the %1 move to %2 (see the log)").arg(axisName(t.first)).arg(mm(t.second))
+					? QStringLiteral("the motion card refused the %1 move to %2 (see the log)").arg(axisName(t.first)).arg(mm(send))
 					: QStringLiteral("motion is disabled - home the machine or clear the active error");
 				stopAll();
 				return false;
@@ -893,20 +897,37 @@ bool VisionApp::zsMoveGroup(const QVector<QPair<int, double>>& targets, QString&
 			if (_stopRun) { why = QStringLiteral("stopped"); return false; }
 			zsPause(20);
 		}
+		//the gantry log: every axis of the group, where it settled against its target
+		QStringList at;
+		for (const auto& t : targets) {
+			const auto p = mc.get_position_mm(_motionID, 0, t.first);
+			at << (p ? QStringLiteral("%1 %2 at %3 (%4)").arg(QLatin1String(gantrylog::axisName(t.first)))
+				.arg(t.second, 0, 'f', 4).arg(*p, 0, 'f', 4).arg(*p - t.second, 0, 'f', 4) : QStringLiteral("%1 unreadable").arg(QLatin1String(gantrylog::axisName(t.first))));
+		}
 		if (onTarget) {
 			if (attempt > 0) ct::logger::warn("[ZSearch] On target after %d correction(s)", attempt);
+			gantrylog::write("SETTLE %s: on target (XY %.2f, Z %.2f) after %d correction(s), %lld ms", qPrintable(at.join(QStringLiteral(", "))),
+				kOnTargetXYMm, kOnTargetZMm, attempt, (long long)settle.elapsed());
 			return true;
 		}
-		if (_zsLooseXYLanding && withinGs2) {
+		//the corrections first - each aims past by the gap again; only what they could not close is accepted
+		if (_zsLooseXYLanding && withinGs2 && attempt == kMaxCorrections) {
 			ct::logger::warn("[ZSearch] Landed past %.2f mm (%s) - within Guided Setup's %.2f mm, accepted",
 				kOnTargetXYMm, qPrintable(off), kOnTargetXYGs2Mm);
+			gantrylog::write("SETTLE %s: past %.2f but within Guided Setup's %.2f - ACCEPTED", qPrintable(at.join(QStringLiteral(", "))),
+				kOnTargetXYMm, kOnTargetXYGs2Mm);
 			return true;
 		}
 		why = off;
-		if (attempt < kMaxCorrections)
+		if (attempt < kMaxCorrections) {
 			ct::logger::warn("[ZSearch] Not on target (%s) - re-issuing (%d of %d)", qPrintable(off), attempt + 1, kMaxCorrections);
-		else
+			gantrylog::write("SETTLE %s: NOT on target after %d ms - re-issuing (%d of %d)", qPrintable(at.join(QStringLiteral(", "))),
+				kSettleMs, attempt + 1, kMaxCorrections);
+		}
+		else {
 			ct::logger::warn("[ZSearch] Not on target (%s) after %d corrections - giving up", qPrintable(off), kMaxCorrections);
+			gantrylog::write("SETTLE %s: GIVEN UP after %d corrections", qPrintable(at.join(QStringLiteral(", "))), kMaxCorrections);
+		}
 	}
 
 	why = QStringLiteral("%1 after %2 corrections").arg(why).arg(kMaxCorrections);

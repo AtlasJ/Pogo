@@ -217,6 +217,7 @@
     <ClCompile Include="MachineController.cpp" />
     <ClCompile Include="MbufPool.cpp" />
     <ClCompile Include="MbufPoolManager.cpp" />
+    <ClCompile Include="GantryLog.cpp" />
     <ClCompile Include="MotionController.cpp" />
     <ClCompile Include="Motion_8134A.cpp" />
     <ClCompile Include="Motion_APS.cpp" />
@@ -463,6 +464,7 @@
     <ClInclude Include="MbufPool.h" />
     <ClInclude Include="MbufPoolManager.h" />
     <ClInclude Include="MbufWrapper.h" />
+    <ClInclude Include="GantryLog.h" />
     <ClInclude Include="MotionController.h" />
     <ClInclude Include="Motion_8134A.h" />
     <ClInclude Include="Motion_APS.h" />

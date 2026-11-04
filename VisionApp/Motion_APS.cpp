@@ -2,8 +2,10 @@
 #include "APS Library/Include/APS168.h"
 #include "APS Library/Include/APS_Define.h"
 #include "APS Library/Include/ErrorCodeDef.h"
+#include "GantryLog.h"
 #include "Logger.h"
 #include "MachineController.h"
+#include <cmath>
 #include <thread>
 
 using namespace nvs::motion;
@@ -104,6 +106,44 @@ double Motion_APS::to_pulse(int axis, double mm) const
 		return mm;
 	}
 	return mm * it->second.pulse_per_mm;
+}
+
+std::string Motion_APS::gantry_where(int axis) const
+{
+	I32 cmd = 0, fbk = 0;
+	const bool okC = APS_get_command(axis, &cmd) == ERR_NoError;
+	const bool okF = APS_get_position(axis, &fbk) == ERR_NoError;
+	auto it = m_axisInfos.find(axis);
+	char buf[160];
+	if (it == m_axisInfos.end() || it->second.pulse_per_mm == 0.0) {
+		snprintf(buf, sizeof(buf), "cmd %d fbk %d pulse (no scale yet)", okC ? (int)cmd : 0, okF ? (int)fbk : 0);
+		return buf;
+	}
+	const double k = it->second.pulse_per_mm;
+	if (okC && okF) snprintf(buf, sizeof(buf), "cmd %.4f fbk %.4f mm (fbk-cmd %+.4f)", cmd / k, fbk / k, (fbk - cmd) / k);
+	else snprintf(buf, sizeof(buf), "cmd %s fbk %s - counters not readable", okC ? "ok" : "?", okF ? "ok" : "?");
+	return buf;
+}
+
+std::string Motion_APS::gantry_speed(int axis) const
+{
+	auto it = m_axisInfos.find(axis);
+	if (it == m_axisInfos.end() || it->second.pulse_per_mm == 0.0) return "speed unknown (no scale yet)";
+	const double k = std::abs(it->second.pulse_per_mm);
+	const auto& s = it->second.move_speed;
+	char buf[160];
+	snprintf(buf, sizeof(buf), "vmax %.3f mm/s, acc %.1f, dec %.1f mm/s2", std::abs(s.max_velocity) / k, std::abs(s.accel) / k, std::abs(s.decel) / k);
+	return buf;
+}
+
+void Motion_APS::gantry_sent(int axis, bool home, double target_mm)
+{
+	std::lock_guard<std::mutex> lock(m_gantryMutex);
+	auto& p = m_gantryPending[axis];
+	p.active = true;
+	p.home = home;
+	p.target_mm = target_mm;
+	p.sent = std::chrono::steady_clock::now();
 }
 
 Motion_APS::Motion_APS()
@@ -212,6 +252,7 @@ bool Motion_APS::reset_alarm(int axis)
 	if (!((status >> IO::ALM) & 1)) return true;
 
 	ct::logger::info("[Motion_APS] Resetting alarm on axis %d, motion IO status: 0x%X", axis, status);
+	gantrylog::write("ALARM  %s reset asked, motion IO 0x%X | %s", gantrylog::axisName(axis), (unsigned)status, gantry_where(axis).c_str());
 
 	//Release the servo command first - the drive may reject an alarm reset
 	//while the servo command is latched on. Not fatal if it fails: an alarmed
@@ -226,6 +267,7 @@ bool Motion_APS::reset_alarm(int axis)
 
 	status = APS_motion_io_status(axis);
 	if ((status >> IO::ALM) & 1) {
+		gantrylog::write("ALARM  %s still active after the reset, motion IO 0x%X", gantrylog::axisName(axis), (unsigned)status);
 		m_errorMsg = "Alarm still active after reset";
 		ct::logger::error("[Motion_APS] Axis %d alarm still active after reset", axis);
 		return false;
@@ -238,6 +280,7 @@ bool Motion_APS::reset_alarm(int axis)
 	if (log_error_code("Failed to set servo on after alarm reset", ret)) return false;
 
 	ct::logger::info("[Motion_APS] Reset alarm on axis %d", axis);
+	gantrylog::write("ALARM  %s cleared, servo on | %s", gantrylog::axisName(axis), gantry_where(axis).c_str());
 	return true;
 }
 
@@ -480,6 +523,8 @@ bool nvs::motion::Motion_APS::set_home_max_velocity(int axis, double value)
 bool nvs::motion::Motion_APS::set_move_acceleration(int axis, double value)
 {
 	value = to_pulse(axis, value);
+	if (m_axisInfos[axis].move_speed.accel != value)
+		gantrylog::write("SPEED  %s acceleration %.1f mm/s2 (was %.1f)", gantrylog::axisName(axis), std::abs(to_mm(axis, value)), std::abs(to_mm(axis, m_axisInfos[axis].move_speed.accel)));
 	m_axisInfos[axis].move_speed.accel = value;
 	auto ret = APS_set_axis_param(axis, Param::ACC, value);
 	ret &= APS_set_axis_param(axis, Param::JG_ACC, value);
@@ -489,6 +534,8 @@ bool nvs::motion::Motion_APS::set_move_acceleration(int axis, double value)
 bool nvs::motion::Motion_APS::set_move_deceleration(int axis, double value)
 {
 	value = to_pulse(axis, value);
+	if (m_axisInfos[axis].move_speed.decel != value)
+		gantrylog::write("SPEED  %s deceleration %.1f mm/s2 (was %.1f)", gantrylog::axisName(axis), std::abs(to_mm(axis, value)), std::abs(to_mm(axis, m_axisInfos[axis].move_speed.decel)));
 	m_axisInfos[axis].move_speed.decel = value;
 	auto ret = APS_set_axis_param(axis, Param::DEC, value);
 	return !log_error_code("Failed to set move deceleration", ret);
@@ -504,6 +551,8 @@ bool nvs::motion::Motion_APS::set_move_start_velocity(int axis, double value)
 bool nvs::motion::Motion_APS::set_move_max_velocity(int axis, double value)
 {
 	value = to_pulse(axis, value);
+	if (m_axisInfos[axis].move_speed.max_velocity != value)
+		gantrylog::write("SPEED  %s max velocity %.3f mm/s (was %.3f)", gantrylog::axisName(axis), std::abs(to_mm(axis, value)), std::abs(to_mm(axis, m_axisInfos[axis].move_speed.max_velocity)));
 	m_axisInfos[axis].move_speed.max_velocity = value;
 	return true;
 }
@@ -512,7 +561,10 @@ bool Motion_APS::set_position_mm(int cardID, int axis, double pos_mm)
 {
 	I32 pos = to_pulse(axis, pos_mm);
 
+	const std::string before = gantry_where(axis);
 	auto ret = APS_set_position(axis, pos);
+	gantrylog::write("SETPOS %s encoder counter := %.4f mm (%d pulse)%s | was %s", gantrylog::axisName(axis), pos_mm, (int)pos,
+		ret == ERR_NoError ? "" : " - FAILED", before.c_str());
 	if (log_error_code("Failed to set position", ret)) return false;
 	return true;
 }
@@ -538,6 +590,8 @@ bool Motion_APS::sync_command_to_feedback(int axis)
 	if (cmd == fbk) return true;
 
 	ret = APS_set_command(axis, fbk);
+	gantrylog::write("RESYNC %s command counter := encoder: %d -> %d pulse (%+d pulse moved while the servo was off)%s",
+		gantrylog::axisName(axis), (int)cmd, (int)fbk, (int)(fbk - cmd), ret == ERR_NoError ? "" : " - FAILED");
 	if (log_error_code("Failed to set command position", ret)) return false;
 
 	ct::logger::warn("[Motion_APS] Axis %d command counter re-synced to the encoder: %.3f -> %.3f mm "
@@ -552,6 +606,7 @@ bool Motion_APS::set_servo(int cardID, int axis, bool on)
 	if (on) sync_command_to_feedback(axis);
 
 	auto ret = APS_set_servo_on(axis, (on) ? 1 : 0);
+	gantrylog::write("SERVO  %s %s%s | %s", gantrylog::axisName(axis), on ? "ON" : "OFF", ret == ERR_NoError ? "" : " - FAILED", gantry_where(axis).c_str());
 	if (log_error_code("Failed to set servo", ret)) return false;
 
 	if (axis != 0 || axis != 1) return true; //HARDCODE:
@@ -635,9 +690,19 @@ bool Motion_APS::set_all_DO(int cardID, const std::vector<bool>& states)
 
 bool Motion_APS::home(int axis)
 {
-	//DIR: 0 - positive, 1 - negative 
+	//DIR: 0 - positive, 1 - negative
+	const std::string from = gantry_where(axis);
 	auto ret = APS_home_move(axis);
+	{
+		auto it = m_axisInfos.find(axis);
+		const double k = it != m_axisInfos.end() && it->second.pulse_per_mm != 0.0 ? std::abs(it->second.pulse_per_mm) : 1.0;
+		const SpeedInfo hs = it != m_axisInfos.end() ? it->second.home_speed : SpeedInfo();
+		gantrylog::write("HOME   %s start%s | from %s | home vmax %.3f, start %.3f, to-origin %.3f mm/s, acc %.1f mm/s2",
+			gantrylog::axisName(axis), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(), from.c_str(),
+			std::abs(hs.max_velocity) / k, std::abs(hs.start_velocity) / k, std::abs(hs.origin_velocity) / k, std::abs(hs.accel) / k);
+	}
 	if (log_error_code("Failed to home", ret)) return false;
+	gantry_sent(axis, true, 0.0);
 	return true;
 }
 
@@ -660,9 +725,33 @@ bool Motion_APS::move_done(int cardID, int axis)
 	//ct::logger::info("Motion %d: %d", axis, mdn);
 
 	bool inp = (io_status >> 6) & 1;
-	if (axis == 0 || axis == 1) return inp && mdn; //HARDCODE:
+	const bool done = (axis == 0 || axis == 1) ? inp && mdn : mdn; //HARDCODE: X / Y also need INP
 
-	return mdn;
+	//the gantry log: the first "done" after a move was sent. Not in the first 50 ms - right after the
+	//send the card can still show the previous move's done bit, which is why callers wait before polling.
+	if (done) {
+		GantryPending p;
+		long long ms = 0;
+		{
+			std::lock_guard<std::mutex> lock(m_gantryMutex);
+			auto it = m_gantryPending.find(axis);
+			if (it != m_gantryPending.end() && it->second.active) {
+				ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - it->second.sent).count();
+				if (ms >= 50) { p = it->second; it->second.active = false; }
+			}
+		}
+		if (p.active) {
+			const auto fbk = get_position_mm(cardID, axis);
+			if (p.home)
+				gantrylog::write("DONE   %s home, %lld ms | %s | status 0x%X io 0x%X", gantrylog::axisName(axis), ms, gantry_where(axis).c_str(),
+					(unsigned)status, (unsigned)io_status);
+			else
+				gantrylog::write("DONE   %s target %.4f, %lld ms | %s | fbk-target %+.4f | MDN %d INP %d status 0x%X io 0x%X",
+					gantrylog::axisName(axis), p.target_mm, ms, gantry_where(axis).c_str(), fbk ? *fbk - p.target_mm : 0.0,
+					(int)mdn, (int)inp, (unsigned)status, (unsigned)io_status);
+		}
+	}
+	return done;
 }
 
 bool Motion_APS::continuous_move(int axis, bool positive_direction)
@@ -673,6 +762,9 @@ bool Motion_APS::continuous_move(int axis, bool positive_direction)
 	if (!positive_direction) speed = -speed;
 
 	auto ret = APS_velocity_move(axis, speed);
+	gantrylog::write("VJOG   %s %s at %.3f mm/s (velocity move, runs until stopped)%s | from %s", gantrylog::axisName(axis),
+		positive_direction ? "+" : "-", std::abs(to_mm(axis, speed)), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(),
+		gantry_where(axis).c_str());
 	if (log_error_code("Failed to move", ret)) return false;
 	return true;
 }
@@ -681,17 +773,21 @@ bool Motion_APS::absolute_move(int axis, double position_mm)
 {
 	if (invalid_axis("Failed to move", axis)) return false;
 
+	const double asked_mm = position_mm;
 	if (!is_safe(axis, position_mm)) { //BAD HARDCODE: Desperate times calls for desperate measures
+		auto positive_limit = m_axisInfos[axis].positive_limit_mm;
+		auto negative_limit = m_axisInfos[axis].negative_limit_mm;
 		if (axis == 0) {
-			auto positive_limit = m_axisInfos[axis].positive_limit_mm;
-			auto negative_limit = m_axisInfos[axis].negative_limit_mm;
-
 			bool safe = true;
 
 			if (positive_limit < position_mm) position_mm = positive_limit;
 			if (negative_limit > position_mm) position_mm = negative_limit;
+			gantrylog::write("ABS    %s asked %.4f, outside the soft limits %.3f..%.3f - CLAMPED to %.4f",
+				gantrylog::axisName(axis), asked_mm, negative_limit, positive_limit, position_mm);
 		}
 		else {
+			gantrylog::write("ABS    %s asked %.4f - REFUSED, outside the soft limits %.3f..%.3f | at %s",
+				gantrylog::axisName(axis), asked_mm, negative_limit, positive_limit, gantry_where(axis).c_str());
 			return false;
 		}
 	}
@@ -704,8 +800,12 @@ bool Motion_APS::absolute_move(int axis, double position_mm)
 	ct::logger::info("[Motion_APS] absolute_move: axis=%d, position=%.4fmm -> %d pulse, max_velocity=%d (pulse/mm=%f)",
 		axis, position_mm, (int)pulse, (int)maxVelocity, m_axisInfos[axis].pulse_per_mm);
 
+	const std::string from = gantry_where(axis);
 	auto ret = APS_absolute_move(axis, pulse, maxVelocity);
+	gantrylog::write("ABS    %s -> %.4f mm (%d pulse)%s | from %s | %s", gantrylog::axisName(axis), position_mm, (int)pulse,
+		ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(), from.c_str(), gantry_speed(axis).c_str());
 	if (log_error_code("Failed to move", ret)) return false;
+	gantry_sent(axis, false, position_mm);
 	return true;
 }
 
@@ -749,7 +849,11 @@ bool nvs::motion::Motion_APS::absolute_multi_move(const std::vector<MoveParam>& 
 
 	
 	auto ret = APS_absolute_linear_move(dimension, axes, positions, max_speed);
+	for (const auto& p : moveParams)
+		gantrylog::write("LINEAR %s -> %.4f mm (linear move of %d axes, %.3f mm/s)%s | from %s", gantrylog::axisName(p.axis), p.position_mm, (int)dimension,
+			std::abs(to_mm(p.axis, max_speed)), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(), gantry_where(p.axis).c_str());
 	if (log_error_code("Failed to move", ret)) return false;
+	for (const auto& p : moveParams) gantry_sent(p.axis, false, p.position_mm);
 	return true;
 }
 
@@ -768,11 +872,22 @@ bool Motion_APS::relative_move(int axis, double distance)
 	//HARDCODE FOR Y-AXIS:
 	auto safety_distance = distance;
 	//if (axis == 1) safety_distance = -safety_distance;
-	if (!is_safe(axis, opt_position_mm.value() + safety_distance)) return false;
+	if (!is_safe(axis, opt_position_mm.value() + safety_distance)) {
+		gantrylog::write("REL    %s by %+.4f - REFUSED, %.4f is outside the soft limits %.3f..%.3f | at %s", gantrylog::axisName(axis), distance,
+			opt_position_mm.value() + safety_distance, m_axisInfos[axis].negative_limit_mm, m_axisInfos[axis].positive_limit_mm, gantry_where(axis).c_str());
+		return false;
+	}
 
 	ct::logger::info("Relative mvoe: %.2f, %.2f", m_axisInfos[axis].move_speed.max_velocity, to_pulse(axis, distance));
+	//the card moves relative to its COMMAND counter, so that is where it ends up aiming
+	const auto cmd_mm = get_command_mm(cardID, axis);
+	const double target_mm = (cmd_mm ? *cmd_mm : opt_position_mm.value()) + distance;
+	const std::string from = gantry_where(axis);
 	auto ret = APS_relative_move(axis, to_pulse(axis, distance), m_axisInfos[axis].move_speed.max_velocity);
+	gantrylog::write("REL    %s by %+.4f mm -> %.4f%s | from %s | %s", gantrylog::axisName(axis), distance, target_mm,
+		ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(), from.c_str(), gantry_speed(axis).c_str());
 	if (log_error_code("Failed to move", ret)) return false;
+	gantry_sent(axis, false, target_mm);
 	return true;
 }
 
@@ -780,6 +895,8 @@ bool Motion_APS::stop_move(int axis)
 {
 	if (invalid_axis("Failed to stop", axis)) return false;
 	auto ret = APS_stop_move(axis);
+	gantrylog::write("STOP   %s%s | %s", gantrylog::axisName(axis), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str(),
+		gantry_where(axis).c_str());
 	//auto ret = APS_emg_stop(axis);
 	if (log_error_code("Failed to stop", ret)) return false;
 	return true;
@@ -886,6 +1003,7 @@ bool nvs::motion::Motion_APS::get_soft_limit(int axis, double position_mm, doubl
 bool Motion_APS::load_config(const std::string& path)
 {
 	auto ret = APS_load_param_from_file(path.c_str());
+	gantrylog::write("CONFIG card parameters loaded from %s%s", path.c_str(), ret == ERR_NoError ? "" : (std::string(" - FAILED: ") + get_code(ret)).c_str());
 	if (log_error_code("Failed to load config file", ret)) return false;
 
 	for (I32 i = 0; i < m_totalAxis; i++) {

@@ -415,6 +415,9 @@
     <ClCompile Include="Motion_8134A.cpp">
       <Filter>Source Files\Motion</Filter>
     </ClCompile>
+    <ClCompile Include="GantryLog.cpp">
+      <Filter>Source Files\Motion</Filter>
+    </ClCompile>
     <ClCompile Include="MotionController.cpp">
       <Filter>Source Files\Motion</Filter>
     </ClCompile>
@@ -785,6 +788,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Motion_8134A.h">
+      <Filter>Header Files\Motion</Filter>
+    </ClInclude>
+    <ClInclude Include="GantryLog.h">
       <Filter>Header Files\Motion</Filter>
     </ClInclude>
     <ClInclude Include="MotionController.h">

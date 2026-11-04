@@ -151,6 +151,8 @@ public:
 	std::atomic<bool> _homeOnStartup = true; //auto home the machine after login
 
 	std::atomic<int> _axisMoveSequence = 1; //axisseq::Sequence: how multi-axis moves go out (AxisMoveSequence.h)
+	std::atomic<bool> _encoderGapCorrection = true; //X / Y moves aimed so the ENCODER lands on target (MotionController::aim_for_encoder)
+	std::atomic<double> _encoderGapMaxMm = 0.5;     //...up to this gap; a bigger one is sent uncorrected (system.json, 0.05-5.0)
 
 	//barcode reader production flow (recipe settings + taught camera-to-reader offsets)
 	std::atomic<int> _brFirstReader = 1;        //which reader scans first: 1 or 2

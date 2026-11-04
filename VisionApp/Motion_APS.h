@@ -48,6 +48,19 @@ namespace nvs {
 			std::vector<int> m_cardIDs;
 			std::unordered_map<int, AxisInfo> m_axisInfos;
 
+			//the gantry log (GantryLog.h): a move sent and not yet reported done, per axis
+			struct GantryPending {
+				bool active = false;
+				bool home = false;
+				double target_mm = 0.0;
+				std::chrono::steady_clock::time_point sent{};
+			};
+			std::unordered_map<int, GantryPending> m_gantryPending;
+			mutable std::mutex m_gantryMutex;
+			std::string gantry_where(int axis) const;   //"cmd 370.975 fbk 370.990 mm" (pulses when the scale is unknown)
+			std::string gantry_speed(int axis) const;   //"vmax 50.000 mm/s, acc 500.0, dec 500.0 mm/s2"
+			void gantry_sent(int axis, bool home, double target_mm);
+
 			enum Param {
 				EL_LOGIC, ORG_LOGIC, EL_MODE = 2, ALM_LOGIC = 4, EZ_LOGIC = 6, SPEL_POS = 10, SMEL_POS = 11,
 				HOME_MODE = 16, HOME_DIR = 17, HOME_ACC = 19, HOME_VS = 20, HOME_VM = 21, HOME_EZA = 24,

@@ -75,6 +75,10 @@ public:
     bool home(QString id, int axis);
     bool continuous_move(QString id, int axis, bool positive_direction);
     bool absolute_move(QString id, int axis, double position_mm);
+    //where to SEND an X / Y absolute move so the encoder lands on target_mm: target - (encoder - command)
+    //when the card's count has drifted from its encoder (up to 0.5 mm; Z, or the correction switched
+    //off: target as is). Logged when it corrects. See the .cpp.
+    double aim_for_encoder(QString id, int axis, double target_mm);
     bool absolute_multi_move(QString id, const std::vector<nvs::motion::MoveParam>& moveParams);
     bool relative_move(QString id, int axis, double distance_mm);
     bool stop_move(QString id, int axis);

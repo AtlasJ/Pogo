@@ -18,6 +18,7 @@
 #include "ScaleManager.h"
 #include "CAMManager.h"
 #include "AuditLog.h"
+#include "GantryLog.h"
 #include "Logger.h"
 #include "mtrx.h"
 
@@ -1248,6 +1249,7 @@ void VisionApp::gs2RunTool(int action)
 		: stability ? QStringLiteral("The camera snaps the circle %1 times without moving.\nEverything else is locked until it finishes.").arg(kStabilitySnaps)
 		: QStringLiteral("The camera snaps and moves onto the circle if it needs to.\nEverything else is locked until it finishes."))) return;
 
+	gantrylog::Scope gantryScope(QStringLiteral("GS2 %1").arg(title));
 	const int trolleyEpoch = _zsTrolleyEpoch;
 	QString why, text;
 	Gs2Circle c;
@@ -2368,6 +2370,7 @@ void VisionApp::gs2Teach(int action)
 	}
 	if (!ui.graphicsViewFOV->isVisible()) toggleFOVView();
 	if (!gs2MachineBusy(title, note + QStringLiteral("\nEverything else is locked until it finishes."))) return;
+	gantrylog::Scope gantryScope(QStringLiteral("GS2 %1").arg(title));
 
 	const int trolleyEpoch = _zsTrolleyEpoch;
 	bool ok = false;

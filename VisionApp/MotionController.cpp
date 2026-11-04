@@ -2,11 +2,13 @@
 #include <QDateTime>
 #include "Motion_8134A.h"
 #include "Motion_APS.h"
+#include "GantryLog.h"
 #include "Logger.h"
 #include "QJsonHelper.h"
 #include "SystemData.h"
 
 #include <QJsonObject>
+#include <cmath>
 
 MotionController MotionController::m_instance;
 
@@ -404,28 +406,76 @@ bool MotionController::home(QString id, int axis)
 
 bool MotionController::continuous_move(QString id, int axis, bool positive_direction)
 {
-	if (!m_enableMotion) return false;
+	if (!m_enableMotion) { gantrylog::write("VJOG   %s %s - REFUSED: motion is disabled (home or clear the error)", gantrylog::axisName(axis), positive_direction ? "+" : "-"); return false; }
 	if (!valid(id)) return false;
 	return m_motion[id]->continuous_move(axis, positive_direction);
 }
 
 bool MotionController::absolute_move(QString id, int axis, double position_mm)
 {
-	if (!m_enableMotion) return false;
+	if (!m_enableMotion) { gantrylog::write("ABS    %s -> %.4f - REFUSED: motion is disabled (home or clear the error)", gantrylog::axisName(axis), position_mm); return false; }
 	if (!valid(id)) return false;
 	return m_motion[id]->absolute_move(axis, position_mm);
 }
 
+/*
+* The gantry log of 4 Nov 2026 showed X's encoder moving 0.21 mm while ONLY Y moved, the card still
+* counting X where it had put it (INP on) - so every later X move stopped 0.28 mm short by the encoder,
+* and re-sending the same target never moved it: the card believes it is there. The camera agrees with
+* the encoder (fid0 measured through it stayed put within 0.02 mm), so the encoder is the truth and a
+* move is aimed past by the gap. Its landing is still judged on the encoder by every caller.
+* - X / Y only: aiming past in Z could lower the head, and Z has shown no gap.
+* - Up to system.json "Encoder_Gap_Correction_Max_mm" (default 0.5, kept to 0.05-5.0 on load): a
+*   bigger gap is an axis pushed out of place - sent as is, so its landing fails loudly instead of
+*   the machine quietly steering round it. Home clears the gap.
+* - Over kWarnGapMm it is a warning in the main log every time, so a slipping axis never goes quiet.
+* - system.json "Encoder_Gap_Correction" false turns it off (the motion team, or once X is fixed).
+* The Motion Accuracy Test sends its moves without this - it measures the raw axis.
+*/
+double MotionController::aim_for_encoder(QString id, int axis, double target_mm)
+{
+	constexpr double kMinGapMm = 0.002;  //2 pulses: below that the count and the encoder agree
+	constexpr double kWarnGapMm = 0.05;  //the landing tolerance: a gap past it is worth a warning
+	const double maxGapMm = SystemData::instance()._encoderGapMaxMm.load();
+
+	if (axis != 0 && axis != 1) return target_mm; //HARDCODE: X = 0, Y = 1, as Motion_APS
+	if (!SystemData::instance()._encoderGapCorrection.load()) return target_mm;
+	//moving, the gap is the drive's following lag, not a drift - only a standing axis is corrected
+	if (!move_done(id, 0, axis)) {
+		gantrylog::write("CORR   %s target %.4f: axis still moving - not corrected", gantrylog::axisName(axis), target_mm);
+		return target_mm;
+	}
+	const auto cmd = get_command_mm(id, 0, axis);
+	const auto fbk = get_position_mm(id, 0, axis);
+	if (!cmd || !fbk) return target_mm;
+
+	const double gap = *fbk - *cmd;
+	const char* name = gantrylog::axisName(axis);
+	if (std::abs(gap) < kMinGapMm) return target_mm;
+	if (std::abs(gap) > maxGapMm) {
+		ct::logger::warn("[Motion] %s: the encoder is %+.3f mm from the card's count - more than the %.3f mm corrected (Encoder_Gap_Correction_Max_mm), "
+			"sent uncorrected (the axis was pushed or is slipping - home to clear it)", name, gap, maxGapMm);
+		gantrylog::write("CORR   %s target %.4f: encoder %+.4f from the card's count - OVER %.3f, NOT corrected", name, target_mm, gap, maxGapMm);
+		return target_mm;
+	}
+	const double send = target_mm - gap;
+	if (std::abs(gap) > kWarnGapMm)
+		ct::logger::warn("[Motion] %s: the encoder is %+.3f mm from the card's count (the axis drifted) - aiming at %.3f so %s lands on %.3f",
+			name, gap, send, name, target_mm);
+	gantrylog::write("CORR   %s target %.4f: encoder %+.4f from the card's count - sent %.4f", name, target_mm, gap, send);
+	return send;
+}
+
 bool MotionController::absolute_multi_move(QString id, const std::vector<nvs::motion::MoveParam>& moveParams)
 {
-	if (!m_enableMotion) return false;
+	if (!m_enableMotion) { gantrylog::write("LINEAR %d axes - REFUSED: motion is disabled (home or clear the error)", (int)moveParams.size()); return false; }
 	if (!valid(id)) return false;
 	return m_motion[id]->absolute_multi_move(moveParams);
 }
 
 bool MotionController::relative_move(QString id, int axis, double distance_mm)
 {
-	if (!m_enableMotion) return false;
+	if (!m_enableMotion) { gantrylog::write("REL    %s by %+.4f - REFUSED: motion is disabled (home or clear the error)", gantrylog::axisName(axis), distance_mm); return false; }
 	if (!valid(id)) return false;
 	return m_motion[id]->relative_move(axis, distance_mm);
 }

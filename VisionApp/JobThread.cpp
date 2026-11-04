@@ -4,6 +4,7 @@
 #include "TimeLogger.h"
 #include "ScopedTimeLogger.h"
 #include "Utilities.h"
+#include "GantryLog.h"
 #include "Logger.h"
 #include "OpticsControl.h"
 #include "CommonDir.h"
@@ -7305,6 +7306,9 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 
 	ScopedTimeLogger stl(QString("Jog to: %1, %2, %3").arg(x_mm).arg(y_mm).arg(z_mm).toStdString());
 	MachineController::instance().trackTime(QString("Jog %1").arg(type));
+	gantrylog::Scope gantryScope(QStringLiteral("jog %1").arg(type));
+	gantrylog::write("JOG    to X %.4f Y %.4f Z %.4f (type %s%s%s)", x_mm, y_mm, z_mm, qPrintable(type),
+		type == "3D" ? ", Y not sent" : "", platformDz != 0.0 ? qPrintable(QStringLiteral(", Z includes platform %1").arg(platformDz, 0, 'f', 3)) : "");
 
 	auto axisX = (int)im390::Axis::X;
 	auto axisY = (int)im390::Axis::Y;
@@ -7353,7 +7357,9 @@ void JobThread::jog(double x_mm, double y_mm, double z_mm, QString type, bool wa
 		if (g > 0 && m_stopRun) break;
 		bool refused = false;
 		for (int axis : groups[g]) {
-			if (MotionController::instance().absolute_move(m_motionID, axis, target(axis))) sent.push_back(axis);
+			//X / Y aimed so the encoder lands on target when the card's count has drifted (aim_for_encoder)
+			const double send = MotionController::instance().aim_for_encoder(m_motionID, axis, target(axis));
+			if (MotionController::instance().absolute_move(m_motionID, axis, send)) sent.push_back(axis);
 			else refused = true;
 		}
 		if (refused) {
@@ -7624,6 +7630,7 @@ void JobThread::jogBasedOnFiducial(double x, double y, double z, QString type, b
 
 bool JobThread::jogRelative(int axis, double mm)
 {
+	gantrylog::Scope gantryScope(QStringLiteral("jog relative"));
 	/*
 	* In debug mode the motion gate stays open through an error, so the healthy axes can be
 	* jogged while one drive is alarmed - which is the point. But a jog aimed at the alarmed
@@ -7756,6 +7763,7 @@ void JobThread::jogDown(double mm, const OpticsInfo& optic)
 void JobThread::homeX()
 {
 	m_stopRun = false;
+	gantrylog::Scope gantryScope(QStringLiteral("homeX"));
 
 	if (!MachineController::instance().isServoOn(Axis::X)) {
 		MachineController::instance().notifyError(MachineError::X_SERVO_OFF);
@@ -7776,6 +7784,7 @@ void JobThread::homeX()
 void JobThread::homeY()
 {
 	m_stopRun = false;
+	gantrylog::Scope gantryScope(QStringLiteral("homeY"));
 
 	if (!MachineController::instance().isServoOn(Axis::Y)) {
 		MachineController::instance().notifyError(MachineError::Y_SERVO_OFF);
@@ -7796,6 +7805,7 @@ void JobThread::homeY()
 void JobThread::homeZ()
 {
 	m_stopRun = false;
+	gantrylog::Scope gantryScope(QStringLiteral("homeZ"));
 
 	auto o = MotionController::instance().set_servo(m_motionID, 0, (int)Axis::Z, true);
 
@@ -7828,6 +7838,7 @@ void JobThread::homeZ()
 void JobThread::homeXYZ()
 {
 	m_stopRun = false;
+	gantrylog::Scope gantryScope(QStringLiteral("homeXYZ"));
 
 	auto o = MotionController::instance().set_servo(m_motionID, 0, (int)Axis::Z, true);
 
@@ -7871,6 +7882,7 @@ void JobThread::homeXYZ()
 void JobThread::homeAll()
 {
 	m_stopRun = false;
+	gantrylog::Scope gantryScope(QStringLiteral("homeAll"));
 
 	//an alarmed drive is already an error; raising servo-off on it as well would be noise, and
 	//in debug mode would re-block the home that is about to leave that axis out
@@ -8137,7 +8149,9 @@ void JobThread::unloadBoard()
 * teaches, homes and inspects in, so that is the counter a move must satisfy.
 *
 * This reads that counter directly, gives the drive half a second to close the last fraction,
-* and if the axis is still off re-issues the SAME absolute move - at most twice. Every correction
+* and if the axis is still off re-issues the absolute move - at most twice. Since 4 Nov 2026 X / Y
+* are aimed past by the card's gap to its encoder (MotionController::aim_for_encoder): the same
+* target re-sent never moved an axis whose count had drifted. Every correction
 * is logged with its size on purpose: a machine that keeps needing them has a drive or linear
 * scale problem that belongs with the hardware, and the log is how that gets noticed.
 */
@@ -8165,23 +8179,29 @@ bool JobThread::settleAxis(int axis, double target_mm)
 			if (!readErr(err)) return false; //card not answering: nothing sensible to do here
 			if (std::abs(err) <= kTolMm) {
 				if (attempt > 0) ct::logger::warn("[Motion] Axis %s on target after %d correction(s): %.3f mm", name, attempt, target_mm + err);
+				gantrylog::write("SETTLE %s on target %.4f: at %.4f (%+.4f, limit %.2f) after %d correction(s), %lld ms", name, target_mm, target_mm + err, err,
+					kTolMm, attempt, (long long)t.elapsed());
 				return true;
 			}
 			if (m_stopRun || t.elapsed() >= kSettleMs) break;
 			os_tool::goSleep(20);
 		}
-		if (m_stopRun) return false;
+		if (m_stopRun) { gantrylog::write("SETTLE %s target %.4f: stopped at %+.4f", name, target_mm, err); return false; }
 		if (attempt == kMaxCorrections) break;
 
 		ct::logger::warn("[Motion] Axis %s reported in position but sits %.3f mm from %.3f - re-issuing the move (%d of %d)",
 			name, err, target_mm, attempt + 1, kMaxCorrections);
-		if (!mc.absolute_move(m_motionID, axis, target_mm)) return false;
+		gantrylog::write("SETTLE %s target %.4f: still %+.4f off after %d ms (limit %.2f) - re-issuing (%d of %d)", name, target_mm, err, kSettleMs,
+			kTolMm, attempt + 1, kMaxCorrections);
+		//re-sending the same target never moves an axis whose count has drifted from its encoder: aim past
+		if (!mc.absolute_move(m_motionID, axis, mc.aim_for_encoder(m_motionID, axis, target_mm))) return false;
 		os_tool::doNothing(m_motionReadDelay_ms);
 		waitAxis(axis);
 	}
 
 	ct::logger::error("[Motion] Axis %s still %.3f mm from %.3f after %d corrections - check the drive feedback and the linear scale",
 		name, err, target_mm, kMaxCorrections);
+	gantrylog::write("SETTLE %s target %.4f: GIVEN UP, still %+.4f off after %d corrections", name, target_mm, err, kMaxCorrections);
 	return false;
 }
 
