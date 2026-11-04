@@ -21507,6 +21507,46 @@ Stop SR Management Tool services to free port 21.</string>
                            <widget class="QWidget" name="widget_algoHeight3Page">
                             <layout class="QVBoxLayout" name="verticalLayout_algoH3Page">
                              <item>
+                              <layout class="QHBoxLayout" name="horizontalLayout_algoH3Algo">
+                               <item>
+                                <widget class="QLabel" name="label_algoH3Algo">
+                                 <property name="text">
+                                  <string>Algo:</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <widget class="QComboBox" name="comboBox_algoH3Algo">
+                                 <property name="sizePolicy">
+                                  <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                                   <horstretch>1</horstretch>
+                                   <verstretch>0</verstretch>
+                                  </sizepolicy>
+                                 </property>
+                                 <property name="toolTip">
+                                  <string>The algo this page is tuning. In production each unit runs the algo named after its cable in the PMF, and the default one when there is none.</string>
+                                 </property>
+                                 <property name="sizeAdjustPolicy">
+                                  <enum>QComboBox::AdjustToMinimumContentsLengthWithIcon</enum>
+                                 </property>
+                                 <property name="minimumContentsLength">
+                                  <number>12</number>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <widget class="QToolButton" name="toolButton_algoH3AlgoMenu">
+                                 <property name="text">
+                                  <string>Manage</string>
+                                 </property>
+                                 <property name="popupMode">
+                                  <enum>QToolButton::InstantPopup</enum>
+                                 </property>
+                                </widget>
+                               </item>
+                              </layout>
+                             </item>
+                             <item>
                               <layout class="QHBoxLayout" name="horizontalLayout_algoH3Display">
                                <item>
                                 <widget class="QLabel" name="label_algoH3Display">
@@ -22146,13 +22186,55 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                   </widget>
                                  </item>
                                  <item row="1" column="0">
+                                  <widget class="QLabel" name="label_algoH3SegBandStep">
+                                   <property name="styleSheet">
+                                    <string notr="true">color: #F0F0F0;</string>
+                                   </property>
+                                   <property name="text">
+                                    <string>Plate Step (raw)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="1" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3SegBandStep">
+                                   <property name="toolTip">
+                                    <string>The smallest step in plate height that counts as a boundary between two blocks, in raw grey levels - the same units as the height map.
+
+A gap the sensor sees nothing across - the slot between two blocks, or the space beyond the end of the field - is always a boundary, whatever this is set to. The step only matters where two blocks touch with no gap between them.
+
+It has to clear the tilt ALONG a plate, which on a long block can total as much as the step between two of them. Too high and touching blocks are never separated; too low and the tilt itself gets cut into slivers.
+
+Run once and read the Fail Reason: it says how many boundaries were found.</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="0">
+                                  <widget class="QLabel" name="label_algoH3SegBandMin">
+                                   <property name="styleSheet">
+                                    <string notr="true">color: #F0F0F0;</string>
+                                   </property>
+                                   <property name="text">
+                                    <string>Min Block Height (um)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3SegBandMin">
+                                   <property name="toolTip">
+                                    <string>A band shorter than this is not a block. It stops a sliver between two boundaries that landed close together from being taken for one.
+
+0 = an eighth of the map.</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="0">
                                   <widget class="QLabel" name="label_algoH3SegCanvas">
                                    <property name="text">
                                     <string>Canvas Size (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="1" column="1">
+                                 <item row="3" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegCanvas">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegCanvasWidthUm">
@@ -22189,28 +22271,28 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="2" column="0">
+                                 <item row="4" column="0">
                                   <widget class="QLabel" name="label_algoH3SegCanvasPx">
                                    <property name="text">
                                     <string>Canvas (pixels)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="2" column="1">
+                                 <item row="4" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegCanvasPx">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="0">
+                                 <item row="5" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableWidthCheck">
                                    <property name="text">
                                     <string>Enable Width Check (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="1">
+                                 <item row="5" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegWidth">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinWidthUm">
@@ -22247,14 +22329,14 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="4" column="0">
+                                 <item row="6" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableHeightCheck">
                                    <property name="text">
                                     <string>Enable Height Check (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="1">
+                                 <item row="6" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegHeight">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinHeightUm">
@@ -22291,14 +22373,14 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="5" column="0">
+                                 <item row="7" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3SegEnableAngleCheck">
                                    <property name="text">
                                     <string>Enable Angle Check (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="5" column="1">
+                                 <item row="7" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3SegAngle">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3SegMinAngleDeg">
@@ -22335,91 +22417,91 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="6" column="0">
+                                 <item row="8" column="0">
                                   <widget class="QToolButton" name="toolButton_algoH3SegRun">
                                    <property name="text">
                                     <string>Run Segmentation</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="0">
+                                 <item row="9" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredWidthUm">
                                    <property name="text">
                                     <string>Measured Width (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="1">
+                                 <item row="9" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredWidthUm">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="0">
+                                 <item row="10" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredHeightUm">
                                    <property name="text">
                                     <string>Measured Height (um)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="1">
+                                 <item row="10" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredHeightUm">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="9" column="0">
+                                 <item row="11" column="0">
                                   <widget class="QLabel" name="label_algoH3SegMeasuredAngleDeg">
                                    <property name="text">
                                     <string>Measured Angle (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="9" column="1">
+                                 <item row="11" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegMeasuredAngleDeg">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="10" column="0">
+                                 <item row="12" column="0">
                                   <widget class="QLabel" name="label_algoH3SegResult">
                                    <property name="text">
                                     <string>Result (Pass/Fail)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="10" column="1">
+                                 <item row="12" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegResult">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="11" column="0">
+                                 <item row="13" column="0">
                                   <widget class="QLabel" name="label_algoH3SegFailReason">
                                    <property name="text">
                                     <string>Fail Reason</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="11" column="1">
+                                 <item row="13" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegFailReason">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="12" column="0">
+                                 <item row="14" column="0">
                                   <widget class="QLabel" name="label_algoH3SegTimeMs">
                                    <property name="text">
                                     <string>Time Taken (ms)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="12" column="1">
+                                 <item row="14" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3SegTimeMs">
                                    <property name="readOnly">
                                     <bool>true</bool>
@@ -22551,20 +22633,41 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                   </widget>
                                  </item>
                                  <item row="2" column="0">
+                                  <widget class="QLabel" name="label_algoH3DatumFlatness">
+                                   <property name="styleSheet">
+                                    <string notr="true">color: #F0F0F0;</string>
+                                   </property>
+                                   <property name="text">
+                                    <string>Flatness (um)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="2" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3DatumFlatness">
+                                   <property name="toolTip">
+                                    <string>How much a patch of surface may vary, top to bottom, and still count as flat.
+
+This is only the first sieve - a pin cap is flat too and passes it easily. What separates the datum from the caps is that the plate is the surface everything else stands on, so it is the biggest flat population, and the fit settles on it by repeatedly discarding whatever sits too far off.
+
+That makes the value far less critical than it looks: on a sample part 10 um and 20 um agreed to four decimal places. Raise it if too few flat regions are found.</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="3" column="0">
                                   <widget class="QCheckBox" name="checkBox_algoH3DatumEnableTiltCheck">
                                    <property name="text">
                                     <string>Enable Plane Tilt Check (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="0">
+                                 <item row="4" column="0">
                                   <widget class="QToolButton" name="toolButton_algoH3DatumRun">
                                    <property name="text">
                                     <string>Run Plane Fitting</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="2" column="1">
+                                 <item row="3" column="1">
                                   <layout class="QHBoxLayout" name="horizontalLayout_algoH3DatumTilt">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3DatumMaxTiltDeg">
@@ -22591,35 +22694,35 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="6" column="0">
+                                 <item row="7" column="0">
                                   <widget class="QLabel" name="label_algoH3DatumResult">
                                    <property name="text">
                                     <string>Result (Pass/Fail)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="0">
+                                 <item row="8" column="0">
                                   <widget class="QLabel" name="label_algoH3DatumFailReason">
                                    <property name="text">
                                     <string>Fail Reason</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="0">
+                                 <item row="9" column="0">
                                   <widget class="QLabel" name="label_algoH3DatumTimeMs">
                                    <property name="text">
                                     <string>Time Taken (ms)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="5" column="0">
+                                 <item row="6" column="0">
                                   <widget class="QLabel" name="label_algoH3DatumMeasuredTiltDeg">
                                    <property name="text">
                                     <string>Measured Plane Tilt (deg)</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="4" column="0" colspan="2">
+                                 <item row="5" column="0" colspan="2">
                                   <layout class="QVBoxLayout" name="verticalLayout_algoH3DatumCoeffs">
                                    <item>
                                     <widget class="QLabel" name="label_algoH3DatumCoeffs">
@@ -22676,35 +22779,35 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                    </item>
                                   </layout>
                                  </item>
-                                 <item row="5" column="1">
+                                 <item row="6" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3DatumMeasuredTiltDeg">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="6" column="1">
+                                 <item row="7" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3DatumResult">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="7" column="1">
+                                 <item row="8" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3DatumFailReason">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="8" column="1">
+                                 <item row="9" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3DatumTimeMs">
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="3" column="1">
+                                 <item row="4" column="1">
                                   <widget class="QLabel" name="label_algoH3DatumEquation">
                                    <property name="text">
                                     <string>z = ax + by + c</string>

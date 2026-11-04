@@ -1982,8 +1982,9 @@ void VisionApp::algoH3ShownStage(bool& preprocessed, bool& segmented) const
 // =============================================================================
 
 /*
-* The algo picker, above the sections. In code rather than the .ui for the same reason as the
-* method rows below, and because VisionApp.ui is shared and edited in Designer.
+* The algo picker, above the sections (row horizontalLayout_algoH3Algo in VisionApp.ui; the combo
+* is sized by a fixed count, not by the longest name, which would widen the whole panel). Its list
+* and the Manage menu are filled here.
 *
 * One combo and one menu: the panel is narrow, and five buttons in a row would push it into a
 * horizontal scrollbar. The default is marked in the list itself, so there is nothing else to
@@ -1993,20 +1994,11 @@ void VisionApp::buildAlgoH3AlgoRow()
 {
 	if (_algoH3AlgoCombo) return;
 
-	auto* row = new QHBoxLayout();
-	auto* label = new QLabel(tr("Algo:"), ui.widget_algoHeight3Page);
-
-	_algoH3AlgoCombo = new QComboBox(ui.widget_algoHeight3Page);
-	_algoH3AlgoCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-	//sized by a fixed count, not by the longest name: a long one would widen the whole panel
-	_algoH3AlgoCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-	_algoH3AlgoCombo->setMinimumContentsLength(12);
-	_algoH3AlgoCombo->setToolTip(tr("The algo this page is tuning. In production each unit runs the algo "
-		"named after its cable in the PMF, and the default one when there is none."));
-
-	_algoH3AlgoMenuButton = new QToolButton(ui.widget_algoHeight3Page);
-	_algoH3AlgoMenuButton->setText(tr("Manage"));
-	_algoH3AlgoMenuButton->setPopupMode(QToolButton::InstantPopup);
+	_algoH3AlgoCombo = ui.comboBox_algoH3Algo;
+	_algoH3AlgoMenuButton = ui.toolButton_algoH3AlgoMenu;
+	//initAlgoSetupPage()'s walk (run just before this) wired every combo on the page to "settings
+	//touched"; picking an algo is not a setting of the algo, so this one is taken back out
+	disconnect(_algoH3AlgoCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &VisionApp::algoSettingsTouched);
 	auto* menu = new QMenu(_algoH3AlgoMenuButton);
 	connect(menu->addAction(tr("New (copy of this one)...")), &QAction::triggered, this, [=]() { algoH3NewAlgo(); });
 	connect(menu->addAction(tr("Rename...")), &QAction::triggered, this, [=]() { algoH3RenameAlgo(); });
@@ -2014,11 +2006,6 @@ void VisionApp::buildAlgoH3AlgoRow()
 	menu->addSeparator();
 	connect(menu->addAction(tr("Set as Default")), &QAction::triggered, this, [=]() { algoH3SetDefaultAlgo(); });
 	_algoH3AlgoMenuButton->setMenu(menu);
-
-	row->addWidget(label);
-	row->addWidget(_algoH3AlgoCombo, 1);
-	row->addWidget(_algoH3AlgoMenuButton);
-	ui.verticalLayout_algoH3Page->insertLayout(0, row);
 
 	//activated, not currentIndexChanged: only the operator's own pick switches algo, never a refill
 	connect(_algoH3AlgoCombo, QOverload<int>::of(&QComboBox::activated), this, [=](int index) {
@@ -2216,71 +2203,37 @@ void VisionApp::algoH3SetDefaultAlgo()
 /*
 * The settings that belong to one segmentation method only.
 *
-* Inserted into the form in code rather than placed in the .ui: that form numbers its rows
-* explicitly, so adding a row in the middle there means renumbering every row below it, and a
-* mis-numbered QFormLayout fails quietly by stacking two widgets in the same cell.
-*
-* They go directly under the method combo, so the settings that change with the method sit
-* next to it - above the canvas and the width, height and angle checks, which every method
-* shares.
+* Rows 1-2 of formLayout_algoH3Seg in VisionApp.ui, directly under the method combo, so the
+* settings that change with the method sit next to it - above the canvas and the width, height
+* and angle checks, which every method shares. Their limits are set here, like the page's other
+* spin boxes (configureAlgoH3Ranges): Designer's defaults would clamp the values.
 */
 void VisionApp::buildAlgoH3SegMethodRows()
 {
-	auto* form = ui.formLayout_algoH3Seg;
-	if (!form || _algoH3SegBandStep) return;
+	if (_algoH3SegBandStep) return;
+	_algoH3SegBandStepLabel = ui.label_algoH3SegBandStep;
+	_algoH3SegBandStep = ui.doubleSpinBox_algoH3SegBandStep;
+	_algoH3SegBandMinLabel = ui.label_algoH3SegBandMin;
+	_algoH3SegBandMin = ui.doubleSpinBox_algoH3SegBandMin;
 
-	const QString kWhite = QStringLiteral("color: #F0F0F0;");
-
-	_algoH3SegBandStepLabel = new QLabel(tr("Plate Step (raw)"), ui.widget_algoHeight3Page);
-	_algoH3SegBandStepLabel->setStyleSheet(kWhite);
-	_algoH3SegBandStep = new QDoubleSpinBox(ui.widget_algoHeight3Page);
+	//blocked, as in configureAlgoH3Ranges: the walk has wired these to the auto-save already, and a
+	//default set here must not count as an edit
+	QSignalBlocker bStep(_algoH3SegBandStep), bMin(_algoH3SegBandMin);
 	_algoH3SegBandStep->setRange(1.0, 60000.0);
 	_algoH3SegBandStep->setDecimals(0);
 	_algoH3SegBandStep->setSingleStep(25.0);
 	_algoH3SegBandStep->setValue(250.0);
-	_algoH3SegBandStep->setToolTip(tr(
-		"The smallest step in plate height that counts as a boundary between two blocks, in raw "
-		"grey levels - the same units as the height map.\n\n"
-		"A gap the sensor sees nothing across - the slot between two blocks, or the space beyond "
-		"the end of the field - is always a boundary, whatever this is set to. The step only "
-		"matters where two blocks touch with no gap between them.\n\n"
-		"It has to clear the tilt ALONG a plate, which on a long block can total as much as the "
-		"step between two of them. Too high and touching blocks are never separated; too low and "
-		"the tilt itself gets cut into slivers.\n\n"
-		"Run once and read the Fail Reason: it says how many boundaries were found."));
 
-	_algoH3SegBandMinLabel = new QLabel(tr("Min Block Height (um)"), ui.widget_algoHeight3Page);
-	_algoH3SegBandMinLabel->setStyleSheet(kWhite);
-	_algoH3SegBandMin = new QDoubleSpinBox(ui.widget_algoHeight3Page);
 	_algoH3SegBandMin->setRange(0.0, 1000000.0);
 	_algoH3SegBandMin->setDecimals(1);
 	_algoH3SegBandMin->setSingleStep(100.0);
 	_algoH3SegBandMin->setValue(0.0);
-	_algoH3SegBandMin->setToolTip(tr(
-		"A band shorter than this is not a block. It stops a sliver between two boundaries that "
-		"landed close together from being taken for one.\n\n"
-		"0 = an eighth of the map."));
 
-	//row 0 is the method combo, so 1 puts these directly under it (Step first, then Min)
-	form->insertRow(1, _algoH3SegBandMinLabel, _algoH3SegBandMin);
-	form->insertRow(1, _algoH3SegBandStepLabel, _algoH3SegBandStep);
-
-	/*
-	* Both hooks, and the auto-save one is not optional.
-	*
-	* initAlgoSetupPage() wires every spin box, combo and checkbox on the algo page to
-	* algoSettingsTouched() by walking its children - but it does that walk BEFORE this
-	* function runs, so a widget built here is never found by it. Left to the walk, these two
-	* would save only when some OTHER control on the page happened to be nudged, which is a
-	* worse failure than not saving at all: the setting survives or vanishes depending on what
-	* else was touched afterwards.
-	*/
-	auto edited = [=](double) {
-		captureAlgoH3ParamsFromUI();   //live immediately, for a Run before the debounce fires
-		algoSettingsTouched();         //and into the recipe 600 ms later
-	};
-	connect(_algoH3SegBandStep, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, edited);
-	connect(_algoH3SegBandMin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, edited);
+	//initAlgoSetupPage()'s walk already sends these to algoSettingsTouched (the recipe, 600 ms
+	//later); this makes the value live at once, for a Run before the debounce fires
+	auto live = [=](double) { captureAlgoH3ParamsFromUI(); };
+	connect(_algoH3SegBandStep, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, live);
+	connect(_algoH3SegBandMin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, live);
 }
 
 /*
@@ -2310,38 +2263,26 @@ void VisionApp::updateAlgoH3SegMethodUi()
 }
 
 /*
-* The datum settings that belong to one method only - built in code for the same reason the
-* segmentation ones are: formLayout_algoH3Datum numbers its rows explicitly, and inserting one
-* in the middle of the .ui means renumbering every row below it.
+* The datum setting that belongs to one method only: row 2 of formLayout_algoH3Datum in
+* VisionApp.ui, straight under the method combo. Limits set here, as for the segmentation rows.
 */
 void VisionApp::buildAlgoH3DatumMethodRows()
 {
-	auto* form = ui.formLayout_algoH3Datum;
-	if (!form || _algoH3DatumFlatness) return;
+	if (_algoH3DatumFlatness) return;
+	_algoH3DatumFlatnessLabel = ui.label_algoH3DatumFlatness;
+	_algoH3DatumFlatness = ui.doubleSpinBox_algoH3DatumFlatness;
 
-	_algoH3DatumFlatnessLabel = new QLabel(tr("Flatness (um)"), ui.widget_algoHeight3Page);
-	_algoH3DatumFlatnessLabel->setStyleSheet(QStringLiteral("color: #F0F0F0;"));
-	_algoH3DatumFlatness = new QDoubleSpinBox(ui.widget_algoHeight3Page);
-	_algoH3DatumFlatness->setRange(0.1, 10000.0);
-	_algoH3DatumFlatness->setDecimals(1);
-	_algoH3DatumFlatness->setSingleStep(1.0);
-	_algoH3DatumFlatness->setValue(15.0);
-	_algoH3DatumFlatness->setToolTip(tr(
-		"How much a patch of surface may vary, top to bottom, and still count as flat.\n\n"
-		"This is only the first sieve - a pin cap is flat too and passes it easily. What separates "
-		"the datum from the caps is that the plate is the surface everything else stands on, so it "
-		"is the biggest flat population, and the fit settles on it by repeatedly discarding whatever "
-		"sits too far off.\n\n"
-		"That makes the value far less critical than it looks: on a sample part 10 um and 20 um "
-		"agreed to four decimal places. Raise it if too few flat regions are found."));
+	{
+		QSignalBlocker b(_algoH3DatumFlatness);   //a default is not an edit (the walk wired the auto-save)
+		_algoH3DatumFlatness->setRange(0.1, 10000.0);
+		_algoH3DatumFlatness->setDecimals(1);
+		_algoH3DatumFlatness->setSingleStep(1.0);
+		_algoH3DatumFlatness->setValue(15.0);
+	}
 
-	//row 1 is the method combo, so 2 puts this straight under it
-	form->insertRow(2, _algoH3DatumFlatnessLabel, _algoH3DatumFlatness);
-
-	//both hooks: initAlgoSetupPage wires the page's widgets to the auto-save by walking its
-	//children, and that walk has already run by the time this builds them
+	//the walk already sends it to algoSettingsTouched; this makes it live at once
 	connect(_algoH3DatumFlatness, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-		[=](double) { captureAlgoH3ParamsFromUI(); algoSettingsTouched(); });
+		[=](double) { captureAlgoH3ParamsFromUI(); });
 }
 
 /*
