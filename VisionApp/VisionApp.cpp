@@ -1285,6 +1285,20 @@ void VisionApp::connectSignalAndSlot()
 		//ui.toolButton_toggleMotionControl->setChecked(false);
 	});
 
+	/*
+	* Home All beside the Motion Control button (VisionApp.ui), so homing does not need a trip to the
+	* Motion page. It clicks that page's own Home All, so it does exactly what that button does (log,
+	* audit, homeAll) and nothing while that button cannot be pressed.
+	*/
+	connect(ui.toolButton_homeAllShortcut, &QToolButton::clicked, this, [=]() {
+		if (!ui.toolButton_homeAll->isEnabled()) {
+			ct::logger::warn("[Motion] Top bar Home All: the Motion page's Home All is disabled now - nothing done");
+			return;
+		}
+		ct::logger::info("[Motion] Top bar Home All -> Motion page Home All");
+		ui.toolButton_homeAll->click();
+	});
+
 	//CLEANUP:
 	connect(_motionControl, &Motion::jogBack, this, [=]() { if (!blockJogSignal()) return; emit jogBack(_jogDistance, _mainOptics[_camID]); });
 	connect(_motionControl, &Motion::jogBottom, this, [=]() { if (!blockJogSignal()) return; emit jogDown(_jogDistance, _mainOptics[_camID]); });
@@ -5111,6 +5125,7 @@ void VisionApp::setUserEnvironment(AccessLevel accessLevel)
 
 	// top tool bar
 	ui.toolButton_toggleMotionControl->setVisible(mainUIVisibility);
+	ui.toolButton_homeAllShortcut->setVisible(mainUIVisibility);
 	ui.toolButton_stopRun->setVisible(mainUIVisibility);
 	ui.toolButton_runOffline->setVisible(mainUIVisibility);
 	ui.toolButtonLiveMode->setVisible(mainUIVisibility);
@@ -16189,6 +16204,7 @@ void VisionApp::enableUIControl(const bool& flag)
 	ui.toolButton_connectServer->setEnabled(flag);
 
 	ui.toolButton_toggleMotionControl->setEnabled(flag);
+	ui.toolButton_homeAllShortcut->setEnabled(flag);   //no homing from the top bar during an auto run
 
 	_isAutoMode = !flag;
 

@@ -1026,7 +1026,7 @@ color: rgb(255,255,255);
              <item row="0" column="10">
               <widget class="QComboBox" name="comboBox_ImageOptics"/>
              </item>
-             <item row="0" column="18">
+             <item row="0" column="19">
               <layout class="QGridLayout" name="gridLayout_128">
                <item row="0" column="1">
                 <widget class="QLabel" name="label_171">
@@ -1165,7 +1165,7 @@ color: rgb(255,255,255);
                </property>
               </spacer>
              </item>
-             <item row="0" column="20">
+             <item row="0" column="21">
               <widget class="QLabel" name="label_verificationLoc">
                <property name="font">
                 <font>
@@ -1216,7 +1216,27 @@ color: rgb(255,255,255);
                </property>
               </widget>
              </item>
-             <item row="0" column="19">
+             <item row="0" column="17">
+              <widget class="QToolButton" name="toolButton_homeAllShortcut">
+               <property name="toolTip">
+                <string>Home all axes - the same as Home All on the Motion page</string>
+               </property>
+               <property name="text">
+                <string>Home All</string>
+               </property>
+               <property name="icon">
+                <iconset resource="VisionApp.qrc">
+                 <normaloff>:/24x24/Icon/24x24/cil-home.png</normaloff>:/24x24/Icon/24x24/cil-home.png</iconset>
+               </property>
+               <property name="iconSize">
+                <size>
+                 <width>30</width>
+                 <height>30</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="20">
               <spacer name="horizontalSpacer_18">
                <property name="orientation">
                 <enum>Qt::Horizontal</enum>
@@ -1254,7 +1274,7 @@ color: rgb(255,255,255);
                </property>
               </widget>
              </item>
-             <item row="0" column="17">
+             <item row="0" column="18">
               <spacer name="horizontalSpacer_5">
                <property name="orientation">
                 <enum>Qt::Horizontal</enum>
@@ -1313,7 +1333,7 @@ color: rgb(255,255,255);
                </property>
               </widget>
              </item>
-             <item row="0" column="21">
+             <item row="0" column="22">
               <widget class="QToolButton" name="toolButton_verificationCenterStatus">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
@@ -1332,7 +1352,7 @@ color: rgb(255,255,255);
                </property>
               </widget>
              </item>
-             <item row="0" column="22">
+             <item row="0" column="23">
               <widget class="QToolButton" name="toolButton_connectServer">
                <property name="toolTip">
                 <string>Server Status</string>
