@@ -38,7 +38,9 @@
 
 namespace {
 	constexpr int kSnapTimeoutMs = 4000;
-	constexpr double kCentreTolMm = 0.1;     //Centre on circle: done once the circle is this close to the image centre
+	//Centre on circle: done once the circle is this close to the image centre. 0.3 (was 0.1, 4 Nov 2026) so a
+	//move landing up to kOnTargetXYGs2Mm off still counts; the lens is good to ~0.01 mm that near the centre
+	constexpr double kCentreTolMm = 0.3;
 	constexpr int kCentreMoves = 3;          //a move lands within 0.05 mm, so one is normally enough
 	//direction check: +/- this on each axis, about 180 px at 27 um/px. Not more: the trolley's circles
 	//sit ~12.7 mm apart, and at the diagonal corners of a bigger grid a neighbour is nearer the image
@@ -249,6 +251,7 @@ void VisionApp::initGuidedSetup2()
 		_gs2View->setSetup(_gs2Page->setup());
 	});
 	connect(_gs2Page, &GuidedSetup2Page::showLayoutToggled, this, [=](bool on) { gs2ShowLayout(on); });
+	connect(_gs2Page, &GuidedSetup2Page::clearRenderRequested, this, [=]() { clearFovRenders(); });
 	connect(_gs2Page, &GuidedSetup2Page::toolRequested, this, [=](int action) { gs2RunTool(action); });
 	connect(_gs2Page, &GuidedSetup2Page::conversionChosen, this, [=](bool measured) { gs2ChooseConversion(measured); });
 	connect(_gs2Page, &GuidedSetup2Page::teachRequested, this, [=](int action) { gs2Teach(action); });
@@ -1708,9 +1711,11 @@ bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& wh
 		why = QStringLiteral("fid0's 2D Z %1 is outside Start Z .. Stop Z - run Find in section B again").arg(mm(_gs2Session.z2D));
 		return false;
 	}
-	//down to the 2D Z at fid0 only, where the Find swept; every move after that is sideways at that Z
+	//to fid0 at the 2D Z (or higher), the height every corner move below slides at: up to it first only if
+	//lower, never back to Start Z - Locate arrives from C already at the 2D Z, and the 107 mm round trip
+	//cost 4.5 s and moved X +0.45 mm (gantry log 2026-11-04 12:44). Down to the 2D Z at fid0 if higher.
 	setProgress(_zsBusyWindow, QStringLiteral("To fid0 at the 2D Z..."));
-	if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, s.fid0.startZ, why)) return false;
+	if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, _gs2Session.z2D, why)) return false;
 	if (!zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why)) return false;
 	Gs2Circle f;
 	if (!gs2RelocateFid0(s, f, why)) return false;
@@ -1794,7 +1799,18 @@ void VisionApp::gs2Teach(int action)
 	//to the millisecond: two Learns or Snaps in one second must never share (and later delete) a file
 	const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
 
-	//── no motion: Set Start / Stop Z, Learn pattern
+	//── no motion: Set XY, Set Start / Stop Z, Learn pattern
+	if (action == P::TeachSetXY) {
+		auto& mc = MotionController::instance();
+		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
+		const auto y = mc.get_position_mm(_motionID, 0, (int)Axis::Y);
+		if (!x || !y) { _gs2Page->showFid0Result(QStringLiteral("Could not read the X / Y position - is motion connected?"), false); return; }
+		_gs2Page->modify([&](gs2::Setup& w) { w.fid0.xy = { true, *x, *y }; });
+		_gs2Page->showFid0Result(QStringLiteral("Search XY set to the camera position X %1, Y %2 (no move, no circle find). Run Find to prove it.")
+			.arg(mm(*x), mm(*y)), false);
+		AuditLog::instance().log(QStringLiteral("GS2_FID0_XY"), QStringLiteral("%1, %2 (set)").arg(mm(*x), mm(*y)));
+		return;
+	}
 	if (action == P::TeachSetStart || action == P::TeachSetStop) {
 		const auto z = MotionController::instance().get_position_mm(_motionID, 0, (int)Axis::Z);
 		if (!z) { _gs2Page->showFid0Result(QStringLiteral("Could not read the Z position - is motion connected?"), false); return; }
@@ -2267,11 +2283,25 @@ void VisionApp::gs2Teach(int action)
 		QString w;
 		if (!gs2SessionRect(s, dir, w)) { say(w); return; }
 		const QStringList only = _gs2Page->selectedSlotIds();
-		const QVector<gs2::RunPoint> all = gs2::runPoints(s, framePose(), only);
+		QVector<gs2::RunPoint> all = gs2::runPoints(s, framePose(), only);
+		//a unit clicked in the layout narrows it to that unit - only while its slot is the one slot selected
+		//(a Ctrl+click adding slots means the slots), so what runs is what the layout shows selected
+		const QString unitId = _gs2View ? _gs2View->selectedUnit() : QString();
+		int unitIdx = -1;
+		for (int i = 0; i < s.units.size(); i++)
+			if (!unitId.isEmpty() && s.units[i].id == unitId && (only.isEmpty() || (only.size() == 1 && only.first() == s.units[i].slotId))) unitIdx = i;
+		if (unitIdx >= 0) {
+			QVector<gs2::RunPoint> one;
+			for (const auto& p : all) if (p.unit == unitIdx) one << p;
+			all = one;
+		}
 		if (what != P::Move3D) for (const auto& p : all) if (p.type != gs2::Insp3D) visit << p;
 		if (what != P::Move2D) for (const auto& p : all) if (p.type == gs2::Insp3D) visit << p;
+		const QString picked = unitIdx >= 0 ? QStringLiteral(" (the selected unit %1)").arg(s.units[unitIdx].name)
+			: only.isEmpty() ? QString() : QStringLiteral(" (the selected slots)");
 		if (visit.isEmpty()) {
-			say(QStringLiteral("no such point is switched on in H%1").arg(only.isEmpty() ? QString() : QStringLiteral(" for the units of the selected slots")));
+			say(QStringLiteral("no such point is switched on in H%1").arg(unitIdx >= 0 ? QStringLiteral(" for the selected unit")
+				: only.isEmpty() ? QString() : QStringLiteral(" for the units of the selected slots")));
 			return;
 		}
 		const bool any3D = visit.last().type == gs2::Insp3D;
@@ -2287,8 +2317,7 @@ void VisionApp::gs2Teach(int action)
 		QSet<int> units;
 		for (const auto& p : visit) units.insert(p.unit);
 		title = name;
-		const QString scope = QStringLiteral("%1 points of %2 units%3 in run order").arg(visit.size()).arg(units.size())
-			.arg(only.isEmpty() ? QString() : QStringLiteral(" (the selected slots)"));
+		const QString scope = QStringLiteral("%1 points of %2 unit(s)%3 in run order").arg(visit.size()).arg(units.size()).arg(picked);
 		note = capture
 			? QStringLiteral("%1, with production's own code: a 2D snap saved as <unit>_2D, the barcode readers + OCR, the 3D scans - into a new "
 				"production folder, inspected as in production.").arg(scope)

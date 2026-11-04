@@ -53,6 +53,7 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 		ui.toolButton_showLayout->setText(on ? QStringLiteral("Show camera") : QStringLiteral("Show layout"));
 		emit showLayoutToggled(on);
 	});
+	connect(ui.toolButton_clearRender, &QToolButton::clicked, this, [=]() { emit clearRenderRequested(); });
 	connect(ui.toolButton_save, &QToolButton::clicked, this, [=]() { save(); });
 	connect(ui.toolButton_discard, &QToolButton::clicked, this, [=]() { discard(); });
 	connect(ui.toolButton_gNameAll, &QToolButton::clicked, this, [=]() {
@@ -89,6 +90,7 @@ GuidedSetup2Page::GuidedSetup2Page(QWidget* parent)
 		refreshStatus();
 		emit setupChanged();
 	});
+	connect(ui.toolButton_bSetXY, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSetXY); });
 	connect(ui.toolButton_bTeachXY, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachXY); });
 	connect(ui.toolButton_bJogXY, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachJogXY); });
 	connect(ui.toolButton_bSetStart, &QToolButton::clicked, this, [=]() { emit teachRequested(TeachSetStart); });
@@ -382,7 +384,7 @@ void GuidedSetup2Page::setMachineBusy(bool busy)
 	ui.comboBox_tConversion->setEnabled(!busy);
 	ui.toolButton_tSaveMeasured->setEnabled(!busy && _canSaveMeasured);
 	ui.toolButton_tStability->setEnabled(!busy);
-	for (auto* b : { ui.toolButton_aSnapEmpty, ui.toolButton_aScore, ui.toolButton_aDelete, ui.toolButton_bTeachXY, ui.toolButton_bJogXY,
+	for (auto* b : { ui.toolButton_aSnapEmpty, ui.toolButton_aScore, ui.toolButton_aDelete, ui.toolButton_bSetXY, ui.toolButton_bTeachXY, ui.toolButton_bJogXY,
 		ui.toolButton_bSetStart, ui.toolButton_bSetStop, ui.toolButton_bLearn, ui.toolButton_bFind,
 		ui.toolButton_cSetSpot, ui.toolButton_cFind, ui.toolButton_cSetDiff,
 		ui.toolButton_dTeachTL, ui.toolButton_dTeachTR, ui.toolButton_dTeachBR, ui.toolButton_dTeachBL, ui.toolButton_dCheck,

@@ -833,7 +833,7 @@ private:
 	ZFound _zFound;                         //this table, this session - never saved
 	ZSearchWidgets _zsw;
 	bool _zsBusy = false;                   //a search is moving the machine
-	bool _zsLooseXYLanding = false;         //a Guided Setup (new) action: X / Y may land within 0.1 mm (it reads where they stopped)
+	bool _zsLooseXYLanding = false;         //a Guided Setup (new) action: X / Y may land within 0.3 mm (it reads where they stopped)
 	int _zsTrolleyEpoch = 0;                //bumped on every trolley guard edge; a search that saw it change discards its result
 	bool _motionTestRunning = false;        //the Motion Accuracy Test holds the job thread (up to ~55 min)
 	QPointer<QDialog> _motionTestDialog;    //modal "test running" window over the whole run; closed by motionAccuracyTestDone
@@ -1670,6 +1670,7 @@ public slots:
 	QCrossItem* drawCross(QMainGraphicsScene* scene, QString mapKey, const QRectF& rect, const QColor& color = QColor(0, 255, 127));
 	void clearRenderMap(QString mapKey);
 	void clearAllRenderMaps();
+	void clearFovRenders();   //only the camera scene's render items (Guided Setup's Clear render)
 	
 	void dragBoxCreatedEvent(QRectF rect);
 	void dragBoxMouseReleasedEvent(QDragBox* pDragBox, QString name, QPointF pos);

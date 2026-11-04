@@ -204,6 +204,31 @@ void VisionApp::clearRenderMap(QString mapKey)
 	_renderedMaps.remove(mapKey);
 }
 
+/*
+* Guided Setup's Clear render: everything the render helpers drew on the CAMERA scene (live circle
+* finder, locator, camera align / scaling, portability, intensity grid) - tracked here, so nothing is
+* left pointing at a deleted item. The image, the pattern box and ROI boxes are not render items.
+*/
+void VisionApp::clearFovRenders()
+{
+	int removed = 0;
+	for (auto it = _renderedMaps.begin(); it != _renderedMaps.end();) {
+		auto& renders = it.value();
+		for (int i = renders.count() - 1; i >= 0; i--) {
+			if (renders[i].scene != _pGraphicsSceneFOV) continue;
+			if (renders[i].item != nullptr) {
+				renders[i].scene->removeItem(renders[i].item);
+				delete renders[i].item;
+				removed++;
+			}
+			renders.removeAt(i);
+		}
+		if (renders.isEmpty()) it = _renderedMaps.erase(it);
+		else ++it;
+	}
+	ct::logger::info("[Render] Clear render: %d drawing(s) removed from the camera image", removed);
+}
+
 void VisionApp::clearAllRenderMaps()
 {
 	for (auto& renders : _renderedMaps) {

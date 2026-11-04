@@ -54,7 +54,8 @@ public:
 		TeachSlotTL, TeachSlotBR, TeachSlotAdd, TeachSlotInterpolate,          //sections E and F (build step 4)
 		TeachInsp2D, TeachInspBarcodeOcr, TeachInsp3D,                         //section H's Set, in gs2::InspType order
 		TeachMoveOnly, TeachGoTo,                                              //section I's tests (build step 4b)
-		TeachSnapScan };                                                       //...and production's capture (build step 5)
+		TeachSnapScan,                                                         //...and production's capture (build step 5)
+		TeachSetXY };                                                          //B's Set XY: the camera XY as it stands, no move
 	//I's choices: Move only's points (0 = 2D, 1 = 3D, 2 = 2D + 3D); Go to's position (gs2GoPos order) and tool
 	enum MoveWhat { Move2D = 0, Move3D, MoveBoth };
 	enum GoPos { GoCentre = 0, GoTopLeft, GoTop, GoTopRight, GoLeft, GoRight, GoBottomLeft, GoBottom, GoBottomRight,
@@ -91,6 +92,7 @@ public:
 signals:
 	void setupChanged();                 //the working copy changed (edit, Save, Discard or load)
 	void showLayoutToggled(bool shown);
+	void clearRenderRequested();         //erase what is drawn on the camera image
 	void toolRequested(int action);      //a ToolAction
 	void conversionChosen(bool measured); //the operator picked Set or Measured
 	void teachRequested(int action);     //a TeachAction

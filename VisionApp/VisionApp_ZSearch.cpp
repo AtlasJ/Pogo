@@ -87,7 +87,8 @@ namespace {
 	//Guided Setup (new) accepts X / Y this far off once the settle is over: it reads where the camera
 	//really stopped before it measures anything, and on 3 Nov 2026 the IPC's X parked 0.063-0.064 mm off
 	//where re-issuing never moved it - a failed Teach or Find for nothing. Still warned in the log.
-	constexpr double kOnTargetXYGs2Mm = 0.1;
+	//0.1 -> 0.3 on 4 Nov 2026: X parked 0.116-0.155 mm off and every Teach XY / Find failed (Jimmy's call)
+	constexpr double kOnTargetXYGs2Mm = 0.3;
 	constexpr int kMaxCorrections = 2;
 
 	constexpr double kMinCoarseStepMm = 0.1;
