@@ -178,6 +178,9 @@ struct Setup {
 	QString scanAxis = QStringLiteral("X");   //3D scan direction for the whole recipe
 	bool scanNegative = false;
 	int nextSlotId = 1, nextUnitId = 1;       //ids are handed out once and never reused
+	//every production START of this recipe runs this setup (build step 5b) instead of the old teach; START
+	//refuses while the saved setup is not complete. Not a taught value: no Find or Check depends on it
+	bool startUsesSetup = false;
 };
 //the fid0 settings a Find proves - section B and how the fid0 circle is found; when any of them
 //changes the last Find no longer counts

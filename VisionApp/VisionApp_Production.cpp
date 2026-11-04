@@ -23,9 +23,18 @@ void VisionApp::initProductionUI() {
 	//a unit produces no result, so this is the reliable closer)
 	auto* inspDrainTimer = new QTimer(this);
 	connect(inspDrainTimer, &QTimer::timeout, this, [=]() {
+		//a Guided Setup (new) START run still moving is not drained, whichever run's tick this is (a Stop does not stop
+		//this timer, so a stopped run's tick can come after the next START): its own acquisitionDone restarts it
+		if (_gs2Run.fromStart && _gs2Run.acquiring) return;
 		if (InspectionThread::instance().isIdle() && !AlgoManager::instance().isBusy()) {
 			inspDrainTimer->stop();
 			progressBarRelease();
+			//a Guided Setup (new) START run is over with its last result: its run time stops here, and with it the
+			//"run in progress" refusal of the setup pages (zsRefuseIfBusy)
+			if (_gs2Run.fromStart) {
+				vs_stopElapseTimer();
+				_gs2Run.fromStart = _gs2Run.acquiring = false;   //over: later runs (an offline Test Run) count their own progress
+			}
 		}
 	});
 	connect(&_jobThread, &JobThread::acquisitionDone, this, [=]() {
@@ -38,7 +47,7 @@ void VisionApp::initProductionUI() {
 			MotionController::instance().set_DO(_motionID, 0, (int)DOA::TROLLEY_LOCK_RELEASE, false);
 			ct::logger::info("[Production] Run ended - trolley lock released (auto)");
 		}
-		if (_processType == ProcessType::PRODUCTION && SystemData::instance()._setupRegionPitchMode) {
+		if (_processType == ProcessType::PRODUCTION && (SystemData::instance()._setupRegionPitchMode || _gs2Run.fromStart)) {
 			inspDrainTimer->start(500);
 		}
 	}, Qt::QueuedConnection);
@@ -250,8 +259,8 @@ void VisionApp::initProductionUI() {
 
 	connect(&InspectionThread::instance(), &InspectionThread::inspectionResult, this,
 		[=](QString unitID, QString algo, bool pass, QString detail) {
-			//pitch mode: each finished algo is a progress step
-			if (SystemData::instance()._setupRegionPitchMode) incrementProgressBar();
+			//pitch mode and a Guided Setup (new) START: each finished algo is a progress step
+			if (SystemData::instance()._setupRegionPitchMode || _gs2Run.fromStart) incrementProgressBar();
 
 			auto* t = ui.tableWidget_prodStatus;
 			if (t->rowCount() == 0) return;
@@ -612,6 +621,10 @@ void VisionApp::startProduction()
 	//a PMF and the template mapping it is laid out on (skipped in debug mode)
 	if (!liveMappingReadyForProduction()) return;
 
+	//Guided Setup (new), build step 5b: a recipe whose saved setup says "START uses this setup" runs that instead -
+	//its own steps (Safety check 1, fid0, 3D Z, the corners) replace the safety check and the pitch teach check below
+	if (gs2TakeStart()) return;
+
 	/*
 	* Last gate before anything moves for real: jog to the taught position, look for the feature,
 	* and refuse the run if it is not there. Placed after the machine-state and selector checks so
@@ -658,6 +671,16 @@ void VisionApp::startProduction()
 	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
 	setupProductionDir();
 
+	triggerExternalBarcodeReaders();
+
+	SystemData::instance()._offlineRun = false;
+	emit signalLoadToPosition(0);
+
+	vs_startElapseTimer();
+}
+
+void VisionApp::triggerExternalBarcodeReaders()
+{
 	if (_enableBarcode)
 	{
 		bool needExternal = false;
@@ -686,11 +709,6 @@ void VisionApp::startProduction()
 			ct::logger::info("[Barcode] Production start: no slot set to External, readers not triggered");
 		}
 	}
-
-	SystemData::instance()._offlineRun = false;
-	emit signalLoadToPosition(0);
-
-	vs_startElapseTimer();
 }
 
 /*
@@ -702,6 +720,7 @@ void VisionApp::startProduction()
 */
 void VisionApp::gs2PrepareProductionRun()
 {
+	_gs2Run = Gs2RunFlags();   //the caller says what this run takes
 	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe + QStringLiteral(" (Guided Setup new)"));
 	ui.lineEdit_inspectionTimeMain->clear();
 	_processType = ProcessType::PRODUCTION;
@@ -715,6 +734,7 @@ void VisionApp::gs2PrepareProductionRun()
 	_currentProductionID = uidGen.id().c_str();
 	setupProductionDir();
 	SystemData::instance()._platformZOffset = 0.0;
+	showPlatformZCompensation();
 	SystemData::instance()._offlineRun = false;
 }
 
@@ -738,6 +758,9 @@ void VisionApp::startProductionS()
 
 	//a PMF and the template mapping it is laid out on (skipped in debug mode)
 	if (!liveMappingReadyForProduction()) return;
+
+	//Guided Setup (new), build step 5b - as startProduction
+	if (gs2TakeStart()) return;
 
 	/*
 	* Last gate before anything moves for real: jog to the taught position, look for the feature,

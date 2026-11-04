@@ -547,6 +547,7 @@ void GuidedSetup2Page::fillWidgets()
 	ui.dspin_h3DLen->setValue(s.insp[gs2::Insp3D].scanLengthMm);
 	ui.checkBox_hAddLaser->setChecked(s.insp[gs2::Insp3D].addLaserOffset);
 	ui.comboBox_hScanDir->setCurrentIndex((s.scanAxis == QLatin1String("Y") ? 2 : 0) + (s.scanNegative ? 1 : 0));
+	ui.checkBox_startUses->setChecked(s.startUsesSetup);
 	_filling = false;
 	refreshStatus();
 }
@@ -607,6 +608,7 @@ void GuidedSetup2Page::edited()
 	const int dir = ui.comboBox_hScanDir->currentIndex();
 	s.scanAxis = dir >= 2 ? QStringLiteral("Y") : QStringLiteral("X");
 	s.scanNegative = (dir % 2) == 1;
+	s.startUsesSetup = ui.checkBox_startUses->isChecked();
 
 	//a new Ref keeps the point where it is: the offset becomes the one from the new reference
 	bool refChanged = false;
@@ -806,8 +808,11 @@ void GuidedSetup2Page::refreshStatus()
 		ui.label_saveState->setStyleSheet(kTodoColour);
 	}
 	else {
+		//what a production START does with the saved setup
+		const QString start = !_saved.startUsesSetup ? QStringLiteral("; START runs the old teach")
+			: gs2::isComplete(_saved) ? QStringLiteral("; START runs this setup") : QStringLiteral("; START is refused until it is complete");
 		ui.label_saveState->setText(_loadResult == gs2::LoadResult::Loaded
-			? (gs2::isComplete(_saved) ? QStringLiteral("Saved - complete") : QStringLiteral("Saved - not complete yet"))
+			? (gs2::isComplete(_saved) ? QStringLiteral("Saved - complete") : QStringLiteral("Saved - not complete yet")) + start
 			: QStringLiteral("Nothing saved yet"));
 		ui.label_saveState->setStyleSheet(QStringLiteral("color:#A8B0BF;"));
 	}

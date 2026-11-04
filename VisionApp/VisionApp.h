@@ -773,6 +773,22 @@ private:
 	//build step 4b: every place production drives the camera, a barcode reader or the laser to for these points
 	//(START step 5, and before the visits) inside the soft limits - refused, never clamped
 	bool gs2CheckReach(const gs2::Setup& s, const QVector<gs2::RunPoint>& points, double z2D, double z3D, QString& why);
+	//what a passed START step found: into this session, and into the page (and its file) only when inPage - a production
+	//START runs the saved setup and leaves the page alone
+	void gs2KeepFid0(const gs2::Fid0Found& found, const QString& dir, bool inPage);
+	void gs2Keep3D(const gs2::Setup& s, const gs2::Z3DFound& found, bool inPage);
+	void gs2KeepRect(const gs2::Setup& s, const Gs2RectCheck& r, bool inPage);
+	void gs2ShowFound(const Gs2RectCheck& r, const QString& title);   //the layout view where the corners were found
+	//START steps 1-5 (Locate and a production START): Safety check 1, fid0, 3D Z, the corners, the reach check
+	bool gs2RunAnchors(const gs2::Setup& s, const QString& dir, bool inPage, int trolleyEpoch, const QString& title,
+		Gs2RectCheck& r, double& z3D, QStringList& steps, QString& why);
+	//build step 5: Snap and scan's and START's shots, and the recipe line scan set to H's 3D scan direction
+	QVector<JobThread::Gs2Shot> gs2BuildShots(const gs2::Setup& s, const QVector<gs2::RunPoint>& visit, double z2D, double z3D) const;
+	void gs2SetLineScanFromSetup(const gs2::Setup& s);
+	//build step 5b: a production START of a recipe whose SAVED setup says "START uses this setup". false = START runs the
+	//old teach (no guidedSetup2.json, or the switch is off); true = taken here, run or refused with the reason shown
+	bool gs2TakeStart();
+	void gs2StartProduction(const gs2::Setup& s, const QString& dir);
 
 	//── guided setup (VisionApp_GuidedSetup.cpp): four fiducials and a unit grid, taught by
 	//centring the camera on the circle nearest the image centre; writes the ordinary recipe data
@@ -1325,7 +1341,12 @@ private:
 		bool capturing = false;       //a Snap and scan is running: no auto trolley release at its end
 		bool holdPrompts = false;     //...and job-thread prompts are held for its result, not shown mid-run
 		QStringList heldPrompts;
+		bool fromStart = false;       //build step 5b: a production START ran it (its end closes the run like a pitch run)
+		bool acquiring = false;       //...and the job thread is still moving for it (until gs2RunFinished)
+		int runId = 0;                //...its runGs2 id: a late end of an earlier run is not its end
 	} _gs2Run;
+	int _gs2RunSeq = 0;               //runGs2 ids handed out (Snap and scan and START)
+	void triggerExternalBarcodeReaders();   //START: the barcode slots set to External are triggered (both START paths)
 	void startProductionS();
 
 	//production mode selector (DI X108): ON locks the UI to the production page

@@ -237,8 +237,36 @@ void VisionApp::initGuidedSetup2()
 	_gs2View = new GuidedSetup2View();
 	_gs2ViewIndex = ui.stackedWidgetViewSelection->addWidget(_gs2View);
 	//a trolley taken off or put on is no longer where a Check or Locate found it
-	connect(&MachineController::instance(), &MachineController::signalTrolleyGuard, this, [=](bool) {
+	connect(&MachineController::instance(), &MachineController::signalTrolleyGuard, this, [=](bool on) {
 		if (_gs2View) _gs2View->clearLocated();
+		//...nor where a START found it: its run stops (in debug mode the guard raises no machine error that would)
+		if (_gs2Run.fromStart && _gs2Run.acquiring) {
+			ct::logger::warn("[GuidedSetup2] START run stopped: the trolley was %s", on ? "attached" : "removed");
+			addLogLine(QStringLiteral("START run stopped - the trolley was %1").arg(on ? QStringLiteral("attached") : QStringLiteral("removed")));
+			stopRun();
+		}
+	}, Qt::QueuedConnection);
+
+	/*
+	* Build step 5b: a START run is handed to the job thread and the START returns, as production's own does.
+	* Its end: a complete run closes like a pitch run (the inspection drain releases the bar, VisionApp_Production);
+	* anything else is closed here, as a Stop would. Only this run's end: Snap and scan waits for its own, and a
+	* stopped run's late end must not close a later one.
+	*/
+	connect(&_jobThread, &JobThread::gs2RunFinished, this, [=](int runId, bool completed, int taken, int missing2D) {
+		if (!_gs2Run.fromStart || !_gs2Run.acquiring || runId != _gs2Run.runId) return;
+		_gs2Run.acquiring = false;
+		ct::logger::info("[GuidedSetup2] START run %s: %d shot(s) taken, %d 2D snap(s) without an image", completed ? "acquired" : "ended early", taken, missing2D);
+		if (missing2D) addLogLine(QStringLiteral("START: %1 2D snap(s) brought no image - see the log").arg(missing2D));
+		if (completed) return;
+		const bool stopped = _stopRun;
+		_gs2Run.fromStart = false;   //over: nothing more to close
+		progressBarRelease(true);
+		vs_stopElapseTimer();
+		if (!stopped) {
+			addLogLine(QStringLiteral("START run ended after %1 shot(s) - see the log").arg(taken));
+			showMsg(QStringLiteral("The production run ended after %1 shot(s) without being stopped - see the log.").arg(taken));
+		}
 	}, Qt::QueuedConnection);
 
 	_gs2CameraTimer = new QTimer(this);
@@ -1810,6 +1838,180 @@ static gs2::FidRectFound rectFound(const gs2geo::RectFit& fit)
 	return f;
 }
 
+/*
+* Passed START steps go into this session - what the page's E/F/H teaches and I's tests run from - and,
+* for the page's own actions, into the page (and its file, see GuidedSetup2Page::recordResult). A
+* production START runs the SAVED setup and leaves the page alone (inPage false).
+*/
+void VisionApp::gs2KeepFid0(const gs2::Fid0Found& found, const QString& dir, bool inPage)
+{
+	if (inPage && _gs2Page) _gs2Page->recordFid0Found(found);
+	//a 3D Find or a trolley frame from another trolley or recipe is not this one's
+	if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch || _gs2Session.recipeDir != dir) _gs2Session.has3D = _gs2Session.rect = false;
+	_gs2Session.fid0 = true;
+	_gs2Session.fid0X = found.x;
+	_gs2Session.fid0Y = found.y;
+	_gs2Session.fid0AtMs = QDateTime::currentMSecsSinceEpoch();
+	_gs2Session.z2D = found.z;
+	_gs2Session.trolleyEpoch = _zsTrolleyEpoch;
+	_gs2Session.recipeDir = dir;
+	AuditLog::instance().log(QStringLiteral("GS2_FID0_FIND"), QStringLiteral("X %1, Y %2, Z %3, score %4")
+		.arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2));
+}
+
+void VisionApp::gs2Keep3D(const gs2::Setup& s, const gs2::Z3DFound& found, bool inPage)
+{
+	if (inPage && _gs2Page) _gs2Page->recordZ3DFound(found);
+	_gs2Session.has3D = true;
+	_gs2Session.z3D = found.z;
+	_gs2Session.z3DFrom2D = found.z2D;
+	_gs2Session.z3DAddLaser = s.z3d.addLaserOffset;
+	AuditLog::instance().log(QStringLiteral("GS2_Z3D_FIND"), QStringLiteral("Z %1 from 2D Z %2").arg(mm(found.z), mm(found.z2D)));
+}
+
+void VisionApp::gs2KeepRect(const gs2::Setup& s, const Gs2RectCheck& r, bool inPage)
+{
+	if (inPage && _gs2Page) _gs2Page->recordFidRectFound(rectFound(r.fit));
+	_gs2Session.rect = true;          //sections E, F and H teach in this frame
+	_gs2Session.pose = r.fit.pose;
+	_gs2Session.rectBy = s.fidRect;
+	_gs2Session.rectFid0 = r.fid0;
+	AuditLog::instance().log(QStringLiteral("GS2_FIDRECT_CHECK"), QStringLiteral("centre %1, %2, angle %3, worst residual %4")
+		.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual())));
+}
+
+//the layout drawn where the corners were found, passed or not: a failed corner shows where it is
+void VisionApp::gs2ShowFound(const Gs2RectCheck& r, const QString& title)
+{
+	if (_gs2View) _gs2View->setLocated(r.fit, r.fid0, r.corner, QStringLiteral("%1 %2%3").arg(title, QTime::currentTime().toString(QStringLiteral("hh:mm")),
+		r.pass ? QString() : QStringLiteral(" (FAILED)")));
+}
+
+/*
+* START steps 1-5, the one copy Locate and a production START both run: Safety check 1 at home, fid0
+* (Z sweep, pattern, circle), the 3D Z, the four corners, then every place production will drive to for
+* this trolley inside the soft limits. The busy window must be up (gs2MachineBusy). r and z3D are the
+* trolley frame and 3D Centre Z found; steps says what each step found.
+*/
+bool VisionApp::gs2RunAnchors(const gs2::Setup& s, const QString& dir, bool inPage, int trolleyEpoch, const QString& title,
+	Gs2RectCheck& r, double& z3D, QStringList& steps, QString& why)
+{
+	//a result belongs to the trolley and the recipe the action started with
+	auto stillHere = [&](QString& w) {
+		if (trolleyEpoch != _zsTrolleyEpoch) { w = QStringLiteral("the trolley was removed or attached meanwhile - the result was discarded"); return false; }
+		if (!_gs2Page || _gs2Page->recipeDir() != dir) { w = QStringLiteral("the recipe changed meanwhile - the result was discarded"); return false; }
+		return true;
+	};
+	_gs2Session.rect = false;
+	//1: Safety check 1 at home
+	QImage small;
+	QVector<double> scores;
+	bool ok = gs2SnapHome(small, why) && gs2SafetyScores(small, s.safety1.emptyImages, scores, why);
+	if (ok) {
+		const double lowest = *std::min_element(scores.begin(), scores.end());
+		ct::logger::info("[GuidedSetup2] %s: Safety check 1 lowest score %.1f, threshold %.1f", qPrintable(title), lowest, s.safety1.threshold);
+		if (lowest <= s.safety1.threshold) {
+			ok = false;
+			why = QStringLiteral("the table looks empty (score %1, threshold %2) - load a trolley").arg(lowest, 0, 'f', 1).arg(s.safety1.threshold, 0, 'f', 1);
+		}
+		else steps << QStringLiteral("Safety check 1 score %1 (threshold %2)").arg(lowest, 0, 'f', 1).arg(s.safety1.threshold, 0, 'f', 1);
+	}
+	if (!ok) why = QStringLiteral("Safety check 1: %1").arg(why);
+	//2: fid0
+	gs2::Fid0Found found;
+	if (ok) ok = gs2FindFid0(s, dir, found, why) && stillHere(why);
+	if (ok) {
+		gs2KeepFid0(found, dir, inPage);
+		steps << QStringLiteral("fid0 at X %1, Y %2, 2D Z %3 (pattern %4)").arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2);
+	}
+	//3: 3D Z
+	gs2::Z3DFound z3;
+	if (ok) ok = gs2Find3DZ(s, z3, why) && stillHere(why);
+	if (ok) {
+		gs2Keep3D(s, z3, inPage);
+		z3D = z3.z;
+		steps << QStringLiteral("3D Z %1").arg(mm(z3.z));
+	}
+	//4: the four corners
+	if (ok) ok = gs2CheckRect(s, r, why) && stillHere(why);
+	if (ok) {
+		gs2ShowFound(r, title);
+		if (r.pass) {
+			gs2KeepRect(s, r, inPage);
+			steps << QStringLiteral("trolley centre X %1, Y %2, angle %3 deg, worst residual %4 mm")
+				.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual()));
+		}
+		else { ok = false; why = QStringLiteral("the corners: %1").arg(r.report); }
+	}
+	//5: the layout where the trolley is (the view draws it there, gs2ShowFound), and every place production
+	//will drive to for it inside the soft limits
+	if (ok) {
+		const QVector<gs2::RunPoint> pts = gs2::runPoints(s, r.fit.pose);
+		ok = gs2CheckReach(s, pts, _gs2Session.z2D, z3.z, why);
+		if (ok) steps << QStringLiteral("%1 slots, %2 units, %3 inspection points, all within reach").arg(s.slotList.size()).arg(s.units.size()).arg(pts.size());
+		else why = QStringLiteral("the layout: %1").arg(why);
+		ct::logger::info("[GuidedSetup2] %s step 5: %d inspection points, %s", qPrintable(title), pts.size(), ok ? "all within reach" : qPrintable(why));
+	}
+	return ok;
+}
+
+/*
+* Snap and scan's and START's shots for the points in run order: a 2D point is a snap saved as <unit>_2D, a
+* Barcode + OCR point production's two-reader read, a 3D point a scan from where the laser measures (H's 3D
+* laser XY) for the scan length in H's direction. Z is the 2D Z or the 3D Centre Z plus the point's Z offset;
+* every sideways move is at the 2D Z or higher.
+*/
+QVector<JobThread::Gs2Shot> VisionApp::gs2BuildShots(const gs2::Setup& s, const QVector<gs2::RunPoint>& visit, double z2D, double z3D) const
+{
+	const double along = s.scanNegative ? -1.0 : 1.0;
+	QVector<JobThread::Gs2Shot> shots;
+	for (const auto& p : visit) {
+		const auto& in = s.insp[p.type];
+		JobThread::Gs2Shot shot;
+		shot.unitID = s.units[p.unit].name;
+		if (p.type == gs2::Insp3D) {
+			//where the laser measures (H's 3D laser XY); the job thread adds the camera-to-laser XY and takes its Z back out
+			const gs2geo::Pt read = gs2::scanReadPoint(s, p.camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
+			shot.kind = 2;
+			shot.x = read.x;
+			shot.y = read.y;
+			shot.z = z3D + in.zOffsetMm;
+			shot.scanEndX = read.x + in.scanLengthMm * along;
+		}
+		else {
+			shot.kind = p.type == gs2::Insp2D ? 0 : 1;
+			shot.x = p.camera.x;
+			shot.y = p.camera.y;
+			shot.z = z2D + in.zOffsetMm;
+		}
+		shot.clearZ = std::min(z2D, shot.z);   //sideways never below the 2D Z, as Move only
+		shots << shot;
+	}
+	return shots;
+}
+
+/*
+* scan() and the height-map orientation follow the recipe's line scan: a run that scans sets it to H's 3D
+* scan direction first (along X - production's scan move never sends Y).
+*/
+void VisionApp::gs2SetLineScanFromSetup(const gs2::Setup& s)
+{
+	auto& sd = SystemData::instance();
+	const int dirIndex = s.scanNegative ? 1 : 0;
+	if (sd._lineScanAxis == 0 && sd._lineScanDirection == dirIndex) return;
+	ct::logger::info("[GuidedSetup2] recipe line scan set to H's 3D scan direction: along X, %s (was along %s, %s)",
+		dirIndex ? "negative" : "positive", sd._lineScanAxis == 1 ? "Y" : "X", sd._lineScanDirection == 1 ? "negative" : "positive");
+	sd._lineScanAxis = 0;
+	sd._lineScanDirection = dirIndex;
+	{
+		QSignalBlocker b1(ui.comboBox_lineScanAxis), b2(ui.comboBox_lineScanDirection);   //their handlers would ask questions mid-run
+		ui.comboBox_lineScanAxis->setCurrentIndex(0);
+		ui.comboBox_lineScanDirection->setCurrentIndex(dirIndex);
+	}
+	saveRecipeConfig();
+	AuditLog::instance().log(QStringLiteral("LINESCAN_DIRECTION_CHANGED"), QStringLiteral("Guided Setup (new): along X, %1").arg(dirIndex ? QStringLiteral("-") : QStringLiteral("+")));
+}
+
 void VisionApp::gs2Teach(int action)
 {
 	if (!_gs2Page || _zsBusy) return;
@@ -2455,42 +2657,10 @@ void VisionApp::gs2Teach(int action)
 		return true;
 	};
 	//passed START steps: into the page (and the file, see recordResult) and into this session
-	auto keepFid0 = [&](const gs2::Fid0Found& found) {
-		_gs2Page->recordFid0Found(found);
-		//a 3D Find or a trolley frame from another trolley or recipe is not this one's
-		if (_gs2Session.trolleyEpoch != _zsTrolleyEpoch || _gs2Session.recipeDir != dir) _gs2Session.has3D = _gs2Session.rect = false;
-		_gs2Session.fid0 = true;
-		_gs2Session.fid0X = found.x;
-		_gs2Session.fid0Y = found.y;
-		_gs2Session.fid0AtMs = QDateTime::currentMSecsSinceEpoch();
-		_gs2Session.z2D = found.z;
-		_gs2Session.trolleyEpoch = _zsTrolleyEpoch;
-		_gs2Session.recipeDir = dir;
-		AuditLog::instance().log(QStringLiteral("GS2_FID0_FIND"), QStringLiteral("X %1, Y %2, Z %3, score %4")
-			.arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2));
-	};
-	auto keep3D = [&](const gs2::Z3DFound& found) {
-		_gs2Page->recordZ3DFound(found);
-		_gs2Session.has3D = true;
-		_gs2Session.z3D = found.z;
-		_gs2Session.z3DFrom2D = found.z2D;
-		_gs2Session.z3DAddLaser = s.z3d.addLaserOffset;
-		AuditLog::instance().log(QStringLiteral("GS2_Z3D_FIND"), QStringLiteral("Z %1 from 2D Z %2").arg(mm(found.z), mm(found.z2D)));
-	};
-	auto keepRect = [&](const Gs2RectCheck& r) {
-		_gs2Page->recordFidRectFound(rectFound(r.fit));
-		_gs2Session.rect = true;          //sections E, F and H teach in this frame
-		_gs2Session.pose = r.fit.pose;
-		_gs2Session.rectBy = s.fidRect;
-		_gs2Session.rectFid0 = r.fid0;
-		AuditLog::instance().log(QStringLiteral("GS2_FIDRECT_CHECK"), QStringLiteral("centre %1, %2, angle %3, worst residual %4")
-			.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual())));
-	};
-	//the layout drawn where the corners were found, passed or not: a failed corner shows where it is
-	auto showFound = [&](const Gs2RectCheck& r) {
-		if (_gs2View) _gs2View->setLocated(r.fit, r.fid0, r.corner, QStringLiteral("%1 %2%3").arg(title, QTime::currentTime().toString(QStringLiteral("hh:mm")),
-			r.pass ? QString() : QStringLiteral(" (FAILED)")));
-	};
+	auto keepFid0 = [&](const gs2::Fid0Found& found) { gs2KeepFid0(found, dir, true); };
+	auto keep3D = [&](const gs2::Z3DFound& found) { gs2Keep3D(s, found, true); };
+	auto keepRect = [&](const Gs2RectCheck& r) { gs2KeepRect(s, r, true); };
+	auto showFound = [&](const Gs2RectCheck& r) { gs2ShowFound(r, title); };
 	switch (action) {
 	case P::TeachSnapEmpty: {
 		QImage small;
@@ -2633,30 +2803,7 @@ void VisionApp::gs2Teach(int action)
 	case P::TeachSnapScan: {
 		QElapsedTimer timer;
 		timer.start();
-		const double along = s.scanNegative ? -1.0 : 1.0;
-		QVector<JobThread::Gs2Shot> shots;
-		for (const auto& p : visit) {
-			const auto& in = s.insp[p.type];
-			JobThread::Gs2Shot shot;
-			shot.unitID = s.units[p.unit].name;
-			if (p.type == gs2::Insp3D) {
-				//where the laser measures (H's 3D laser XY); the job thread adds the camera-to-laser XY and takes its Z back out
-				const gs2geo::Pt read = gs2::scanReadPoint(s, p.camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
-				shot.kind = 2;
-				shot.x = read.x;
-				shot.y = read.y;
-				shot.z = _gs2Session.z3D + in.zOffsetMm;
-				shot.scanEndX = read.x + in.scanLengthMm * along;
-			}
-			else {
-				shot.kind = p.type == gs2::Insp2D ? 0 : 1;
-				shot.x = p.camera.x;
-				shot.y = p.camera.y;
-				shot.z = _gs2Session.z2D + in.zOffsetMm;
-			}
-			shot.clearZ = std::min(_gs2Session.z2D, shot.z);   //sideways never below the 2D Z, as Move only
-			shots << shot;
-		}
+		const QVector<JobThread::Gs2Shot> shots = gs2BuildShots(s, visit, _gs2Session.z2D, _gs2Session.z3D);
 		bool any2DSnap = false, anyBarcode = false, anyScan = false;
 		for (const auto& sh : shots) { any2DSnap = any2DSnap || sh.kind == 0; anyBarcode = anyBarcode || sh.kind == 1; anyScan = anyScan || sh.kind == 2; }
 		//before anything is changed or made: the optics production's code will ask for
@@ -2665,22 +2812,8 @@ void VisionApp::gs2Teach(int action)
 			why = QStringLiteral("the recipe has no %1 optics").arg(any2DSnap && _recipeOptics.isEmpty() ? QStringLiteral("2D") : QStringLiteral("3D"));
 			break;
 		}
-		auto& sd = SystemData::instance();
-		const int dirIndex = s.scanNegative ? 1 : 0;
 		//only a run that scans changes the recipe's line scan
-		if (anyScan && (sd._lineScanAxis != 0 || sd._lineScanDirection != dirIndex)) {
-			ct::logger::info("[GuidedSetup2] recipe line scan set to H's 3D scan direction: along X, %s (was along %s, %s)",
-				dirIndex ? "negative" : "positive", sd._lineScanAxis == 1 ? "Y" : "X", sd._lineScanDirection == 1 ? "negative" : "positive");
-			sd._lineScanAxis = 0;
-			sd._lineScanDirection = dirIndex;
-			{
-				QSignalBlocker b1(ui.comboBox_lineScanAxis), b2(ui.comboBox_lineScanDirection);   //their handlers would ask questions mid-run
-				ui.comboBox_lineScanAxis->setCurrentIndex(0);
-				ui.comboBox_lineScanDirection->setCurrentIndex(dirIndex);
-			}
-			saveRecipeConfig();
-			AuditLog::instance().log(QStringLiteral("LINESCAN_DIRECTION_CHANGED"), QStringLiteral("Guided Setup (new): along X, %1").arg(dirIndex ? QStringLiteral("-") : QStringLiteral("+")));
-		}
+		if (anyScan) gs2SetLineScanFromSetup(s);
 		gs2PrepareProductionRun();
 		_gs2Run.active = true;
 		_gs2Run.barcode = anyBarcode;
@@ -2690,18 +2823,24 @@ void VisionApp::gs2Teach(int action)
 		const QString folder = Common::Directory::getProductionImageSetPath();
 		bool finished = false, completed = false;
 		int taken = 0, missing2D = 0;
-		const auto c1 = connect(&_jobThread, &JobThread::gs2RunFinished, this, [&](bool all, int n, int missing) { finished = true; completed = all; taken = n; missing2D = missing; });
+		//its own end only: a stopped START run winding down can still send one (5b review)
+		const int runId = ++_gs2RunSeq;
+		const auto c1 = connect(&_jobThread, &JobThread::gs2RunFinished, this, [&](int id, bool all, int n, int missing) {
+			if (id != runId) return;
+			finished = true; completed = all; taken = n; missing2D = missing;
+		});
 		const auto c2 = connect(&_jobThread, &JobThread::unitStarted, this, [&](QString unit) {
 			setProgress(_zsBusyWindow, QStringLiteral("At %1 (%2 shots in all)...").arg(unit).arg(shots.size()));
 		});
-		QTimer::singleShot(0, &_jobThread, [this, shots]() { _jobThread.runGs2(shots); });
+		_jobThread.clearStop();   //the job thread is idle (gs2MachineBusy checked it); a Stop from here on stands
+		QTimer::singleShot(0, &_jobThread, [this, shots, runId]() { _jobThread.runGs2(shots, runId); });
 		bool stopSent = false, trolleyChanged = false;
 		while (!finished) {
 			zsPause(50);
 			//a trolley taken out or put in stops it too - in debug mode the guard does not
 			if (trolleyEpoch != _zsTrolleyEpoch) trolleyChanged = true;
 			//the busy window's Stop ends the run as production's Stop does; the job thread's flag is set again on
-			//every pass, as runGs2 clears it when it starts
+			//every pass (it was cleared just before the post, clearStop)
 			if (_stopRun || trolleyChanged) {
 				if (!stopSent) { stopSent = true; stopRun(); }
 				_jobThread.stopRun();
@@ -2789,56 +2928,9 @@ void VisionApp::gs2Teach(int action)
 		QElapsedTimer timer;
 		timer.start();
 		QStringList steps;
-		_gs2Session.rect = false;
-		//1: Safety check 1 at home
-		QImage small;
-		QVector<double> scores;
-		ok = gs2SnapHome(small, why) && gs2SafetyScores(small, s.safety1.emptyImages, scores, why);
-		if (ok) {
-			const double lowest = *std::min_element(scores.begin(), scores.end());
-			ct::logger::info("[GuidedSetup2] Locate: Safety check 1 lowest score %.1f, threshold %.1f", lowest, s.safety1.threshold);
-			if (lowest <= s.safety1.threshold) {
-				ok = false;
-				why = QStringLiteral("the table looks empty (score %1, threshold %2) - load a trolley").arg(lowest, 0, 'f', 1).arg(s.safety1.threshold, 0, 'f', 1);
-			}
-			else steps << QStringLiteral("Safety check 1 score %1 (threshold %2)").arg(lowest, 0, 'f', 1).arg(s.safety1.threshold, 0, 'f', 1);
-		}
-		if (!ok) why = QStringLiteral("Safety check 1: %1").arg(why);
-		//2: fid0
-		gs2::Fid0Found found;
-		if (ok) ok = gs2FindFid0(s, dir, found, why) && stillHere(why);
-		if (ok) {
-			keepFid0(found);
-			steps << QStringLiteral("fid0 at X %1, Y %2, 2D Z %3 (pattern %4)").arg(mm(found.x), mm(found.y), mm(found.z)).arg(found.score, 0, 'f', 2);
-		}
-		//3: 3D Z
-		gs2::Z3DFound z3;
-		if (ok) ok = gs2Find3DZ(s, z3, why) && stillHere(why);
-		if (ok) {
-			keep3D(z3);
-			steps << QStringLiteral("3D Z %1").arg(mm(z3.z));
-		}
-		//4: the four corners
 		Gs2RectCheck r;
-		if (ok) ok = gs2CheckRect(s, r, why) && stillHere(why);
-		if (ok) {
-			showFound(r);
-			if (r.pass) {
-				keepRect(r);
-				steps << QStringLiteral("trolley centre X %1, Y %2, angle %3 deg, worst residual %4 mm")
-					.arg(mm(r.fit.pose.cx), mm(r.fit.pose.cy), QString::number(r.fit.pose.angle * 180.0 / kPi, 'f', 3), mm(r.fit.maxResidual()));
-			}
-			else { ok = false; why = QStringLiteral("the corners: %1").arg(r.report); }
-		}
-		//5: the layout where the trolley is (the view draws it there, showFound), and every place production
-		//will drive to for it inside the soft limits
-		if (ok) {
-			const QVector<gs2::RunPoint> pts = gs2::runPoints(s, r.fit.pose);
-			ok = gs2CheckReach(s, pts, _gs2Session.z2D, z3.z, why);
-			if (ok) steps << QStringLiteral("%1 slots, %2 units, %3 inspection points, all within reach").arg(s.slotList.size()).arg(s.units.size()).arg(pts.size());
-			else why = QStringLiteral("the layout: %1").arg(why);
-			ct::logger::info("[GuidedSetup2] Locate step 5: %d inspection points, %s", pts.size(), ok ? "all within reach" : qPrintable(why));
-		}
+		double z3D = 0.0;
+		ok = gs2RunAnchors(s, dir, true, trolleyEpoch, title, r, z3D, steps, why);
 		if (ok) {
 			result = QStringLiteral("Locate passed in %1 s: %2. The layout shows the trolley where it was found.")
 				.arg(timer.elapsed() / 1000.0, 0, 'f', 1).arg(steps.join(QStringLiteral("; ")));
@@ -2866,4 +2958,190 @@ void VisionApp::gs2Teach(int action)
 		showTeachResult(_gs2Page, action, result, ok && (action == P::TeachSnapEmpty || action == P::TeachScore || action == P::TeachLocate
 			|| action == P::TeachMoveOnly || action == P::TeachSnapScan));
 	if (ok && action == P::TeachLocate) gs2ShowLayoutView();
+}
+
+// ── build step 5b: a production START runs the saved setup ──────────────────────────────────────
+
+bool VisionApp::gs2TakeStart()
+{
+	const QString dir = Common::Directory::getRecipeCurrentPath();
+	gs2::Setup s;
+	QString why;
+	switch (gs2::load(dir, s, why)) {
+	case gs2::LoadResult::Missing:
+		return false;
+	case gs2::LoadResult::Unreadable:
+		//it may say START uses it: running the old teach instead could run the wrong setup, so nothing runs
+		ct::logger::error("[GuidedSetup2] START refused: %s", qPrintable(why));
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup (new): guidedSetup2.json unreadable"));
+		addLogLine(QStringLiteral("START refused - see the prompt"));
+		showMsg(QStringLiteral("Production cannot start: this recipe's Guided Setup (new) file cannot be read, so it is not known which setup START "
+			"should use.\n\n%1\n\nOpen Guided Setup (new) and Save (the unreadable file is kept aside), then START again.").arg(why));
+		return true;
+	case gs2::LoadResult::Loaded:
+		break;
+	}
+	if (!s.startUsesSetup) return false;
+	gs2StartProduction(s, dir);
+	return true;
+}
+
+/*
+* START with "START uses this setup": the gates START has already passed (busy, machine state, production
+* selector, Live Mapping) plus this setup's own; then steps 1-5 - Locate's code - with the busy window up;
+* then every inspection point of the units the PMF lists (unit X#Y# = Template Mapping cell X#,Y#, the rule
+* production uses), 2D pass then 3D pass, handed to the job thread as Snap and scan does, into a production
+* run: status table, Live Mapping, production folder, end-of-run handling. The old safety check and platform
+* Z offset play no part. Nothing moves before every gate has passed; any failure stops START and says why.
+*/
+void VisionApp::gs2StartProduction(const gs2::Setup& s, const QString& dir)
+{
+	auto refuse = [&](const QString& w) {
+		ct::logger::warn("[GuidedSetup2] START refused: %s", qPrintable(w));
+		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup (new): %1").arg(w));
+		addLogLine(QStringLiteral("START refused - see the prompt"));
+		showMsg(QStringLiteral("Production cannot start (Guided Setup (new)):\n\n%1").arg(w));
+	};
+	ct::logger::info("[GuidedSetup2] START: recipe %s runs Guided Setup (new)", qPrintable(Common::Directory::CurrentRecipe));
+
+	//── gates, nothing moves
+	//never a second run on top of one: steps 1-5 would drive the machine under it
+	if (_productionSetupLocked) { refuse(QStringLiteral("A production run is still in progress - wait for its last result or press Stop.")); return; }
+	if (!_gs2Page || _gs2Page->recipeDir() != dir) {
+		refuse(QStringLiteral("The Guided Setup (new) page holds another recipe - open the Guided Setup (new) page once so it loads this one."));
+		return;
+	}
+	if (_gs2Page->isDirty()) {
+		refuse(QStringLiteral("Guided Setup (new) has unsaved changes for this recipe. START runs the saved setup - Save or Discard them first."));
+		return;
+	}
+	for (int i = 0; i < gs2::SectionCount; i++) {
+		QString w;
+		if (!gs2::sectionDone(s, (gs2::Section)i, &w)) {
+			refuse(QStringLiteral("The saved setup is not complete - %1: %2.").arg(gs2::sectionTitle((gs2::Section)i), w));
+			return;
+		}
+	}
+	{
+		//what Locate checks before it moves
+		QString w;
+		const QPointF at = z3dReadPoint(s, s.fid0.xy.x, s.fid0.xy.y, _laserConfig.offset);
+		if (s.fid0.stepMm < 0.1 || s.fid0.stepMm > s.fid0.stopZ - s.fid0.startZ) w = QStringLiteral("B: the max step must be between 0.1 mm and the Start-Stop range");
+		else if (!zsCheckTarget((int)Axis::X, s.fid0.xy.x, w) || !zsCheckTarget((int)Axis::Y, s.fid0.xy.y, w)
+			|| !zsCheckTarget((int)Axis::Z, s.fid0.startZ, w) || !zsCheckTarget((int)Axis::Z, s.fid0.stopZ, w)) w = QStringLiteral("B: %1").arg(w);
+		else if (!zsCheck3DRead(at.x(), at.y(), w)) w = QStringLiteral("C: %1").arg(w);
+		else w.clear();
+		if (!w.isEmpty()) { refuse(QStringLiteral("%1.").arg(w)); return; }
+	}
+	//what production's code will ask for
+	const bool want2D = s.insp[gs2::Insp2D].enabled, wantBc = s.insp[gs2::InspBarcodeOcr].enabled, want3D = s.insp[gs2::Insp3D].enabled;
+	if (!want2D && !wantBc && !want3D) { refuse(QStringLiteral("No inspection is switched on in H.")); return; }
+	if (want2D && _recipeOptics.isEmpty()) { refuse(QStringLiteral("H's 2D point is on but the recipe has no 2D optics.")); return; }
+	if (want3D && _recipeOptics3D.isEmpty()) { refuse(QStringLiteral("H's 3D scan is on but the recipe has no 3D optics.")); return; }
+	if (want3D && s.scanAxis == QLatin1String("Y")) { refuse(QStringLiteral("Production's 3D scans run along X only - set H's 3D scan direction to +X or -X.")); return; }
+	if (want3D && s.insp[gs2::Insp3D].scanLengthMm <= 0.0) { refuse(QStringLiteral("Type the 3D scan length in H.")); return; }
+	//the units the PMF lists; every unit when there is no usable Live Mapping, which only debug mode starts with
+	const std::optional<QSet<QString>> fitted = fittedUnits();
+	int fittedCount = 0;
+	for (const auto& u : s.units) if (!fitted || fitted->contains(u.name)) fittedCount++;
+	if (fittedCount == 0) {
+		refuse(QStringLiteral("None of the setup's %1 units is on a Template Mapping cell the PMF lists (unit X#Y# = cell X#,Y#) - check the PMF, the "
+			"Template Mapping name and the unit names (G).").arg(s.units.size()));
+		return;
+	}
+	//a run that ended without its Stop (a pitch run's time keeps running) is not one in progress: the lock above says that
+	if (isStartTimer) vs_stopElapseTimer();
+
+	//── steps 1-5
+	if (!gs2MachineBusy(QStringLiteral("START"), QStringLiteral("Guided Setup (new) START steps 1-5: home and Safety check 1, fid0 (Z sweep, pattern, "
+		"circle), 3D Z, the four corners, the reach check. The run itself follows on the production page."))) return;
+	QVector<gs2::RunPoint> visit;
+	double z3D = 0.0;
+	QStringList steps;
+	QString why;
+	QElapsedTimer timer;
+	timer.start();
+	bool ok = false;
+	const int trolleyEpoch = _zsTrolleyEpoch;
+	{
+		gantrylog::Scope gantryScope(QStringLiteral("GS2 START"));
+		Gs2RectCheck r;
+		ok = gs2RunAnchors(s, dir, false, trolleyEpoch, QStringLiteral("START"), r, z3D, steps, why);
+		if (ok) {
+			//every point of the fitted units where the trolley was just found, the 2D pass (2D, Barcode + OCR) then the 3D pass
+			const QVector<gs2::RunPoint> all = gs2::runPoints(s, r.fit.pose);
+			for (const auto& p : all) if (p.type != gs2::Insp3D && (!fitted || fitted->contains(s.units[p.unit].name))) visit << p;
+			for (const auto& p : all) if (p.type == gs2::Insp3D && (!fitted || fitted->contains(s.units[p.unit].name))) visit << p;
+			if (visit.isEmpty()) { ok = false; why = QStringLiteral("no inspection point to visit"); }
+		}
+		if (ok && visit.last().type == gs2::Insp3D) {
+			const gs2geo::Pt read = gs2::scanReadPoint(s, visit.last().camera, _laserConfig.offset.wx, _laserConfig.offset.wy);
+			if (!zsCheck3DRead(read.x, read.y, why)) { ok = false; why = QStringLiteral("the 3D scans: %1").arg(why); }
+		}
+		if (!ok && !_stopRun) why += QStringLiteral(". ") + zsLiftAfterFailure(s.fid0.startZ, QStringLiteral("Start Z"));
+	}
+	gs2MachineIdle();
+	/*
+	* Read AFTER the busy window is gone: the last steps take no events, so a Stop (panel, e-stop) or a trolley
+	* change in them is only delivered by gs2MachineIdle's processEvents. Nothing is processed from here to the
+	* hand-off, and the job thread's flag is cleared before it - so a Stop is never lost (5b review).
+	*/
+	const bool stopped = _stopRun;
+	if (ok && stopped) ok = false;
+	if (ok && trolleyEpoch != _zsTrolleyEpoch) { ok = false; why = QStringLiteral("the trolley was removed or attached meanwhile - nothing else was moved"); }
+	if (!ok) {
+		if (stopped) {
+			ct::logger::warn("[GuidedSetup2] START stopped during steps 1-5");
+			AuditLog::instance().log(QStringLiteral("PRODUCTION_STOP"), QStringLiteral("Guided Setup (new) START, steps 1-5"));
+			addLogLine(QStringLiteral("START stopped - nothing else was moved"));
+		}
+		else {
+			refuse(QStringLiteral("%1.%2").arg(why, steps.isEmpty() ? QString() : QStringLiteral("\n\nPassed before it: %1.").arg(steps.join(QStringLiteral("; ")))));
+		}
+		return;
+	}
+	ct::logger::info("[GuidedSetup2] START steps 1-5 passed in %.1f s: %s", timer.elapsed() / 1000.0, qPrintable(steps.join(QStringLiteral("; "))));
+
+	//── the run, on the job thread
+	const QVector<JobThread::Gs2Shot> shots = gs2BuildShots(s, visit, _gs2Session.z2D, z3D);
+	int n2D = 0, nBc = 0, n3D = 0;
+	for (const auto& sh : shots) { if (sh.kind == 0) n2D++; else if (sh.kind == 1) nBc++; else n3D++; }
+	if (n3D) gs2SetLineScanFromSetup(s);
+	//locked BEFORE the run's setup: it can show a prompt (setupProductionDir when the image folder cannot be made), and a
+	//START pressed under that prompt must be refused as "a run in progress", not run steps 1-5 a second time (5b review)
+	setProductionSetupLocked(true);                               //until the bar is released: run end or stop
+	gs2PrepareProductionRun();
+	_gs2Run.active = true;
+	_gs2Run.barcode = nBc > 0;
+	_gs2Run.height = n3D > 0;
+	_gs2Run.fromStart = true;
+	_gs2Run.acquiring = true;
+	_gs2Run.runId = ++_gs2RunSeq;
+	triggerExternalBarcodeReaders();
+	//a step per 2D snap, per barcode read (pitch recipes only: acquireBarcodeAndOcrAt counts it there) and its OCR result,
+	//per scan and its height result
+	const int bcSteps = SystemData::instance()._setupRegionPitchMode ? 2 : 1;
+	progressBarSetup(QStringLiteral("Running Inspection..."), std::max(1, n2D + bcSteps * nBc + 2 * n3D), true, true);
+	InspectionThread::instance().setUnitCables(unitCables());   //each unit's cable picks its 3D algo
+	//...and a Stop or a trolley change under that prompt is caught here, the last point before the job thread's flag is cleared
+	if (_stopRun || trolleyEpoch != _zsTrolleyEpoch) {
+		const bool trolley = trolleyEpoch != _zsTrolleyEpoch;
+		ct::logger::warn("[GuidedSetup2] START cancelled before the run: %s", trolley ? "the trolley was removed or attached" : "stopped");
+		_gs2Run.fromStart = _gs2Run.acquiring = false;
+		progressBarRelease(true);
+		setProductionSetupLocked(false);   //progressBarRelease unlocks only a bar it set up; this one may not have been
+		addLogLine(trolley ? QStringLiteral("START cancelled - the trolley was removed or attached") : QStringLiteral("START stopped - nothing else was moved"));
+		return;
+	}
+	QSet<QString> units;
+	for (const auto& p : visit) units.insert(s.units[p.unit].name);
+	const QString line = QStringLiteral("START (Guided Setup new): steps 1-5 passed in %1 s; %2 shots of %3 unit(s)%4")
+		.arg(timer.elapsed() / 1000.0, 0, 'f', 1).arg(shots.size()).arg(units.size())
+		.arg(fittedCount < s.units.size() ? QStringLiteral(" (%1 unit(s) not in the PMF skipped)").arg(s.units.size() - fittedCount) : QString());
+	ct::logger::info("[GuidedSetup2] %s", qPrintable(line));
+	addLogLine(line);
+	_jobThread.clearStop();   //idle since steps 1-5 (gs2MachineBusy checked it); nothing is processed from the check above to here
+	const int runId = _gs2Run.runId;
+	QTimer::singleShot(0, &_jobThread, [this, shots, runId]() { _jobThread.runGs2(shots, runId); });
+	vs_startElapseTimer();
 }

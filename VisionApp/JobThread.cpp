@@ -6851,12 +6851,12 @@ void JobThread::run2D3D() {
 * shot is taken with production's own code; a 3D scan's Z is handed in less the camera-to-laser Z,
 * because jogLaser adds it back and the Z given is already the laser's own (the 3D Centre Z).
 */
-void JobThread::runGs2(const QVector<Gs2Shot>& shots)
+void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId)
 {
 	SystemData::instance().StartInspectionTimer = QDateTime::currentDateTime();
 	m_extraMoveLog.clear();
 	m_postResults.clear();
-	m_stopRun = false;
+	//m_stopRun is NOT cleared here: the caller cleared it before posting (clearStop), so a Stop that came since stands
 
 	//getMainOptics() has no answer for a recipe without 2D optics, and no 3D optic means no scan: refuse up front
 	bool any2D = false, any3D = false;
@@ -6864,7 +6864,7 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots)
 	const std::deque<QString> opticsSeq = build3DOpticsSeq();
 	if ((any2D && (!m_optics || m_optics->size() == 0)) || (any3D && opticsSeq.empty())) {
 		ct::logger::error("[GS2 run] refused: the recipe has no %s optics", any2D && (!m_optics || m_optics->size() == 0) ? "2D" : "3D");
-		emit gs2RunFinished(false, 0, 0);
+		emit gs2RunFinished(runId, false, 0, 0);
 		return;
 	}
 	const OpticsInfo mainOptic = any2D ? getMainOptics() : OpticsInfo();
@@ -6909,6 +6909,7 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots)
 				missing2D++;
 				ct::logger::error("[GS2 run] %s: no 2D image came back - nothing saved for it", qPrintable(s.unitID));
 			}
+			emit incrementProgress();   //a START run's bar counts each 2D snap (no algo runs on it)
 		}
 		else if (s.kind == 1) {
 			jog(s.x, s.y, s.clearZ, "2D", true);
@@ -6948,7 +6949,7 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots)
 	const bool completed = !m_stopRun && done == shots.size();
 	ct::logger::info("[GS2 run] %s: %d of %d shots, %d 2D snap(s) without an image", completed ? "done" : "stopped", done, shots.size(), missing2D);
 	if (completed) emit acquisitionDone();
-	emit gs2RunFinished(completed, done, missing2D);
+	emit gs2RunFinished(runId, completed, done, missing2D);
 }
 
 void JobThread::calibrateGoldenLightingProfile(QString camID, QRectF roi) {
