@@ -375,8 +375,19 @@ void VisionApp::runProductionScanTest()
 	info->setWordWrap(true);
 	info->setStyleSheet(QStringLiteral("color: #929aaa;"));
 
+	//ticked = production's way: the stage moves by the camera-to-laser XY offset so the laser measures
+	//where the camera looks now. Unticked = the stage stays where it is and the laser measures there.
+	//Remembered for the session; production itself always adds it.
+	static bool s_addLaserXY = true;
+	auto* checkLaserXY = new QCheckBox(QStringLiteral("Add the camera-to-laser XY offset (X %1, Y %2 mm)")
+		.arg(_laserConfig.offset.wx, 0, 'f', 3).arg(_laserConfig.offset.wy, 0, 'f', 3), &dlg);
+	checkLaserXY->setChecked(s_addLaserXY);
+	checkLaserXY->setToolTip(QStringLiteral("Ticked: as production - the laser measures where the camera looks now.\n"
+		"Unticked: the stage does not move sideways by the offset - the laser measures where it is now."));
+
 	auto* form = new QFormLayout();
 	form->addRow(QStringLiteral("Scan distance"), spinDistance);
+	form->addRow(QString(), checkLaserXY);
 
 	auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
 	buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Run"));
@@ -390,8 +401,10 @@ void VisionApp::runProductionScanTest()
 
 	if (dlg.exec() != QDialog::Accepted) return;
 
-	ui.textEdit_loopStatus->append(QStringLiteral("Production Scan Check: %1 mm").arg(spinDistance->value()));
-	emit signalProductionScanTest(spinDistance->value());
+	s_addLaserXY = checkLaserXY->isChecked();
+	ui.textEdit_loopStatus->append(QStringLiteral("Production Scan Check: %1 mm, camera-to-laser XY offset %2")
+		.arg(spinDistance->value()).arg(s_addLaserXY ? QStringLiteral("added") : QStringLiteral("NOT added")));
+	emit signalProductionScanTest(spinDistance->value(), s_addLaserXY);
 }
 
 void VisionApp::terminated(int signum)

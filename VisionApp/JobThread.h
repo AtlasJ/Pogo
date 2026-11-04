@@ -492,7 +492,7 @@ public slots:
 	* Only the distance is asked for. Direction comes from the recipe's Scan Direction, and the
 	* optic from getMainOptics3D(), so the test uses what production would use.
 	*/
-	void productionScanTest(double distance_mm);
+	void productionScanTest(double distance_mm, bool addLaserXY = true); //addLaserXY false: the stage is not moved by the camera-to-laser XY
 
 	/*
 	* Motion Accuracy Test - Test Run page, online run type "Motion Accuracy Test" (and "Full

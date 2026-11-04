@@ -2095,7 +2095,7 @@ signals:
 	void signalVerifyLaserAlignment(dat::WorldCoordinate currentPoint);
 	void signalProfilerScanTest(double distance_mm, bool positiveDir, QString optic3DId,
 		bool saveImages, bool returnToStart);
-	void signalProductionScanTest(double distance_mm);
+	void signalProductionScanTest(double distance_mm, bool addLaserXY);
 	void signalMotionAccuracyTest(int axesMask, double distanceMm, int repeats, int slowPercent, int randomSeconds, int randomSlowPercent,
 		int travelAxesMask, int travelBlockSeconds, int pairSeconds, bool watchReset, int watchSeconds);
 

@@ -3293,7 +3293,7 @@ dat::WorldCoordinate JobThread::settledCoordinate(int timeoutMs, double tol_mm)
 * did for itself would be another copy of the configuration that could drift, which is the very
 * problem it exists to catch.
 */
-void JobThread::productionScanTest(double distance_mm)
+void JobThread::productionScanTest(double distance_mm, bool addLaserXY)
 {
 	QString report;
 	QTextStream out(&report);
@@ -3366,6 +3366,18 @@ void JobThread::productionScanTest(double distance_mm)
 	if (scanAlongY) end.wy += negative ? -distance_mm : distance_mm;
 	else            end.wx += negative ? -distance_mm : distance_mm;
 
+	/*
+	* scan() goes through jogLaser, which adds the camera-to-laser offset to every target. Unticked
+	* in the dialog, the XY part is taken out here first, so the stage starts where it stands and the
+	* laser measures there (the laser's Z offset stays: it is about focus, not where it reads).
+	*/
+	const double offX = m_laserOffset ? m_laserOffset->wx : 0.0;
+	const double offY = m_laserOffset ? m_laserOffset->wy : 0.0;
+	if (!addLaserXY) {
+		start.wx -= offX; start.wy -= offY;
+		end.wx -= offX;   end.wy -= offY;
+	}
+
 	out << "\nWHAT WILL RUN\n-------------\n";
 	out << "  Scan distance   : " << QString::number(distance_mm, 'f', 3) << " mm\n";
 	out << "  Scan axis       : " << (scanAlongY ? "Y" : "X") << "   (recipe: Line Scan Axis)\n";
@@ -3376,7 +3388,12 @@ void JobThread::productionScanTest(double distance_mm)
 		<< "  Z=" << QString::number(start.wz, 'f', 3) << "\n";
 	out << "  End             : X=" << QString::number(end.wx, 'f', 3)
 		<< "  Y=" << QString::number(end.wy, 'f', 3) << "\n";
-	out << "  Laser offset    : APPLIED - scan() uses jogLaser, unlike the Profiler Scan Test\n";
+	if (addLaserXY)
+		out << "  Laser offset    : APPLIED - scan() uses jogLaser, unlike the Profiler Scan Test\n";
+	else
+		out << "  Laser offset    : XY NOT APPLIED (dialog unticked) - the stage starts where it stood, the laser\n"
+			<< "                    measures there; X " << QString::number(offX, 'f', 3) << " / Y " << QString::number(offY, 'f', 3)
+			<< " taken out, the Z offset kept\n";
 
 	say(QStringLiteral("Production scan check: %1 mm %2 along %3, optic %4")
 		.arg(distance_mm).arg(negative ? "negative" : "positive")
