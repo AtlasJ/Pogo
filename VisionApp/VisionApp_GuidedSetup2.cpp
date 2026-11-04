@@ -2164,6 +2164,28 @@ void VisionApp::gs2Teach(int action)
 			if (best < 0 || d < bestD) { best = i; bestD = d; centre = c; }
 		}
 		if (best < 0) { say(QStringLiteral("no unit has a slot")); return; }
+		/*
+		* The camera must be over that unit's slot - its TL..BR circle rectangle (E) plus kSetSlotMarginMm,
+		* or before E within one unit size of the unit's centre. Every unit's point is this offset from its
+		* own unit, so a Set pressed anywhere else (IPC 2026-11-04: right after Home All, at X 0 Y 0) puts
+		* every point that far off the trolley.
+		*/
+		{
+			constexpr double kSetSlotMarginMm = 5.0;
+			const gs2::Slot* sl = gs2::findSlot(s, s.units[best].slotId);
+			const bool bySlot = sl && s.slotSize.set && s.slotSize.widthMm > 0.0 && s.slotSize.lengthMm > 0.0;
+			const bool over = bySlot
+				? std::abs(p.x - sl->cx) <= s.slotSize.widthMm / 2.0 + kSetSlotMarginMm && std::abs(p.y - sl->cy) <= s.slotSize.lengthMm / 2.0 + kSetSlotMarginMm
+				: std::abs(p.x - centre.x) <= u.widthMm && std::abs(p.y - centre.y) <= u.lengthMm;
+			if (!over) {
+				say(QStringLiteral("the camera is not over a unit - the nearest, %1, is %2 mm away and the camera is outside %3. "
+					"Jog the camera onto the point of the unit you want, then Set")
+					.arg(s.units[best].name, mm(bestD), bySlot ? QStringLiteral("its slot %1").arg(sl->name) : QStringLiteral("one unit size of it")));
+				ct::logger::warn("[GuidedSetup2] %s Set refused: camera %.3f, %.3f (trolley frame %.3f, %.3f) is not over %s's %s",
+					qPrintable(what), here.x, here.y, p.x, p.y, qPrintable(s.units[best].name), bySlot ? "slot" : "unit");
+				return;
+			}
+		}
 		const int ref = s.insp[type].ref;
 		const gs2geo::Pt r = gs2geo::unitRefPoint(ref, u.widthMm, u.lengthMm);
 		const double dx = r3(p.x - (centre.x + r.x)), dy = r3(p.y - (centre.y + r.y));
