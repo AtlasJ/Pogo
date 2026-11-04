@@ -3,6 +3,7 @@
 #include "QLineItem.h"
 #include "QEllipseItem.h"
 #include "QCrossItem.h"
+#include "SystemData.h"
 #include <QLineF>
 
 QRectItem* VisionApp::drawRect(const QRectF& rect, const QColor& borderColor, const QColor& innerColor)
@@ -205,12 +206,21 @@ void VisionApp::clearRenderMap(QString mapKey)
 }
 
 /*
-* Guided Setup's Clear render: everything the render helpers drew on the CAMERA scene (live circle
-* finder, locator, camera align / scaling, portability, intensity grid) - tracked here, so nothing is
-* left pointing at a deleted item. The image, the pattern box and ROI boxes are not render items.
+* Guided Setup's Clear render: what was drawn on the CAMERA scene as a result, not a tool -
+* - the render helpers' items (live circle finder, locator, camera align / scaling, portability,
+*   intensity grid), tracked here, so nothing is left pointing at a deleted item;
+* - the old Guided Setup's circle marks (clearGuidedMarks, which owns their list);
+* - the last located fiducial / barcode / portability box, hidden - the next find shows it again.
+* Tools stay: the image, search / inspection regions, ROI boxes, the pattern box.
 */
 void VisionApp::clearFovRenders()
 {
+	const int marks = _guidedMarkItems.size();
+	clearGuidedMarks();
+	int hidden = 0;
+	for (QDragBox* box : { &_fidLocatedRegion, &_barcodeLocatedRegion, &SystemData::instance()._portability.located_region })
+		if (box->isVisible()) { box->hide(); hidden++; }
+
 	int removed = 0;
 	for (auto it = _renderedMaps.begin(); it != _renderedMaps.end();) {
 		auto& renders = it.value();
@@ -226,7 +236,8 @@ void VisionApp::clearFovRenders()
 		if (renders.isEmpty()) it = _renderedMaps.erase(it);
 		else ++it;
 	}
-	ct::logger::info("[Render] Clear render: %d drawing(s) removed from the camera image", removed);
+	ct::logger::info("[Render] Clear render: %d drawing(s) and %d old Guided Setup mark(s) removed, %d located box(es) hidden",
+		removed, marks, hidden);
 }
 
 void VisionApp::clearAllRenderMaps()
