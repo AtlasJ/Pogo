@@ -2330,6 +2330,9 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 				if (z < p.minValidRaw || z > p.maxValidRaw) continue;
 
 				const double um = ((double)z - planeZ(plane, x, y)) / p.zScaleRawPerUm;
+				//a broken plane could give NaN, and NaN inside std::sort (Median, Percentile,
+				//Supported Peak) is undefined behaviour - a crash, not just a wrong number
+				if (!std::isfinite(um)) continue;
 				//the valid-height band throws away noise, dropout shoulders and holes
 				//BEFORE the statistic, so one bad pixel cannot decide a maximum
 				if (heightBandActive && (um < p.minValidHeightUm || um > p.maxValidHeightUm)) continue;
