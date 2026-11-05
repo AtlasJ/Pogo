@@ -5175,7 +5175,7 @@ QString JobThread::pitchUnitID(const SystemData::PitchRegion& r, int ix, int iy)
 	* region sat relative to region 1, which needed region 1 to have a usable pitch on both axes
 	* - a single-column teach has no X pitch, so there was no lattice and every region restarted
 	* at X1Y1. The start index is taught per region instead, so the numbering is whatever the
-	* operator says it is, and pitchTeachIsConsistent() catches any two units that collide.
+	* operator says it is, and the pitch page's overlap warning (refreshPitchOverlapWarning) shows any two that collide.
 	*/
 	return QString("X%1Y%2").arg(std::max(1, r.startX) + ix).arg(std::max(1, r.startY) + iy);
 }

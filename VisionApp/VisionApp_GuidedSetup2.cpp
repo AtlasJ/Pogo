@@ -3037,7 +3037,7 @@ void VisionApp::gs2Teach(int action)
 
 // ── build step 5b: a production START runs the saved setup ──────────────────────────────────────
 
-bool VisionApp::gs2TakeStart()
+void VisionApp::gs2TakeStart()
 {
 	const QString dir = Common::Directory::getRecipeCurrentPath();
 	gs2::Setup s;
@@ -3051,7 +3051,7 @@ bool VisionApp::gs2TakeStart()
 		_autoCalPending = false;   //an Auto Calibration "Online" waiting for this run: there is none
 		showMsg(QStringLiteral("Production cannot start: recipe %1 has no Guided Setup.\n\nOpen Guided Setup, teach every section and Save, then START again.")
 			.arg(Common::Directory::CurrentRecipe));
-		return true;
+		return;
 	case gs2::LoadResult::Unreadable:
 		ct::logger::error("[GuidedSetup2] START refused: %s", qPrintable(why));
 		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("Guided Setup: guidedSetup2.json unreadable"));
@@ -3059,7 +3059,7 @@ bool VisionApp::gs2TakeStart()
 		_autoCalPending = false;
 		showMsg(QStringLiteral("Production cannot start: this recipe's Guided Setup file cannot be read.\n\n%1\n\n"
 			"Open Guided Setup, teach it again and Save (the unreadable file is kept aside), then START again.").arg(why));
-		return true;
+		return;
 	case gs2::LoadResult::Loaded:
 		break;
 	}
@@ -3067,7 +3067,6 @@ bool VisionApp::gs2TakeStart()
 	gs2StartProduction(s, dir);   //refuses itself, saying why, while the setup is not complete
 	//an Auto Calibration "Online" waits for this START's run: none was handed over, so none will come
 	if (_gs2RunSeq == runsBefore || !_gs2Run.acquiring) _autoCalPending = false;
-	return true;
 }
 
 /*

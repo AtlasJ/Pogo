@@ -582,7 +582,6 @@ private:
 	void clearInspectionLogs(); //drop [Inspection] lines from the machine status
 	void updateProductionSummary(); //recount good/bad/total from the production table
 	void showPlatformZCompensation(); //production page readout of SystemData::_platformZOffset
-	bool pitchTeachIsConsistent(QString& why); //stale or out-of-order pitch/fiducial teaches
 	void refreshPitchOverlapWarning();         //live X#Y# clash notice on the pitch page
 	void discardUnitImages(const QString& unitID); //remove a passed unit's saved images
 	void prunePassedUnitImages();                  //end-of-run sweep for late writes
@@ -659,7 +658,6 @@ private:
 	void learnSafetyPattern();
 	QString safetyPatternPath() const;
 	bool runSafetyCheck(const QImage& fov, SafetyCheckResult& res);
-	bool safetyCheckPassedForProduction();
 	SafetyCheckConfig _safetyCheck;
 	QDragBox* _safetyRoiBox = nullptr;       //search region (green)
 	QDragBox* _safetyLearnBox = nullptr;     //pattern learn region (blue)
@@ -785,9 +783,8 @@ private:
 	//build step 5: Snap and scan's and START's shots, and the recipe line scan set to H's 3D scan direction
 	QVector<JobThread::Gs2Shot> gs2BuildShots(const gs2::Setup& s, const QVector<gs2::RunPoint>& visit, double z2D, double z3D) const;
 	void gs2SetLineScanFromSetup(const gs2::Setup& s);
-	//every production START (since the cutover, step 6): runs the recipe's SAVED setup or refuses with the reason shown.
-	//Always true (taken); the bool stays so the old path after it in startProduction can be deleted on its own later
-	bool gs2TakeStart();
+	//every production START (since the cutover, step 6): runs the recipe's SAVED setup or refuses with the reason shown
+	void gs2TakeStart();
 	void gs2StartProduction(const gs2::Setup& s, const QString& dir);
 
 	//── shared with the Guided Setup (from the old page, removed at the cutover - step 6; in VisionApp_GuidedSetup2.cpp)
@@ -2031,7 +2028,6 @@ public slots:
 	bool cropVOFromViewImage(const QString& viewImagePath, const QRectF& voRectWorldPx, const QPointF& fovOffsetPx, MIL_ID& outParent, MIL_ID& outChild, QRect& outCropRect, QString& outRectString) const;
 
 	void boardInPosition(int pos);
-	void runProdS();
 	void unloadBoard();
 
 	void vs_updateUptimer();

@@ -622,64 +622,11 @@ void VisionApp::startProduction()
 	if (!liveMappingReadyForProduction()) return;
 
 	/*
-	* Since the cutover (Guided Setup step 6) every START runs the recipe's Guided Setup, or is refused - gs2TakeStart
-	* always takes it. Its own steps (Safety check 1, fid0, 3D Z, the corners) replaced the safety check and the
-	* pitch teach check below: the old path that follows no longer runs, and is kept only until it is deleted.
+	* Since the cutover (Guided Setup step 6) every START runs the recipe's Guided Setup, or is refused. Its own
+	* steps (Safety check 1, fid0, 3D Z, the corners) replaced the old safety check and pitch teach check, and
+	* the old run path (signalLoadToPosition -> inspect2D3D) was deleted once the cutover passed on the IPC.
 	*/
-	if (gs2TakeStart()) return;
-
-	/*
-	* Last gate before anything moves for real: jog to the taught position, look for the feature,
-	* and refuse the run if it is not there. Placed after the machine-state and selector checks so
-	* it only costs a move once the run would otherwise have started.
-	*/
-	if (!safetyCheckPassedForProduction()) {
-		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("safety check"));
-		return;
-	}
-
-	{
-		QString why;
-		if (!pitchTeachIsConsistent(why)) {
-			ct::logger::warn("[Pitch] Teach consistency: %s", why.toStdString().c_str());
-			AuditLog::instance().log(QStringLiteral("PITCH_TEACH_WARNING"), why);
-			addLogLine(QStringLiteral("Pitch teach warning - see the prompt"));
-			showMsg(QStringLiteral("The taught points and the fiducial teach do not agree:\n\n%1\n\n"
-				"Units will be positioned from a reference that no longer matches the fiducials.")
-				.arg(why));
-		}
-	}
-
-	AuditLog::instance().log(QStringLiteral("PRODUCTION_START"), Common::Directory::CurrentRecipe);
-
-	ui.lineEdit_inspectionTimeMain->clear();
-
-	_processType = ProcessType::PRODUCTION;
-	_gs2Run = Gs2RunFlags();   //a normal run: the table follows the recipe's checkboxes again
-
-	//fresh run: clear the unit status table and the machine status log
-	ui.tableWidget_prodStatus->setRowCount(0);
-	resetUnitStates(); //Live Mapping: every fitted position back to Pending
-	updateProductionSummary();
-	clearErrorLogs();
-	clearInspectionLogs();
-
-	//production runs inspect: OCR + 3D height on the acquired images
-	InspectionThread::instance().setActive(true);
-
-	uidGenerator uidGen;
-	_currentProductionID = uidGen.id().c_str();
-
-	//create the production dir now so JobThread's root path is valid before any
-	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
-	setupProductionDir();
-
-	triggerExternalBarcodeReaders();
-
-	SystemData::instance()._offlineRun = false;
-	emit signalLoadToPosition(0);
-
-	vs_startElapseTimer();
+	gs2TakeStart();
 }
 
 void VisionApp::triggerExternalBarcodeReaders()
@@ -719,7 +666,6 @@ void VisionApp::triggerExternalBarcodeReaders()
 * thread - the status table and Live Mapping reset, inspection on, a new production id and folder -
 * without its gates and the old safety check, which the new setup's own steps replace. The old
 * platform Z offset is held at 0: every Z of the new setup was measured on this trolley.
-* startProduction itself is untouched.
 */
 void VisionApp::gs2PrepareProductionRun()
 {
@@ -762,85 +708,8 @@ void VisionApp::startProductionS()
 	//a PMF and the template mapping it is laid out on (skipped in debug mode)
 	if (!liveMappingReadyForProduction()) return;
 
-	//every START runs the Guided Setup since the cutover - as startProduction; the old path below no longer runs
-	if (gs2TakeStart()) return;
-
-	/*
-	* Last gate before anything moves for real: jog to the taught position, look for the feature,
-	* and refuse the run if it is not there. Placed after the machine-state and selector checks so
-	* it only costs a move once the run would otherwise have started.
-	*/
-	if (!safetyCheckPassedForProduction()) {
-		AuditLog::instance().log(QStringLiteral("PRODUCTION_BLOCKED"), QStringLiteral("safety check"));
-		return;
-	}
-
-	{
-		QString why;
-		if (!pitchTeachIsConsistent(why)) {
-			ct::logger::warn("[Pitch] Teach consistency: %s", why.toStdString().c_str());
-			AuditLog::instance().log(QStringLiteral("PITCH_TEACH_WARNING"), why);
-			addLogLine(QStringLiteral("Pitch teach warning - see the prompt"));
-			showMsg(QStringLiteral("The taught points and the fiducial teach do not agree:\n\n%1\n\n"
-				"Units will be positioned from a reference that no longer matches the fiducials.")
-				.arg(why));
-		}
-	}
-
-	ui.lineEdit_inspectionTimeMain->clear();
-
-
-	_processType = ProcessType::PRODUCTION;
-	_gs2Run = Gs2RunFlags();   //a normal run: the table follows the recipe's checkboxes again
-
-	//fresh run: clear the unit status table and the machine status log
-	ui.tableWidget_prodStatus->setRowCount(0);
-	resetUnitStates(); //Live Mapping: every fitted position back to Pending
-	updateProductionSummary();
-	clearErrorLogs();
-	clearInspectionLogs();
-
-	//production runs inspect: OCR + 3D height on the acquired images
-	InspectionThread::instance().setActive(true);
-
-	uidGenerator uidGen;
-	_currentProductionID = uidGen.id().c_str();
-
-	//create the production dir now so JobThread's root path is valid before any
-	//reader image is saved (the barcodeDecoded handler re-runs this to refresh info.json)
-	setupProductionDir();
-
-	//if (_enableBarcode)
-	//{
-	//	bool needExternal = false;
-
-	//	if (_barcodeInfos.size() > 0 && _barcodeInfos[0].registration_method == 2) // 2=External
-	//	{
-	//		ui.lineEdit_barcodeID->clear();
-	//		needExternal = true;
-	//	}
-
-	//	if (_barcodeInfos.size() > 1 && _barcodeInfos[1].registration_method == 2) // 2=External
-	//	{
-	//		ui.lineEdit_barcodeID2->clear();
-	//		needExternal = true;
-	//	}
-
-	//	if (needExternal)
-	//	{
-	//		_jobThread.setServerHostAddress(m_barcodeIp, m_barcodePort);
-	//		_jobThread.triggerSRX();
-
-	//	}
-	//}
-
-
-
-
-	SystemData::instance()._offlineRun = false;
-	runProdS();
-
-	vs_startElapseTimer();
+	//every START runs the Guided Setup since the cutover - as startProduction
+	gs2TakeStart();
 }
 
 
@@ -856,18 +725,6 @@ void VisionApp::boardInPosition(int pos) {
 		inspect2D3D();
 	}
 }
-void VisionApp::runProdS()
-{
-	if (_processType == ProcessType::IMAGE_COLLECTION) {
-		collectImages();
-		ct::logger::info("pew pew");
-	}
-	else if (_processType == ProcessType::PRODUCTION) {
-		ct::logger::info("[boardInPosition]Start InspectionThread in Production Mode");
-		inspect2D3D();
-	}
-}
-
 
 void VisionApp::unloadBoard()
 {
@@ -973,96 +830,6 @@ void VisionApp::prunePassedUnitImages()
 	}
 
 	ct::logger::info("[Production] Save Failed Images Only: swept %d passed unit(s)", units);
-}
-
-/*
-* Catch the two ways a re-teach goes wrong silently.
-*
-* 1. A region's fiducial reference was measured against a fiducial teach that has since been
-*    re-taught. The reference is a LOCATED position in machine mm, so re-teaching the fiducial
-*    (model, ROI or teach point) moves the measurement and leaves the stored number describing
-*    something that no longer exists - the run would compensate to the wrong place and nothing
-*    would look wrong until the parts were measured.
-*
-* 2. P2 was taught BEFORE the current P1. Pitch is computed as P2 - P1 against whatever P1 held
-*    at the time, so if P1 has moved since, that move is sitting inside the pitch.
-*
-* Reports rather than refuses: a machine mid-shift should not be stopped by a warning it can
-* act on, and the operator is told exactly which region and what to press.
-*/
-bool VisionApp::pitchTeachIsConsistent(QString& why)
-{
-	why.clear();
-	if (!SystemData::instance()._setupRegionPitchMode) return true;
-
-	const auto regions = SystemData::instance().pitchRegions();
-	const int fidRev = SystemData::instance()._fiducialTeachRev;
-	QStringList problems;
-
-	/*
-	* The fiducial-reference checks below belong to the Setup Region page's way of teaching,
-	* where P1 captures the fiducials' LOCATED positions and that capture can go stale. The guided
-	* four-corner layout does not keep such a capture: its run-time reference is each fiducial's
-	* current teach point (JobThread::pitchUnitPoint), which cannot be older than itself. Only the
-	* unit-ID collision check still applies there.
-	*/
-	const bool fourPoint = SystemData::instance()._fourPointFiducial;
-
-	for (int i = 0; i < (int)regions.size(); i++) {
-		const auto& r = regions[i];
-		if (!r.p1Set) continue;
-
-		if (fourPoint) {
-			//nothing region-specific to check for the fiducials; the ID check below covers the rest
-		}
-		else if (r.fidRefMask == 0) {
-			problems << QStringLiteral("Region %1 has no fiducial reference - press Locate Fiducials, "
-				"then Set P1.").arg(i + 1);
-		}
-		else if (r.fidRefTeachRev != fidRev) {
-			problems << QStringLiteral("Region %1 captured its fiducial reference against an older "
-				"fiducial teach - press Locate Fiducials, then Set P1 again.").arg(i + 1);
-		}
-
-		if (r.p2Set && r.p1TeachMs > 0 && r.p2TeachMs > 0 && r.p2TeachMs < r.p1TeachMs) {
-			problems << QStringLiteral("Region %1 had P1 re-taught after P2, so the pitch still carries "
-				"the old origin - re-teach P2.").arg(i + 1);
-		}
-	}
-
-	/*
-	* Two units resolving to the same X#Y# would overwrite each other's saved images and
-	* collide in the status table, with nothing on screen to say so. Checked by building every
-	* ID the run will use, through the same call the run itself makes - a check that recreated
-	* the naming rule locally could drift away from the real one.
-	*/
-	{
-		QHash<QString, QString> seen; //id -> where it came from
-		QStringList clashes;
-		for (int i = 0; i < (int)regions.size(); i++) {
-			const auto& r = regions[i];
-			if (!r.p1Set) continue;
-			for (int iy = 0; iy < std::max(1, r.unitsY); iy++) {
-				for (int ix = 0; ix < std::max(1, r.unitsX); ix++) {
-					const QString id = _jobThread.pitchUnitID(r, ix, iy);
-					const QString from = QStringLiteral("region %1 unit (%2, %3)").arg(i + 1).arg(ix + 1).arg(iy + 1);
-					if (seen.contains(id)) {
-						if (clashes.size() < 5)
-							clashes << QStringLiteral("%1 is used by both %2 and %3").arg(id, seen.value(id), from);
-					}
-					else seen.insert(id, from);
-				}
-			}
-		}
-		if (!clashes.isEmpty()) {
-			problems << QStringLiteral("Unit IDs collide - saved images would overwrite each other:\n  %1")
-				.arg(clashes.join(QStringLiteral("\n  ")));
-		}
-	}
-
-	if (problems.isEmpty()) return true;
-	why = problems.join(QStringLiteral("\n"));
-	return false;
 }
 
 /*
