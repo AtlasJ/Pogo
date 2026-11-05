@@ -7328,6 +7328,38 @@ QToolButton:hover {
                       </property>
                      </spacer>
                     </item>
+                    <item>
+                     <widget class="QToolButton" name="toolButton_tmSetUpright">
+                      <property name="minimumSize">
+                       <size>
+                        <width>120</width>
+                        <height>28</height>
+                       </size>
+                      </property>
+                      <property name="toolTip">
+                       <string>Mark the selected cells upright: their images are used as taken.</string>
+                      </property>
+                      <property name="text">
+                       <string>Set As Upright</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QToolButton" name="toolButton_tmSetInverted">
+                      <property name="minimumSize">
+                       <size>
+                        <width>120</width>
+                        <height>28</height>
+                       </size>
+                      </property>
+                      <property name="toolTip">
+                       <string>Mark the selected cells inverted: their 2D snap and 3D maps are turned 180 degrees before they are saved or inspected.</string>
+                      </property>
+                      <property name="text">
+                       <string>Set As Inverted</string>
+                      </property>
+                     </widget>
+                    </item>
                    </layout>
                   </item>
                   <item>
