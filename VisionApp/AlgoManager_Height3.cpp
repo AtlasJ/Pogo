@@ -398,9 +398,28 @@ bool AlgoManager::height3Pixel(bool preprocessed, bool segmented, int x, int y, 
 	return true;
 }
 
+/*
+* The 3D Render ROI in this map's pixels, clamped to it. On the segmented crop the ROI comes
+* in the part frame (origin = crop centre), and the map IS the crop, so its own size is the
+* offset - read here, under the caller's try_lock, never by a blocking call from the GUI.
+*
+* A null rect means "no ROI"; so does one that clamps to under 2 px either way (the renderer
+* needs a 2 x 2 grid at least), or one that covers the whole map anyway - then nothing is cut
+* and nothing is copied.
+*/
+static QRect h3RenderRect(const QRectF& roi, const cv::Mat& map, bool segmented)
+{
+	if (roi.isNull() || map.empty()) return QRect();
+	const QRectF frame = segmented ? roi.translated(map.cols / 2.0, map.rows / 2.0) : roi;
+	const QRect r = frame.normalized().toAlignedRect() & QRect(0, 0, map.cols, map.rows);
+	if (r.width() < 2 || r.height() < 2) return QRect();
+	if (r == QRect(0, 0, map.cols, map.rows)) return QRect();
+	return r;
+}
+
 QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 	double yawDeg, double pitchDeg, double zExaggeration, const QSize& outSize,
-	AlgoH3SurfaceStyle style, bool fillHoles, bool showPlane) const
+	AlgoH3SurfaceStyle style, bool fillHoles, bool showPlane, const QRectF& renderRoi) const
 {
 	const AlgoHeight3Params p = height3DisplayParams();
 
@@ -414,8 +433,32 @@ QImage AlgoManager::height3Surface(bool preprocessed, bool segmented,
 	double abc[3] = { out.planeA, out.planeB, out.planeC };
 	const bool drawPlane = showPlane && segmented && out.planeValid;
 
-	return algoH3RenderSurface3D(m_height3.heightForDisplay(preprocessed, segmented),
-		m_height3.intensityForDisplay(segmented),
+	cv::Mat height = m_height3.heightForDisplay(preprocessed, segmented);
+	cv::Mat intensity = m_height3.intensityForDisplay(segmented);
+
+	/*
+	* Only the 3D Render ROI's part of the map. Cut here, under the lock, so the views are
+	* headers onto the pipeline's buffers for no longer than the render itself.
+	*
+	* The renderer shrinks the map to a fixed grid budget, so a smaller piece is drawn at
+	* a finer resolution - that is half the point of the ROI, not a side effect.
+	*
+	* The plane is z = a*x + b*y + c in the crop's pixels; on a piece starting at (x0, y0)
+	* the same plane is c + a*x0 + b*y0 at the piece's own origin.
+	*/
+	const QRect r = h3RenderRect(renderRoi, height, segmented);
+	if (!r.isNull()) {
+		const cv::Rect cr(r.x(), r.y(), r.width(), r.height());
+		height = height(cr);
+		//the texture only rides along when it matches the map - the renderer drops it otherwise
+		if (!intensity.empty() && intensity.size() == m_height3.heightForDisplay(preprocessed, segmented).size())
+			intensity = intensity(cr);
+		else
+			intensity = cv::Mat();
+		abc[2] = out.planeC + out.planeA * r.x() + out.planeB * r.y();
+	}
+
+	return algoH3RenderSurface3D(height, intensity,
 		p.minValidRaw, p.maxValidRaw, yawDeg, pitchDeg, zExaggeration, outSize, style, fillHoles,
 		drawPlane ? abc : nullptr);
 }
@@ -432,15 +475,20 @@ QImage AlgoManager::height3Relief(bool preprocessed, bool segmented,
 		p.minValidRaw, p.maxValidRaw, zExaggeration, colorMapped);
 }
 
-bool AlgoManager::height3CopyDisplayHeight(bool preprocessed, bool segmented, cv::Mat& out) const
+bool AlgoManager::height3CopyDisplayHeight(bool preprocessed, bool segmented, cv::Mat& out,
+	const QRectF& renderRoi) const
 {
 	std::unique_lock<std::mutex> lock(m_height3Mutex, std::try_to_lock);
 	if (!lock.owns_lock()) return false;
 
 	//cloned UNDER the lock: heightForDisplay hands back a header onto the pipeline's own
 	//buffer, and the copy is what lets another thread own its map outright, whatever the
-	//pipeline does to its buffers next
-	out = m_height3.heightForDisplay(preprocessed, segmented).clone();
+	//pipeline does to its buffers next. With a 3D Render ROI only that piece is copied, so
+	//the external display gets (and has to load) just the part being looked at.
+	const cv::Mat map = m_height3.heightForDisplay(preprocessed, segmented);
+	const QRect r = h3RenderRect(renderRoi, map, segmented);
+	out = r.isNull() ? map.clone()
+		: map(cv::Rect(r.x(), r.y(), r.width(), r.height())).clone();
 	return true;
 }
 

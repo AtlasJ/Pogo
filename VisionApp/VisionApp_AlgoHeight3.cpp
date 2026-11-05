@@ -430,8 +430,12 @@ void VisionApp::initAlgoHeight3Page()
 		bool preprocessed = false, segmented = false;
 		algoH3ShownStage(preprocessed, segmented);
 
+		//the 3D Render ROI applies here too: only that part is saved and handed to ImageJ
+		algoH3StoreRenderBox();
+		const QRectF renderRect = algoH3RenderRect(segmented);
+
 		cv::Mat height;
-		if (!AlgoManager::instance().height3CopyDisplayHeight(preprocessed, segmented, height)) {
+		if (!AlgoManager::instance().height3CopyDisplayHeight(preprocessed, segmented, height, renderRect)) {
 			showMsg(QStringLiteral("A stage is still running - open the external 3D display once it has finished."));
 			return;
 		}
@@ -445,8 +449,17 @@ void VisionApp::initAlgoHeight3Page()
 		showStatus(QStringLiteral("Opening the external 3D display..."), 0);
 		showExternal3DBusy(QStringLiteral("Opening the external 3D display..."));
 		AuditLog::instance().log(QStringLiteral("ALGO_H3_EXTERNAL_3D_OPEN"),
-			QStringLiteral("%1 x %2 %3").arg(height.cols).arg(height.rows)
-			.arg(segmented ? "crop" : preprocessed ? "preprocessed" : "raw"));
+			QStringLiteral("%1 x %2 %3%4").arg(height.cols).arg(height.rows)
+			.arg(segmented ? "crop" : preprocessed ? "preprocessed" : "raw")
+			.arg(renderRect.isNull() ? QString()
+				: QStringLiteral(" (3D Render ROI %1 x %2 at %3,%4%5)")
+					.arg(renderRect.width(), 0, 'f', 0).arg(renderRect.height(), 0, 'f', 0)
+					.arg(renderRect.x(), 0, 'f', 0).arg(renderRect.y(), 0, 'f', 0)
+					.arg(segmented ? QStringLiteral(", part frame") : QString())));
+	});
+
+	connect(ui.toolButton_algoH3RenderRoi, &QToolButton::clicked, this, [=]() {
+		algoH3ToggleRenderRoi();
 	});
 
 	connect(ui.toolButton_algoH3DisplayExternalClose, &QToolButton::clicked, this, [=]() {
@@ -1943,6 +1956,7 @@ void VisionApp::hideAlgoH3Rois()
 {
 	for (auto* b : _algoH3DatumBoxes) if (b) b->hide();
 	for (auto* b : _algoH3RoiBoxes) if (b) b->hide();
+	if (_algoH3RenderBox) _algoH3RenderBox->hide();
 }
 
 /*
@@ -1965,6 +1979,135 @@ void VisionApp::updateAlgoH3RoiVisibility()
 
 	for (auto* b : _algoH3DatumBoxes) if (b) b->setVisible(showDatum);
 	for (auto* b : _algoH3RoiBoxes) if (b) b->setVisible(showRois);
+
+	//the 3D Render ROI only HIDES here. Showing it is algoH3PlaceRenderBox's job, after the
+	//2D view is drawn, because it first has to be put in the frame now on screen.
+	if (_algoH3RenderBox && !(onPage && flatView && _algoH3RenderRoiOn))
+		_algoH3RenderBox->hide();
+}
+
+// =============================================================================
+// 3D Render ROI
+// =============================================================================
+
+/*
+* Show / Hide. Show turns the crop on for every 3D view and the external display; Hide goes
+* back to the whole map. The rects are kept either way, so Show brings the box back where it
+* was left.
+*/
+void VisionApp::algoH3ToggleRenderRoi()
+{
+	if (_algoH3RenderRoiOn) algoH3StoreRenderBox();
+	_algoH3RenderRoiOn = !_algoH3RenderRoiOn;
+	ui.toolButton_algoH3RenderRoi->setText(_algoH3RenderRoiOn
+		? QStringLiteral("Hide 3D Render ROI") : QStringLiteral("Show 3D Render ROI"));
+
+	if (_algoH3RenderRoiOn && h3IsSurfaceMode(algoH3DisplayMode())) {
+		bool preprocessed = false, segmented = false;
+		algoH3ShownStage(preprocessed, segmented);
+		if (algoH3RenderRect(segmented).isNull())
+			showStatus(QStringLiteral("Switch to a 2D view to place the 3D Render ROI - "
+				"until it is placed the whole map is rendered."), 8000);
+	}
+
+	//redraw: a 3D view re-renders with or without the crop, a 2D view gains or loses the box
+	updateAlgoH3Display();
+	if (!_algoH3RenderRoiOn) updateAlgoH3RoiVisibility();
+}
+
+/*
+* Put the box on the 2D view that was just drawn, in the frame that view is showing.
+*
+* The image on a flat view IS the frame (the full map, or the crop), so its size is what
+* the box is clamped to. A rect that would clamp to a sliver - a crop that shrank, a full-map
+* box carried over from a bigger scan - starts again as the centre half instead.
+*/
+void VisionApp::algoH3PlaceRenderBox()
+{
+	const bool onPage = isPage(UIPage::ALGO_SETUP) && ui.frame_rightTab->isVisible()
+		&& (currentAlgoPageAlgo() == AlgoPageAlgo::HEIGHT_3D_V3);
+	if (!onPage || !_algoH3RenderRoiOn || h3IsSurfaceMode(algoH3DisplayMode())
+		|| _pixmapFOV.isNull()) {
+		if (_algoH3RenderBox) _algoH3RenderBox->hide();
+		return;
+	}
+
+	//a box still showing the OTHER frame is saved before it moves to this one
+	algoH3StoreRenderBox();
+
+	bool preprocessed = false, segmented = false;
+	algoH3ShownStage(preprocessed, segmented);
+
+	const QRectF image(0, 0, _pixmapFOV.width(), _pixmapFOV.height());
+	QRectF r = segmented
+		? (_algoH3RenderRoiPart.isNull() ? QRectF()
+			: _algoH3RenderRoiPart.translated(image.width() / 2.0, image.height() / 2.0))
+		: _algoH3RenderRoiMap;
+	r = r & image;
+	constexpr double kMinPx = 16.0;
+	if (r.width() < kMinPx || r.height() < kMinPx) {
+		r = QRectF(image.width() / 4.0, image.height() / 4.0, image.width() / 2.0, image.height() / 2.0);
+	}
+
+	if (!_algoH3RenderBox) {
+		auto* box = new QDragBox();
+		_pGraphicsSceneFOV->addItem(box);
+		box->setOutterBarrier(image);
+		box->setup(r, QColor(240, 240, 240), QStringLiteral("3D Render ROI"));
+		box->setDragable(true);
+		//BELOW the measurement / datum ROIs (and above the image): it is big and they sit
+		//inside it, so a click on a pin's ROI has to reach the ROI, not the render box
+		box->setZValue((int)UIHierarchy::DRAGGABLES - 0.5);
+		//a view setting, so a move saves nothing to the algo - it only records the rect
+		connect(box, &QDragBox::dragBoxMouseReleased, this, [=](QDragBox*, QString, QPointF) {
+			algoH3StoreRenderBox();
+		});
+		connect(box, &QDragBox::grabberReleased, this, [=](QDragBox*) {
+			algoH3StoreRenderBox();
+		});
+		_algoH3RenderBox = box;
+	}
+	else {
+		//barrier first: setGeometry is clamped against it
+		_algoH3RenderBox->setOutterBarrier(image);
+		_algoH3RenderBox->setGeometry(r);
+	}
+
+	_algoH3RenderBoxSegmented = segmented;
+	_algoH3RenderBoxFrame = image.size();
+	_algoH3RenderBox->show();
+	algoH3StoreRenderBox();   //the clamped rect is the rect from now on
+}
+
+//the box's geometry -> the rect of the frame it is placed in. A no-op while it is hidden:
+//a hidden box may have been left in a frame that is no longer on screen.
+void VisionApp::algoH3StoreRenderBox()
+{
+	if (!_algoH3RenderBox || !_algoH3RenderBox->isVisible()) return;
+	if (_algoH3RenderBoxFrame.width() <= 0 || _algoH3RenderBoxFrame.height() <= 0) return;
+
+	const QRectF g = _algoH3RenderBox->getGeometry();
+	if (_algoH3RenderBoxSegmented)
+		_algoH3RenderRoiPart = g.translated(-_algoH3RenderBoxFrame.width() / 2.0,
+			-_algoH3RenderBoxFrame.height() / 2.0);
+	else
+		_algoH3RenderRoiMap = g;
+}
+
+/*
+* What a 3D render or the external display crops to, in the frame's own coordinates: map
+* pixels on the full map, the part frame on the crop. Null = the whole map: the ROI is
+* hidden, or not placed in this frame yet.
+*
+* Deliberately no AlgoManager call: the crop size would take the pipeline lock with a
+* BLOCKING lock, on the GUI thread, on every frame of a 3D drag. AlgoManager turns the part
+* frame into crop pixels itself, under the try_lock its renders already hold, and clamps it
+* to the real map - so a stale rect can never read outside it.
+*/
+QRectF VisionApp::algoH3RenderRect(bool segmented) const
+{
+	if (!_algoH3RenderRoiOn) return QRectF();
+	return segmented ? _algoH3RenderRoiPart : _algoH3RenderRoiMap;
 }
 
 // =============================================================================
@@ -2515,7 +2658,8 @@ void VisionApp::updateAlgoH3Display()
 		img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
 			_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode),
 			ui.checkBox_algoH3FillHoles->isChecked(),
-			ui.checkBox_algoH3ShowPlane->isChecked());
+			ui.checkBox_algoH3ShowPlane->isChecked(),
+			algoH3RenderRect(segmented));
 		break;
 
 	//lit but flat, and rendered at full resolution - so unlike the 3D views this one is
@@ -2558,6 +2702,7 @@ void VisionApp::updateAlgoH3Display()
 	//BEFORE the overlay, not after: the ROI labels below are anchored to the boxes and read
 	//their visibility to decide whether this section owns them at all
 	updateAlgoH3RoiVisibility();
+	algoH3PlaceRenderBox();
 
 	refreshAlgoH3Overlay();
 }
@@ -2717,7 +2862,8 @@ void VisionApp::updateAlgoH3Surface()
 	const QImage img = mgr.height3Surface(preprocessed, segmented, _algoH3Yaw, _algoH3Pitch,
 		_algoH3ZExaggeration, kAlgoH3SurfaceCanvas, h3StyleFor(mode),
 		ui.checkBox_algoH3FillHoles->isChecked(),
-		ui.checkBox_algoH3ShowPlane->isChecked());
+		ui.checkBox_algoH3ShowPlane->isChecked(),
+		algoH3RenderRect(segmented));
 	if (img.isNull()) return;
 
 	//the canvas size never changes, so the pixmap can be swapped in place - going through

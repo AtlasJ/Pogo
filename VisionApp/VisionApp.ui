@@ -21662,6 +21662,37 @@ Stop SR Management Tool services to free port 21.</string>
                                 </widget>
                                </item>
                                <item>
+                                <widget class="QToolButton" name="toolButton_algoH3RenderRoi">
+                                 <property name="toolTip">
+                                  <string>Render only part of the map in 3D.
+
+Show puts a box on the 2D view: drag it over the area to look at, then switch to a 3D view or open the external 3D display - only that area is drawn, at a finer resolution.
+
+Hide goes back to rendering the whole map; the box is remembered. The full map and the segmented crop each keep their own box.</string>
+                                 </property>
+                                 <property name="text">
+                                  <string>Show 3D Render ROI</string>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <spacer name="horizontalSpacer_algoH3Display">
+                                 <property name="orientation">
+                                  <enum>Qt::Horizontal</enum>
+                                 </property>
+                                 <property name="sizeHint" stdset="0">
+                                  <size>
+                                   <width>40</width>
+                                   <height>20</height>
+                                  </size>
+                                 </property>
+                                </spacer>
+                               </item>
+                              </layout>
+                             </item>
+                             <item>
+                              <layout class="QHBoxLayout" name="horizontalLayout_algoH3DisplayExternal">
+                               <item>
                                 <widget class="QToolButton" name="toolButton_algoH3DisplayExternalOpen">
                                  <property name="toolTip">
                                   <string>Open the external 3D display window</string>
@@ -21682,7 +21713,7 @@ Stop SR Management Tool services to free port 21.</string>
                                 </widget>
                                </item>
                                <item>
-                                <spacer name="horizontalSpacer_algoH3Display">
+                                <spacer name="horizontalSpacer_algoH3DisplayExternal">
                                  <property name="orientation">
                                   <enum>Qt::Horizontal</enum>
                                  </property>

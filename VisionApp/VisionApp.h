@@ -1233,6 +1233,23 @@ private:
 	QElapsedTimer _algoH3DragClock;       //throttles re-renders during a drag
 	QTimer* _algoH3SelTimer = nullptr;    //watches which ROI is selected on the scene
 	int _algoH3ShownRoi = -1;             //ROI index the results section is showing
+	/*
+	* 3D Render ROI: render (and send to the external display) only part of the map. View
+	* state, never saved. One rect per FRAME, not per section: sections 0-2 show the full map,
+	* 3-7 the segmented crop, and a box on one means nothing on the other. The crop's rect is
+	* in the part frame (origin = crop centre), like the measurement ROIs, so it stays on the
+	* same pins from unit to unit. A null rect = not placed yet.
+	*/
+	QPointer<QDragBox> _algoH3RenderBox;     //the box on the 2D view; null until first shown
+	bool _algoH3RenderRoiOn = false;         //Show pressed: the 3D views use the rect
+	bool _algoH3RenderBoxSegmented = false;  //which frame the box is placed in right now
+	QSizeF _algoH3RenderBoxFrame;            //that frame's size in px, when it was placed
+	QRectF _algoH3RenderRoiMap;              //full map px
+	QRectF _algoH3RenderRoiPart;             //part frame px
+	void algoH3ToggleRenderRoi();
+	void algoH3PlaceRenderBox();             //after the 2D view is drawn: put the box on it
+	void algoH3StoreRenderBox();             //the box's geometry -> its frame's rect
+	QRectF algoH3RenderRect(bool segmented) const; //what the 3D renders crop to (frame coords); null = all
 	External3DViewer* _external3D = nullptr; //ImageJ's 3D surface plot in its own window (child QObject)
 	QPointer<QDialog> _external3DBusy;       //its please-wait box while a job runs; null otherwise
 	void showExternal3DBusy(const QString& text);

@@ -187,7 +187,12 @@ public:
 		bool fillHoles = true,
 		//draw the fitted datum over the part. Only means anything on the segmented view -
 		//the plane is fitted in the crop's coordinates and has no place on the full map.
-		bool showPlane = false) const;
+		bool showPlane = false,
+		//3D Render ROI: render only this part. In the FRAME's coordinates - map pixels on
+		//the full map, part frame (origin = crop centre) on the segmented crop - so the caller
+		//never has to read the crop size, which would take this lock outside a try_lock.
+		//Null = all of it. Clamped to the map; one that clamps to almost nothing renders all.
+		const QRectF& renderRoi = QRectF()) const;
 	QImage height3Relief(bool preprocessed, bool segmented,
 		double zExaggeration, bool colorMapped) const;
 
@@ -196,7 +201,8 @@ public:
 	* process (the external 3D display). try_lock like the renders above: false means a stage
 	* is running right now; true with an empty `out` means no map is loaded.
 	*/
-	bool height3CopyDisplayHeight(bool preprocessed, bool segmented, cv::Mat& out) const;
+	bool height3CopyDisplayHeight(bool preprocessed, bool segmented, cv::Mat& out,
+		const QRectF& renderRoi = QRectF()) const;   //same 3D Render ROI rule as height3Surface
 
 	//── runs (queued to the worker thread; results come by signal) ──
 	void runOcr(const QImage& fov);
