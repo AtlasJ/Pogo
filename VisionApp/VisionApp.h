@@ -766,7 +766,9 @@ private:
 		bool pass = false;
 		QString report;                      //every corner's residual and the angle, against their limits
 	};
-	bool gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why); //START step 4; false = could not measure
+	//START step 4; false = could not measure. fid0JustFound: B ran in this same run (Locate / START), so
+	//fid0 is not located again when the stage is still where C left it
+	bool gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why, bool fid0JustFound = false);
 	//build step 4a: sections E, F and H teach in the trolley frame, so they need it as a passed Check or Locate
 	//found it on this trolley in this session, with the corners and drawing size there are now
 	bool gs2SessionRect(const gs2::Setup& s, const QString& dir, QString& why) const;

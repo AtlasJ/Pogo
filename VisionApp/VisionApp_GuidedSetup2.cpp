@@ -1814,7 +1814,7 @@ bool VisionApp::gs2RelocateFid0(const gs2::Setup& s, Gs2Circle& out, QString& wh
 * the four (shift + turn) and every corner's residual and the angle are judged against the recipe's
 * limits. All of it is logged on every run, so the limits can be set from real numbers.
 */
-bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why)
+bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& why, bool fid0JustFound)
 {
 	out = Gs2RectCheck();
 	const gs2::FidRect& r = s.fidRect;
@@ -1830,27 +1830,52 @@ bool VisionApp::gs2CheckRect(const gs2::Setup& s, Gs2RectCheck& out, QString& wh
 	* start off the trolley, where the 2D Z is not known to be clear: up to Start Z first, as always.
 	*/
 	double clearZ = s.fid0.startZ;
+	bool fromC = false;   //still standing where C's read left it, at the 2D Z
 	{
 		auto& mc = MotionController::instance();
 		const auto x = mc.get_position_mm(_motionID, 0, (int)Axis::X);
 		const auto y = mc.get_position_mm(_motionID, 0, (int)Axis::Y);
 		const auto z = mc.get_position_mm(_motionID, 0, (int)Axis::Z);
 		if (_gs2Session.cLeft && x && y && z && std::abs(*x - _gs2Session.cLeftX) <= 0.5 && std::abs(*y - _gs2Session.cLeftY) <= 0.5
-			&& std::abs(*z - _gs2Session.cLeftZ) <= 0.05 && *z <= _gs2Session.z2D + 0.05)
+			&& std::abs(*z - _gs2Session.cLeftZ) <= 0.05 && *z <= _gs2Session.z2D + 0.05) {
 			clearZ = _gs2Session.z2D;
+			fromC = true;
+		}
 	}
-	setProgress(_zsBusyWindow, QStringLiteral("To fid0 at the 2D Z..."));
-	if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, clearZ, why)) return false;
-	if (!zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why)) return false;
-	Gs2Circle f;
-	if (!gs2RelocateFid0(s, f, why)) return false;
-	out.fid0 = { f.wx, f.wy };
 
-	const QPointF centre(f.imgW / 2.0, f.imgH / 2.0);
+	/*
+	* Locate and START: B found fid0 seconds ago, in this same run, so it is NOT located again. Five
+	* runs on the IPC (2026-11-05) found it again within 0.010 mm of B every time, for 2.3 s each. The
+	* trolley frame comes from the four corners alone - fid0 only says where to look for the first one,
+	* inside a Corner search of several mm - so a 0.01 mm older fid0 changes nothing. Only taken straight
+	* after C (the stage is where C's read left it, at the 2D Z, over the trolley); from anywhere else, or
+	* from the page's own Check, fid0 is located again as before, since minutes may have passed (Y crept
+	* 0.16 mm in 8 minutes on 2026-11-03) and the page's later teaches are measured against it.
+	*/
+	QPointF centre;
+	if (fid0JustFound && fromC) {
+		const int w = CAMManager::instance().getWidth(QStringLiteral("cam1")), h = CAMManager::instance().getHeight(QStringLiteral("cam1"));
+		if (w <= 0 || h <= 0) { why = QStringLiteral("the camera image size is unknown - is the camera connected?"); return false; }
+		centre = QPointF(w / 2.0, h / 2.0);
+		//the corners are looked for at the 2D Z, as on the old path (already there after C: no motion)
+		if (!zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why)) return false;
+		out.fid0 = { _gs2Session.fid0X, _gs2Session.fid0Y };
+		ct::logger::info("[GuidedSetup2] corners from fid0 as found %.1f s ago at %.3f, %.3f (not located again)",
+			(QDateTime::currentMSecsSinceEpoch() - _gs2Session.fid0AtMs) / 1000.0, _gs2Session.fid0X, _gs2Session.fid0Y);
+	}
+	else {
+		setProgress(_zsBusyWindow, QStringLiteral("To fid0 at the 2D Z..."));
+		if (!zsMoveToXY(_gs2Session.fid0X, _gs2Session.fid0Y, clearZ, why)) return false;
+		if (!zsMove({ { (int)Axis::Z, _gs2Session.z2D } }, why)) return false;
+		Gs2Circle f;
+		if (!gs2RelocateFid0(s, f, why)) return false;
+		out.fid0 = { f.wx, f.wy };
+		centre = QPointF(f.imgW / 2.0, f.imgH / 2.0);
+	}
 	gs2geo::Pt taught[4];
 	int first = 0;
 	for (int i = 0; i < 4; i++) {
-		taught[i] = { f.wx + r.corner[i].x, f.wy + r.corner[i].y };
+		taught[i] = { out.fid0.x + r.corner[i].x, out.fid0.y + r.corner[i].y };
 		if (std::hypot(r.corner[i].x, r.corner[i].y) < std::hypot(r.corner[first].x, r.corner[first].y)) first = i;
 	}
 	std::vector<gs2geo::Pt> taughtDone, foundDone;
@@ -2008,7 +2033,8 @@ bool VisionApp::gs2RunAnchors(const gs2::Setup& s, const QString& dir, bool inPa
 		steps << QStringLiteral("3D Z %1").arg(mm(z3.z));
 	}
 	//4: the four corners
-	if (ok) ok = gs2CheckRect(s, r, why) && stillHere(why);
+	//fid0 was found in step 2 of this same run: the corners start from it, not from a second Find
+	if (ok) ok = gs2CheckRect(s, r, why, true) && stillHere(why);
 	if (ok) {
 		gs2ShowFound(r, title);
 		if (r.pass) {
