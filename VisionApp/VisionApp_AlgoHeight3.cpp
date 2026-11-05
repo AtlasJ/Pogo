@@ -1078,13 +1078,15 @@ void VisionApp::initAlgoHeight3Page()
 			if (thisJob(AlgoH3Stage::Preprocess))
 				h3LogStage("Preprocess", out.preprocess, QString());
 
-			//the size is measured before the canvas check, so a refusal still reports it
+			//the size is measured before the canvas check, so a refusal still reports it; the
+			//boundaries say WHY the block is where it is, which is what a wrong one needs
 			if (thisJob(AlgoH3Stage::Segment))
-				h3LogStage("Segment", out.segment, out.segWidthUm > 0.0
+				h3LogStage("Segment", out.segment, (out.segWidthUm > 0.0
 					? QStringLiteral("part %1 x %2 um at %3 deg")
 						.arg(out.segWidthUm, 0, 'f', 2).arg(out.segHeightUm, 0, 'f', 2)
 						.arg(out.segAngleDeg, 0, 'f', 3)
-					: QString());
+					: QString())
+					+ (out.segInfo.isEmpty() ? QString() : QStringLiteral(" [%1]").arg(out.segInfo)));
 
 			if (thisJob(AlgoH3Stage::Datum))
 				h3LogStage("Datum", out.datum, out.planeValid

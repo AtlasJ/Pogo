@@ -936,7 +936,9 @@ static bool h3EdgeRotation(const cv::Mat& validMask, double maxDeg, double& thet
 *   5. The gaps: runs of lines the sensor saw almost nothing on. The slot between two blocks
 *      and the space beyond the field's ends are both such runs, and both are boundaries
 *      whether or not the plates either side differ in height - on this part they mostly do
-*      not, and the step alone found nothing between them.
+*      not, and the step alone found nothing between them. A slot too narrow to empty a
+*      line is found in the intensity map instead, as a black line running unbroken along
+*      the part - which a pin row, for all its shadows, never is.
 *   6. Cut at each step above the threshold, strongest first, suppressing anything within half
 *      a band of a boundary already taken, so one boundary yields one cut.
 *   7. Of the bands between the boundaries, keep the ones bounded on BOTH sides - a band that
@@ -948,8 +950,8 @@ static bool h3EdgeRotation(const cv::Mat& validMask, double maxDeg, double& thet
 *      else there, and a rect fitted around one of those is stretched sideways and square to
 *      the image. Anything that far below the local plate is fixture, not part.
 */
-static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
-	cv::RotatedRect& out, QString& why)
+static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, const AlgoHeight3Params& p,
+	cv::RotatedRect& out, QString& why, QString& info)
 {
 	const cv::Mat mask = validMaskOf(src, p.minValidRaw, p.maxValidRaw);
 	const int h = src.rows, w = src.cols;
@@ -1076,14 +1078,73 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 	* counts, and the step alone finds nothing between them.
 	*
 	* A pin row is NOT a gap: the pins shadow the plate into blobs, but the plate between the
-	* blobs is still seen, so the line keeps well over a third of its pixels. The seam keeps
-	* none. A run of such lines is one boundary however long it is, and the step cuts below
-	* are kept away from it - the step at a seam, where there is one, IS the seam.
+	* blobs is still seen. On most parts a pin row keeps a third of its pixels; on one with
+	* long shadows it keeps a tenth, which is where a real gap's chamfered sides end up too.
+	* So a line that is all but empty - under a twentieth - is a gap on its own, and a line
+	* that is merely sparse counts only where it adjoins one of those, or where the intensity
+	* map (below) shows the slot. A run of gap lines is one boundary however long it is, and
+	* the step cuts further down are kept away from it - the step at a seam, where there is
+	* one, IS the seam.
 	*/
-	const double kGapCover = 0.15;
-	std::vector<char> isGap(uCount, 0);
-	for (int u = 0; u < uCount; u++)
-		isGap[u] = (lineLen[u] == 0) || ((double)total[u] / lineLen[u] < kGapCover);
+	const double kGapSure = 0.05, kGapSparse = 0.15;
+	std::vector<char> isGap(uCount, 0), sparse(uCount, 0);
+	for (int u = 0; u < uCount; u++) {
+		const double cover = lineLen[u] ? (double)total[u] / lineLen[u] : 0.0;
+		isGap[u] = cover < kGapSure;
+		sparse[u] = cover < kGapSparse;
+	}
+	//grow each gap over the sparse lines touching it: the chamfers either side of a slot
+	for (int u = 1; u < uCount; u++) if (isGap[u - 1] && sparse[u]) isGap[u] = 1;
+	for (int u = uCount - 2; u >= 0; u--) if (isGap[u + 1] && sparse[u]) isGap[u] = 1;
+
+	/*
+	* The seam the height map cannot show. Two blocks pushed together leave a slot only a
+	* few rows wide, and the sensor catches enough of its chamfered sides at plate height
+	* that the line never empties - it keeps a fifth of its pixels, the same as a row of
+	* pins does. In the INTENSITY map the same slot is a hard black line running unbroken
+	* from one end of the part to the other, and nothing else on the part is: a pin row is
+	* dark too, but it is a string of pins and shadows with lit plate between them, and the
+	* longest unbroken dark stretch on it is a pin and its shadow. So each line is sampled
+	* along its length and the longest run of dark on it measured; a seam owns most of the
+	* line, a pin row a twentieth of it.
+	*
+	* Dark is relative to this map's own plate: a tenth of the median brightness below is
+	* still plate texture, two fifths of it is the slot. Pixels off the edge of the map are
+	* NOT dark, so a line that only clips a corner cannot pass on the strength of what it
+	* does not see.
+	*/
+	int seamLines = 0;
+	bool intensityRead = false;
+	if (!intensity.empty() && intensity.size() == src.size() && intensity.type() == CV_8U) {
+		std::vector<uchar> bright;
+		bright.reserve((size_t)(h / 4 + 1) * (w / 4 + 1));
+		for (int y = 0; y < h; y += 4) {
+			const uchar* irow = intensity.ptr<uchar>(y);
+			const uchar* mrow = mask.ptr<uchar>(y);
+			for (int x = 0; x < w; x += 4) if (mrow[x]) bright.push_back(irow[x]);
+		}
+		if (bright.size() >= 64) {
+			std::nth_element(bright.begin(), bright.begin() + bright.size() / 2, bright.end());
+			const int dark = std::max(20, std::min(100, (int)std::lround(0.4 * bright[bright.size() / 2])));
+			const double kSeamRun = 0.6;
+			intensityRead = true;
+			for (int u = 0; u < uCount; u++) {
+				if (isGap[u]) continue;
+				int run = 0, longest = 0;
+				for (int x = 0; x < w; x++) {
+					const int y = (int)std::lround(u + uMin + x * tanT);
+					if (y >= 0 && y < h && intensity.ptr<uchar>(y)[x] < dark) {
+						if (++run > longest) longest = run;
+					}
+					else run = 0;
+				}
+				if (longest >= kSeamRun * w) { isGap[u] = 1; seamLines++; }
+			}
+		}
+	}
+	//with no intensity map to ask, a sparse line is taken as a gap, as it always was
+	if (!intensityRead)
+		for (int u = 0; u < uCount; u++) if (sparse[u]) isGap[u] = 1;
 
 	struct Sep { int a, b; };            //a boundary: the lines it occupies, inclusive
 	std::vector<Sep> seps;
@@ -1135,6 +1196,17 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 		startBounded = true;
 	}
 	consider(bandStart, uCount - 1, false);
+
+	{
+		QStringList bl;
+		for (const Sep& g : seps)
+			bl << (g.a == g.b ? QStringLiteral("step@%1").arg(g.a + uMin)
+				: QStringLiteral("gap %1-%2").arg(g.a + uMin).arg(g.b + uMin));
+		info = QStringLiteral("rotation %1 deg; %2 boundar%3: %4; band %5-%6 (%7 lines); seam lines from intensity: %8")
+			.arg(thetaDeg, 0, 'f', 3).arg(seps.size()).arg(seps.size() == 1 ? "y" : "ies").arg(bl.join(", "))
+			.arg(bandU0 < 0 ? -1 : bandU0 + uMin).arg(bandU1 < 0 ? -1 : bandU1 + uMin)
+			.arg(bandU0 < 0 ? 0 : bandU1 - bandU0 + 1).arg(seamLines);
+	}
 
 	if (bandU0 < 0) {
 		why = seps.size() < 2
@@ -1202,6 +1274,10 @@ static bool h3SegCompleteBand(const cv::Mat& src, const AlgoHeight3Params& p,
 	int biggest = 1;
 	for (int i = 2; i < nBlocks; i++)
 		if (bStats.at<int>(i, cv::CC_STAT_AREA) > bStats.at<int>(biggest, cv::CC_STAT_AREA)) biggest = i;
+	info += QStringLiteral("; %1 pieces in the band, largest %2 px at rows %3-%4")
+		.arg(nBlocks - 1).arg(bStats.at<int>(biggest, cv::CC_STAT_AREA))
+		.arg(bStats.at<int>(biggest, cv::CC_STAT_TOP))
+		.arg(bStats.at<int>(biggest, cv::CC_STAT_TOP) + bStats.at<int>(biggest, cv::CC_STAT_HEIGHT) - 1);
 
 	/*
 	* Along the block, the count per column of pixels that are PLATE - within half a step of
@@ -1335,7 +1411,7 @@ bool AlgoHeight3Pipeline::doSegment(const AlgoHeight3Params& p)
 		if (!h3SegLargestRegion(src, p, rr, segWhy)) return fail(segWhy);
 		break;
 	case AlgoH3SegMethod::CompleteBand:
-		if (!h3SegCompleteBand(src, p, rr, segWhy)) return fail(segWhy);
+		if (!h3SegCompleteBand(src, m_intensity, p, rr, segWhy, m_out.segInfo)) return fail(segWhy);
 		break;
 	default:
 		//loadRecipeConfig clamps seg_method, so this can only fire if an enum value was

@@ -350,6 +350,7 @@ struct AlgoHeight3Output {
 	bool segOversized = false;    //part did not fit the canvas, so its edges were cropped
 	QRectF segRectMap;          //axis-aligned bounds of the part in MAP px (for the overlay)
 	QVector<QPointF> segCorners;//the four rotated-rect corners in MAP px
+	QString segInfo;            //how the block was found (rotation, boundaries, band) - for the log
 	int cropWidthPx = 0;
 	int cropHeightPx = 0;
 

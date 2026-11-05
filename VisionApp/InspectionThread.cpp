@@ -248,11 +248,12 @@ void InspectionThread::process(const Item& item)
 
 		const QString summary = algoH3RunSummary(output);
 		ct::logger::info("[Inspection] 3D height result (unit=%s, algo=%s): pass=%d, %s "
-			"(segment %.2f x %.2f mm at %.3f deg, %lldms)",
+			"(segment %.2f x %.2f mm at %.3f deg, %lldms) [%s]",
 			unitID.toStdString().c_str(), output.algoName.toStdString().c_str(), output.overallPass ? 1 : 0,
 			summary.toStdString().c_str(),
 			output.segWidthUm / 1000.0, output.segHeightUm / 1000.0, output.segAngleDeg,
-			(long long)(output.totalElapsedMs > 0 ? output.totalElapsedMs : output.measure.elapsedMs));
+			(long long)(output.totalElapsedMs > 0 ? output.totalElapsedMs : output.measure.elapsedMs),
+			output.segInfo.toStdString().c_str());
 
 		//every pin's height at debug level: too long for the inspection log, and the only
 		//record of what was actually measured when a unit is disputed later
