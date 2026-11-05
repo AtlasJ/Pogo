@@ -52,7 +52,9 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 
 // ── the datum plane's ROIs are always orange; the operator does not get to pick, so
 // ── that one colour always means "this is a datum patch" on every recipe
@@ -1040,15 +1042,12 @@ void VisionApp::initAlgoHeight3Page()
 		if (algoH3CurrentSection() != SEC_RESULT) return;
 
 		//only repaint when the selection actually changed - this ticks four times a
-		//second and the section is a dozen line edits
-		int selected = -1, count = 0;
-		for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
-			if (!_algoH3RoiBoxes[i] || !_algoH3RoiBoxes[i]->isSelected()) continue;
-			if (selected < 0) selected = i;
-			count++;
-		}
-		const int now = (count == 1) ? selected : ((count == 0) ? -1 : -2);
-		if (now == _algoH3ShownRoi) return;
+		//second and the section is a dozen line edits. The whole SET is compared, since
+		//several ROIs are shown at once: 3 selected -> 4 selected has to repaint too
+		QVector<int> now;
+		for (int i = 0; i < _algoH3RoiBoxes.size(); i++)
+			if (_algoH3RoiBoxes[i] && _algoH3RoiBoxes[i]->isSelected()) now.append(i);
+		if (now == _algoH3ShownRois) return;
 
 		refreshAlgoH3ResultSection();
 	});
@@ -3468,56 +3467,28 @@ void VisionApp::applyAlgoH3Output(const AlgoHeight3Output& out)
 }
 
 /*
-* Show the selected ROI's result. Showing every ROI at once would be an unreadable wall
-* of numbers on a part with hundreds of pins, so the section describes exactly one - the
-* one selected on the image - and says so plainly when nothing is selected.
+* Show the result of the ROIs selected on the image.
+*
+* One ROI: every field is that ROI's. Several: a field shows a value only when every
+* selected ROI that was measured shares it, and is left blank when they differ - the usual
+* multi-select convention, so a blank means "not the same", never zero. The exception is
+* the height, which is the AVERAGE of the selected ROIs that produced one: an ROI with NO
+* DATA has no height to average, so it is left out rather than counted as 0.
+*
+* An ROI taught since the last run has no result yet. It still counts as selected, and the
+* instruction line says how many of those there are, but it adds nothing to the fields.
 */
 void VisionApp::refreshAlgoH3ResultSection()
 {
-	int selected = -1;
-	int selectedCount = 0;
-	for (int i = 0; i < _algoH3RoiBoxes.size(); i++) {
-		if (!_algoH3RoiBoxes[i] || !_algoH3RoiBoxes[i]->isSelected()) continue;
-		if (selected < 0) selected = i;
-		selectedCount++;
-	}
+	QVector<int> selected;   //box indices; the ROI's on-screen number is index + 1
+	for (int i = 0; i < _algoH3RoiBoxes.size(); i++)
+		if (_algoH3RoiBoxes[i] && _algoH3RoiBoxes[i]->isSelected()) selected.append(i);
+	//the selection poll compares against this, so any change to the set repaints
+	_algoH3ShownRois = selected;
 
-	auto clearAll = [&](const QString& instruction) {
-		ui.label_algoH3ResultInstruction->setText(instruction);
+	auto clearFields = [&]() {
 		ui.lineEdit_algoH3ResultRoiId->clear();
 		ui.lineEdit_algoH3ResultRoiType->clear();
-		ui.lineEdit_algoH3ResultCriteriaMinUm->clear();
-		ui.lineEdit_algoH3ResultCriteriaMaxUm->clear();
-		ui.lineEdit_algoH3ResultMethodId->clear();
-		ui.lineEdit_algoH3ResultMethodName->clear();
-		ui.lineEdit_algoH3ResultZHeightUm->clear();
-		h3ShowVerdict(ui.lineEdit_algoH3ResultPassFail, false, false);
-		ui.lineEdit_algoH3ResultFailReason->setText(
-			(_algoH3Output.measure.ran && !_algoH3Output.measure.pass)
-				? _algoH3Output.measure.failReason : QString());
-		ui.toolButton_algoH3ResultColor->setStyleSheet(QString());
-		ui.plainTextEdit_algoH3ResultDebugInfo->clear();
-	};
-
-	//kMultiple keeps "several selected" distinct from "none selected", so the poll below
-	//still notices the change between those two states
-	constexpr int kMultiple = -2;
-	_algoH3ShownRoi = (selectedCount == 1) ? selected : ((selectedCount == 0) ? -1 : kMultiple);
-
-	if (_algoH3RoiBoxes.isEmpty()) { clearAll("No ROIs yet - add them in the ROI Types, Criteria & Height Measurement Settings section."); return; }
-	if (selectedCount == 0) { clearAll("Select an ROI to view its measurement result."); return; }
-	if (selectedCount > 1) { clearAll("Select a single ROI to view its measurement result."); return; }
-
-	const int id = selected + 1;
-
-	ui.lineEdit_algoH3ResultRoiId->setText(QString::number(id));
-	ui.lineEdit_algoH3ResultRoiType->setText(_algoH3RoiBoxes[selected]->getTag());
-
-	const AlgoH3RoiResult* r = _algoH3Output.roiById(id);
-	if (!r) {
-		//taught but not measured since - say so rather than show the previous run's number
-		h3SetMessage(ui.label_algoH3ResultInstruction,
-			QStringLiteral("ROI %1 has not been measured yet - press Run Height Measurement.").arg(id));
 		ui.lineEdit_algoH3ResultCriteriaMinUm->clear();
 		ui.lineEdit_algoH3ResultCriteriaMaxUm->clear();
 		ui.lineEdit_algoH3ResultMethodId->clear();
@@ -3527,50 +3498,158 @@ void VisionApp::refreshAlgoH3ResultSection()
 		ui.lineEdit_algoH3ResultFailReason->clear();
 		ui.toolButton_algoH3ResultColor->setStyleSheet(QString());
 		ui.plainTextEdit_algoH3ResultDebugInfo->clear();
+	};
+	auto clearAll = [&](const QString& instruction) {
+		clearFields();
+		ui.label_algoH3ResultInstruction->setText(instruction);
+		ui.lineEdit_algoH3ResultFailReason->setText(
+			(_algoH3Output.measure.ran && !_algoH3Output.measure.pass)
+				? _algoH3Output.measure.failReason : QString());
+	};
+
+	if (_algoH3RoiBoxes.isEmpty()) { clearAll("No ROIs yet - add them in the ROI Types, Criteria & Height Measurement Settings section."); return; }
+	if (selected.isEmpty()) { clearAll("Select an ROI to view its measurement result (Ctrl+click or drag to select several)."); return; }
+
+	const bool multi = selected.size() > 1;
+	const int total = _algoH3RoiBoxes.size();
+
+	QVector<const AlgoH3RoiResult*> results;
+	int unmeasured = 0;
+	for (int i : selected) {
+		const AlgoH3RoiResult* r = _algoH3Output.roiById(i + 1);
+		if (r) results.append(r);
+		else unmeasured++;
+	}
+
+	clearFields();
+	//the ROI number always differs between two ROIs, so only one ROI ever shows it
+	if (!multi) ui.lineEdit_algoH3ResultRoiId->setText(QString::number(selected.first() + 1));
+
+	if (results.isEmpty()) {
+		//taught but not measured since - say so rather than show the previous run's number.
+		//The type is still known from the boxes themselves.
+		const QString tag = _algoH3RoiBoxes[selected.first()]->getTag();
+		bool sameTag = true;
+		for (int i : selected) if (_algoH3RoiBoxes[i]->getTag() != tag) { sameTag = false; break; }
+		if (sameTag) ui.lineEdit_algoH3ResultRoiType->setText(tag);
+		h3SetMessage(ui.label_algoH3ResultInstruction, multi
+			? QStringLiteral("None of the %1 selected ROIs has been measured yet - press Run Height Measurement.").arg(selected.size())
+			: QStringLiteral("ROI %1 has not been measured yet - press Run Height Measurement.").arg(selected.first() + 1));
 		return;
 	}
 
-	h3SetMessage(ui.label_algoH3ResultInstruction,
-		QStringLiteral("Showing ROI %1 of %2.").arg(id).arg(_algoH3RoiBoxes.size()));
-	//the type as MEASURED, which can differ from the box's tag if it was retyped since
-	ui.lineEdit_algoH3ResultRoiType->setText(r->typeName);
-	ui.lineEdit_algoH3ResultCriteriaMinUm->setText(QString::number(r->criteriaMinUm, 'f', 2));
-	ui.lineEdit_algoH3ResultCriteriaMaxUm->setText(QString::number(r->criteriaMaxUm, 'f', 2));
-	ui.lineEdit_algoH3ResultMethodId->setText(QString::number(r->methodId));
-	ui.lineEdit_algoH3ResultMethodName->setText(r->methodName);
-	ui.lineEdit_algoH3ResultZHeightUm->setText(
-		r->valid ? QString::number(r->heightUm, 'f', 3) : QStringLiteral("NO DATA"));
-	h3ShowVerdict(ui.lineEdit_algoH3ResultPassFail, true, r->pass);
-
-	QString reason = r->failReason;
+	//a field's text when every measured ROI agrees on it; empty when they differ
+	auto shared = [&](const std::function<QString(const AlgoH3RoiResult*)>& get) -> QString {
+		const QString first = get(results.first());
+		for (const AlgoH3RoiResult* r : results)
+			if (get(r) != first) return QString();
+		return first;
+	};
 	//a clipped ROI still produces a number, but the operator has to know it was measured
 	//on less than the taught area
-	if (r->clipped) {
-		const QString note = QStringLiteral("ROI is partly outside the image - measured on the visible part");
-		reason = reason.isEmpty() ? note : reason + "; " + note;
+	auto reasonOf = [](const AlgoH3RoiResult* r) {
+		QString reason = r->failReason;
+		if (r->clipped) {
+			const QString note = QStringLiteral("ROI is partly outside the image - measured on the visible part");
+			reason = reason.isEmpty() ? note : reason + "; " + note;
+		}
+		return reason;
+	};
+
+	if (multi) {
+		QString msg = QStringLiteral("Showing %1 selected ROIs of %2 - a blank field means they differ.")
+			.arg(selected.size()).arg(total);
+		if (unmeasured > 0) msg += QStringLiteral(" %1 not measured yet.").arg(unmeasured);
+		h3SetMessage(ui.label_algoH3ResultInstruction, msg);
 	}
-	ui.lineEdit_algoH3ResultFailReason->setText(reason);
+	else {
+		h3SetMessage(ui.label_algoH3ResultInstruction,
+			QStringLiteral("Showing ROI %1 of %2.").arg(selected.first() + 1).arg(total));
+	}
+
+	//the type as MEASURED, which can differ from the box's tag if it was retyped since
+	ui.lineEdit_algoH3ResultRoiType->setText(shared([](const AlgoH3RoiResult* r) { return r->typeName; }));
+	ui.lineEdit_algoH3ResultCriteriaMinUm->setText(shared([](const AlgoH3RoiResult* r) {
+		return QString::number(r->criteriaMinUm, 'f', 2); }));
+	ui.lineEdit_algoH3ResultCriteriaMaxUm->setText(shared([](const AlgoH3RoiResult* r) {
+		return QString::number(r->criteriaMaxUm, 'f', 2); }));
+	ui.lineEdit_algoH3ResultMethodId->setText(shared([](const AlgoH3RoiResult* r) {
+		return QString::number(r->methodId); }));
+	ui.lineEdit_algoH3ResultMethodName->setText(shared([](const AlgoH3RoiResult* r) { return r->methodName; }));
+
+	//height: the average of the ROIs that have one; NO DATA only when none of them does
+	double sum = 0.0, lo = 0.0, hi = 0.0;
+	int withHeight = 0;
+	for (const AlgoH3RoiResult* r : results) {
+		if (!r->valid) continue;
+		if (withHeight == 0) { lo = hi = r->heightUm; }
+		lo = std::min(lo, r->heightUm);
+		hi = std::max(hi, r->heightUm);
+		sum += r->heightUm;
+		withHeight++;
+	}
+	const double avg = (withHeight > 0) ? sum / withHeight : 0.0;
+	if (withHeight == 0)
+		ui.lineEdit_algoH3ResultZHeightUm->setText(QStringLiteral("NO DATA"));
+	else if (multi)
+		ui.lineEdit_algoH3ResultZHeightUm->setText(QStringLiteral("%1 (Average)").arg(avg, 0, 'f', 3));
+	else
+		ui.lineEdit_algoH3ResultZHeightUm->setText(QString::number(avg, 'f', 3));
+
+	int passed = 0;
+	for (const AlgoH3RoiResult* r : results) if (r->pass) passed++;
+	if (passed == results.size() || passed == 0) {
+		h3ShowVerdict(ui.lineEdit_algoH3ResultPassFail, true, passed > 0);
+	}
+	else {
+		//mixed: blank, like every other field that differs (not "-", which means "not run")
+		ui.lineEdit_algoH3ResultPassFail->clear();
+		ui.lineEdit_algoH3ResultPassFail->setStyleSheet(QString());
+	}
+
+	ui.lineEdit_algoH3ResultFailReason->setText(shared(reasonOf));
+
+	const QString color = shared([](const AlgoH3RoiResult* r) {
+		return r->color.isValid() ? r->color.name() : QString(); });
+	if (!color.isEmpty()) {
+		ui.toolButton_algoH3ResultColor->setStyleSheet(QStringLiteral(
+			"QToolButton { background:%1; border:1px solid #777; }").arg(color));
+	}
 
 	//only built while the box is showing - it is a tuning aid, not a readout
-	if (ui.checkBox_algoH3ResultDebugInfo->isChecked()) {
-		QStringList lines;
-		lines << QStringLiteral("ROI %1 - %2 (method %3)").arg(id).arg(r->typeName).arg(r->methodName);
+	if (!ui.checkBox_algoH3ResultDebugInfo->isChecked()) return;
+
+	QStringList lines;
+	if (!multi) {
+		const AlgoH3RoiResult* r = results.first();
+		lines << QStringLiteral("ROI %1 - %2 (method %3)").arg(r->id).arg(r->typeName).arg(r->methodName);
 		lines << QStringLiteral("Measured area: %1 x %2 px at (%3, %4)%5")
 			.arg(r->measuredRect.width(), 0, 'f', 0).arg(r->measuredRect.height(), 0, 'f', 0)
 			.arg(r->measuredRect.x(), 0, 'f', 0).arg(r->measuredRect.y(), 0, 'f', 0)
 			.arg(r->clipped ? QStringLiteral(", clipped") : QString());
 		lines << r->debugInfo;
 		if (r->valid) lines << QStringLiteral("Reported height: %1 um").arg(r->heightUm, 0, 'f', 3);
-		ui.plainTextEdit_algoH3ResultDebugInfo->setPlainText(lines.join(QLatin1Char('\n')));
 	}
 	else {
-		ui.plainTextEdit_algoH3ResultDebugInfo->clear();
+		//several: the spread first, then one line per ROI - the per-method detail of each is a
+		//click away by selecting that ROI alone
+		lines << QStringLiteral("%1 ROIs selected: %2 measured, %3 with a height, %4 NO DATA%5")
+			.arg(selected.size()).arg(results.size()).arg(withHeight).arg(results.size() - withHeight)
+			.arg(unmeasured > 0 ? QStringLiteral(", %1 not measured yet").arg(unmeasured) : QString());
+		if (withHeight > 0)
+			lines << QStringLiteral("Height: average %1 um, min %2, max %3, range %4 (over %5 ROIs)")
+				.arg(avg, 0, 'f', 3).arg(lo, 0, 'f', 3).arg(hi, 0, 'f', 3).arg(hi - lo, 0, 'f', 3).arg(withHeight);
+		lines << QStringLiteral("Passed %1, failed %2").arg(passed).arg(results.size() - passed);
+		lines << QString();
+		for (const AlgoH3RoiResult* r : results) {
+			lines << QStringLiteral("ROI %1 (%2): %3  %4%5")
+				.arg(r->id).arg(r->typeName)
+				.arg(r->valid ? QStringLiteral("%1 um").arg(r->heightUm, 0, 'f', 3) : QStringLiteral("NO DATA"))
+				.arg(r->pass ? QStringLiteral("PASS") : QStringLiteral("FAIL"))
+				.arg(r->failReason.isEmpty() ? QString() : QStringLiteral(" - ") + r->failReason);
+		}
 	}
-
-	if (r->color.isValid()) {
-		ui.toolButton_algoH3ResultColor->setStyleSheet(QStringLiteral(
-			"QToolButton { background:%1; border:1px solid #777; }").arg(r->color.name()));
-	}
+	ui.plainTextEdit_algoH3ResultDebugInfo->setPlainText(lines.join(QLatin1Char('\n')));
 }
 
 // =============================================================================

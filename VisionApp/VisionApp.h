@@ -1232,7 +1232,7 @@ private:
 	QPoint _algoH3DragFrom;
 	QElapsedTimer _algoH3DragClock;       //throttles re-renders during a drag
 	QTimer* _algoH3SelTimer = nullptr;    //watches which ROI is selected on the scene
-	int _algoH3ShownRoi = -1;             //ROI index the results section is showing
+	QVector<int> _algoH3ShownRois;        //ROI box indices the results section is showing
 	/*
 	* 3D Render ROI: render (and send to the external display) only part of the map. View
 	* state, never saved. One rect per FRAME, not per section: sections 0-2 show the full map,
