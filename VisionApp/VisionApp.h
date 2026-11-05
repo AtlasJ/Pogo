@@ -1174,6 +1174,7 @@ private:
 	*/
 	void refreshAlgoH3TypeList();   //params -> the type combo, keeping the selection by name
 	void loadAlgoH3TypeFields();    //the selected type -> the per-type widgets
+	void updateAlgoH3TypeMethodRows(); //show only the parameter rows the type's method uses
 	void updateAlgoH3TypeStatus();  //the instruction line and this type's ROI count
 	int algoH3RoiCountForType(const QString& name) const;
 	QColor algoH3SelectedTypeColor() const;

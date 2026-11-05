@@ -161,7 +161,7 @@ static void h3LogStage(const char* stage, const AlgoH3StageResult& s, const QStr
 
 //the same sentence in both refusals, so the operator is told where the ROIs DO belong
 static const char* kH3RoiSectionHint =
-	"Open the Datum Plane section to work with datum ROIs, or ROI Types & Criteria / "
+	"Open the Datum Plane section to work with datum ROIs, or ROI Types, Criteria & Height Measurement Settings / "
 	"Measurement Results for measurement ROIs.";
 
 /*
@@ -601,12 +601,27 @@ void VisionApp::initAlgoHeight3Page()
 		algoH3RunStage(AlgoH3Stage::Datum);
 	});
 
-	// ── section 4: height measurement settings ──
+	// ── section 4: height measurement methods (descriptions only) ──
 	connect(ui.comboBox_algoH3Method, QOverload<int>::of(&QComboBox::currentIndexChanged),
 		this, [=](int index) {
 			if (index >= 0 && index < ui.stackedWidget_algoH3Method->count())
 				ui.stackedWidget_algoH3Method->setCurrentIndex(index);
 		});
+
+	// ── section 6: Debug Info ──
+	/*
+	* A view toggle, not a setting: the auto-save walk wired every checkbox on the page to
+	* algoSettingsTouched, so that one connection is taken off again - ticking it must not
+	* save the algo. Starts unticked, so the box takes no room until someone asks for it.
+	*/
+	disconnect(ui.checkBox_algoH3ResultDebugInfo, &QCheckBox::toggled,
+		this, &VisionApp::algoSettingsTouched);
+	ui.plainTextEdit_algoH3ResultDebugInfo->setVisible(false);
+	connect(ui.checkBox_algoH3ResultDebugInfo, &QCheckBox::toggled, this, [=](bool on) {
+		ui.plainTextEdit_algoH3ResultDebugInfo->setVisible(on);
+		refreshAlgoH3ResultSection();
+		fitAlgoH3Sections();
+	});
 
 	// ── section 5: ROI types and ROIs ──
 
@@ -663,8 +678,21 @@ void VisionApp::initAlgoHeight3Page()
 		});
 	connect(ui.comboBox_algoH3RoiTypeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
 		this, [=](int) {
+			updateAlgoH3TypeMethodRows();
 			if (!_algoH3Updating) algoSettingsTouched();
 		});
+
+	//Supported Peak's height method list, from the enum like the method list above. Blocked:
+	//the auto-save walk is already wired to it, and filling it is not an edit.
+	{
+		QSignalBlocker b(ui.comboBox_algoH3RoiTypeSpHeightMethod);
+		for (int m = 0; m < kAlgoH3SpHeightMethodCount; m++)
+			ui.comboBox_algoH3RoiTypeSpHeightMethod->addItem(algoH3SpHeightMethodName(m));
+	}
+	//its Percentile row only matters for the Percentile height method
+	connect(ui.comboBox_algoH3RoiTypeSpHeightMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
+		this, [=](int) { updateAlgoH3TypeMethodRows(); });
+	updateAlgoH3TypeMethodRows();
 
 	connect(ui.toolButton_algoH3RoiAddType, &QToolButton::clicked, this, [=]() {
 		bool ok = false;
@@ -985,7 +1013,7 @@ void VisionApp::initAlgoHeight3Page()
 	});
 
 	//a swatch, not a control - the colour is set on the type, not on the individual ROI
-	ui.toolButton_algoH3ResultColor->setToolTip("The colour of this ROI's type (set it in ROI Types & Criteria)");
+	ui.toolButton_algoH3ResultColor->setToolTip("The colour of this ROI's type (set it in ROI Types, Criteria & Height Measurement Settings)");
 
 	/*
 	* Which ROI the results section is describing follows the scene selection. QDragBox
@@ -1215,8 +1243,12 @@ void VisionApp::configureAlgoH3Ranges()
 	// ── section 3 ──
 	setD(ui.doubleSpinBox_algoH3DatumMaxTiltDeg, 0.0, 90.0, 3);
 
-	// ── section 4 ──
-	setD(ui.doubleSpinBox_algoH3MethodPercentileValue, 0.0, 100.0, 2);
+	// ── section 5: the per-type height measurement parameters ──
+	setD(ui.doubleSpinBox_algoH3RoiTypePercentile, 0.0, 100.0, 2);
+	setD(ui.doubleSpinBox_algoH3RoiTypeSpSearchRangeUm, 0.0, 1000000.0, 2);
+	setI(ui.spinBox_algoH3RoiTypeSpMinSupport, 1, 100000000);   //the candidate supports itself
+	setD(ui.doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm, 0.0, 1000000.0, 2);
+	setD(ui.doubleSpinBox_algoH3RoiTypeSpPercentile, 0.0, 100.0, 2);
 
 	// ── section 7 ──
 	setI(ui.spinBox_algoH3OverallMaxCount, 0, 1000000);
@@ -1819,7 +1851,7 @@ void VisionApp::algoH3PasteRois()
 	//speaks for all of it
 	if (_algoH3Clipboard.first().datum != wantDatum) {
 		showMsg(wantDatum
-			? "The clipboard holds measurement ROIs - open ROI Types & Criteria or Measurement Results to paste them."
+			? "The clipboard holds measurement ROIs - open ROI Types, Criteria & Height Measurement Settings or Measurement Results to paste them."
 			: "The clipboard holds datum ROIs - open the Datum Plane section to paste them.");
 		return;
 	}
@@ -2875,6 +2907,11 @@ void VisionApp::loadAlgoH3TypeFields()
 	ui.checkBox_algoH3RoiTypeEnableOffsetCheck->setEnabled(have);
 	ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->setEnabled(have);
 	ui.comboBox_algoH3RoiTypeMethod->setEnabled(have);
+	for (QWidget* w : std::initializer_list<QWidget*>{ ui.doubleSpinBox_algoH3RoiTypePercentile,
+		ui.doubleSpinBox_algoH3RoiTypeSpSearchRangeUm, ui.spinBox_algoH3RoiTypeSpMinSupport,
+		ui.doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm, ui.comboBox_algoH3RoiTypeSpHeightMethod,
+		ui.doubleSpinBox_algoH3RoiTypeSpPercentile })
+		w->setEnabled(have);
 
 	_algoH3Updating = true;
 	{
@@ -2887,6 +2924,12 @@ void VisionApp::loadAlgoH3TypeFields()
 		QSignalBlocker b4(ui.checkBox_algoH3RoiTypeEnableHeightCheck);
 		QSignalBlocker b5(ui.checkBox_algoH3RoiTypeEnableOffsetCheck);
 		QSignalBlocker b6(ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm);
+		QSignalBlocker b7(ui.doubleSpinBox_algoH3RoiTypePercentile);
+		QSignalBlocker b8(ui.doubleSpinBox_algoH3RoiTypeSpSearchRangeUm);
+		QSignalBlocker b9(ui.spinBox_algoH3RoiTypeSpMinSupport);
+		QSignalBlocker b10(ui.doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm);
+		QSignalBlocker b11(ui.comboBox_algoH3RoiTypeSpHeightMethod);
+		QSignalBlocker b12(ui.doubleSpinBox_algoH3RoiTypeSpPercentile);
 
 		const AlgoH3RoiType t = have ? p.roiTypes[_algoH3TypeIndex] : AlgoH3RoiType();
 		ui.checkBox_algoH3RoiTypeEnableHeightCheck->setChecked(have && t.checkHeight);
@@ -2897,6 +2940,15 @@ void VisionApp::loadAlgoH3TypeFields()
 		ui.comboBox_algoH3RoiTypeMethod->setCurrentIndex(
 			(t.methodId >= 0 && t.methodId < ui.comboBox_algoH3RoiTypeMethod->count())
 			? t.methodId : 0);
+		//a type with nothing selected shows the defaults, greyed out
+		ui.doubleSpinBox_algoH3RoiTypePercentile->setValue(t.percentile);
+		ui.doubleSpinBox_algoH3RoiTypeSpSearchRangeUm->setValue(t.spSearchRangeUm);
+		ui.spinBox_algoH3RoiTypeSpMinSupport->setValue(t.spMinSupport);
+		ui.doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm->setValue(t.spMeasureRangeUm);
+		ui.comboBox_algoH3RoiTypeSpHeightMethod->setCurrentIndex(
+			(t.spHeightMethod >= 0 && t.spHeightMethod < kAlgoH3SpHeightMethodCount)
+			? t.spHeightMethod : (int)AlgoH3SpHeightMethod::Median);
+		ui.doubleSpinBox_algoH3RoiTypeSpPercentile->setValue(t.spPercentile);
 
 		//the colour lives on the button as a property, the way it used to live on the
 		//table's cell widget - it is the single source capture and Add ROI both read
@@ -2907,7 +2959,40 @@ void VisionApp::loadAlgoH3TypeFields()
 	}
 	_algoH3Updating = false;
 
+	//the signals were blocked, so the rows have to follow the loaded method by hand
+	updateAlgoH3TypeMethodRows();
 	updateAlgoH3TypeStatus();
+}
+
+/*
+* Section 5 shows only the parameters the selected type's method actually reads.
+*
+* Rows of formLayout_algoH3Roi: a QFormLayout skips a row whose label and field are both
+* hidden, so hiding the pair is enough to close the gap (Qt 5.9 has no setRowVisible).
+* Hidden values are still kept and saved, so a type switched to another method and back
+* gets its tuning back.
+*/
+void VisionApp::updateAlgoH3TypeMethodRows()
+{
+	const int method = ui.comboBox_algoH3RoiTypeMethod->currentIndex();
+	const bool percentile = (method == (int)AlgoH3Method::Percentile);
+	const bool sp = (method == (int)AlgoH3Method::SupportedPeak);
+	const bool spPct = sp && (ui.comboBox_algoH3RoiTypeSpHeightMethod->currentIndex()
+		== (int)AlgoH3SpHeightMethod::Percentile);
+
+	auto row = [](QWidget* label, QWidget* field, bool on) {
+		label->setVisible(on);
+		field->setVisible(on);
+	};
+	row(ui.label_algoH3RoiTypePercentile, ui.doubleSpinBox_algoH3RoiTypePercentile, percentile);
+	row(ui.label_algoH3RoiTypeSpSearchRangeUm, ui.doubleSpinBox_algoH3RoiTypeSpSearchRangeUm, sp);
+	row(ui.label_algoH3RoiTypeSpMinSupport, ui.spinBox_algoH3RoiTypeSpMinSupport, sp);
+	row(ui.label_algoH3RoiTypeSpMeasureRangeUm, ui.doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm, sp);
+	row(ui.label_algoH3RoiTypeSpHeightMethod, ui.comboBox_algoH3RoiTypeSpHeightMethod, sp);
+	row(ui.label_algoH3RoiTypeSpPercentile, ui.doubleSpinBox_algoH3RoiTypeSpPercentile, spPct);
+
+	//the section's height just changed
+	fitAlgoH3Sections();
 }
 
 void VisionApp::refreshAlgoH3TypeList()
@@ -2985,9 +3070,8 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 	p.datumCheckTilt = ui.checkBox_algoH3DatumEnableTiltCheck->isChecked();
 	p.datumMaxTiltDeg = ui.doubleSpinBox_algoH3DatumMaxTiltDeg->value();
 
-	// ── section 4 ──
+	// ── section 4 (which description is showing - not a measurement setting) ──
 	p.methodId = ui.comboBox_algoH3Method->currentIndex();
-	p.percentile = ui.doubleSpinBox_algoH3MethodPercentileValue->value();
 
 	/*
 	* ── section 5: only ONE type is on screen, so only that one can be written back ──
@@ -3007,6 +3091,14 @@ void VisionApp::captureAlgoH3ParamsFromUI()
 		t.checkOffset = ui.checkBox_algoH3RoiTypeEnableOffsetCheck->isChecked();
 		t.maxOffsetUm = ui.doubleSpinBox_algoH3RoiTypeMaxOffsetUm->value();
 		t.methodId = ui.comboBox_algoH3RoiTypeMethod->currentIndex();
+		//every method's values are kept, shown or not, so switching a type's method and back
+		//does not lose what was tuned for it
+		t.percentile = ui.doubleSpinBox_algoH3RoiTypePercentile->value();
+		t.spSearchRangeUm = ui.doubleSpinBox_algoH3RoiTypeSpSearchRangeUm->value();
+		t.spMinSupport = ui.spinBox_algoH3RoiTypeSpMinSupport->value();
+		t.spMeasureRangeUm = ui.doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm->value();
+		t.spHeightMethod = ui.comboBox_algoH3RoiTypeSpHeightMethod->currentIndex();
+		t.spPercentile = ui.doubleSpinBox_algoH3RoiTypeSpPercentile->value();
 	}
 
 	/*
@@ -3157,11 +3249,8 @@ void VisionApp::refreshAlgoHeight3Page()
 	// ── section 4 ──
 	{
 		QSignalBlocker b1(ui.comboBox_algoH3Method);
-		QSignalBlocker b2(ui.doubleSpinBox_algoH3MethodPercentileValue);
-
 		ui.comboBox_algoH3Method->setCurrentIndex(
 			algoH3MethodValid(p.methodId) ? p.methodId : 0);
-		ui.doubleSpinBox_algoH3MethodPercentileValue->setValue(p.percentile);
 	}
 	if (algoH3MethodValid(p.methodId) && p.methodId < ui.stackedWidget_algoH3Method->count())
 		ui.stackedWidget_algoH3Method->setCurrentIndex(p.methodId);
@@ -3261,6 +3350,7 @@ void VisionApp::refreshAlgoH3ResultSection()
 			(_algoH3Output.measure.ran && !_algoH3Output.measure.pass)
 				? _algoH3Output.measure.failReason : QString());
 		ui.toolButton_algoH3ResultColor->setStyleSheet(QString());
+		ui.plainTextEdit_algoH3ResultDebugInfo->clear();
 	};
 
 	//kMultiple keeps "several selected" distinct from "none selected", so the poll below
@@ -3268,7 +3358,7 @@ void VisionApp::refreshAlgoH3ResultSection()
 	constexpr int kMultiple = -2;
 	_algoH3ShownRoi = (selectedCount == 1) ? selected : ((selectedCount == 0) ? -1 : kMultiple);
 
-	if (_algoH3RoiBoxes.isEmpty()) { clearAll("No ROIs yet - add them in the ROI Types & Criteria section."); return; }
+	if (_algoH3RoiBoxes.isEmpty()) { clearAll("No ROIs yet - add them in the ROI Types, Criteria & Height Measurement Settings section."); return; }
 	if (selectedCount == 0) { clearAll("Select an ROI to view its measurement result."); return; }
 	if (selectedCount > 1) { clearAll("Select a single ROI to view its measurement result."); return; }
 
@@ -3290,6 +3380,7 @@ void VisionApp::refreshAlgoH3ResultSection()
 		h3ShowVerdict(ui.lineEdit_algoH3ResultPassFail, false, false);
 		ui.lineEdit_algoH3ResultFailReason->clear();
 		ui.toolButton_algoH3ResultColor->setStyleSheet(QString());
+		ui.plainTextEdit_algoH3ResultDebugInfo->clear();
 		return;
 	}
 
@@ -3313,6 +3404,22 @@ void VisionApp::refreshAlgoH3ResultSection()
 		reason = reason.isEmpty() ? note : reason + "; " + note;
 	}
 	ui.lineEdit_algoH3ResultFailReason->setText(reason);
+
+	//only built while the box is showing - it is a tuning aid, not a readout
+	if (ui.checkBox_algoH3ResultDebugInfo->isChecked()) {
+		QStringList lines;
+		lines << QStringLiteral("ROI %1 - %2 (method %3)").arg(id).arg(r->typeName).arg(r->methodName);
+		lines << QStringLiteral("Measured area: %1 x %2 px at (%3, %4)%5")
+			.arg(r->measuredRect.width(), 0, 'f', 0).arg(r->measuredRect.height(), 0, 'f', 0)
+			.arg(r->measuredRect.x(), 0, 'f', 0).arg(r->measuredRect.y(), 0, 'f', 0)
+			.arg(r->clipped ? QStringLiteral(", clipped") : QString());
+		lines << r->debugInfo;
+		if (r->valid) lines << QStringLiteral("Reported height: %1 um").arg(r->heightUm, 0, 'f', 3);
+		ui.plainTextEdit_algoH3ResultDebugInfo->setPlainText(lines.join(QLatin1Char('\n')));
+	}
+	else {
+		ui.plainTextEdit_algoH3ResultDebugInfo->clear();
+	}
 
 	if (r->color.isValid()) {
 		ui.toolButton_algoH3ResultColor->setStyleSheet(QStringLiteral(

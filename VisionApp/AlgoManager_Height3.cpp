@@ -23,6 +23,8 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 
+#include <algorithm>
+
 namespace {
 
 //algo names are matched and kept unique ignoring case and surrounding spaces, like a cable name
@@ -663,7 +665,13 @@ static AlgoHeight3Params h3ParamsFromJson(const QJsonObject& h, int& lastStage)
 
 		// ── section 4 ──
 		p.methodId = jsonHelper::getInteger(h, "method_id", 0);
-		p.percentile = jsonHelper::getDouble(h, "percentile", p.percentile);
+		/*
+		* MIGRATION: the percentile used to be ONE value for the whole algo, at this level.
+		* It is per type now. A type saved before that has no key of its own, so it takes the
+		* old shared value - otherwise every Percentile type would silently drop to the
+		* default. The algo-level key is no longer written.
+		*/
+		const double legacyPercentile = jsonHelper::getDouble(h, "percentile", 50.0);
 
 		// ── section 5 ──
 		p.roiTypes.clear();
@@ -688,6 +696,21 @@ static AlgoHeight3Params h3ParamsFromJson(const QJsonObject& h, int& lastStage)
 			t.checkOffset = jsonHelper::getBool(o, "check_offset", false);
 			t.maxOffsetUm = jsonHelper::getDouble(o, "max_offset_um", 0.0);
 			t.methodId = jsonHelper::getInteger(o, "method_id", 0);
+			t.percentile = jsonHelper::getDouble(o, "percentile", legacyPercentile);
+			t.spSearchRangeUm = jsonHelper::getDouble(o, "sp_search_range_um", t.spSearchRangeUm);
+			t.spMinSupport = jsonHelper::getInteger(o, "sp_min_support", t.spMinSupport);
+			t.spMeasureRangeUm = jsonHelper::getDouble(o, "sp_measure_range_um", t.spMeasureRangeUm);
+			t.spHeightMethod = jsonHelper::getInteger(o, "sp_height_method", t.spHeightMethod);
+			t.spPercentile = jsonHelper::getDouble(o, "sp_percentile", t.spPercentile);
+
+			//clamped here, once, like the algo-level values below
+			t.percentile = std::min(100.0, std::max(0.0, t.percentile));
+			t.spPercentile = std::min(100.0, std::max(0.0, t.spPercentile));
+			if (t.spSearchRangeUm < 0.0) t.spSearchRangeUm = 0.0;
+			if (t.spMeasureRangeUm < 0.0) t.spMeasureRangeUm = 0.0;
+			if (t.spMinSupport < 1) t.spMinSupport = 1;   //the candidate always supports itself
+			if (t.spHeightMethod < 0 || t.spHeightMethod >= kAlgoH3SpHeightMethodCount)
+				t.spHeightMethod = (int)AlgoH3SpHeightMethod::Median;
 			p.roiTypes.append(t);
 		}
 
@@ -719,8 +742,6 @@ static AlgoHeight3Params h3ParamsFromJson(const QJsonObject& h, int& lastStage)
 	if (p.xScaleUmPx <= 0.0) p.xScaleUmPx = 5.0;
 	if (p.yScaleUmPx <= 0.0) p.yScaleUmPx = 5.0;
 	if (p.zScaleRawPerUm <= 0.0) p.zScaleRawPerUm = 1.25;
-	if (p.percentile < 0.0) p.percentile = 0.0;
-	if (p.percentile > 100.0) p.percentile = 100.0;
 	if ((int)p.preprocess < 0 || (int)p.preprocess > (int)AlgoH3Preprocess::Closing)
 		p.preprocess = AlgoH3Preprocess::None;
 	if ((int)p.segMethod < 0 || (int)p.segMethod >= kAlgoH3SegMethodCount)
@@ -796,7 +817,6 @@ static QJsonObject h3ParamsToJson(const AlgoHeight3Params& p, int lastStage)
 	h.insert("datum_rois", datumRois);
 
 	h.insert("method_id", p.methodId);
-	h.insert("percentile", p.percentile);
 
 	QJsonArray types;
 	for (const auto& t : p.roiTypes) {
@@ -809,6 +829,12 @@ static QJsonObject h3ParamsToJson(const AlgoHeight3Params& p, int lastStage)
 		o.insert("check_offset", t.checkOffset);
 		o.insert("max_offset_um", t.maxOffsetUm);
 		o.insert("method_id", t.methodId);
+		o.insert("percentile", t.percentile);
+		o.insert("sp_search_range_um", t.spSearchRangeUm);
+		o.insert("sp_min_support", t.spMinSupport);
+		o.insert("sp_measure_range_um", t.spMeasureRangeUm);
+		o.insert("sp_height_method", t.spHeightMethod);
+		o.insert("sp_percentile", t.spPercentile);
 		types.append(o);
 	}
 	h.insert("roi_types", types);

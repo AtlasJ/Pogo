@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QRectF>
 #include <QPointF>
@@ -146,12 +147,27 @@ enum class AlgoH3Method {
 	Median = 1,
 	Maximum = 2,
 	Minimum = 3,
-	Percentile = 4
+	Percentile = 4,
+	SupportedPeak = 5
 };
-constexpr int kAlgoH3MethodCount = 5;
+constexpr int kAlgoH3MethodCount = 6;
 
 QString algoH3MethodName(int methodId);   //"Mean Height" etc, "" when out of range
 bool algoH3MethodValid(int methodId);
+
+/*
+* Supported Peak's second stage: how the points within the Measurement Range below the
+* accepted peak are combined into the reported height. Stored by value in the algo file,
+* and the order matches comboBox_algoH3RoiTypeSpHeightMethod - so, again, only APPEND.
+*/
+enum class AlgoH3SpHeightMethod {
+	Maximum = 0,
+	Mean = 1,
+	Median = 2,
+	Percentile = 3
+};
+constexpr int kAlgoH3SpHeightMethodCount = 4;
+QString algoH3SpHeightMethodName(int m);   //"Maximum" etc, "" when out of range
 
 // ── input ────────────────────────────────────────────────────────────────────
 
@@ -176,6 +192,23 @@ struct AlgoH3RoiType {
 	double maxOffsetUm = 0.0;
 
 	int methodId = (int)AlgoH3Method::Mean;
+
+	/*
+	* ── height measurement parameters, per type ──
+	*
+	* They live on the type, not on the algo, because the right values depend on the pin:
+	* a flat top and a conical tip in the same field need different settings. Each one is
+	* only read by the method it belongs to, and the page only shows the ones the type's
+	* method uses.
+	*/
+	double percentile = 50.0;              //Percentile Height (method 4)
+
+	//Supported Peak Height (method 5). Ranges in um above the datum, inclusive at both ends.
+	double spSearchRangeUm = 20.0;         //support window [X - this, X] below a candidate X
+	int spMinSupport = 10;                 //points in that window, X itself included
+	double spMeasureRangeUm = 10.0;        //measurement window [X - this, X] below the peak
+	int spHeightMethod = (int)AlgoH3SpHeightMethod::Median;
+	double spPercentile = 90.0;            //only when spHeightMethod is Percentile
 };
 
 //one measurement ROI. Every ROI belongs to a type - deleting a type deletes its ROIs,
@@ -279,9 +312,10 @@ struct AlgoHeight3Params {
 	double datumMaxTiltDeg = 0.0;   //tilt is an absolute angle, so there is no minimum
 	QVector<QRectF> datumRois;      //part frame, px
 
-	// ── section 4: height measurement settings ──
-	int methodId = (int)AlgoH3Method::Mean; //the page's own selection (which help page shows)
-	double percentile = 50.0;               //shared by every ROI type using method 4
+	// ── section 4: height measurement methods (description only) ──
+	//which method's description the page shows. Nothing measures with it - every
+	//measurement setting lives on the ROI type (section 5).
+	int methodId = (int)AlgoH3Method::Mean;
 
 	// ── section 5: ROI types & criteria ──
 	QVector<AlgoH3RoiType> roiTypes;
@@ -328,6 +362,13 @@ struct AlgoH3RoiResult {
 	double heightUm = 0.0;
 	qint64 sampleCount = 0;
 	QString failReason;
+	/*
+	* Extra lines for the page's Debug Info box: how the method arrived at its number
+	* (for Supported Peak: the accepted peak, support and measurement group counts).
+	* Free text on purpose, so a new method can say whatever helps tune it without
+	* another result field and another widget.
+	*/
+	QStringList debugInfo;
 };
 
 struct AlgoHeight3Output {

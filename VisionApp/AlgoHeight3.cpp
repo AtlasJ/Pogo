@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <limits>
 #include <vector>
 
@@ -37,6 +38,18 @@ QString algoH3MethodName(int methodId)
 	case (int)AlgoH3Method::Maximum:    return QStringLiteral("Maximum Height");
 	case (int)AlgoH3Method::Minimum:    return QStringLiteral("Minimum Height");
 	case (int)AlgoH3Method::Percentile: return QStringLiteral("Percentile Height");
+	case (int)AlgoH3Method::SupportedPeak: return QStringLiteral("Supported Peak Height");
+	default: return QString();
+	}
+}
+
+QString algoH3SpHeightMethodName(int m)
+{
+	switch (m) {
+	case (int)AlgoH3SpHeightMethod::Maximum:    return QStringLiteral("Maximum");
+	case (int)AlgoH3SpHeightMethod::Mean:       return QStringLiteral("Mean");
+	case (int)AlgoH3SpHeightMethod::Median:     return QStringLiteral("Median");
+	case (int)AlgoH3SpHeightMethod::Percentile: return QStringLiteral("Percentile");
 	default: return QString();
 	}
 }
@@ -239,6 +252,105 @@ static double percentileOf(std::vector<double>& v, double pct)
 	if (lo == hi) return v[lo];
 	const double f = pos - (double)lo;
 	return v[lo] * (1.0 - f) + v[hi] * f;
+}
+
+/*
+* Supported Peak Height.
+*
+* Stage 1, peak validation: walk the heights from the top down and accept the first one, X,
+* that has at least minSupport points (itself included) in [X - searchRange, X]. A lone spike
+* has nothing near it and is skipped; the first height that does is the highest SUPPORTED one.
+*
+* Stage 2, height estimation: take EVERY point in [X - measureRange, X] - picked afresh from
+* all the samples, not from the support group, so the two ranges are independent - and reduce
+* them with the chosen method. X itself is always in that group, so it is never empty.
+*
+* Heights only: where a point sits in the ROI plays no part, which is the method's known
+* limit (points from different places can support the same candidate).
+*
+* Both ranges are inclusive. The tiny tolerance keeps a point exactly on a boundary inside
+* it despite the subtraction's rounding - 2.520 - 0.100 is not exactly 2.420 in a double.
+*
+* Sorting is the only real cost (one per ROI). The support count then walks a second index
+* down the same array: X only ever decreases, so so does the window's lower bound, and the
+* whole search is a single pass.
+*/
+struct SupportedPeakResult {
+	bool found = false;
+	double peakUm = 0.0;          //accepted X
+	double heightUm = 0.0;        //the reported height
+	qint64 support = 0;           //points in [X - search, X] for the accepted X
+	qint64 measureCount = 0;      //points in [X - measure, X]
+	qint64 skippedHeights = 0;    //distinct heights above X that were rejected
+	qint64 bestSupport = 0;       //largest support any candidate had (for the refusal)
+	double topUm = 0.0;           //the plain maximum, for comparison
+};
+
+static SupportedPeakResult supportedPeakOf(std::vector<double>& samples, const AlgoH3RoiType& t)
+{
+	constexpr double kEps = 1e-9;
+	SupportedPeakResult res;
+	if (samples.empty()) return res;
+
+	std::sort(samples.begin(), samples.end(), std::greater<double>());
+	const size_t n = samples.size();
+	res.topUm = samples.front();
+
+	const double search = std::max(0.0, t.spSearchRangeUm);
+	const qint64 needed = std::max(1, t.spMinSupport);
+
+	size_t i = 0;      //first index of the candidate value (duplicates count as one candidate)
+	size_t end = 0;    //one past the last index still >= X - search
+	while (i < n) {
+		const double x = samples[i];
+		if (end < i) end = i;
+		while (end < n && samples[end] >= x - search - kEps) end++;
+
+		const qint64 support = (qint64)(end - i);
+		res.bestSupport = std::max(res.bestSupport, support);
+		if (support >= needed) {
+			res.found = true;
+			res.peakUm = x;
+			res.support = support;
+			break;
+		}
+
+		//next distinct height down
+		res.skippedHeights++;
+		size_t next = i + 1;
+		while (next < n && samples[next] == x) next++;
+		i = next;
+	}
+	if (!res.found) return res;
+
+	//stage 2: [X - measure, X], from all the samples. i is X's first occurrence and the
+	//array descends, so the group is the contiguous run from i down to the lower bound.
+	const double measure = std::max(0.0, t.spMeasureRangeUm);
+	size_t last = i;
+	while (last < n && samples[last] >= res.peakUm - measure - kEps) last++;
+	res.measureCount = (qint64)(last - i);
+
+	switch ((AlgoH3SpHeightMethod)t.spHeightMethod) {
+	case AlgoH3SpHeightMethod::Maximum:
+		res.heightUm = res.peakUm;
+		break;
+	case AlgoH3SpHeightMethod::Mean: {
+		double sum = 0.0;
+		for (size_t k = i; k < last; k++) sum += samples[k];
+		res.heightUm = sum / (double)res.measureCount;
+		break;
+	}
+	case AlgoH3SpHeightMethod::Median:
+	case AlgoH3SpHeightMethod::Percentile:
+	default: {
+		std::vector<double> group(samples.begin() + i, samples.begin() + last);
+		const double pct = (t.spHeightMethod == (int)AlgoH3SpHeightMethod::Percentile)
+			? t.spPercentile : 50.0;
+		res.heightUm = percentileOf(group, pct);
+		break;
+	}
+	}
+	return res;
 }
 
 // ── masks and kernels ────────────────────────────────────────────────────────
@@ -2349,6 +2461,9 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 			continue;
 		}
 
+		r.debugInfo << QStringLiteral("Valid samples: %1 of %2 pixels in the ROI")
+			.arg(r.sampleCount).arg((qint64)got.width * got.height);
+
 		switch ((AlgoH3Method)type.methodId) {
 		case AlgoH3Method::Mean: {
 			double sum = 0.0;
@@ -2366,8 +2481,40 @@ bool AlgoHeight3Pipeline::doMeasure(const AlgoHeight3Params& p)
 			r.heightUm = *std::min_element(samples.begin(), samples.end());
 			break;
 		case AlgoH3Method::Percentile:
-			r.heightUm = percentileOf(samples, p.percentile);
+			r.heightUm = percentileOf(samples, type.percentile);
+			r.debugInfo << QStringLiteral("Percentile: %1 %").arg(type.percentile, 0, 'f', 2);
 			break;
+		case AlgoH3Method::SupportedPeak: {
+			const SupportedPeakResult sp = supportedPeakOf(samples, type);
+			r.debugInfo << QStringLiteral("Search Range: %1 um, Minimum Support: %2 points")
+					.arg(type.spSearchRangeUm, 0, 'f', 2).arg(type.spMinSupport)
+				<< QStringLiteral("Measurement Range: %1 um, Height Method: %2%3")
+					.arg(type.spMeasureRangeUm, 0, 'f', 2)
+					.arg(algoH3SpHeightMethodName(type.spHeightMethod))
+					.arg(type.spHeightMethod == (int)AlgoH3SpHeightMethod::Percentile
+						? QStringLiteral(" (%1 %)").arg(type.spPercentile, 0, 'f', 2) : QString())
+				<< QStringLiteral("Highest sample: %1 um").arg(sp.topUm, 0, 'f', 3);
+
+			if (!sp.found) {
+				//no arbitrary number: an unsupported ROI is a failed measurement
+				r.failReason = QStringLiteral("No supported peak: no height has %1 points within %2 um below it (best %3)")
+					.arg(type.spMinSupport).arg(type.spSearchRangeUm, 0, 'f', 2).arg(sp.bestSupport);
+				r.debugInfo << QStringLiteral("No supported peak - best support was %1 of %2 points")
+					.arg(sp.bestSupport).arg(type.spMinSupport);
+				m_out.roiResults.append(r);
+				continue;
+			}
+
+			r.heightUm = sp.heightUm;
+			r.debugInfo << QStringLiteral("Accepted peak X: %1 um (%2 below the highest sample)")
+					.arg(sp.peakUm, 0, 'f', 3).arg(sp.topUm - sp.peakUm, 0, 'f', 3)
+				<< QStringLiteral("Rejected higher heights: %1").arg(sp.skippedHeights)
+				<< QStringLiteral("Support: %1 points in [%2, %3] um")
+					.arg(sp.support).arg(sp.peakUm - type.spSearchRangeUm, 0, 'f', 3).arg(sp.peakUm, 0, 'f', 3)
+				<< QStringLiteral("Measurement group: %1 points in [%2, %3] um")
+					.arg(sp.measureCount).arg(sp.peakUm - type.spMeasureRangeUm, 0, 'f', 3).arg(sp.peakUm, 0, 'f', 3);
+			break;
+		}
 		}
 
 		r.valid = true;

@@ -22881,7 +22881,7 @@ That makes the value far less critical than it looks: on a sample part 10 um and
                                  <string notr="true">QWidget#page_algoH3Method {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 4. Height Measurement Settings</string>
+                                 <string>▼ 4. Height Measurement Methods</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Method">
                                  <item row="0" column="0">
@@ -22916,6 +22916,11 @@ That makes the value far less critical than it looks: on a sample part 10 um and
                                    <item>
                                     <property name="text">
                                      <string>4 - Percentile Height</string>
+                                    </property>
+                                   </item>
+                                   <item>
+                                    <property name="text">
+                                     <string>5 - Supported Peak Height</string>
                                     </property>
                                    </item>
                                   </widget>
@@ -23156,15 +23161,77 @@ That makes the value far less critical than it looks: on a sample part 10 um and
                                        </property>
                                       </widget>
                                      </item>
-                                     <item row="3" column="0">
-                                      <widget class="QLabel" name="label_algoH3MethodPercentileValue">
+                                     <item row="3" column="0" colspan="2">
+                                      <widget class="QLabel" name="label_algoH3MethodPercentileParams">
                                        <property name="text">
-                                        <string>Percentile (%)</string>
+                                        <string>Percentile (%) - which percentile of the valid points to report, 0 to 100 (50 = median). Set per ROI type in section 5.</string>
+                                       </property>
+                                       <property name="wordWrap">
+                                        <bool>true</bool>
                                        </property>
                                       </widget>
                                      </item>
-                                     <item row="3" column="1">
-                                      <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3MethodPercentileValue"/>
+                                    </layout>
+                                   </widget>
+                                   <widget class="QWidget" name="page_algoH3MethodSupportedPeak">
+                                    <layout class="QFormLayout" name="formLayout_algoH3MethodSupportedPeak">
+                                     <item row="0" column="0" colspan="2">
+                                      <widget class="QLabel" name="label_algoH3MethodSupportedPeakPageName">
+                                       <property name="text">
+                                        <string>page_algoH3MethodSupportedPeak</string>
+                                       </property>
+                                       <property name="alignment">
+                                        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="1" column="0">
+                                      <widget class="QLabel" name="label_algoH3MethodSupportedPeakDescHdr">
+                                       <property name="text">
+                                        <string>Description:</string>
+                                       </property>
+                                       <property name="alignment">
+                                        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="1" column="1">
+                                      <widget class="QLabel" name="label_algoH3MethodSupportedPeakDesc">
+                                       <property name="text">
+                                        <string>Finds the highest height that enough other points back up, then measures around it. Isolated noise spikes are skipped because nothing supports them.
+
+1. Peak validation: going from the highest point down, the first height X with at least Minimum Support points in [X - Search Range, X] is the accepted peak.
+2. Height estimation: every point in [X - Measurement Range, X] is combined with the Height Method (Maximum, Mean, Median or Percentile). The reported height can be below X.
+
+Heights only - where the points sit in the ROI does not matter, so points from different places can support the same peak. If no height has enough support, the ROI fails with no height.</string>
+                                       </property>
+                                       <property name="wordWrap">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="2" column="0">
+                                      <widget class="QLabel" name="label_algoH3MethodSupportedPeakParamsHdr">
+                                       <property name="text">
+                                        <string>Parameters:</string>
+                                       </property>
+                                      </widget>
+                                     </item>
+                                     <item row="3" column="0" colspan="2">
+                                      <widget class="QLabel" name="label_algoH3MethodSupportedPeakParams">
+                                       <property name="text">
+                                        <string>Search Range (um) - how far below a candidate to look for support.
+Minimum Support (points) - points needed in that range, the candidate included.
+Measurement Range (um) - how far below the accepted peak to collect points for the height.
+Height Method - Maximum, Mean, Median or Percentile of those points.
+Peak Percentile (%) - only for the Percentile height method.
+
+Set per ROI type in section 5. Flat tops: small Search Range, larger Minimum Support, Mean / Median. Conical tips: larger Search Range, smaller Minimum Support, Maximum / high Percentile. Minimum Support is a point count, so it needs re-tuning if the scan resolution changes.</string>
+                                       </property>
+                                       <property name="wordWrap">
+                                        <bool>true</bool>
+                                       </property>
+                                      </widget>
                                      </item>
                                     </layout>
                                    </widget>
@@ -23185,7 +23252,7 @@ That makes the value far less critical than it looks: on a sample part 10 um and
                                  <string notr="true">QWidget#page_algoH3Roi {background: transparent;}</string>
                                 </property>
                                 <attribute name="label">
-                                 <string>▼ 5. ROI Types &amp;&amp; Criteria</string>
+                                 <string>▼ 5. ROI Types, Criteria &amp;&amp; Height Measurement Settings</string>
                                 </attribute>
                                 <layout class="QFormLayout" name="formLayout_algoH3Roi">
                                  <item row="0" column="0">
@@ -23508,13 +23575,97 @@ Every grid cell gets an ROI, so a missing pin shows up as a failure. Replaces ev
                                   <widget class="QComboBox" name="comboBox_algoH3RoiTypeMethod"/>
                                  </item>
                                  <item row="11" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypePercentile">
+                                   <property name="text">
+                                    <string>Percentile (%)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="11" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypePercentile">
+                                   <property name="toolTip">
+                                    <string>Which percentile of the valid points to report, 0 to 100 (50 = median)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="12" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeSpSearchRangeUm">
+                                   <property name="text">
+                                    <string>Search Range (um)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="12" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypeSpSearchRangeUm">
+                                   <property name="toolTip">
+                                    <string>A candidate height X is supported by the points in [X - Search Range, X]</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="13" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeSpMinSupport">
+                                   <property name="text">
+                                    <string>Minimum Support (points)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="13" column="1">
+                                  <widget class="QSpinBox" name="spinBox_algoH3RoiTypeSpMinSupport">
+                                   <property name="toolTip">
+                                    <string>Points needed within the Search Range, the candidate itself included. The first (highest) candidate that has them is the accepted peak.</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="14" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeSpMeasureRangeUm">
+                                   <property name="text">
+                                    <string>Measurement Range (um)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="14" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypeSpMeasureRangeUm">
+                                   <property name="toolTip">
+                                    <string>Every point in [peak - Measurement Range, peak] goes into the height. Independent of the Search Range.</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="15" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeSpHeightMethod">
+                                   <property name="text">
+                                    <string>Height Method</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="15" column="1">
+                                  <widget class="QComboBox" name="comboBox_algoH3RoiTypeSpHeightMethod">
+                                   <property name="toolTip">
+                                    <string>How the points in the Measurement Range are combined into the reported height</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="16" column="0">
+                                  <widget class="QLabel" name="label_algoH3RoiTypeSpPercentile">
+                                   <property name="text">
+                                    <string>Peak Percentile (%)</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="16" column="1">
+                                  <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3RoiTypeSpPercentile">
+                                   <property name="toolTip">
+                                    <string>Percentile of the points in the Measurement Range, 0 to 100</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="17" column="0">
                                   <widget class="QLabel" name="label_algoH3RoiTypeCount">
                                    <property name="text">
                                     <string>ROI Count</string>
                                    </property>
                                   </widget>
                                  </item>
-                                 <item row="11" column="1">
+                                 <item row="17" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3RoiTypeCount">
                                    <property name="readOnly">
                                     <bool>true</bool>
@@ -23725,6 +23876,35 @@ Every grid cell gets an ROI, so a missing pin shows up as a failure. Replaces ev
                                  </item>
                                  <item row="11" column="1">
                                   <widget class="QLineEdit" name="lineEdit_algoH3ResultFailReason">
+                                   <property name="readOnly">
+                                    <bool>true</bool>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="12" column="0" colspan="2">
+                                  <widget class="QCheckBox" name="checkBox_algoH3ResultDebugInfo">
+                                   <property name="toolTip">
+                                    <string>Show how the selected ROI's method arrived at its height (for tuning)</string>
+                                   </property>
+                                   <property name="text">
+                                    <string>Debug Info</string>
+                                   </property>
+                                  </widget>
+                                 </item>
+                                 <item row="13" column="0" colspan="2">
+                                  <widget class="QPlainTextEdit" name="plainTextEdit_algoH3ResultDebugInfo">
+                                   <property name="minimumSize">
+                                    <size>
+                                     <width>0</width>
+                                     <height>140</height>
+                                    </size>
+                                   </property>
+                                   <property name="maximumSize">
+                                    <size>
+                                     <width>16777215</width>
+                                     <height>140</height>
+                                    </size>
+                                   </property>
                                    <property name="readOnly">
                                     <bool>true</bool>
                                    </property>
