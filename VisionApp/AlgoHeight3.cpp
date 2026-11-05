@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <limits>
 #include <vector>
@@ -1051,30 +1052,64 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 
 	/*
 	* Second pass: the plate, not the pins. A line through a row of pins can carry more pin
-	* top than plate, and then its mode IS the pin top: a jump of thousands of counts that the
-	* median filter below cannot remove when the row is wider than its window, and that the
-	* step detector then cuts on - once going in and once coming out, splitting the block.
-	* So each line's level is taken again as the mode within reach of the plate AROUND it: the
-	* median of the first-pass levels over a window wider than any pin row, and four plate
-	* steps either side of that. A line with too little in reach carries no level and is held
-	* across like one that clips the part.
+	* top than plate, and then its mode IS the pin top; a line through a row of tall
+	* components can carry more component than plate, and then its mode is the component
+	* top - a jump of thousands of counts that the median filter below cannot remove when
+	* the row is wider than its window, and that throws the real plate out of the band.
+	*
+	* So the plate is first agreed on by the map as a whole: it is divided into cells, a
+	* band of lines by a stretch of the part (the cells are used again below), and the
+	* level the most cells share, weighted by what they hold, is the plate. Components,
+	* pins and the clipped neighbours each own their cells, but between them they own fewer
+	* than the plate does, and the unit's plate is the one the scan was centred on. Each
+	* line's level is then taken again as the mode within four plate steps of that, which
+	* keeps the pins and components out; a line with too little in reach carries no level
+	* and is held across like one that clips the part.
 	*/
 	const double thresh = std::max(1.0, p.segBandStepRaw);
-	{
-		const int wide = std::min(uCount | 1, std::max(201, (minBand * 2) | 1));
-		const int wHalf = wide / 2;
-		std::vector<double> ref(uCount), win(wide);
-		for (int u = 0; u < uCount; u++) {
-			for (int i = 0; i < wide; i++) win[i] = level[std::max(0, std::min(uCount - 1, u - wHalf + i))];
-			std::nth_element(win.begin(), win.begin() + wHalf, win.end());
-			ref[u] = win[wHalf];
+	const double reach = 4.0 * thresh;
+
+	const int cellU = 64, cellX = 512;
+	const int ncu = (uCount + cellU - 1) / cellU, ncx = (w + cellX - 1) / cellX;
+	std::vector<int> chist((size_t)ncu * ncx * kBins, 0);
+	std::vector<int> ccnt((size_t)ncu * ncx, 0);
+	for (int y = 0; y < h; y++) {
+		const ushort* row = src16.ptr<ushort>(y);
+		const uchar* mrow = mask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			if (!mrow[x]) continue;
+			int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
+			int b = (int)((row[x] - lo) / binW);
+			if (b < 0) b = 0; else if (b >= kBins) b = kBins - 1;
+			const size_t c = (size_t)(ui / cellU) * ncx + (x / cellX);
+			chist[c * kBins + b]++;
+			ccnt[c]++;
 		}
-		const double reach = 4.0 * thresh;
+	}
+
+	double plateRef = 0.0;
+	{
+		std::vector<long long> vote(kBins, 0);
+		for (size_t c = 0; c < ccnt.size(); c++) {
+			if (ccnt[c] < cellU * cellX / 50) continue;
+			const int* bins = &chist[c * kBins];
+			const int top = (int)(std::max_element(bins, bins + kBins) - bins);
+			vote[top] += ccnt[c];
+		}
+		//votes spread over a few bins by noise are gathered before the count
+		std::vector<long long> gathered(kBins, 0);
+		for (int b = 0; b < kBins; b++)
+			for (int i = std::max(0, b - 2); i <= std::min(kBins - 1, b + 2); i++) gathered[b] += vote[i];
+		const int top = (int)(std::max_element(gathered.begin(), gathered.end()) - gathered.begin());
+		plateRef = lo + (top + 0.5) * binW;
+	}
+	{
+		const int b0 = std::max(0, (int)((plateRef - reach - lo) / binW));
+		const int b1 = std::min(kBins - 1, (int)((plateRef + reach - lo) / binW));
 		for (int u = 0; u < uCount; u++) {
 			if (!hasLevel[u]) continue;
 			const int* bins = &hist[(size_t)u * kBins];
-			const int b0 = std::max(0, (int)((ref[u] - reach - lo) / binW));
-			const int b1 = std::min(kBins - 1, (int)((ref[u] + reach - lo) / binW));
 			long long inReach = 0;
 			for (int b = b0; b <= b1; b++) inReach += bins[b];
 			if (b1 < b0 || inReach < (long long)(lineLen[u] * 0.02)) { hasLevel[u] = 0; continue; }
@@ -1154,36 +1189,17 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	* one end lies on this block's plate and the other on the next block's: one level cannot
 	* serve both ends, and the end it does not serve is cut off its block. So the map is
 	* divided into cells, a band of lines by a stretch of the part, and each cell has its own
-	* level: the MODE of its heights within four plate steps of its lines' level (which keeps
-	* the pins out), for the same reason the line level is a mode - the plate is the majority
+	* level: the MODE of its heights within four plate steps of the plate the map agreed on
+	* (which keeps the pins and components out), for the same reason the line level is a mode - the plate is the majority
 	* and everything else is far from it, and a mean would be dragged by the chamfers and
 	* the rims. A pixel is plate if it is within the band of its own cell's level or of the
 	* cell's above or below, so a cell that straddles the step between two plates costs
 	* neither plate anything. A cell with too little in it defers to its lines' level.
 	*/
-	const int cellU = 64, cellX = 512;
-	const int ncu = (uCount + cellU - 1) / cellU, ncx = (w + cellX - 1) / cellX;
-	std::vector<int> chist((size_t)ncu * ncx * kBins, 0);
-	std::vector<int> ccnt((size_t)ncu * ncx, 0);
-	for (int y = 0; y < h; y++) {
-		const ushort* row = src16.ptr<ushort>(y);
-		const uchar* mrow = mask.ptr<uchar>(y);
-		for (int x = 0; x < w; x++) {
-			if (!mrow[x]) continue;
-			int ui = (int)std::lround(y - x * tanT) - uMin;
-			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
-			int b = (int)((row[x] - lo) / binW);
-			if (b < 0) b = 0; else if (b >= kBins) b = kBins - 1;
-			const size_t c = (size_t)(ui / cellU) * ncx + (x / cellX);
-			chist[c * kBins + b]++;
-			ccnt[c]++;
-		}
-	}
 	std::vector<double> clevel((size_t)ncu * ncx, std::numeric_limits<double>::quiet_NaN());
 	for (int cu = 0; cu < ncu; cu++) {
-		const double lineRef = smooth[std::min(uCount - 1, cu * cellU + cellU / 2)];
-		const int b0 = std::max(0, (int)((lineRef - 4.0 * thresh - lo) / binW));
-		const int b1 = std::min(kBins - 1, (int)((lineRef + 4.0 * thresh - lo) / binW));
+		const int b0 = std::max(0, (int)((plateRef - reach - lo) / binW));
+		const int b1 = std::min(kBins - 1, (int)((plateRef + reach - lo) / binW));
 		for (int cx = 0; cx < ncx; cx++) {
 			const size_t c = (size_t)cu * ncx + cx;
 			if (ccnt[c] < cellU * cellX / 50 || b1 < b0) continue;
@@ -1196,11 +1212,39 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		}
 	}
 
+	/*
+	* Dark is also relative to the plate AROUND a pixel: the block ends and the far block
+	* are lit less than the middle, and a slot that is black in the middle of the part is
+	* only grey at its ends - still well below the plate beside it. A pixel under three
+	* fifths of the mean brightness of what was seen within a millimetre of it is dark.
+	*/
+	const int icell = 8;
+	const int igh = (h + icell - 1) / icell, igw = (w + icell - 1) / icell;
+	cv::Mat isum(igh, igw, CV_32F, cv::Scalar(0.0f)), icnt(igh, igw, CV_32F, cv::Scalar(0.0f));
+	if (darkT >= 0) {
+		for (int y = 0; y < h; y++) {
+			const uchar* irow = intensity.ptr<uchar>(y);
+			const uchar* mrow = mask.ptr<uchar>(y);
+			float* srow = isum.ptr<float>(y / icell);
+			float* crow = icnt.ptr<float>(y / icell);
+			for (int x = 0; x < w; x++) {
+				if (!mrow[x]) continue;
+				srow[x / icell] += irow[x];
+				crow[x / icell] += 1.0f;
+			}
+		}
+		const int igk = std::max(3, (int)std::lround(200.0 / icell) | 1);
+		cv::boxFilter(isum, isum, -1, cv::Size(igk, igk), cv::Point(-1, -1), false, cv::BORDER_CONSTANT);
+		cv::boxFilter(icnt, icnt, -1, cv::Size(igk, igk), cv::Point(-1, -1), false, cv::BORDER_CONSTANT);
+	}
+
 	cv::Mat plate(h, w, CV_8U, cv::Scalar(0));
 	for (int y = 0; y < h; y++) {
 		const ushort* row = src16.ptr<ushort>(y);
 		const uchar* mrow = mask.ptr<uchar>(y);
 		const uchar* irow = darkT >= 0 ? intensity.ptr<uchar>(y) : nullptr;
+		const float* isrow = darkT >= 0 ? isum.ptr<float>(y / icell) : nullptr;
+		const float* icrow = darkT >= 0 ? icnt.ptr<float>(y / icell) : nullptr;
 		uchar* prow = plate.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
 			if (!mrow[x]) continue;
@@ -1222,7 +1266,11 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 			}
 			if (!anyLevel) onPlate = std::fabs((double)row[x] - smooth[ui]) <= nearPlate;
 			if (!onPlate) continue;
-			if (irow && irow[x] < darkT) continue;
+			if (irow) {
+				if (irow[x] < darkT) continue;
+				const float n = icrow[x / icell];
+				if (n >= 64.0f && irow[x] < 0.6f * (isrow[x / icell] / n)) continue;
+			}
 			prow[x] = 255;
 		}
 	}
@@ -1256,15 +1304,135 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		cv::bitwise_not(notPlate, plate);
 	}
 
-	const cv::Mat kernel5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
-	cv::Mat opened;
-	cv::morphologyEx(plate, opened, cv::MORPH_OPEN, kernel5);
+	/*
+	* The seam that fades before the block's end. On some units the slot between two blocks
+	* closes up for the last few hundred pixels at one end - the chamfers meet, or a burr
+	* fills it - and there the two plates run into each other with nothing between them. The
+	* slot is still a line of not-plate across the rest of the width, and a straight one, so
+	* a line that is not-plate without a break over most of the part is taken to be a seam
+	* and cut across the whole of it.
+	*
+	* Three things make that harder than it sounds:
+	*   - the slot is bridged here and there by a fleck or a glint, wider than the closing
+	*     above spans. The seam is looked for on a copy of the mask closed along the part by
+	*     three times as much, which the real mask is not, because that much would notch the
+	*     plate beside the first pin of every row;
+	*   - the slot runs a shade off the part's own angle, so no line AT the part's angle lies
+	*     inside it the whole way. Each candidate line is tried at a fan of angles around the
+	*     part's, and the slot is cut along the angle it runs at;
+	*   - a row of pins, once its shadows have closed over the plate between the pins, is a
+	*     line of not-plate too. A pin top stands far above the plate, and a seam carries
+	*     nothing above it, so pin tops BREAK a run: a row of pins is a string of short ones,
+	*     and a seam line that strays into the next block's pins at one end is cut short there
+	*     and found again at the angle that keeps it in the slot.
+	* A shadow band under a row of components is told apart by what lies either side: a seam
+	* has plate on both sides within a fraction of a block - past the chamfer and the last row
+	* of pins - and a shadow band has the components on one side for their whole height.
+	*/
+	cv::Mat seamTest;
+	{
+		cv::Mat notPlate;
+		cv::bitwise_not(plate, notPlate);
+		cv::morphologyEx(notPlate, notPlate, cv::MORPH_CLOSE,
+			cv::getStructuringElement(cv::MORPH_RECT, cv::Size(121, 1)));
+		cv::bitwise_not(notPlate, seamTest);
+	}
+	int xFirst = 0, xLast = w - 1;
+	{
+		std::vector<int> colPlate(w, 0);
+		for (int y = 0; y < h; y++) {
+			const uchar* prow = seamTest.ptr<uchar>(y);
+			for (int x = 0; x < w; x++) if (prow[x]) colPlate[x]++;
+		}
+		while (xFirst < w && colPlate[xFirst] < h / 100) xFirst++;
+		while (xLast > xFirst && colPlate[xLast] < h / 100) xLast--;
+	}
+	const int span = xLast - xFirst + 1;
+	const bool seamReady = span >= 512;
 
-	cv::Mat labels, stats, cents;
-	const int nPieces = cv::connectedComponentsWithStats(opened, labels, stats, cents, 8, CV_32S);
-	if (nPieces < 2) {
-		why = QStringLiteral("No plate found in the map");
-		return false;
+	const double kSeamRun = 0.85, kSidePlate = 0.5, kCandidate = 0.6;
+	const int sideNear = 8, sideFar = std::max(64, minBand / 2);
+	const double highAbove = plateRef + reach;
+	const double fanDeg = 0.5, fanStepDeg = 0.1;
+
+	//the longest run of not-plate along the line through (u at the part's angle) tilted by
+	//tanD, with pin tops and anything else standing high breaking the run
+	auto longestRun = [&](int u, double tanD, bool pinsBreak) {
+		int run = 0, longest = 0;
+		for (int x = xFirst; x <= xLast; x++) {
+			const int y = (int)std::lround(u + uMin + x * tanT + (x - w / 2) * tanD);
+			if (y < 0 || y >= h) { if (++run > longest) longest = run; continue; }
+			if (seamTest.ptr<uchar>(y)[x] || (pinsBreak && src16.ptr<ushort>(y)[x] > highAbove)) run = 0;
+			else if (++run > longest) longest = run;
+		}
+		return longest;
+	};
+	//the best angle for a line, and the run it has there
+	auto bestRun = [&](int u, double& bestTan) {
+		int best = 0; bestTan = 0.0;
+		for (double d = -fanDeg; d <= fanDeg + 1e-9; d += fanStepDeg) {
+			const double tanD = std::tan(d * CV_PI / 180.0);
+			const int run = longestRun(u, tanD, true);
+			if (run > best) { best = run; bestTan = tanD; }
+		}
+		return best;
+	};
+	auto cutAlong = [&](int u, double tanD) {
+		for (int x = xFirst; x <= xLast; x++) {
+			const int y = (int)std::lround(u + uMin + x * tanT + (x - w / 2) * tanD);
+			if (y >= 0 && y < h) plate.ptr<uchar>(y)[x] = 0;
+		}
+	};
+	//the plate fraction of every line at the part's angle, so the look either side of a
+	//candidate is a lookup
+	//and its run at the part's own angle, which is what decides whether the fan of angles -
+	//eleven times the cost - is worth trying on it
+	std::vector<double> plateFrac(uCount, 0.0);
+	std::vector<int> run0(uCount, 0);
+	if (seamReady) {
+		for (int u = 0; u < uCount; u++) {
+			int onPlate = 0;
+			for (int x = xFirst; x <= xLast; x++) {
+				const int y = (int)std::lround(u + uMin + x * tanT);
+				if (y >= 0 && y < h && seamTest.ptr<uchar>(y)[x]) onPlate++;
+			}
+			plateFrac[u] = (double)onPlate / span;
+			//without the pins breaking it: this only says whether the line is worth the fan,
+			//and a seam line that strays into pins at the part's angle must still get it
+			run0[u] = longestRun(u, 0.0, false);
+		}
+	}
+	auto plateWithin = [&](int from, int step) {
+		double best = 0.0;
+		for (int k = sideNear; k <= sideFar; k++) {
+			const int u = from + step * k;
+			if (u < 0 || u >= uCount) break;
+			best = std::max(best, plateFrac[u]);
+		}
+		return best;
+	};
+
+	//with the debug directory set, every line that ran not-plate far enough at some angle
+	//is listed with the tests it then passed or failed
+	FILE* seamLog = nullptr;
+	if (const char* dbg = std::getenv("H3_SEG_DEBUG_DIR"))
+		seamLog = std::fopen((std::string(dbg) + "/h3seg_seams.txt").c_str(), "w");
+	int seamCut = 0;
+	if (seamReady) {
+		for (int u = 0; u < uCount; u++) {
+			//a slot that runs a shade off the part's angle is only half inside a line at that
+			//angle, so the bar for trying the fan is low
+			if (plateFrac[u] > kCandidate || run0[u] < 0.3 * span) continue;
+			double bestTan = 0.0;
+			const int best = bestRun(u, bestTan);
+			const double up = plateWithin(u, -1), down = plateWithin(u, +1);
+			const bool cut = best >= kSeamRun * span && up >= kSidePlate && down >= kSidePlate;
+			if (seamLog) std::fprintf(seamLog, "line %d: plate %.2f run0 %.2f best %.2f at %+.2f deg, plate-above %.2f plate-below %.2f -> %s" "\n",
+				u + uMin, plateFrac[u], (double)run0[u] / span, (double)best / span, std::atan(bestTan) * 180.0 / CV_PI, up, down, cut ? "cut" : "kept");
+			if (!cut) continue;
+			seamCut++;
+			cutAlong(u, bestTan);
+		}
 	}
 
 	/*
@@ -1276,19 +1444,79 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	* between its features wherever its middle happens to be, and does not reach a neighbour
 	* unless the scan was aimed a block away.
 	*/
+	const cv::Mat kernel5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
 	const int centreU = (int)std::lround(0.5 * (h - 1) - 0.5 * (w - 1) * tanT) - uMin;
 	const int win = std::max(8, minBand / 4);
-	std::vector<long long> onLine(nPieces, 0);
-	for (int y = 0; y < h; y++) {
-		const int* lrow = labels.ptr<int>(y);
-		for (int x = 0; x < w; x++) {
-			if (lrow[x] <= 0) continue;
-			const int ui = (int)std::lround(y - x * tanT) - uMin;
-			if (std::abs(ui - centreU) <= win) onLine[lrow[x]]++;
+	cv::Mat opened, labels, stats, cents;
+	int nPieces = 0, unit = 0;
+	auto pickUnit = [&]() {
+		cv::morphologyEx(plate, opened, cv::MORPH_OPEN, kernel5);
+		nPieces = cv::connectedComponentsWithStats(opened, labels, stats, cents, 8, CV_32S);
+		unit = 0;
+		if (nPieces < 2) return;
+		std::vector<long long> onLine(nPieces, 0);
+		for (int y = 0; y < h; y++) {
+			const int* lrow = labels.ptr<int>(y);
+			for (int x = 0; x < w; x++) {
+				if (lrow[x] <= 0) continue;
+				const int ui = (int)std::lround(y - x * tanT) - uMin;
+				if (std::abs(ui - centreU) <= win) onLine[lrow[x]]++;
+			}
+		}
+		for (int i = 1; i < nPieces; i++) if (onLine[i] > onLine[unit]) unit = i;
+	};
+	pickUnit();
+
+	/*
+	* A piece that reaches the top or bottom of the map still has the neighbour on it: the
+	* slot between them closed up somewhere the search above could not bridge, or the
+	* neighbour's pin heads overhang it so that no line through it is free of pins at any
+	* angle. The last resort is the line with the LEAST plate on it between the unit's own
+	* margin and that edge - the slot, bridged as it is, carries a few percent of plate, a
+	* row of pins carries its margins and the plate between the pins - and the piece is cut
+	* along that line, at whichever angle in the fan keeps it clear of plate best, and
+	* chosen again. Only a piece already known to be two blocks is ever cut this way, and
+	* only once a side.
+	*/
+	int fallbackCut = 0;
+	if (seamReady && unit > 0) {
+		for (int pass = 0; pass < 2; pass++) {
+			const int top = stats.at<int>(unit, cv::CC_STAT_TOP);
+			const int bottom = top + stats.at<int>(unit, cv::CC_STAT_HEIGHT) - 1;
+			const bool offTop = top <= 1, offBottom = bottom >= h - 2;
+			if (!offTop && !offBottom) break;
+			//the top of the map is the low end of u, the bottom the high end
+			const int step = offTop ? -1 : +1;
+			int bestU = -1; double least = 1.0;
+			for (int u = centreU + step * (minBand / 2); u >= 0 && u < uCount; u += step) {
+				//the seam has the unit on one side of it and the neighbour on the other; a
+				//line past the edge of the data has nothing on either
+				if (plateWithin(u, -step) < kSidePlate || plateWithin(u, step) < 0.3) continue;
+				if (plateFrac[u] < least) { least = plateFrac[u]; bestU = u; }
+			}
+			if (bestU < 0 || least > 0.5) break;
+			double bestTanAll = 0.0;
+			bestRun(bestU, bestTanAll);
+			if (seamLog) std::fprintf(seamLog, "fallback: piece runs off the %s, cut at line %d (plate %.2f, along %+.2f deg)" "\n",
+				offTop ? "top" : "bottom", bestU + uMin, least, std::atan(bestTanAll) * 180.0 / CV_PI);
+			for (int du = -2; du <= 2; du++) cutAlong(bestU + du, bestTanAll);
+			fallbackCut++;
+			pickUnit();
+			if (unit == 0) break;
 		}
 	}
-	int unit = 0;
-	for (int i = 1; i < nPieces; i++) if (onLine[i] > onLine[unit]) unit = i;
+	if (seamLog) std::fclose(seamLog);
+
+	//for a scan that segments wrongly: the masks this was decided on, written where the
+	//environment says and nowhere by default - before any refusal, since a refusal is
+	//exactly when they are wanted
+	if (const char* dbg = std::getenv("H3_SEG_DEBUG_DIR")) {
+		const std::string dir = std::string(dbg) + "/";
+		cv::imwrite(dir + "h3seg_plate.png", plate);
+		cv::imwrite(dir + "h3seg_opened.png", opened);
+		cv::Mat unitMask = (labels == unit);
+		cv::imwrite(dir + "h3seg_unit.png", unitMask);
+	}
 	if (unit == 0) {
 		why = QStringLiteral("No plate on the line through the middle of the scan - the unit is not where "
 			"the scan was aimed, or nothing there lies within %1 raw of its own plate level").arg(nearPlate, 0, 'f', 0);
@@ -1300,11 +1528,12 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	const int pLeft = stats.at<int>(unit, cv::CC_STAT_LEFT);
 	const int pRight = pLeft + stats.at<int>(unit, cv::CC_STAT_WIDTH) - 1;
 
-	info = QStringLiteral("rotation %1 deg; %2 plate pieces; unit piece rows %3-%4, cols %5-%6, %7 px, "
-		"under the middle; plate within %8 raw of its level%9")
-		.arg(thetaDeg, 0, 'f', 3).arg(nPieces - 1).arg(pTop).arg(pBottom).arg(pLeft).arg(pRight)
+	info = QStringLiteral("rotation %1 deg; plate %2 raw; %3 plate pieces; unit piece rows %4-%5, cols %6-%7, %8 px, "
+		"under the middle; plate within %9 raw of its level%10; %11 seam lines cut across")
+		.arg(thetaDeg, 0, 'f', 3).arg(plateRef, 0, 'f', 0).arg(nPieces - 1).arg(pTop).arg(pBottom).arg(pLeft).arg(pRight)
 		.arg(stats.at<int>(unit, cv::CC_STAT_AREA)).arg(nearPlate, 0, 'f', 0)
-		.arg(darkT >= 0 ? QStringLiteral(", lit above %1").arg(darkT) : QStringLiteral(", no intensity map"));
+		.arg(darkT >= 0 ? QStringLiteral(", lit above %1").arg(darkT) : QStringLiteral(", no intensity map"))
+		.arg(seamCut) + (fallbackCut ? QStringLiteral("; %1 cut as a last resort").arg(fallbackCut) : QString());
 
 	//a piece that reaches the edge of the map was cut by the scan: the block it belongs to
 	//was not captured whole, and a part measured off a fraction of a block is measured off
@@ -1330,15 +1559,6 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	cv::dilate(piece, grown, kernel5);
 	cv::Mat blockMask;
 	cv::bitwise_and(grown, plate, blockMask);
-
-	//for a scan that segments wrongly: the masks this was decided on, written where the
-	//environment says, and nowhere by default
-	if (const char* dbg = std::getenv("H3_SEG_DEBUG_DIR")) {
-		const std::string dir = std::string(dbg) + "/";
-		cv::imwrite(dir + "h3seg_plate.png", plate);
-		cv::imwrite(dir + "h3seg_opened.png", opened);
-		cv::imwrite(dir + "h3seg_block.png", blockMask);
-	}
 
 	/*
 	* ── 6. pose the block ──
