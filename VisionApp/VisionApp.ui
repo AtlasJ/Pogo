@@ -21588,8 +21588,28 @@ Stop SR Management Tool services to free port 21.</string>
                                </item>
                                <item>
                                 <widget class="QToolButton" name="toolButton_algoH3AlgoMenu">
+                                 <property name="styleSheet">
+                                  <string notr="true">QToolButton#toolButton_algoH3AlgoMenu { padding: 2px 20px 2px 8px; }
+QToolButton#toolButton_algoH3AlgoMenu::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right; right: 6px; }</string>
+                                 </property>
+                                 <property name="toolTip">
+                                  <string>Manage algos: new (copy of this one), rename, delete, set as default</string>
+                                 </property>
                                  <property name="text">
                                   <string>Manage</string>
+                                 </property>
+                                 <property name="icon">
+                                  <iconset resource="VisionApp.qrc">
+                                   <normaloff>:/24x24/Icon/24x24/cil-touch-app.png</normaloff>:/24x24/Icon/24x24/cil-touch-app.png</iconset>
+                                 </property>
+                                 <property name="iconSize">
+                                  <size>
+                                   <width>16</width>
+                                   <height>16</height>
+                                  </size>
+                                 </property>
+                                 <property name="toolButtonStyle">
+                                  <enum>Qt::ToolButtonTextBesideIcon</enum>
                                  </property>
                                  <property name="popupMode">
                                   <enum>QToolButton::InstantPopup</enum>
@@ -21662,6 +21682,19 @@ Stop SR Management Tool services to free port 21.</string>
                                 </widget>
                                </item>
                                <item>
+                                <spacer name="horizontalSpacer_algoH3Display">
+                                 <property name="orientation">
+                                  <enum>Qt::Horizontal</enum>
+                                 </property>
+                                 <property name="sizeHint" stdset="0">
+                                  <size>
+                                   <width>40</width>
+                                   <height>20</height>
+                                  </size>
+                                 </property>
+                                </spacer>
+                               </item>
+                               <item>
                                 <widget class="QToolButton" name="toolButton_algoH3RenderRoi">
                                  <property name="toolTip">
                                   <string>Render only part of the map in 3D.
@@ -21675,8 +21708,32 @@ Hide goes back to rendering the whole map; the box is remembered. The full map a
                                  </property>
                                 </widget>
                                </item>
+                              </layout>
+                             </item>
+                             <item>
+                              <layout class="QHBoxLayout" name="horizontalLayout_algoH3FillHoles">
                                <item>
-                                <spacer name="horizontalSpacer_algoH3Display">
+                                <widget class="QCheckBox" name="checkBox_algoH3FillHoles">
+                                 <property name="toolTip">
+                                  <string>Reconstruct the pin surface that neighbouring pins shadowed from the sensor.
+
+Only gaps fully enclosed by measured surface are filled - the space between the pins reaches the edge of the map and is left open, so the pins are never welded into a slab.
+
+Turn this off to see exactly what the profiler returned. Display only: nothing is measured from the filled surface.</string>
+                                 </property>
+                                 <property name="styleSheet">
+                                  <string notr="true">color: #F0F0F0;</string>
+                                 </property>
+                                 <property name="text">
+                                  <string>Fill occlusion holes in the 3D views</string>
+                                 </property>
+                                 <property name="checked">
+                                  <bool>true</bool>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <spacer name="horizontalSpacer_algoH3FillHoles">
                                  <property name="orientation">
                                   <enum>Qt::Horizontal</enum>
                                  </property>
@@ -21688,10 +21745,6 @@ Hide goes back to rendering the whole map; the box is remembered. The full map a
                                  </property>
                                 </spacer>
                                </item>
-                              </layout>
-                             </item>
-                             <item>
-                              <layout class="QHBoxLayout" name="horizontalLayout_algoH3DisplayExternal">
                                <item>
                                 <widget class="QToolButton" name="toolButton_algoH3DisplayExternalOpen">
                                  <property name="toolTip">
@@ -21701,6 +21754,43 @@ Hide goes back to rendering the whole map; the box is remembered. The full map a
                                   <string>Open External 3D</string>
                                  </property>
                                 </widget>
+                               </item>
+                              </layout>
+                             </item>
+                             <item>
+                              <layout class="QHBoxLayout" name="horizontalLayout_algoH3ShowPlane">
+                               <item>
+                                <widget class="QCheckBox" name="checkBox_algoH3ShowPlane">
+                                 <property name="toolTip">
+                                  <string>Draw the fitted datum plane over the part in the 3D views, as a translucent sheet.
+
+It is the surface every height is measured from, so seeing where it sits is the quickest check that it was fitted to the right thing - a datum on the pin tops rather than the plate is obvious at a glance and almost invisible in the numbers.
+
+Only on the segmented view: the plane is fitted in the crop's own coordinates.</string>
+                                 </property>
+                                 <property name="styleSheet">
+                                  <string notr="true">color: #F0F0F0;</string>
+                                 </property>
+                                 <property name="text">
+                                  <string>Show datum plane</string>
+                                 </property>
+                                 <property name="checked">
+                                  <bool>true</bool>
+                                 </property>
+                                </widget>
+                               </item>
+                               <item>
+                                <spacer name="horizontalSpacer_algoH3ShowPlane">
+                                 <property name="orientation">
+                                  <enum>Qt::Horizontal</enum>
+                                 </property>
+                                 <property name="sizeHint" stdset="0">
+                                  <size>
+                                   <width>40</width>
+                                   <height>20</height>
+                                  </size>
+                                 </property>
+                                </spacer>
                                </item>
                                <item>
                                 <widget class="QToolButton" name="toolButton_algoH3DisplayExternalClose">
@@ -21712,60 +21802,7 @@ Hide goes back to rendering the whole map; the box is remembered. The full map a
                                  </property>
                                 </widget>
                                </item>
-                               <item>
-                                <spacer name="horizontalSpacer_algoH3DisplayExternal">
-                                 <property name="orientation">
-                                  <enum>Qt::Horizontal</enum>
-                                 </property>
-                                 <property name="sizeHint" stdset="0">
-                                  <size>
-                                   <width>40</width>
-                                   <height>20</height>
-                                  </size>
-                                 </property>
-                                </spacer>
-                               </item>
                               </layout>
-                             </item>
-                             <item>
-                              <widget class="QCheckBox" name="checkBox_algoH3FillHoles">
-                               <property name="toolTip">
-                                <string>Reconstruct the pin surface that neighbouring pins shadowed from the sensor.
-
-Only gaps fully enclosed by measured surface are filled - the space between the pins reaches the edge of the map and is left open, so the pins are never welded into a slab.
-
-Turn this off to see exactly what the profiler returned. Display only: nothing is measured from the filled surface.</string>
-                               </property>
-                               <property name="styleSheet">
-                                <string notr="true">color: #F0F0F0;</string>
-                               </property>
-                               <property name="text">
-                                <string>Fill occlusion holes in the 3D views</string>
-                               </property>
-                               <property name="checked">
-                                <bool>true</bool>
-                               </property>
-                              </widget>
-                             </item>
-                             <item>
-                              <widget class="QCheckBox" name="checkBox_algoH3ShowPlane">
-                               <property name="toolTip">
-                                <string>Draw the fitted datum plane over the part in the 3D views, as a translucent sheet.
-
-It is the surface every height is measured from, so seeing where it sits is the quickest check that it was fitted to the right thing - a datum on the pin tops rather than the plate is obvious at a glance and almost invisible in the numbers.
-
-Only on the segmented view: the plane is fitted in the crop's own coordinates.</string>
-                               </property>
-                               <property name="styleSheet">
-                                <string notr="true">color: #F0F0F0;</string>
-                               </property>
-                               <property name="text">
-                                <string>Show datum plane</string>
-                               </property>
-                               <property name="checked">
-                                <bool>true</bool>
-                               </property>
-                              </widget>
                              </item>
                              <item>
                               <widget class="QToolBox" name="toolBox_algoH3Sections">
