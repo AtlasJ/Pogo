@@ -20,6 +20,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 #include <vector>
 
 // =============================================================================
@@ -1102,8 +1104,8 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	*   - the slot between two blocks is dropout, or a black line in the intensity map, or a
 	*     chamfer well below the plate, and usually all three; whichever it is, no plate pixel
 	*     crosses it;
-	*   - two blocks pushed together with no slot at all still differ in level, and the lines
-	*     where the level steps from one to the other lie outside the band around BOTH;
+	*   - two blocks pushed together with no slot at all still differ in level, and around the
+	*     step from one to the other the local level is a blend that neither plate is within;
 	*   - pins, holes and component shadows are not plate either, but they sit INSIDE a block,
 	*     ringed by plate that runs around them and joins up again on the far side.
 	* So the plate of each block is one connected piece, the pieces of neighbouring blocks are
@@ -1146,6 +1148,54 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		}
 	}
 
+	/*
+	* The level a pixel is judged against is local in TWO dimensions, not one per line. A
+	* line at the part's angle crosses a seam that runs a shade off it, and on such a line
+	* one end lies on this block's plate and the other on the next block's: one level cannot
+	* serve both ends, and the end it does not serve is cut off its block. So the map is
+	* divided into cells, a band of lines by a stretch of the part, and each cell has its own
+	* level: the MODE of its heights within four plate steps of its lines' level (which keeps
+	* the pins out), for the same reason the line level is a mode - the plate is the majority
+	* and everything else is far from it, and a mean would be dragged by the chamfers and
+	* the rims. A pixel is plate if it is within the band of its own cell's level or of the
+	* cell's above or below, so a cell that straddles the step between two plates costs
+	* neither plate anything. A cell with too little in it defers to its lines' level.
+	*/
+	const int cellU = 64, cellX = 512;
+	const int ncu = (uCount + cellU - 1) / cellU, ncx = (w + cellX - 1) / cellX;
+	std::vector<int> chist((size_t)ncu * ncx * kBins, 0);
+	std::vector<int> ccnt((size_t)ncu * ncx, 0);
+	for (int y = 0; y < h; y++) {
+		const ushort* row = src16.ptr<ushort>(y);
+		const uchar* mrow = mask.ptr<uchar>(y);
+		for (int x = 0; x < w; x++) {
+			if (!mrow[x]) continue;
+			int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
+			int b = (int)((row[x] - lo) / binW);
+			if (b < 0) b = 0; else if (b >= kBins) b = kBins - 1;
+			const size_t c = (size_t)(ui / cellU) * ncx + (x / cellX);
+			chist[c * kBins + b]++;
+			ccnt[c]++;
+		}
+	}
+	std::vector<double> clevel((size_t)ncu * ncx, std::numeric_limits<double>::quiet_NaN());
+	for (int cu = 0; cu < ncu; cu++) {
+		const double lineRef = smooth[std::min(uCount - 1, cu * cellU + cellU / 2)];
+		const int b0 = std::max(0, (int)((lineRef - 4.0 * thresh - lo) / binW));
+		const int b1 = std::min(kBins - 1, (int)((lineRef + 4.0 * thresh - lo) / binW));
+		for (int cx = 0; cx < ncx; cx++) {
+			const size_t c = (size_t)cu * ncx + cx;
+			if (ccnt[c] < cellU * cellX / 50 || b1 < b0) continue;
+			const int* bins = &chist[c * kBins];
+			long long inReach = 0;
+			for (int b = b0; b <= b1; b++) inReach += bins[b];
+			if (inReach < cellU * cellX / 50) continue;
+			const int top = (int)(std::max_element(bins + b0, bins + b1 + 1) - bins);
+			clevel[c] = lo + (top + 0.5) * binW;
+		}
+	}
+
 	cv::Mat plate(h, w, CV_8U, cv::Scalar(0));
 	for (int y = 0; y < h; y++) {
 		const ushort* row = src16.ptr<ushort>(y);
@@ -1156,7 +1206,22 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 			if (!mrow[x]) continue;
 			int ui = (int)std::lround(y - x * tanT) - uMin;
 			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
-			if (std::fabs((double)row[x] - smooth[ui]) > nearPlate) continue;
+			//its own cell's level, or the cell's above or below: a cell that straddles the
+			//step between two plates has the level of one of them, and the other plate's
+			//pixels in it are still plate - they match the next cell over. The step itself
+			//is cut below, by the jump across it, not by the cells
+			const int cu = ui / cellU, cx = x / cellX;
+			bool onPlate = false, anyLevel = false;
+			for (int du = -1; du <= 1 && !onPlate; du++) {
+				const int c = cu + du;
+				if (c < 0 || c >= ncu) continue;
+				const double cl = clevel[(size_t)c * ncx + cx];
+				if (std::isnan(cl)) continue;
+				anyLevel = true;
+				onPlate = std::fabs((double)row[x] - cl) <= nearPlate;
+			}
+			if (!anyLevel) onPlate = std::fabs((double)row[x] - smooth[ui]) <= nearPlate;
+			if (!onPlate) continue;
 			if (irow && irow[x] < darkT) continue;
 			prow[x] = 255;
 		}
@@ -1266,6 +1331,15 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	cv::Mat blockMask;
 	cv::bitwise_and(grown, plate, blockMask);
 
+	//for a scan that segments wrongly: the masks this was decided on, written where the
+	//environment says, and nowhere by default
+	if (const char* dbg = std::getenv("H3_SEG_DEBUG_DIR")) {
+		const std::string dir = std::string(dbg) + "/";
+		cv::imwrite(dir + "h3seg_plate.png", plate);
+		cv::imwrite(dir + "h3seg_opened.png", opened);
+		cv::imwrite(dir + "h3seg_block.png", blockMask);
+	}
+
 	/*
 	* ── 6. pose the block ──
 	*
@@ -1313,7 +1387,7 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	* reached out to the last of that would sit a quarter of a millimetre off centre on one
 	* unit and dead centre on the next, carrying every ROI with it. So each end is found by
 	* walking outward from the middle to the first column that carries less than half the
-	* plate the interior does and keeps carrying less.
+	* plate the leanest interior columns do and keeps carrying less.
 	*/
 	auto pct = [](std::vector<float>& v, double q) {
 		size_t i = (size_t)std::lround(q * (v.size() - 1));
@@ -1328,9 +1402,12 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		if (last - first < 8) return false;
 		const int n = last - first + 1;
 
+		//half of what the LEANEST interior columns carry, not the median: a column down the
+		//middle of a row of pins and holes keeps a third of the plate a column between them
+		//does, and the end has to be found past those, not at the first of them
 		std::vector<int> mid(cnt.begin() + first + n / 4, cnt.begin() + first + (n - n / 4));
-		std::nth_element(mid.begin(), mid.begin() + mid.size() / 2, mid.end());
-		const int thr = std::max(1, mid[mid.size() / 2] / 2);
+		std::nth_element(mid.begin(), mid.begin() + mid.size() / 10, mid.end());
+		const int thr = std::max(1, mid[mid.size() / 10] / 2);
 
 		auto thin = [&](int i) { return i < first || i > last || cnt[i] < thr; };
 		int left = first, right = last;
