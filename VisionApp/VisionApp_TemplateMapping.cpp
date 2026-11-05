@@ -22,7 +22,11 @@
 #include <QIntValidator>
 #include <QLineEdit>
 #include <QMap>
+#include <QIcon>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 #include <QPoint>
 #include <QSignalBlocker>
 #include <QTableWidgetItem>
@@ -30,6 +34,51 @@
 namespace {
 
 const QColor kProblemFill(0x8B, 0x2E, 0x2E);   //a cell a refused Save complained about
+constexpr int kInvertedRole = Qt::UserRole + 2; //bool on each value cell: true = the unit sits inverted (CellFillDelegate has +1)
+
+/*
+* The arrow beside each cell's value: up (green) for an upright unit, down (orange) for an inverted
+* one. Drawn rather than typed as a character, so it does not depend on the IPC's fonts.
+*/
+QIcon orientationIcon(bool inverted)
+{
+	static QIcon icons[2];
+	QIcon& icon = icons[inverted ? 1 : 0];
+	if (!icon.isNull()) return icon;
+
+	const int s = 16;
+	QPixmap pm(s, s);
+	pm.fill(Qt::transparent);
+	QPainter p(&pm);
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(Qt::NoPen);
+	p.setBrush(inverted ? QColor(0xFF, 0xA0, 0x30) : QColor(0x4C, 0xD9, 0x64));
+	QPainterPath arrow;   //drawn pointing up, mirrored for down
+	arrow.moveTo(8, 1);
+	arrow.lineTo(15, 8);
+	arrow.lineTo(10.5, 8);
+	arrow.lineTo(10.5, 15);
+	arrow.lineTo(5.5, 15);
+	arrow.lineTo(5.5, 8);
+	arrow.lineTo(1, 8);
+	arrow.closeSubpath();
+	if (inverted) {
+		p.translate(0, s);
+		p.scale(1, -1);
+	}
+	p.drawPath(arrow);
+	p.end();
+	icon = QIcon(pm);
+	icon.addPixmap(pm, QIcon::Disabled);   //the table is not disabled, but keep the colour if it ever is
+	return icon;
+}
+
+void showOrientation(QTableWidgetItem* item, bool inverted)
+{
+	item->setData(kInvertedRole, inverted);
+	item->setIcon(orientationIcon(inverted));
+	item->setToolTip(inverted ? QObject::tr("Inverted - its images are turned 180 degrees") : QObject::tr("Upright"));
+}
 
 //cell editor: whole numbers in range and nothing else; clearing the text empties the cell
 class MappingCellDelegate : public CellFillDelegate
@@ -132,6 +181,8 @@ void VisionApp::initTemplateMappingSetup()
 	});
 
 	connect(ui.toolButton_tmEdit, &QToolButton::clicked, this, [=]() { setTemplateMappingEditing(true); });
+	connect(ui.toolButton_tmSetUpright, &QToolButton::clicked, this, [=]() { setTemplateMappingSelectionInverted(false); });
+	connect(ui.toolButton_tmSetInverted, &QToolButton::clicked, this, [=]() { setTemplateMappingSelectionInverted(true); });
 	connect(ui.toolButton_tmDiscard, &QToolButton::clicked, this, [=]() { showTemplateMapping(); });
 
 	connect(ui.toolButton_tmSave, &QToolButton::clicked, this, [=]() {
@@ -148,6 +199,11 @@ void VisionApp::initTemplateMappingSetup()
 		const int xCount = ui.spinBox_tmXCount->value();
 		const int yCount = ui.spinBox_tmYCount->value();
 		QVector<QVector<std::optional<int>>> values(yCount, QVector<std::optional<int>>(xCount));
+		QVector<QVector<bool>> inverted(yCount, QVector<bool>(xCount, false));
+		int invertedCount = 0;
+		for (int y = 0; y < yCount && y < _tmScratchInverted.size(); y++)
+			for (int x = 0; x < xCount && x < _tmScratchInverted[y].size(); x++)
+				if ((inverted[y][x] = _tmScratchInverted[y][x])) invertedCount++;
 		QVector<QPoint> empty, invalid;
 		QMap<int, QVector<QPoint>> cellsOf;   //value -> every cell holding it
 		for (int y = 0; y < yCount; y++) {
@@ -198,12 +254,12 @@ void VisionApp::initTemplateMappingSetup()
 		}
 
 		const TemplateMappingStore before = _templateMappings;
-		_templateMappings.setGrid(i, xCount, yCount, values);
+		_templateMappings.setGrid(i, xCount, yCount, values, inverted);
 		if (!saveTemplateMappings(before)) return; //stays in Edit, with the edits still on screen
 
 		const TemplateMapping& m = _templateMappings.mappings()[i];
 		AuditLog::instance().log(QStringLiteral("TEMPLATE_MAPPING_SAVE"),
-			QStringLiteral("%1 (%2) %3 x %4").arg(m.name, m.id).arg(m.xCount).arg(m.yCount));
+			QStringLiteral("%1 (%2) %3 x %4, %5 inverted").arg(m.name, m.id).arg(m.xCount).arg(m.yCount).arg(invertedCount));
 		showTemplateMapping();
 	});
 
@@ -245,6 +301,12 @@ void VisionApp::showTemplateMapping()
 			for (const auto& cell : row) texts.append(cell ? TemplateMappingStore::valueText(*cell) : QString());
 			_tmScratch.append(texts);
 		}
+		_tmScratchInverted.clear();
+		for (int y = 0; y < m.yCount; y++) {
+			QVector<bool> row;
+			for (int x = 0; x < m.xCount; x++) row.append(m.isInverted(x, y));
+			_tmScratchInverted.append(row);
+		}
 		{
 			const QSignalBlocker bx(ui.spinBox_tmXCount), by(ui.spinBox_tmYCount);
 			ui.spinBox_tmXCount->setValue(m.xCount);
@@ -273,6 +335,8 @@ void VisionApp::setTemplateMappingEditing(bool editing)
 	ui.toolButton_tmEdit->setEnabled(any && !editing && !locked);
 	ui.toolButton_tmSave->setEnabled(editing && !locked);
 	ui.toolButton_tmDiscard->setEnabled(editing);
+	ui.toolButton_tmSetUpright->setEnabled(editing && !locked);
+	ui.toolButton_tmSetInverted->setEnabled(editing && !locked);
 	ui.tableWidget_tmValues->setEditTriggers(editing
 		? QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed | QAbstractItemView::AnyKeyPressed
 		: QAbstractItemView::NoEditTriggers);
@@ -295,6 +359,7 @@ void VisionApp::fillTemplateMappingTable(int xCount, int yCount)
 			const QString text = (y < _tmScratch.size() && x < _tmScratch[y].size()) ? _tmScratch[y][x] : QString();
 			auto* item = new QTableWidgetItem(text);
 			item->setTextAlignment(Qt::AlignCenter);
+			showOrientation(item, y < _tmScratchInverted.size() && x < _tmScratchInverted[y].size() && _tmScratchInverted[y][x]);
 			t->setItem(y, x, item);
 		}
 	}
@@ -310,13 +375,33 @@ void VisionApp::keepTemplateMappingEdits()
 	t->setCurrentIndex(QModelIndex()); //a cell still being typed in commits when the current cell moves
 
 	if (_tmScratch.size() < t->rowCount()) _tmScratch.resize(t->rowCount());
+	if (_tmScratchInverted.size() < t->rowCount()) _tmScratchInverted.resize(t->rowCount());
 	for (int y = 0; y < t->rowCount(); y++) {
 		if (_tmScratch[y].size() < t->columnCount()) _tmScratch[y].resize(t->columnCount());
+		if (_tmScratchInverted[y].size() < t->columnCount()) _tmScratchInverted[y].resize(t->columnCount());   //new cells upright
 		for (int x = 0; x < t->columnCount(); x++) {
 			const QTableWidgetItem* item = t->item(y, x);
 			_tmScratch[y][x] = item ? item->text().trimmed() : QString();
+			_tmScratchInverted[y][x] = item && item->data(kInvertedRole).toBool();
 		}
 	}
+}
+
+/*
+* Set As Upright / Set As Inverted: every selected cell, any number of them, in Edit only. Only the
+* table changes here - like a value typed in, it reaches the file on Save and is gone on Discard.
+*/
+void VisionApp::setTemplateMappingSelectionInverted(bool inverted)
+{
+	if (!_tmEditing || _productionSetupLocked) return;
+	auto* t = ui.tableWidget_tmValues;
+	const QList<QTableWidgetItem*> items = t->selectedItems();
+	if (items.isEmpty()) {
+		ui.label_tmStatus->setText(tr("Select the cells to set as %1 first.").arg(inverted ? tr("inverted") : tr("upright")));
+		return;
+	}
+	for (QTableWidgetItem* item : items) showOrientation(item, inverted);
+	ui.label_tmStatus->setText(tr("%1 cell(s) set as %2 - Save to keep it.").arg(items.size()).arg(inverted ? tr("inverted") : tr("upright")));
 }
 
 QString VisionApp::askTemplateMappingName(const QString& title, const QString& current, const QString& ignoreId)

@@ -106,6 +106,7 @@ private:
 	void rotate_image(FrameInfo& info);
 	void rotate_image(MIL_ID mSrc, MIL_ID mDst, double rotateAngle);
 	void rotate_image_discrete(FrameInfo& info); //camera alignment 90/180/270 option
+	void turn_unit_180(FrameInfo& info);         //postTask.turn180: an inverted unit's image / height + intensity maps
 	//pitchUmOut: the um per pixel the result was resampled to - the same on both axes
 	void rotate_heightMap(MIL_ID mSrc, MIL_ID& mDst, double rotateAngle, bool scanReversed,
 		double* pitchUmOut = nullptr);

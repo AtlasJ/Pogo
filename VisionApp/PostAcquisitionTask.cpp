@@ -16,6 +16,7 @@ PostAcquisitionTask::PostAcquisitionTask(const PostAcquisitionTask& other)
 	rgbOffset = other.rgbOffset;
 	stackImage = other.stackImage;
 	scanReversed = other.scanReversed;
+	turn180 = other.turn180;
 }
 
 PostAcquisitionTask& PostAcquisitionTask::operator=(const PostAcquisitionTask& other)
@@ -26,5 +27,6 @@ PostAcquisitionTask& PostAcquisitionTask::operator=(const PostAcquisitionTask& o
 	rgbOffset = other.rgbOffset;
 	stackImage = other.stackImage;
 	scanReversed = other.scanReversed;
+	turn180 = other.turn180;
 	return *this;
 }

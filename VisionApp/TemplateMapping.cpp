@@ -18,6 +18,11 @@ QVector<QVector<std::optional<int>>> emptyGrid(int xCount, int yCount)
 	return QVector<QVector<std::optional<int>>>(yCount, QVector<std::optional<int>>(xCount));
 }
 
+QVector<QVector<bool>> uprightGrid(int xCount, int yCount)
+{
+	return QVector<QVector<bool>>(yCount, QVector<bool>(xCount, false));
+}
+
 bool sameName(const QString& a, const QString& b)
 {
 	return QString::compare(a.trimmed(), b.trimmed(), Qt::CaseInsensitive) == 0;
@@ -112,6 +117,15 @@ bool TemplateMappingStore::load(QString* message)
 			}
 		}
 
+		//missing (a file from before orientation existed) or anything but true: upright
+		m.inverted = uprightGrid(m.xCount, m.yCount);
+		const QJsonArray invRows = o.value(QStringLiteral("inverted")).toArray();
+		for (int y = 0; y < m.yCount && y < invRows.size(); y++) {
+			const QJsonArray row = invRows.at(y).toArray();
+			for (int x = 0; x < m.xCount && x < row.size(); x++)
+				m.inverted[y][x] = row.at(x).toBool(false);
+		}
+
 		highestId = std::max(highestId, idNumber(m.id));
 		_mappings.append(m);
 	}
@@ -143,12 +157,19 @@ bool TemplateMappingStore::save(QString* error) const
 			for (const auto& cell : row) cells.append(cell ? QJsonValue(*cell) : QJsonValue(QJsonValue::Null));
 			rows.append(cells);
 		}
+		QJsonArray invRows;
+		for (int y = 0; y < m.yCount; y++) {
+			QJsonArray cells;
+			for (int x = 0; x < m.xCount; x++) cells.append(m.isInverted(x, y));
+			invRows.append(cells);
+		}
 		QJsonObject o;
 		o.insert(QStringLiteral("id"), m.id);
 		o.insert(QStringLiteral("name"), m.name);
 		o.insert(QStringLiteral("xCount"), m.xCount);
 		o.insert(QStringLiteral("yCount"), m.yCount);
 		o.insert(QStringLiteral("values"), rows);
+		o.insert(QStringLiteral("inverted"), invRows);
 		list.append(o);
 	}
 	QJsonObject root;
@@ -200,6 +221,7 @@ int TemplateMappingStore::add(const QString& name)
 	m.yCount = 1;
 	m.values = emptyGrid(m.xCount, m.yCount);
 	m.values[0][0] = 0;
+	m.inverted = uprightGrid(m.xCount, m.yCount);
 	_mappings.append(m);
 	return _mappings.size() - 1;
 }
@@ -214,14 +236,19 @@ void TemplateMappingStore::remove(int index)
 	if (index >= 0 && index < _mappings.size()) _mappings.removeAt(index);
 }
 
-void TemplateMappingStore::setGrid(int index, int xCount, int yCount, const QVector<QVector<std::optional<int>>>& values)
+void TemplateMappingStore::setGrid(int index, int xCount, int yCount, const QVector<QVector<std::optional<int>>>& values,
+	const QVector<QVector<bool>>& inverted)
 {
 	if (index < 0 || index >= _mappings.size()) return;
 	TemplateMapping& m = _mappings[index];
 	m.xCount = std::clamp(xCount, kMinCount, kMaxCount);
 	m.yCount = std::clamp(yCount, kMinCount, kMaxCount);
 	m.values = emptyGrid(m.xCount, m.yCount);
+	m.inverted = uprightGrid(m.xCount, m.yCount);
 	for (int y = 0; y < m.yCount && y < values.size(); y++)
 		for (int x = 0; x < m.xCount && x < values[y].size(); x++)
 			m.values[y][x] = values[y][x];
+	for (int y = 0; y < m.yCount && y < inverted.size(); y++)
+		for (int x = 0; x < m.xCount && x < inverted[y].size(); x++)
+			m.inverted[y][x] = inverted[y][x];
 }

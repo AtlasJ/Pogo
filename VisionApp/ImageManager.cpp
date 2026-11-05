@@ -689,6 +689,57 @@ void ImageManager::rotate_image_discrete(FrameInfo& info)
 	info.bufferSize = (int)(band * dw * dh);
 }
 
+/*
+* An inverted unit (its Template Mapping cell says so): turn the frame by exactly 180 degrees, so the
+* unit comes out upright for the display, the saved files and the algos alike. Two flips rather than a
+* rotation - a flip moves whole pixels and never interpolates, so every height is kept exactly and
+* the map keeps its size. Into a new buffer: the source may be the camera's or the pool's, and other
+* holders of it must not see it change. A 3D frame turns BOTH maps, which keeps them pixel-aligned.
+* If a buffer cannot be had, the frame goes on unturned and the log says so loudly.
+*/
+void ImageManager::turn_unit_180(FrameInfo& info)
+{
+	if (!info.postTask.turn180) return;
+	info.postTask.turn180 = false;   //done once: a frame passed on must not be turned again
+
+	auto turned = [&](const mtrx::SharedMilID& src, const char* what) -> mtrx::SharedMilID {
+		if (!src || src->id() == M_NULL) return src;
+		const MIL_ID mSrc = src->id();
+		const MIL_INT band = MbufInquire(mSrc, M_SIZE_BAND, M_NULL);
+		const MIL_INT type = MbufInquire(mSrc, M_TYPE, M_NULL);
+		const MIL_INT w = MbufInquire(mSrc, M_SIZE_X, M_NULL);
+		const MIL_INT h = MbufInquire(mSrc, M_SIZE_Y, M_NULL);
+		const MIL_INT attribute = MbufInquire(mSrc, M_EXTENDED_ATTRIBUTE, M_NULL);   //same layout (packed colour etc.), as rotate_image_discrete
+		MIL_ID mDst = M_NULL;
+		MbufAllocColor(M_DEFAULT_HOST, band, w, h, type, attribute, &mDst);
+		if (mDst == M_NULL) {
+			ct::logger::error("[IM] %s: could not allocate a buffer to turn the %s 180 - it is used UNTURNED",
+				util::combineID(info.viewID, info.opticID).toStdString().c_str(), what);
+			return src;
+		}
+		MimFlip(mSrc, mDst, M_FLIP_HORIZONTAL, M_DEFAULT);
+		MimFlip(mDst, mDst, M_FLIP_VERTICAL, M_DEFAULT);
+		auto out = mtrx::MbufPoolManager::instance().attach(mDst, mtrx::PoolDestructorType::FREE_BUFFER);
+		if (!out) {
+			MbufFree(mDst);
+			ct::logger::error("[IM] %s: the turned %s could not be pooled - it is used UNTURNED",
+				util::combineID(info.viewID, info.opticID).toStdString().c_str(), what);
+			return src;
+		}
+		return out;
+	};
+
+	ScopedTimeLogger stl("[IM] Turn inverted unit 180: " + util::combineID(info.viewID, info.opticID).toStdString());
+	if (info.type == ct::s_height_map) {
+		info.pHeightMap = turned(info.pHeightMap, "height map");
+		info.pImage = turned(info.pImage, "intensity map");
+	}
+	else {
+		info.pImage = turned(info.pImage, "image");
+	}
+	ct::logger::info("[IM] %s: inverted unit, turned 180", util::combineID(info.viewID, info.opticID).toStdString().c_str());
+}
+
 void ImageManager::preprocess_done(FrameInfo& info)
 {
 	auto id = util::combineID(info.viewID, info.opticID);
@@ -699,6 +750,8 @@ void ImageManager::preprocess_done(FrameInfo& info)
 
 	//camera alignment rotation option (90/180/270), applied before the image leaves preprocessing
 	rotate_image_discrete(info);
+	//then an inverted unit is turned upright, after the camera is aligned so "180" means the unit's own 180
+	turn_unit_180(info);
 
 	ct::logger::debug("[IM] Emit image preprocessed");
 	emit imagePreprocessed(info);

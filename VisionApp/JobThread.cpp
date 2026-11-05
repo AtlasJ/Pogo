@@ -282,6 +282,7 @@ void JobThread::snapBand(const OpticsInfo& optic, QString viewID, QString stitch
 	CAMManager::instance().frame(optic.camID)->opticID = optic.id;
 	CAMManager::instance().frame(optic.camID)->type = optic.type;
 	CAMManager::instance().frame(optic.camID)->postTask.rotationalAngle = SystemData::instance()._camAngles[optic.camID];
+	CAMManager::instance().frame(optic.camID)->postTask.turn180 = m_unitTurn180;   //every snap: false unless runGs2 set it
 
 	timer.log_duration("Set channels");
 
@@ -687,6 +688,7 @@ FrameInfo JobThread::scan(QString id, dat::WorldCoordinate start, dat::WorldCoor
 	//is already setting up the next, so a shared flag could be read for the wrong frame - and
 	//the failure would be a silently mirrored height map, not an error.
 	ProfilerManager::instance().getFrame(m_profilerID)->postTask.scanReversed = scanReversed;
+	ProfilerManager::instance().getFrame(m_profilerID)->postTask.turn180 = m_unitTurn180;   //every scan: false unless runGs2 set it
 
 	if (scanReversed) {
 		ct::logger::info("[Acq] Reverse scan along %s: %.3f -> %.3f mm (%.3f mm)",
@@ -4127,6 +4129,7 @@ void JobThread::profilerScanTest(double distance_mm, bool positiveDir, QString o
 		* the last production scan left behind.
 		*/
 		pending->postTask.scanReversed = !positiveDir;
+		pending->postTask.turn180 = false;   //same trap: a unit's 180 turn from a production scan must not carry over
 	}
 
 	quint32 trig0 = 0, trig1 = 0;
@@ -6897,8 +6900,13 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId)
 			if (!m_stopRun) jog(s.x, s.y, s.z, "2D", true);
 			if (m_stopRun) break;
 			if (m_snapDelay_ms > 0) os_tool::doNothing(m_snapDelay_ms);   //the head settles, as production's view snaps do
+			if (s.turn180) ct::logger::info("[GS2 run] %s is inverted (Template Mapping): its 2D snap is turned 180", qPrintable(s.unitID));
+			m_unitTurn180 = s.turn180;
 			snapOptic(mainOptic, s.unitID + "_2D", "", true);
+			m_unitTurn180 = false;
 			const FrameInfo info = waitForImagePreprocessed(5000);
+			//the camera's frame is persistent and the live view grabs into it without snapBand: take the turn back out
+			if (s.turn180 && CAMManager::instance().frame(mainOptic.camID)) CAMManager::instance().frame(mainOptic.camID)->postTask.turn180 = false;
 			if (info.pImage) {
 				//saved as it is taken: a trolley's worth of frames must not wait in memory for the end. The
 				//filename + buffer overload: the FrameInfo one takes its first argument as a FOLDER and adds
@@ -6926,6 +6934,7 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId)
 			end = start;
 			end.wx = s.scanEndX;
 			ct::logger::info("[GS2 run] %s 3D scan, laser measuring X %.3f..%.3f at Y %.3f, Z %.3f", qPrintable(s.unitID), s.x, s.scanEndX, s.y, s.z);
+			if (s.turn180) ct::logger::info("[GS2 run] %s is inverted (Template Mapping): its height + intensity maps are turned 180", qPrintable(s.unitID));
 			bool firstRun = true;
 			for (const auto& o : opticsSeq) {
 				if (m_stopRun) break;
@@ -6933,7 +6942,9 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId)
 				ProfilerManager::instance().getFrame(m_profilerID)->postTask.rotationalAngle = 0.0;
 				auto optic = (*m_optics3D)[o];
 				if (!firstRun) optic.intensity = false;
+				m_unitTurn180 = s.turn180;
 				scan(s.unitID, start, end, optic, waitImage);
+				m_unitTurn180 = false;
 				firstRun = false;
 			}
 			if (!m_stopRun) emit incrementProgress();

@@ -25,4 +25,11 @@ struct PostAcquisitionTask {
 	//it back. NOTE: the copy constructor and operator= below are hand-written, so a member
 	//missing from them is dropped silently on every copy - add new fields to BOTH.
 	bool scanReversed = false;
+
+	//The unit this frame shows sits INVERTED on its trolley (its Template Mapping cell says so):
+	//ImageManager turns the finished image - and a 3D frame's height + intensity maps - by exactly
+	//180 degrees (two flips, no resampling) before anything displays, saves or inspects it, so the
+	//unit always comes out upright. Written on every snap / scan (JobThread::m_unitTurn180), as the
+	//driver frames are persistent and must not carry one unit's turn to the next frame.
+	bool turn180 = false;
 };

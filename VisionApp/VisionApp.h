@@ -632,6 +632,7 @@ private:
 	QStringList liveMappingProblems() const; //why production cannot start yet; empty when the PMF and template are ready
 	bool liveMappingReadyForProduction();    //start gate: refuses with the list above, except in machine debug mode
 	int positionForUnit(const QString& unitID) const;   //production unit X#Y# -> its template cell's position, -1 if none
+	bool unitInverted(const QString& unitID) const;     //production unit X#Y# sits on a cell marked Inverted: turn its images 180
 	std::optional<QSet<QString>> fittedUnits() const;   //unit IDs whose position the PMF lists - all a run visits; nullopt = no Live Mapping
 	QHash<QString, QString> unitCables() const;          //unit ID -> its PMF cable, for picking each unit's 3D algo
 	void showUnitOnLiveMapping(const QString& unitID, UnitState state);
@@ -643,6 +644,8 @@ private:
 	TemplateMappingStore _templateMappings;  //app-wide, template_mapping.json
 	bool _tmEditing = false;
 	QVector<QVector<QString>> _tmScratch;    //cell texts while editing - kept past a shrink, so growing back restores them
+	QVector<QVector<bool>> _tmScratchInverted; //each cell's orientation while editing, kept the same way; true = inverted
+	void setTemplateMappingSelectionInverted(bool inverted);
 	void initTemplateMappingSetup();
 	void listTemplateMappings(const QString& selectId);
 	void showTemplateMapping();              //the selected mapping as saved, in view mode

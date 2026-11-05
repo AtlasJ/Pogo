@@ -81,6 +81,7 @@ public:
 		double x = 0.0, y = 0.0, z = 0.0;   //2D / Barcode + OCR: the camera point and Z; 3D: where the laser starts measuring and the scan Z
 		double scanEndX = 0.0;              //3D: where the laser stops measuring
 		double clearZ = 0.0;                //Z goes up to this (if lower) before moving sideways to the shot, as Move only does
+		bool turn180 = false;               //2D / 3D: the unit sits inverted (Template Mapping) - its images are turned 180
 	};
 	void runGs2(const QVector<Gs2Shot>& shots, int runId);
 	void clearStop() { m_stopRun = false; }   //GUI thread, with this thread idle: before posting runGs2
@@ -182,6 +183,11 @@ private:
 	std::array<BarcodeInfo, 2>* m_barcodeInfos = nullptr;
 	InspStatus* m_inspStatus = nullptr;
 	dat::WorldCoordinate* m_laserOffset = nullptr;
+
+	//Written into the frame's postTask.turn180 by EVERY snap (snapBand) and scan (scan()), so one
+	//unit's turn can never ride on into the next frame. Only runGs2 sets it, around an inverted
+	//unit's 2D snap or 3D scan, and puts it back to false straight after.
+	bool m_unitTurn180 = false;
 	CSAInfo* m_csa = nullptr;
 	QViewPlane* m_viewPlane = nullptr;
 	PortabilityInfo* m_portabilityInfo = nullptr;

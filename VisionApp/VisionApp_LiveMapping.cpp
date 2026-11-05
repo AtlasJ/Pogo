@@ -404,6 +404,22 @@ int VisionApp::positionForUnit(const QString& unitID) const
 }
 
 /*
+* Whether a unit sits inverted on the trolley: its template cell, by the same X#Y# rule as
+* positionForUnit, is marked Inverted on the PMF page. Upright (false) when there is no such cell
+* or no mapping - the images are then used as taken, as before orientation existed.
+*/
+bool VisionApp::unitInverted(const QString& unitID) const
+{
+	static const QRegularExpression re(QStringLiteral("^X(\\d+)Y(\\d+)$"));
+	const QRegularExpressionMatch match = re.match(unitID);
+	if (!match.hasMatch()) return false;
+
+	const int mi = _templateMappings.indexOfName(ui.lineEdit_prodTemplateMapping->text());
+	if (mi < 0) return false;
+	return _templateMappings.mappings()[mi].isInverted(match.captured(1).toInt() - 1, match.captured(2).toInt() - 1);
+}
+
+/*
 * The units a production run visits, by the rule above: those whose cell holds a position the
 * PMF lists. A recipe unit outside the template, or on a cell the PMF does not have, is not in
 * the set, so the run never goes there. std::nullopt - visit every unit, as before - when there

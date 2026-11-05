@@ -2060,6 +2060,9 @@ QVector<JobThread::Gs2Shot> VisionApp::gs2BuildShots(const gs2::Setup& s, const 
 			shot.z = z2D + in.zOffsetMm;
 		}
 		shot.clearZ = std::min(z2D, shot.z);   //sideways never below the 2D Z, as Move only
+		//an inverted unit's 2D snap and 3D maps are turned 180 before anything shows, saves or inspects them;
+		//the barcode readers' captures are left as taken (Jimmy, 2026-11-05)
+		shot.turn180 = shot.kind != 1 && unitInverted(shot.unitID);
 		shots << shot;
 	}
 	return shots;

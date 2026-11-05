@@ -13,10 +13,15 @@
 *
 *   {"nextId": 3,
 *    "mappings": [{"id": "map-001", "name": "Input Pins", "xCount": 3, "yCount": 2,
-*                  "values": [[10, 20, 30], [40, null, 60]]}]}
+*                  "values": [[10, 20, 30], [40, null, 60]],
+*                  "inverted": [[false, false, true], [false, false, false]]}]}
 *
 * values is [y][x] - the outer array is the rows - and an empty cell is null. nextId is kept in
 * the file so a removed mapping's id is never handed out again.
+*
+* inverted is [y][x] too: true where the unit sits upside down on the trolley, so its 2D snap and
+* 3D maps are turned 180 degrees before they are saved or inspected. A file written before this
+* existed has no "inverted" - every cell is upright, the default.
 */
 struct TemplateMapping
 {
@@ -25,6 +30,11 @@ struct TemplateMapping
 	int xCount = 1;
 	int yCount = 1;
 	QVector<QVector<std::optional<int>>> values; //[y][x], std::nullopt = empty cell
+	QVector<QVector<bool>> inverted;             //[y][x], same size as values; false = upright (the default)
+
+	bool isInverted(int x, int y) const {
+		return y >= 0 && y < inverted.size() && x >= 0 && x < inverted[y].size() && inverted[y][x];
+	}
 };
 
 class TemplateMappingStore
@@ -51,7 +61,8 @@ public:
 	int add(const QString& name);                //1 x 1 holding 0 (shown as 000); returns its index
 	void rename(int index, const QString& name);
 	void remove(int index);
-	void setGrid(int index, int xCount, int yCount, const QVector<QVector<std::optional<int>>>& values);
+	void setGrid(int index, int xCount, int yCount, const QVector<QVector<std::optional<int>>>& values,
+		const QVector<QVector<bool>>& inverted);
 
 private:
 	QVector<TemplateMapping> _mappings;
