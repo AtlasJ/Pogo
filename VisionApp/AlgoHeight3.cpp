@@ -814,7 +814,7 @@ static bool h3PartRotation(const cv::Mat& validMask, double maxDeg, double& thet
 * those crossings are fitted across the strips, and the slope the most strips agree on is
 * the rotation.
 *
-* Tried before the pin-shadow lines (h3PartRotation below): a shadow row is a string of
+* Tried before the pin-shadow lines (h3PartRotation above): a shadow row is a string of
 * blobs that are only roughly collinear, a plate edge is a hard line. The strips are narrow
 * enough that the rotation itself cannot smear an edge across more than a couple of rows
 * inside one of them.
@@ -917,7 +917,7 @@ static bool h3EdgeRotation(const cv::Mat& validMask, double maxDeg, double& thet
 * Find the block the scan captured WHOLE, and pose it.
 *
 * A pogo field is several blocks stacked along the scan direction, each sitting on its own
-* plate at its own height. The scan covers one of them completely and clips the ones either
+* plate at its own height. The scan is centred on one of them and clips the ones either
 * side, and a part measured off a clipped block is measured off whatever fraction of it
 * happened to land in frame.
 *
@@ -926,29 +926,25 @@ static bool h3EdgeRotation(const cv::Mat& validMask, double maxDeg, double& thet
 *      above). This has to come first. The boundaries between blocks are parallel to it, so a cut made
 *      before the angle is known is a cut at the wrong angle - and on a long block that keeps
 *      a wedge of the neighbour at one end while losing a wedge of the block at the other.
-*   2. The plate level along each line at that angle: the MODE of the valid heights on it. The
+*   2. The plate level along each line at that angle: the MODE of the valid heights on it,
+*      then again within reach of the plate around it, so a line with more pin top than plate
+*      on it reads the plate and not the pins. The
 *      mode and not the mean or the median, because the pins are a minority of the area but a
 *      long way from the plate, and both of those get dragged by them.
 *   3. Median filter, so a line that caught a row of pin tops cannot become a boundary alone.
-*   4. The step response: the change in level across a short window. This is what separates a
-*      block boundary from the tilt along a plate - on a long block the tilt totals as much as
-*      the step does, but it is spread over the whole block and the step is not.
-*   5. The gaps: runs of lines the sensor saw almost nothing on. The slot between two blocks
-*      and the space beyond the field's ends are both such runs, and both are boundaries
-*      whether or not the plates either side differ in height - on this part they mostly do
-*      not, and the step alone found nothing between them. A slot too narrow to empty a
-*      line is found in the intensity map instead, as a black line running unbroken along
-*      the part - which a pin row, for all its shadows, never is.
-*   6. Cut at each step above the threshold, strongest first, suppressing anything within half
-*      a band of a boundary already taken, so one boundary yields one cut.
-*   7. Of the bands between the boundaries, keep the ones bounded on BOTH sides - a band that
-*      runs off an end of the sweep was cut by the scan. Take the tallest, since a real block
-*      is much taller than any sliver two nearby boundaries can enclose.
-*   8. Pose it directly from the angle already known, sized to the block's own extent. Not by
+*   4. The plate, as pixels: seen, within half a plate step of its line's level, and lit
+*      where there is an intensity map. The slot between two blocks is dropout, a black line,
+*      or a chamfer well below the plate, and the lines where one plate steps to the next lie
+*      outside the band around both - so no plate pixel crosses from one block to the next,
+*      while the plate inside a block runs around its pins, holes and shadows and joins up
+*      again beyond them. Each block's plate is one connected piece.
+*   5. The piece under the middle of the scan is the unit, because the scan was aimed at it.
+*      A piece that reaches the edge of the map was cut by the scan and is refused.
+*   6. Pose it directly from the angle already known, sized to the block's own extent. Not by
 *      min-area rect over a contour: the fixture rails that run down either side of the field
-*      sit several thousand counts BELOW the plate and reach into the band like everything
-*      else there, and a rect fitted around one of those is stretched sideways and square to
-*      the image. Anything that far below the local plate is fixture, not part.
+*      sit several thousand counts BELOW the plate and are not plate, so they are not in the
+*      piece, but a rect fitted around a contour would still be hostage to any fleck of them
+*      the piece touched.
 */
 static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, const AlgoHeight3Params& p,
 	cv::RotatedRect& out, QString& why, QString& info)
@@ -1033,18 +1029,58 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		hasLevel[u] = 1;
 	}
 
-	double held = 0.0; bool any = false;
-	for (int u = 0; u < uCount; u++) {
-		if (hasLevel[u]) { held = level[u]; any = true; }
-		else if (any) level[u] = held;
+	//a line with no level takes the last one before it; lines before the first level take
+	//that level, filled BACKWARD from it, because a forward copy reads each line's still-empty
+	//neighbour and leaves them all 0 - a false 0->plate step that makes a block clipped at
+	//the top of the scan look complete
+	auto holdAcross = [&]() {
+		double held = 0.0; bool any = false;
+		for (int u = 0; u < uCount; u++) {
+			if (hasLevel[u]) { held = level[u]; any = true; }
+			else if (any) level[u] = held;
+		}
+		if (!any) return false;
+		int first = 0;
+		while (!hasLevel[first]) first++;
+		for (int u = first - 1; u >= 0; u--) level[u] = level[u + 1];
+		return true;
+	};
+	if (!holdAcross()) { why = QStringLiteral("No line across the part carried enough data to find a plate level"); return false; }
+
+	/*
+	* Second pass: the plate, not the pins. A line through a row of pins can carry more pin
+	* top than plate, and then its mode IS the pin top: a jump of thousands of counts that the
+	* median filter below cannot remove when the row is wider than its window, and that the
+	* step detector then cuts on - once going in and once coming out, splitting the block.
+	* So each line's level is taken again as the mode within reach of the plate AROUND it: the
+	* median of the first-pass levels over a window wider than any pin row, and four plate
+	* steps either side of that. A line with too little in reach carries no level and is held
+	* across like one that clips the part.
+	*/
+	const double thresh = std::max(1.0, p.segBandStepRaw);
+	{
+		const int wide = std::min(uCount | 1, std::max(201, (minBand * 2) | 1));
+		const int wHalf = wide / 2;
+		std::vector<double> ref(uCount), win(wide);
+		for (int u = 0; u < uCount; u++) {
+			for (int i = 0; i < wide; i++) win[i] = level[std::max(0, std::min(uCount - 1, u - wHalf + i))];
+			std::nth_element(win.begin(), win.begin() + wHalf, win.end());
+			ref[u] = win[wHalf];
+		}
+		const double reach = 4.0 * thresh;
+		for (int u = 0; u < uCount; u++) {
+			if (!hasLevel[u]) continue;
+			const int* bins = &hist[(size_t)u * kBins];
+			const int b0 = std::max(0, (int)((ref[u] - reach - lo) / binW));
+			const int b1 = std::min(kBins - 1, (int)((ref[u] + reach - lo) / binW));
+			long long inReach = 0;
+			for (int b = b0; b <= b1; b++) inReach += bins[b];
+			if (b1 < b0 || inReach < (long long)(lineLen[u] * 0.02)) { hasLevel[u] = 0; continue; }
+			const int top = (int)(std::max_element(bins + b0, bins + b1 + 1) - bins);
+			level[u] = lo + (top + 0.5) * binW;
+		}
+		holdAcross();
 	}
-	if (!any) { why = QStringLiteral("No line across the part carried enough data to find a plate level"); return false; }
-	//lines before the first level take that level; filled BACKWARD from it, because a forward
-	//copy reads each line's still-empty neighbour and leaves them all 0 - a false 0->plate step
-	//that makes a block clipped at the top of the scan look complete
-	int first = 0;
-	while (!hasLevel[first]) first++;
-	for (int u = first - 1; u >= 0; u--) level[u] = level[u + 1];
 
 	// ── 3. median filter ──
 	int k = std::min(51, (minBand | 1));
@@ -1057,64 +1093,45 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		smooth[u] = window[half];
 	}
 
-	// ── 4. the step response ──
-	const int W = std::max(4, std::min(25, minBand / 4));
-	std::vector<double> resp(uCount, 0.0);
-	for (int u = W; u < uCount - W; u++) {
-		double aSum = 0.0, bSum = 0.0;
-		for (int i = 0; i < W; i++) { aSum += smooth[u + i]; bSum += smooth[u - 1 - i]; }
-		resp[u] = (aSum - bSum) / W;
-	}
-
 	/*
-	* ── 5. the gaps ──
+	* ── 4. the plate, as one piece per block ──
 	*
-	* Where one block ends and the next begins the sensor sees nothing: the slot between
-	* them sits below the plate and the edges either side of it are chamfered, so the seam
-	* is a line of dropout running the full width of the part, a few tens of rows of it. The
-	* field's own ends are the same thing with nothing at all beyond them. Either way the
-	* plate simply stops, and a line it stops on is a boundary whether or not the next plate
-	* sits at a different height - on this part the neighbours are coplanar to within a few
-	* counts, and the step alone finds nothing between them.
+	* Every pixel that is PLATE - seen, within half a plate step of the level of its line, and
+	* (when there is an intensity map) lit - and nothing else. What is left out is exactly what
+	* separates one block from the next, and nothing that does not:
+	*   - the slot between two blocks is dropout, or a black line in the intensity map, or a
+	*     chamfer well below the plate, and usually all three; whichever it is, no plate pixel
+	*     crosses it;
+	*   - two blocks pushed together with no slot at all still differ in level, and the lines
+	*     where the level steps from one to the other lie outside the band around BOTH;
+	*   - pins, holes and component shadows are not plate either, but they sit INSIDE a block,
+	*     ringed by plate that runs around them and joins up again on the far side.
+	* So the plate of each block is one connected piece, the pieces of neighbouring blocks are
+	* not connected, and the unit is the piece under the middle of the scan. There is no
+	* boundary to find and no angle to find it at: a slot that runs a shade off the part's
+	* own angle, a seam that is a line in one map and nothing in the other, a step too small
+	* for a detector - none of these need telling apart, because the question is no longer
+	* "where is the edge" but "which plate is this".
 	*
-	* A pin row is NOT a gap: the pins shadow the plate into blobs, but the plate between the
-	* blobs is still seen. On most parts a pin row keeps a third of its pixels; on one with
-	* long shadows it keeps a tenth, which is where a real gap's chamfered sides end up too.
-	* So a line that is all but empty - under a twentieth - is a gap on its own, and a line
-	* that is merely sparse counts only where it adjoins one of those, or where the intensity
-	* map (below) shows the slot. A run of gap lines is one boundary however long it is, and
-	* the step cuts further down are kept away from it - the step at a seam, where there is
-	* one, IS the seam.
+	* Three things the level test lets through are cut out after it:
+	*   - a thin groove: a slot so shallow that its floor is within the band, as happens where
+	*     the chamfers are small and the sensor sees most of the way down. A pixel lower than
+	*     the plate a few rows either side of it is in a groove, and not plate;
+	*   - the step itself where two blocks touch: the level follows the step, so the pixels on
+	*     either side of it are each within the band of their own plate, but the height jumps
+	*     across a few rows there, and a pixel the height jumps across is not plate;
+	*   - a fleck in the slot: a burr or a glint at plate height, wide enough to survive the
+	*     opening below, bridging the slot at one spot. The slot is a long line of not-plate
+	*     and the fleck a short break in it, so closing not-plate along the part fills the
+	*     break - while a pin row, already a continuous band of shadow, gains nothing from it,
+	*     and the plate margins at the block's ends are wider than the kernel and keep the
+	*     plate joined around every row.
+	* Dark is relative to this map's own plate: two fifths of the median brightness. The
+	* opening by a small kernel is so that a bridge a pixel or two wide cannot join two
+	* plates that are not joined.
 	*/
-	const double kGapSure = 0.05, kGapSparse = 0.15;
-	std::vector<char> isGap(uCount, 0), sparse(uCount, 0);
-	for (int u = 0; u < uCount; u++) {
-		const double cover = lineLen[u] ? (double)total[u] / lineLen[u] : 0.0;
-		isGap[u] = cover < kGapSure;
-		sparse[u] = cover < kGapSparse;
-	}
-	//grow each gap over the sparse lines touching it: the chamfers either side of a slot
-	for (int u = 1; u < uCount; u++) if (isGap[u - 1] && sparse[u]) isGap[u] = 1;
-	for (int u = uCount - 2; u >= 0; u--) if (isGap[u + 1] && sparse[u]) isGap[u] = 1;
-
-	/*
-	* The seam the height map cannot show. Two blocks pushed together leave a slot only a
-	* few rows wide, and the sensor catches enough of its chamfered sides at plate height
-	* that the line never empties - it keeps a fifth of its pixels, the same as a row of
-	* pins does. In the INTENSITY map the same slot is a hard black line running unbroken
-	* from one end of the part to the other, and nothing else on the part is: a pin row is
-	* dark too, but it is a string of pins and shadows with lit plate between them, and the
-	* longest unbroken dark stretch on it is a pin and its shadow. So each line is sampled
-	* along its length and the longest run of dark on it measured; a seam owns most of the
-	* line, a pin row a twentieth of it.
-	*
-	* Dark is relative to this map's own plate: a tenth of the median brightness below is
-	* still plate texture, two fifths of it is the slot. Pixels off the edge of the map are
-	* NOT dark, so a line that only clips a corner cannot pass on the strength of what it
-	* does not see.
-	*/
-	int seamLines = 0;
-	bool intensityRead = false;
+	const double nearPlate = std::max(25.0, 0.5 * thresh);
+	int darkT = -1;
 	if (!intensity.empty() && intensity.size() == src.size() && intensity.type() == CV_8U) {
 		std::vector<uchar> bright;
 		bright.reserve((size_t)(h / 4 + 1) * (w / 4 + 1));
@@ -1125,168 +1142,143 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 		}
 		if (bright.size() >= 64) {
 			std::nth_element(bright.begin(), bright.begin() + bright.size() / 2, bright.end());
-			const int dark = std::max(20, std::min(100, (int)std::lround(0.4 * bright[bright.size() / 2])));
-			const double kSeamRun = 0.6;
-			intensityRead = true;
-			for (int u = 0; u < uCount; u++) {
-				if (isGap[u]) continue;
-				int run = 0, longest = 0;
-				for (int x = 0; x < w; x++) {
-					const int y = (int)std::lround(u + uMin + x * tanT);
-					if (y >= 0 && y < h && intensity.ptr<uchar>(y)[x] < dark) {
-						if (++run > longest) longest = run;
-					}
-					else run = 0;
-				}
-				if (longest >= kSeamRun * w) { isGap[u] = 1; seamLines++; }
-			}
+			darkT = std::max(20, std::min(100, (int)std::lround(0.4 * bright[bright.size() / 2])));
 		}
 	}
-	//with no intensity map to ask, a sparse line is taken as a gap, as it always was
-	if (!intensityRead)
-		for (int u = 0; u < uCount; u++) if (sparse[u]) isGap[u] = 1;
 
-	struct Sep { int a, b; };            //a boundary: the lines it occupies, inclusive
-	std::vector<Sep> seps;
-	for (int u = 0; u < uCount; ) {
-		if (!isGap[u]) { u++; continue; }
-		int v = u;
-		while (v + 1 < uCount && isGap[v + 1]) v++;
-		if (v - u + 1 >= 2) seps.push_back({ u, v });
-		u = v + 1;
-	}
-
-	std::vector<char> taken(uCount, 0);
-	for (const Sep& g : seps)
-		for (int i = std::max(0, g.a - minBand / 2); i <= std::min(uCount - 1, g.b + minBand / 2); i++)
-			taken[i] = 1;
-
-	// ── 6. the steps, strongest first ──
-	std::vector<int> order(uCount);
-	for (int u = 0; u < uCount; u++) order[u] = u;
-	std::sort(order.begin(), order.end(),
-		[&](int l, int r) { return std::fabs(resp[l]) > std::fabs(resp[r]); });
-
-	const double thresh = std::max(1.0, p.segBandStepRaw);
-	for (int u : order) {
-		if (std::fabs(resp[u]) < thresh) break;
-		bool near = false;
-		for (int i = std::max(0, u - minBand / 2); i <= std::min(uCount - 1, u + minBand / 2); i++)
-			if (taken[i]) { near = true; break; }
-		if (near) continue;
-		taken[u] = 1;
-		seps.push_back({ u, u });
-	}
-	std::sort(seps.begin(), seps.end(), [](const Sep& l, const Sep& r) { return l.a < r.a; });
-
-	// ── 7. the tallest band bounded on both sides ──
-	//a band that starts at the first line of the sweep or runs to the last was cut by the
-	//scan, not by a plate edge; only a band with a boundary on each side was captured whole
-	int bandU0 = -1, bandU1 = -1;
-	auto consider = [&](int a0, int a1, bool bounded) {
-		if (!bounded || a1 < a0) return;
-		if (a1 - a0 + 1 < minBand) return;
-		if (bandU0 < 0 || (a1 - a0) > (bandU1 - bandU0)) { bandU0 = a0; bandU1 = a1; }
-	};
-	int bandStart = 0;
-	bool startBounded = false;
-	for (const Sep& g : seps) {
-		consider(bandStart, g.a - 1, startBounded);
-		bandStart = g.b + 1;
-		startBounded = true;
-	}
-	consider(bandStart, uCount - 1, false);
-
-	{
-		QStringList bl;
-		for (const Sep& g : seps)
-			bl << (g.a == g.b ? QStringLiteral("step@%1").arg(g.a + uMin)
-				: QStringLiteral("gap %1-%2").arg(g.a + uMin).arg(g.b + uMin));
-		info = QStringLiteral("rotation %1 deg; %2 boundar%3: %4; band %5-%6 (%7 lines); seam lines from intensity: %8")
-			.arg(thetaDeg, 0, 'f', 3).arg(seps.size()).arg(seps.size() == 1 ? "y" : "ies").arg(bl.join(", "))
-			.arg(bandU0 < 0 ? -1 : bandU0 + uMin).arg(bandU1 < 0 ? -1 : bandU1 + uMin)
-			.arg(bandU0 < 0 ? 0 : bandU1 - bandU0 + 1).arg(seamLines);
-	}
-
-	if (bandU0 < 0) {
-		why = seps.size() < 2
-			? QStringLiteral("Found %1 block boundary across the map - a complete block needs one "
-				"on each side of it. A boundary is a gap the sensor saw nothing across, or a "
-				"plate step above the configured size.").arg(seps.size())
-			: QStringLiteral("Every block runs off one end of the scan, so none of them was "
-				"captured whole.");
-		return false;
-	}
-
-	/*
-	* ── 8. pose the block ──
-	*
-	* The angle is already known and the band is already parallel to the part, so the rect
-	* follows from the block's extent along and across that angle - there is nothing left for
-	* a min-area rect to work out, and a good deal for it to get wrong.
-	*
-	* The block is ONE PIECE, and that is what finally settles where it ends. The fixture rails
-	* run down either side of the field separated from the plate by a strip the sensor sees
-	* nothing of, so they are not connected to it - whereas no height threshold tells them apart
-	* reliably, because a rail ramps down from its edge and its first columns read barely more
-	* below the plate than a deep pin bore does. The height drop below is only a pre-filter, to
-	* keep a rail that touches the plate somewhere from dragging the whole thing in with it; the
-	* connectivity is what does the work.
-	*
-	* Ten times the plate step as that drop. It has to clear the pins' own bores while staying
-	* well above them a rail does, and on real parts those two are orders apart.
-	*/
-	const double railDrop = 10.0 * thresh;
-	const double cosT = std::cos(thetaDeg * CV_PI / 180.0);
-	const double sinT = std::sin(thetaDeg * CV_PI / 180.0);
-
-	cv::Mat blockMask(h, w, CV_8U, cv::Scalar(0));
+	cv::Mat plate(h, w, CV_8U, cv::Scalar(0));
 	for (int y = 0; y < h; y++) {
 		const ushort* row = src16.ptr<ushort>(y);
 		const uchar* mrow = mask.ptr<uchar>(y);
-		uchar* brow = blockMask.ptr<uchar>(y);
+		const uchar* irow = darkT >= 0 ? intensity.ptr<uchar>(y) : nullptr;
+		uchar* prow = plate.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
 			if (!mrow[x]) continue;
-			const int ui = (int)std::lround(y - x * tanT) - uMin;
-			if (ui < bandU0 || ui > bandU1) continue;
-			if (row[x] < smooth[ui] - railDrop) continue;
-			brow[x] = 255;
+			int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (ui < 0) ui = 0; else if (ui >= uCount) ui = uCount - 1;
+			if (std::fabs((double)row[x] - smooth[ui]) > nearPlate) continue;
+			if (irow && irow[x] < darkT) continue;
+			prow[x] = 255;
 		}
 	}
 
-	/*
-	* Close before labelling: the pins shadow the plate into a lace of small holes, and a few of
-	* those run together into a channel that would cut a corner of the plate off from the rest.
-	* The kernel is sized to bridge a pin's shadow and no more, so it cannot reach across the
-	* strip that separates the plate from a rail.
-	*/
-	const int bridge = std::max(3, std::min(41, w / 400) | 1);
-	cv::Mat joined;
-	cv::morphologyEx(blockMask, joined, cv::MORPH_CLOSE,
-		cv::getStructuringElement(cv::MORPH_RECT, cv::Size(bridge, bridge)));
+	//the groove and the step: compared with the rows a little way either side
+	{
+		const int d = 8;
+		const double groove = std::max(10.0, nearPlate / 5.0);
+		for (int y = d; y < h - d; y++) {
+			const ushort* above = src16.ptr<ushort>(y - d);
+			const ushort* below = src16.ptr<ushort>(y + d);
+			const ushort* row = src16.ptr<ushort>(y);
+			uchar* prow = plate.ptr<uchar>(y);
+			for (int x = 0; x < w; x++) {
+				if (!prow[x] || !above[x] || !below[x]) continue;
+				const double a = above[x], b = below[x];
+				if (std::fabs(b - a) > nearPlate || (double)row[x] < std::min(a, b) - groove) prow[x] = 0;
+			}
+		}
+	}
 
-	cv::Mat bLabels, bStats, bCent;
-	const int nBlocks = cv::connectedComponentsWithStats(joined, bLabels, bStats, bCent, 8, CV_32S);
-	if (nBlocks < 2) {
-		why = QStringLiteral("The complete block contains no surface to pose");
+	//the fleck: close not-plate along the part by a little more than a fleck is wide, and
+	//well under the plate margin beside the first pin of a row, which this would otherwise
+	//notch - a fleck is a physical size, so the kernel does not scale with the map
+	{
+		const int L = 41;
+		cv::Mat notPlate;
+		cv::bitwise_not(plate, notPlate);
+		cv::morphologyEx(notPlate, notPlate, cv::MORPH_CLOSE,
+			cv::getStructuringElement(cv::MORPH_RECT, cv::Size(L, 1)));
+		cv::bitwise_not(notPlate, plate);
+	}
+
+	const cv::Mat kernel5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+	cv::Mat opened;
+	cv::morphologyEx(plate, opened, cv::MORPH_OPEN, kernel5);
+
+	cv::Mat labels, stats, cents;
+	const int nPieces = cv::connectedComponentsWithStats(opened, labels, stats, cents, 8, CV_32S);
+	if (nPieces < 2) {
+		why = QStringLiteral("No plate found in the map");
 		return false;
 	}
-	int biggest = 1;
-	for (int i = 2; i < nBlocks; i++)
-		if (bStats.at<int>(i, cv::CC_STAT_AREA) > bStats.at<int>(biggest, cv::CC_STAT_AREA)) biggest = i;
-	info += QStringLiteral("; %1 pieces in the band, largest %2 px at rows %3-%4")
-		.arg(nBlocks - 1).arg(bStats.at<int>(biggest, cv::CC_STAT_AREA))
-		.arg(bStats.at<int>(biggest, cv::CC_STAT_TOP))
-		.arg(bStats.at<int>(biggest, cv::CC_STAT_TOP) + bStats.at<int>(biggest, cv::CC_STAT_HEIGHT) - 1);
 
 	/*
-	* Along the block, the count per column of pixels that are PLATE - within half a step of
-	* the line's plate level. The pins stand far above that and the end faces lie below it
-	* and scatter, so this counts the surface the frame should be fitted to and nothing else.
-	* Binned straight into a histogram rather than kept as a third list of coordinates: the
-	* two lists below already hold a float for every pixel of the block.
+	* ── 5. the piece under the middle of the scan ──
+	*
+	* The middle of the map may fall on a pin, a hole or a component, so the piece is chosen
+	* by how much of it lies on the LINE through the middle, the full width of the map and a
+	* quarter of a block either side: that line crosses the unit's plate at its margins and
+	* between its features wherever its middle happens to be, and does not reach a neighbour
+	* unless the scan was aimed a block away.
 	*/
-	const double plateTol = std::max(25.0, 0.5 * thresh);
+	const int centreU = (int)std::lround(0.5 * (h - 1) - 0.5 * (w - 1) * tanT) - uMin;
+	const int win = std::max(8, minBand / 4);
+	std::vector<long long> onLine(nPieces, 0);
+	for (int y = 0; y < h; y++) {
+		const int* lrow = labels.ptr<int>(y);
+		for (int x = 0; x < w; x++) {
+			if (lrow[x] <= 0) continue;
+			const int ui = (int)std::lround(y - x * tanT) - uMin;
+			if (std::abs(ui - centreU) <= win) onLine[lrow[x]]++;
+		}
+	}
+	int unit = 0;
+	for (int i = 1; i < nPieces; i++) if (onLine[i] > onLine[unit]) unit = i;
+	if (unit == 0) {
+		why = QStringLiteral("No plate on the line through the middle of the scan - the unit is not where "
+			"the scan was aimed, or nothing there lies within %1 raw of its own plate level").arg(nearPlate, 0, 'f', 0);
+		return false;
+	}
+
+	const int pTop = stats.at<int>(unit, cv::CC_STAT_TOP);
+	const int pBottom = pTop + stats.at<int>(unit, cv::CC_STAT_HEIGHT) - 1;
+	const int pLeft = stats.at<int>(unit, cv::CC_STAT_LEFT);
+	const int pRight = pLeft + stats.at<int>(unit, cv::CC_STAT_WIDTH) - 1;
+
+	info = QStringLiteral("rotation %1 deg; %2 plate pieces; unit piece rows %3-%4, cols %5-%6, %7 px, "
+		"under the middle; plate within %8 raw of its level%9")
+		.arg(thetaDeg, 0, 'f', 3).arg(nPieces - 1).arg(pTop).arg(pBottom).arg(pLeft).arg(pRight)
+		.arg(stats.at<int>(unit, cv::CC_STAT_AREA)).arg(nearPlate, 0, 'f', 0)
+		.arg(darkT >= 0 ? QStringLiteral(", lit above %1").arg(darkT) : QStringLiteral(", no intensity map"));
+
+	//a piece that reaches the edge of the map was cut by the scan: the block it belongs to
+	//was not captured whole, and a part measured off a fraction of a block is measured off
+	//whatever fraction happened to land in frame
+	if (pTop <= 1 || pBottom >= h - 2 || pLeft <= 1 || pRight >= w - 2) {
+		why = QStringLiteral("The block under the middle of the scan runs off the %1 edge of the map, so "
+			"it was not captured whole")
+			.arg(pTop <= 1 ? "top" : pBottom >= h - 2 ? "bottom" : pLeft <= 1 ? "left" : "right");
+		return false;
+	}
+	if (pBottom - pTop + 1 < minBand) {
+		why = QStringLiteral("The plate under the middle of the scan is only %1 rows tall, under the "
+			"minimum block height of %2 - its pins or shadows may be cutting the plate into strips")
+			.arg(pBottom - pTop + 1).arg(minBand);
+		return false;
+	}
+
+	//the piece, with the plate the opening took off its edges put back - grown by the same
+	//kernel and cut to what was plate before the opening, so it regains its own edges and
+	//nothing beyond them
+	cv::Mat piece = (labels == unit);
+	cv::Mat grown;
+	cv::dilate(piece, grown, kernel5);
+	cv::Mat blockMask;
+	cv::bitwise_and(grown, plate, blockMask);
+
+	/*
+	* ── 6. pose the block ──
+	*
+	* The angle is already known and the piece is already the block, so the rect follows from
+	* the block's extent along and across that angle - there is nothing left for a min-area
+	* rect to work out, and a good deal for it to get wrong.
+	*/
+	const double cosT = std::cos(thetaDeg * CV_PI / 180.0);
+	const double sinT = std::sin(thetaDeg * CV_PI / 180.0);
+
+	//the count per column along the block, binned straight into a histogram rather than
+	//kept as a third list of coordinates: the two lists below already hold a float for
+	//every pixel of the block
 	const double aCorner[4] = { 0.0, (w - 1) * cosT, (h - 1) * sinT, (w - 1) * cosT + (h - 1) * sinT };
 	const double aMin = std::floor(*std::min_element(aCorner, aCorner + 4));
 	const int aBins = (int)std::ceil(*std::max_element(aCorner, aCorner + 4) - aMin) + 2;
@@ -1296,29 +1288,23 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	along.reserve(1 << 16);
 	across.reserve(1 << 16);
 	for (int y = 0; y < h; y++) {
-		const ushort* row = src16.ptr<ushort>(y);
-		const int* lrow = bLabels.ptr<int>(y);
 		const uchar* brow = blockMask.ptr<uchar>(y);
 		for (int x = 0; x < w; x++) {
-			//the label comes from the closed mask, the membership from the original: the closing
-			//is there to join the plate up, not to grow it over the gap around it
-			if (!brow[x] || lrow[x] != biggest) continue;
+			if (!brow[x]) continue;
 			const double a = x * cosT + y * sinT;
 			along.push_back((float)a);
 			across.push_back((float)(-x * sinT + y * cosT));
-			const int ui = (int)std::lround(y - x * tanT) - uMin;
-			if (ui >= 0 && ui < uCount && std::fabs((double)row[x] - smooth[ui]) <= plateTol)
-				plateCnt[(int)(a - aMin)]++;
+			plateCnt[(int)(a - aMin)]++;
 		}
 	}
 	if (along.size() < 64) {
-		why = QStringLiteral("The complete block contains too little surface to pose");
+		why = QStringLiteral("The block under the middle of the scan contains too little surface to pose");
 		return false;
 	}
 
 	/*
 	* Across the block (plate edge to plate edge) a fiftieth of a percent off each end is
-	* enough: the gap makes those edges hard, and a thin line of stragglers cannot stretch
+	* enough: the slot makes those edges hard, and a thin line of stragglers cannot stretch
 	* the frame.
 	*
 	* Along it the ends are where the PLATE stops, not where the last pixel lies. The end
@@ -1327,8 +1313,7 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	* reached out to the last of that would sit a quarter of a millimetre off centre on one
 	* unit and dead centre on the next, carrying every ROI with it. So each end is found by
 	* walking outward from the middle to the first column that carries less than half the
-	* plate the interior does and keeps carrying less; the end face, being below the plate,
-	* does not count as plate at all.
+	* plate the interior does and keeps carrying less.
 	*/
 	auto pct = [](std::vector<float>& v, double q) {
 		size_t i = (size_t)std::lround(q * (v.size() - 1));
@@ -1359,12 +1344,12 @@ static bool h3SegCompleteBand(const cv::Mat& src, const cv::Mat& intensity, cons
 	};
 	double s0 = 0.0, s1 = 0.0;
 	if (!endsByCoverage(plateCnt, aMin, s0, s1)) {
-		why = QStringLiteral("The complete block has too little plate to find its ends");
+		why = QStringLiteral("The block under the middle of the scan has too little plate to find its ends");
 		return false;
 	}
 	const double n0 = pct(across, 0.0002), n1 = pct(across, 0.9998);
 	if (s1 - s0 < 2.0 || n1 - n0 < 2.0) {
-		why = QStringLiteral("The complete block measured smaller than 2 px");
+		why = QStringLiteral("The block under the middle of the scan measured smaller than 2 px");
 		return false;
 	}
 

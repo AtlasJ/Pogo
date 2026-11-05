@@ -22250,13 +22250,13 @@ QToolBox#toolBox_algoH3Sections::tab:selected {
                                  <item row="1" column="1">
                                   <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3SegBandStep">
                                    <property name="toolTip">
-                                    <string>The smallest step in plate height that counts as a boundary between two blocks, in raw grey levels - the same units as the height map.
+                                    <string>How far a pixel may lie from its line's plate level and still be plate: half of this, in raw grey levels - the same units as the height map.
 
-A gap the sensor sees nothing across - the slot between two blocks, or the space beyond the end of the field - is always a boundary, whatever this is set to. The step only matters where two blocks touch with no gap between them.
+Each block's plate is found as one connected piece of such pixels, and the unit is the piece under the middle of the scan. The slot between two blocks breaks the piece on its own, whatever this is set to; this only matters where two blocks touch with no slot, and then the step between their plates has to exceed half of it.
 
-It has to clear the tilt ALONG a plate, which on a long block can total as much as the step between two of them. Too high and touching blocks are never separated; too low and the tilt itself gets cut into slivers.
+Too high and touching blocks become one piece; too low and the tilt along a plate breaks a block into strips.
 
-Run once and read the Fail Reason: it says how many boundaries were found.</string>
+Run once and read the Fail Reason and the log line: they say which piece was taken.</string>
                                    </property>
                                   </widget>
                                  </item>
@@ -22273,7 +22273,7 @@ Run once and read the Fail Reason: it says how many boundaries were found.</stri
                                  <item row="2" column="1">
                                   <widget class="QDoubleSpinBox" name="doubleSpinBox_algoH3SegBandMin">
                                    <property name="toolTip">
-                                    <string>A band shorter than this is not a block. It stops a sliver between two boundaries that landed close together from being taken for one.
+                                    <string>A plate piece shorter than this is not a block. It stops a strip between two pin rows, on a part whose pins reach the block's edge, from being taken for one; the Fail Reason then says so.
 
 0 = an eighth of the map.</string>
                                    </property>

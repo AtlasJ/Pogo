@@ -108,11 +108,11 @@ enum class AlgoH3SegMethod {
 	* of it, and a part measured off a clipped block is measured off whatever fraction of it
 	* happened to land in frame - so the complete one is the only one worth keeping.
 	*
-	* "Complete" is decided the same way the hole fill decides a gap: a block that runs off
-	* the top or bottom edge of the map was cut by the scan, a block with a plate boundary on
-	* both sides was not. A boundary is the slot between two blocks, which the sensor sees
-	* nothing across, or a step in plate height between them, which survives the tilt along
-	* a plate because a step is abrupt and a tilt is not.
+	* Each block's plate is one connected piece of pixels at plate level - the slot between
+	* blocks, the black line it makes in the intensity map, and the step between plates at
+	* different heights all break the connection, while pins, holes and shadows sit inside a
+	* block ringed by plate. The piece under the middle of the scan is the unit, since the
+	* scan was aimed at it; a piece that reaches the edge of the map was cut by the scan.
 	*/
 	CompleteBand = 1
 };
