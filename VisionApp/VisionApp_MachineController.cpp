@@ -72,7 +72,15 @@ void VisionApp::connectMachineController()
 			startProduction();
 			break;
 		case MachineEvent::STOP_BTN:
-			stopRun();
+			/*
+			* The panel STOP does exactly what the on-screen Stop does (toolButton_stopRun, the busy window's
+			* Stop and a progress dialog's Cancel all call userClickStopRun). It used to call stopRun() alone,
+			* which halted the run the same way but left the Test Run loop count, "loop without unload" and a
+			* pending auto-calibration armed - so inspectionDone could still start the next loop, or write an
+			* auto-cal report for the run that was stopped - and left the elapsed timer counting.
+			*/
+			ct::logger::info("[Machine] Panel STOP pressed - same as the on-screen Stop");
+			userClickStopRun();
 			break;
 		case MachineEvent::RESET_BTN:
 			/*

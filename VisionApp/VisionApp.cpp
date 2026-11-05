@@ -4158,6 +4158,7 @@ void VisionApp::stopRun(bool clearInspQueue)
 	ct::logger::info("Force stop success");
 }
 
+//every Stop the operator gives: the on-screen Stop, a progress dialog's Cancel, AND the panel STOP button
 void VisionApp::userClickStopRun()
 {
 	_loop = 0;
