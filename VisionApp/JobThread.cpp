@@ -6854,7 +6854,7 @@ void JobThread::run2D3D() {
 * shot is taken with production's own code; a 3D scan's Z is handed in less the camera-to-laser Z,
 * because jogLaser adds it back and the Z given is already the laser's own (the 3D Centre Z).
 */
-void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId)
+void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId, bool homeWhenDone)
 {
 	SystemData::instance().StartInspectionTimer = QDateTime::currentDateTime();
 	m_extraMoveLog.clear();
@@ -6959,8 +6959,39 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId)
 	save3DExtraOffset();
 	const bool completed = !m_stopRun && done == shots.size();
 	ct::logger::info("[GS2 run] %s: %d of %d shots, %d 2D snap(s) without an image", completed ? "done" : "stopped", done, shots.size(), missing2D);
-	if (completed) emit acquisitionDone();
-	emit gs2RunFinished(runId, completed, done, missing2D);
+
+	/*
+	* START: a complete run parks at machine home (0, 0, 0 - where homing leaves it, as Guided Setup's own
+	* "go home" does). Z goes up first with X / Y staying put, then X / Y across at the top - never sideways
+	* low over the trolley. Only a COMPLETE run: a Stop (page, panel button, e-stop, trolley guard) leaves the
+	* head where it stopped, and a Stop during this move ends it there too (jog sends no further group).
+	* Before acquisitionDone, so the trolley is only released once the head is up and away.
+	*/
+	if (completed && homeWhenDone) {
+		ct::logger::info("[GS2 run] complete: going to machine home (Z up first)");
+		const auto x = mc.get_position_mm(m_motionID, 0, (int)im390::Axis::X);
+		const auto y = mc.get_position_mm(m_motionID, 0, (int)im390::Axis::Y);
+		if (x && y) {
+			/*
+			* Every move checks the Stop right before it is sent - jog only looks between its own groups, never
+			* before the first. A Stop that came after the last shot has already halted the axes (stopRun), and
+			* sending the lift anyway would start the machine again after Stop was pressed.
+			*/
+			if (!m_stopRun) jog(*x, *y, 0.0, "2D", true);
+			if (!m_stopRun) jog(0.0, 0.0, 0.0, "2D", true);
+			ct::logger::info("[GS2 run] %s", m_stopRun ? "going home stopped - the head stays where it stopped" : "at machine home");
+		}
+		else {
+			ct::logger::warn("[GS2 run] X / Y position unreadable - not going home");
+		}
+	}
+	/*
+	* A Stop during the way home ends the run as any other Stop does: no acquisitionDone, so the trolley lock is
+	* NOT released automatically with the head stopped part way up, and the GUI closes the run on its Stop path.
+	*/
+	const bool finished = completed && !m_stopRun;
+	if (finished) emit acquisitionDone();
+	emit gs2RunFinished(runId, finished, done, missing2D);
 }
 
 void JobThread::calibrateGoldenLightingProfile(QString camID, QRectF roi) {

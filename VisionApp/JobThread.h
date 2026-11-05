@@ -83,7 +83,9 @@ public:
 		double clearZ = 0.0;                //Z goes up to this (if lower) before moving sideways to the shot, as Move only does
 		bool turn180 = false;               //2D / 3D: the unit sits inverted (Template Mapping) - its images are turned 180
 	};
-	void runGs2(const QVector<Gs2Shot>& shots, int runId);
+	//homeWhenDone (START): a run that took every shot ends with the head up at Z 0 and X / Y at 0, 0 - machine
+	//home, where homing leaves it. A stopped or failed run is left where it stopped.
+	void runGs2(const QVector<Gs2Shot>& shots, int runId, bool homeWhenDone = false);
 	void clearStop() { m_stopRun = false; }   //GUI thread, with this thread idle: before posting runGs2
 	~JobThread() {
 		// The SR-X sockets live in this thread, so they must NOT be deleted from

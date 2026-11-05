@@ -3254,6 +3254,7 @@ void VisionApp::gs2StartProduction(const gs2::Setup& s, const QString& dir)
 	addLogLine(line);
 	_jobThread.clearStop();   //idle since steps 1-5 (gs2MachineBusy checked it); nothing is processed from the check above to here
 	const int runId = _gs2Run.runId;
-	QTimer::singleShot(0, &_jobThread, [this, shots, runId]() { _jobThread.runGs2(shots, runId); });
+	//a complete START run parks at machine home; a stopped one stays where it stopped
+	QTimer::singleShot(0, &_jobThread, [this, shots, runId]() { _jobThread.runGs2(shots, runId, true); });
 	vs_startElapseTimer();
 }
