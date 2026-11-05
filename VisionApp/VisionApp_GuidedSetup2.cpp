@@ -2085,7 +2085,14 @@ QVector<JobThread::Gs2Shot> VisionApp::gs2BuildShots(const gs2::Setup& s, const 
 			shot.y = p.camera.y;
 			shot.z = z2D + in.zOffsetMm;
 		}
-		shot.clearZ = std::min(z2D, shot.z);   //sideways never below the 2D Z, as Move only
+		/*
+		* 2D and Barcode + OCR: sideways never below the 2D Z. 3D: sideways AT the scan Z (Jimmy, 2026-11-06) - the
+		* scan itself already sweeps the unit at that height, and lifting 1.7 mm to the 2D Z and coming back down
+		* for every scan cost two Z moves and an XY re-send each (gantry log 2026-11-05 11:02). The head is only
+		* ever lifted to it, never lowered for the travel: arriving from the 2D pass, higher, it crosses at the
+		* height it is at and comes down at the scan start. Same rule as Move only.
+		*/
+		shot.clearZ = (p.type == gs2::Insp3D) ? shot.z : std::min(z2D, shot.z);
 		//an inverted unit's 2D snap and 3D maps are turned 180 before anything shows, saves or inspects them;
 		//the barcode readers' captures are left as taken (Jimmy, 2026-11-05)
 		shot.turn180 = shot.kind != 1 && unitInverted(shot.unitID);
@@ -2871,7 +2878,8 @@ void VisionApp::gs2Teach(int action)
 			setProgress(_zsBusyWindow, QStringLiteral("%1 of %2: %3 %4").arg(k + 1).arg(visit.size()).arg(name, type));
 			const bool threeD = p.type == gs2::Insp3D;
 			const double z = (threeD ? _gs2Session.z3D : _gs2Session.z2D) + in.zOffsetMm;
-			const double clearZ = std::min(_gs2Session.z2D, z);
+			//as a START run travels (gs2BuildShots): 2D / Barcode + OCR never below the 2D Z, 3D at the scan Z
+			const double clearZ = threeD ? z : std::min(_gs2Session.z2D, z);
 			if (!threeD) {
 				ok = zsMoveToXY(p.camera.x, p.camera.y, clearZ, why) && zsMove({ { (int)Axis::Z, z } }, why);
 				if (ok) ct::logger::info("[GuidedSetup2] Move only %d/%d: %s %s, camera at %.3f, %.3f, Z %.3f", k + 1, visit.size(), qPrintable(name),

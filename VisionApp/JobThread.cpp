@@ -6925,7 +6925,22 @@ void JobThread::runGs2(const QVector<Gs2Shot>& shots, int runId, bool homeWhenDo
 			acquireBarcodeAndOcrAt(s.x, s.y, s.z, s.unitID);
 		}
 		else {
-			jogLaser(s.x, s.y, s.clearZ - laserDz, "2D");   //over the scan start at the clear Z; scan() then goes down to it
+			/*
+			* Over the scan start at the clear Z, then scan() goes down to the scan Z. A 3D shot's clear Z IS its scan Z
+			* (gs2BuildShots), so once the head is at that height - every scan after the first - this move and scan()'s
+			* own move to its start would be the same XYZ sent twice: scan() alone takes it there, sideways at the scan
+			* Z. Coming from higher up (the 2D pass) this move still runs, so the head crosses high and comes down at
+			* the start, never the other way round.
+			*/
+			const auto zNow = mc.get_position_mm(m_motionID, 0, (int)im390::Axis::Z);
+			const bool atScanZ = zNow && std::abs(s.clearZ - s.z) < 1e-6 && std::abs(*zNow - s.z) <= 0.02;
+			/*
+			* Higher than the clear Z (+ Z is down): cross at the height the head is at - XY only - and let scan()
+			* come down at the start. Sending the clear Z here instead would put the descent in this sideways move,
+			* and with Axis Move Sequence "All axes together" the head would come down while still crossing.
+			*/
+			const double travelZ = (zNow && *zNow < s.clearZ) ? *zNow : s.clearZ;
+			if (!atScanZ) jogLaser(s.x, s.y, travelZ - laserDz, "2D");
 			if (m_stopRun) break;
 			dat::WorldCoordinate start, end;
 			start.wx = s.x;
