@@ -5390,7 +5390,16 @@ void VisionApp::startLiveView()
 
 void VisionApp::stopLiveView()
 {
-	_processType = ProcessType::NONE;
+	/*
+	* Not under a production run: there _processType is the RUN's type, not the live view's, and every page button
+	* (showProductionPage among them) comes through here. A run switched to NONE part way stops archiving its units'
+	* 3D scans (imageReady saves only in PRODUCTION) and never closes at its end (the acquisitionDone handler skips a
+	* run that is not PRODUCTION: no trolley release, no drain, the setup stays locked so no unit can be reviewed).
+	* 2026-11-06 10:13: the Production page opened 40 s before a START's end lost X8Y13-X8Y17's scans and left the
+	* run open until Stop was pressed. Outside a run (and for the old image-collection runs) nothing changes.
+	*/
+	const bool productionRun = _processType == ProcessType::PRODUCTION && (_productionSetupLocked || _gs2Run.fromStart);
+	if (!productionRun) _processType = ProcessType::NONE;
 
 	if (_grabber == nullptr) {
 		ct::logger::info("Live view already stopped");
